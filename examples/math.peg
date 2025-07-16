@@ -1,0 +1,29 @@
+Expression
+  = head:Term tail:(_ ("+" / "-") _ Term)* {
+      return tail.reduce((acc, [_, op, __, term]) => ({
+        type: "BinaryExpr",
+        operator: op,
+        left: acc,
+        right: term
+      }), head);
+    }
+
+Term
+  = head:Factor tail:(_ ("*" / "/") _ Factor)* {
+      return tail.reduce((acc, [_, op, __, factor]) => ({
+        type: "BinaryExpr",
+        operator: op,
+        left: acc,
+        right: factor
+      }), head);
+    }
+
+Factor
+  = "(" _ expr:Expression _ ")" { return expr; }
+  / Integer
+
+Integer
+  = digits:[0-9]+ { return { type: "NumberLiteral", value: parseInt(digits.join(""), 10) }; }
+
+_ "whitespace"
+  = [ \t\n\r]*

@@ -5,7 +5,7 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "declaration": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -27,7 +27,8 @@
     "src/**/*",
     "cli/**/*",
     "demo/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    "types/**/*"
   ],
   "exclude": [
     "node_modules",

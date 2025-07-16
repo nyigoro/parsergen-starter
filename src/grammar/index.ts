@@ -1,8 +1,10 @@
-import { generate } from 'peggy';
-import * as peggy from 'peggy';
+import type { Parser, ParserBuildOptions } from 'peggy';
 import { formatError } from '../utils/index.js';
+import PEG from 'peggy';
+
+const generate = PEG.generate;
 export interface CompiledGrammar {
-  parse: peggy.Parser['parse'];
+  parse: Parser['parse'];
   source: string;
   options: CompileOptions;
 }
@@ -39,7 +41,7 @@ export function compileGrammar(
       ...options
     };
 
-    const parser = generate(grammar, defaultOptions as peggy.ParserBuildOptions);
+    const parser = generate(grammar, defaultOptions as ParserBuildOptions);
     return {
       parse: parser.parse.bind(parser),
       source: grammar,
