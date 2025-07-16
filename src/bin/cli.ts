@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { watchFile } from 'node:fs';
 import { argv } from 'node:process';
 
 import {
+  compileGrammar,
   compileGrammarFromFile,
   validateGrammar,
   analyzeGrammar,
@@ -11,67 +13,110 @@ import {
 import { parseInput, ParserUtils } from '../parser/index.js';
 import { formatError } from '../utils/index.js';
 
+// Define the valid format types with const assertion for type safety
+const VALID_FORMATS = ['bare', 'commonjs', 'es', 'globals', 'umd'] as const;
+type OutputFormat = typeof VALID_FORMATS[number];
+
 function printHelp() {
   console.log(`
-Usage: parsergen <grammar.peg> [--test "<input>"] [options]
+Usage: parsergen <grammar.peg> [options]
 
 Options:
-  --test <input>     Test grammar by parsing input string
-  --validate         Only validate grammar (no parsing)
-  --analyze          Show metadata like rules, startRule, imports/exports
-  --ast              Print full parse AST
-  --help, -h         Show this help
+  --test <input>         Test grammar by parsing input string
+  --validate             Only validate grammar (no parsing)
+  --analyze              Show grammar metadata
+  --out <file>           Output compiled parser as JS
+  --format <target>      Format for output: ${VALID_FORMATS.join(' | ')} (default: es)
+  --ast                  Print parse AST
+  --watch                Watch grammar file and auto-recompile
+  --help, -h             Show help
 `);
+}
+
+function isValidFormat(format: string): format is OutputFormat {
+  return VALID_FORMATS.includes(format as OutputFormat);
+}
+
+async function compileAndWrite(grammarPath: string, outFile: string, format: OutputFormat) {
+  const grammarText = await fs.readFile(grammarPath, 'utf-8');
+  const compiledSource = compileGrammar(grammarText, {
+    output: 'source',
+    format,
+    grammarSource: grammarPath
+  }) as unknown as string;
+
+  await fs.writeFile(outFile, compiledSource, 'utf-8');
+  console.log(`✅ Rebuilt parser: ${outFile}`);
 }
 
 async function main() {
   const args = argv.slice(2);
-  const file = args[0];
+  const grammarPath = args[0];
 
-  if (!file || args.includes('--help') || args.includes('-h')) {
+  if (!grammarPath || args.includes('--help') || args.includes('-h')) {
     printHelp();
     return;
   }
 
-  let grammarText = '';
-  try {
-    grammarText = await fs.readFile(file, 'utf-8');
-  } catch (err: any) {
-    console.error(`❌ Failed to read ${file}:\n${err.message}`);
-    process.exit(1);
-  }
+  const grammarText = await fs.readFile(grammarPath, 'utf-8');
 
+  // Validate
   if (args.includes('--validate')) {
     const result = validateGrammar(grammarText);
-    if (result.valid) {
-      console.log('✅ Grammar is valid.');
-    } else {
-      console.error('❌ Grammar is invalid:\n' + result.error);
-      process.exit(1);
-    }
-    return;
+    result.valid
+      ? console.log('✅ Grammar is valid.')
+      : console.error('❌ Grammar is invalid:\n' + result.error);
+    process.exit(result.valid ? 0 : 1);
   }
 
+  // Analyze
   if (args.includes('--analyze')) {
-    const meta = analyzeGrammar(grammarText);
-    console.log('📊 Grammar Metadata:\n', meta);
+    console.log('📊 Metadata:', analyzeGrammar(grammarText));
     return;
   }
 
-  let parser;
-  try {
-    parser = await compileGrammarFromFile(file);
-    console.log(`✅ Grammar compiled: ${file}`);
-  } catch (err: any) {
-    console.error(err.message);
+  const outIndex = args.indexOf('--out');
+  const outFile = outIndex !== -1 ? args[outIndex + 1] : null;
+
+  const formatIndex = args.indexOf('--format');
+  const formatArg = formatIndex !== -1 ? args[formatIndex + 1] : 'es';
+  
+  // Validate format argument
+  if (!isValidFormat(formatArg)) {
+    console.error(`❌ Invalid format: ${formatArg}. Valid formats: ${VALID_FORMATS.join(', ')}`);
     process.exit(1);
   }
+  
+  const format: OutputFormat = formatArg;
+
+  // Watch mode
+  if (args.includes('--watch') && outFile) {
+    console.log(`👀 Watching ${grammarPath}...`);
+    await compileAndWrite(grammarPath, outFile, format);
+    watchFile(grammarPath, { interval: 300 }, async () => {
+      try {
+        await compileAndWrite(grammarPath, outFile, format);
+      } catch (err: any) {
+        console.error('❌ Error during rebuild:\n' + err.message);
+      }
+    });
+    return;
+  }
+
+  // Normal out compile
+  if (outFile) {
+    await compileAndWrite(grammarPath, outFile, format);
+    return;
+  }
+
+  // Default: compile and optionally test
+  const parser = await compileGrammarFromFile(grammarPath);
+  console.log(`✅ Grammar compiled: ${grammarPath}`);
 
   const testIndex = args.indexOf('--test');
   if (testIndex !== -1 && args[testIndex + 1]) {
     const input = args[testIndex + 1];
     const result = parseInput(parser, input);
-
     if (ParserUtils.isSuccess(result)) {
       console.log('✅ Parse Success');
       if (args.includes('--ast')) {
@@ -82,7 +127,7 @@ async function main() {
       process.exit(1);
     }
   } else {
-    console.log('ℹ️  No --test input provided. Grammar compiled successfully.');
+    console.log('ℹ️  No --test provided. Grammar OK.');
   }
 }
 

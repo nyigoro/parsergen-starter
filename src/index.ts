@@ -1,7 +1,12 @@
 // src/index.ts
+// ==========================
+// 🌐 Main Entry - ParserGen API
+// ==========================
 
 export { compileGrammar, type CompiledGrammar } from './grammar/index.js';
+
 export { createLexer, type LexerConfig, type Token } from './lexer/index.js';
+
 export {
   parseInput,
   createParser,
