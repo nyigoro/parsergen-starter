@@ -1,0 +1,78 @@
+{
+  "name": "parsergen-starter",
+  "version": "1.0.0",
+  "description": "A complete parser generator starter with PEG.js, optional Moo lexer, and VS Code integration",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "parsergen": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsup src/index.ts src/cli/index.ts --format cjs,esm --dts --clean",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "dev:ui": "vite",
+    "build:ui": "vite build",
+    "lint": "eslint src --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "parser",
+    "peg",
+    "grammar",
+    "lexer",
+    "ast",
+    "compiler",
+    "pegjs",
+    "moo"
+  ],
+  "author": "nyigoro",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.5",
+    "@types/node": "^20.8.0",
+    "@types/react": "^18.2.25",
+    "@types/react-dom": "^18.2.11",
+    "@typescript-eslint/eslint-plugin": "^6.7.4",
+    "@typescript-eslint/parser": "^6.7.4",
+    "@vitejs/plugin-react": "^4.1.0",
+    "eslint": "^8.50.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "tsup": "^7.2.0",
+    "tsx": "^3.14.0",
+    "typescript": "^5.2.2",
+    "vite": "^4.4.11"
+  },
+  "dependencies": {
+    "@codemirror/lang-javascript": "^6.2.1",
+    "@codemirror/theme-one-dark": "^6.1.2",
+    "@uiw/react-codemirror": "^4.21.21",
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0",
+    "moo": "^0.5.2",
+    "peggy": "^3.0.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nyigoro/parsergen-starter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nyigoro/parsergen-starter/issues"
+  },
+  "homepage": "https://github.com/nyigoro/parsergen-starter#readme"
+}
