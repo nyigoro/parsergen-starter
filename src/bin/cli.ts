@@ -39,11 +39,58 @@ function isValidFormat(format: string): format is OutputFormat {
 
 async function compileAndWrite(grammarPath: string, outFile: string, format: OutputFormat) {
   const grammarText = await fs.readFile(grammarPath, 'utf-8');
-  const compiledSource = compileGrammar(grammarText, {
-    output: 'source',
-    format,
-    grammarSource: grammarPath
-  }) as unknown as string;
+  
+  // Import Peggy directly to generate source code
+  const PEG = await import('peggy');
+  
+  // Create format-specific options for Peggy
+  const baseOptions = {
+    allowedStartRules: ['*'],
+    cache: false,
+    optimize: 'speed' as const,
+    output: 'source' as const,
+    trace: false,
+  };
+  
+  let compiledSource: string;
+  
+  // Handle each format with proper typing
+  switch (format) {
+    case 'bare':
+      compiledSource = PEG.generate(grammarText, {
+        ...baseOptions,
+        format: 'bare' as const,
+      });
+      break;
+    case 'commonjs':
+      compiledSource = PEG.generate(grammarText, {
+        ...baseOptions,
+        format: 'commonjs' as const,
+      });
+      break;
+    case 'es':
+      compiledSource = PEG.generate(grammarText, {
+        ...baseOptions,
+        format: 'es' as const,
+      });
+      break;
+    case 'globals':
+      compiledSource = PEG.generate(grammarText, {
+        ...baseOptions,
+        format: 'globals' as const,
+        exportVar: 'Parser', // Required for globals format
+      });
+      break;
+    case 'umd':
+      compiledSource = PEG.generate(grammarText, {
+        ...baseOptions,
+        format: 'umd' as const,
+        exportVar: 'Parser', // Also required for UMD format
+      });
+      break;
+    default:
+      throw new Error(`Unsupported format: ${format}`);
+  }
 
   await fs.writeFile(outFile, compiledSource, 'utf-8');
   console.log(`✅ Rebuilt parser: ${outFile}`);
