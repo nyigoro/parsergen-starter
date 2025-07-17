@@ -1,5 +1,5 @@
 import type { Parser, ParserBuildOptions } from 'peggy';
-import { formatError } from '../utils/index.js';
+import { formatError } from '../utils/index';
 import PEG from 'peggy';
 
 const generate = PEG.generate;

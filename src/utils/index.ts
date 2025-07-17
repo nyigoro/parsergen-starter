@@ -3,7 +3,7 @@
 // 📦 Utility Exports
 // ==========================
 
-export { formatError, formatLocation, formatErrorWithColors } from './format';
+export { formatError, formatLocation, formatErrorWithColors } from './format.ts';
 export { 
   createASTNode, 
   traverseAST, 
@@ -15,7 +15,7 @@ export {
   serializeAST,
   printAST,
   getASTStats
-} from './ast';
+} from './ast.ts';
 export { 
   highlightSnippet, 
   highlightSnippetAdvanced,
@@ -23,6 +23,6 @@ export {
   createSnippet,
   getLocationFromOffset,
   getOffsetFromLocation
-} from './highlight';
-export type { ASTNode, ASTVisitor } from './ast';
-export type { Location, Position, ErrorFormatter } from './types';
+} from './highlight.ts';
+export type { ASTNode, ASTVisitor } from './ast.ts';
+export type { Location, Position, ErrorFormatter } from './types.ts';

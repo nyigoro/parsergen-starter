@@ -1,6 +1,6 @@
-import type { Location } from './types.js';
-import type { ParseError } from '../parser/index.js';
-import { highlightSnippet } from './highlight.js';
+import type { Location } from './types';
+import type { ParseError } from '../parser/index';
+import { highlightSnippet } from './highlight';
 
 export function formatLocation(location: Location): string {
   const { start, end } = location;

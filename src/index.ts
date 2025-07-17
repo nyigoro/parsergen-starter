@@ -3,9 +3,9 @@
 // 🌐 Main Entry - ParserGen API
 // ==========================
 
-export { compileGrammar, type CompiledGrammar } from './grammar/index.js';
+export { compileGrammar, type CompiledGrammar } from './grammar/index';
 
-export { createLexer, type LexerConfig, type Token } from './lexer/index.js';
+export { createLexer, type LexerConfig, type Token } from './lexer/index';
 
 export {
   parseInput,
@@ -17,7 +17,7 @@ export {
   validateSyntax,
   type ParseResult,
   type ParseError,
-} from './parser/index.js';
+} from './parser/index';
 
 export {
   formatError,
@@ -28,4 +28,4 @@ export {
   type ASTNode,
   type Location,
   type ErrorFormatter,
-} from './utils/index.js';
+} from './utils/index';

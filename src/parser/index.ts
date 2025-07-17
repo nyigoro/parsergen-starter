@@ -1,5 +1,5 @@
 import { CompiledGrammar } from '../grammar/index.js';
-import { formatError, formatLocation, type Location } from '../utils/index.js';
+import { formatError, formatLocation, type Location } from '../utils/index';
 
 export interface ParseResult<T = any> {
   result: T;

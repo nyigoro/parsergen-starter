@@ -1,4 +1,4 @@
-import type { Location } from './types.js';
+import type { Location } from './types';
 import chalk from 'chalk';
 
 /**

@@ -282,3 +282,4 @@ function validateSyntax(grammar, input, options = {}) {
   traverseAST,
   validateSyntax
 });
+//# sourceMappingURL=index.cjs.map

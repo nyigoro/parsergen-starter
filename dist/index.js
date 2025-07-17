@@ -232,3 +232,4 @@ export {
   traverseAST,
   validateSyntax
 };
+//# sourceMappingURL=index.js.map
