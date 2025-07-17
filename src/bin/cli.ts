@@ -8,7 +8,7 @@ import {
   compileGrammar,
   compileGrammarFromFile,
   validateGrammar,
-  analyzeGrammar,
+  analyzeGrammarAdvanced,
 } from '../grammar/index.js';
 import { parseInput, ParserUtils } from '../parser/index.js';
 import { formatError } from '../utils/index.js';
@@ -71,7 +71,7 @@ async function main() {
 
   // Analyze
   if (args.includes('--analyze')) {
-    console.log('📊 Metadata:', analyzeGrammar(grammarText));
+    console.log('📊 Metadata:', analyzeGrammarAdvanced(grammarText));
     return;
   }
 
