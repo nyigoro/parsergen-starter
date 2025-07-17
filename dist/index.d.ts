@@ -99,13 +99,16 @@ declare function parseInput<T = any>(grammar: CompiledGrammar, input: string, op
 /**
  * Create a parser function from a compiled grammar
  */
-declare function createParser<T = any>(grammar: CompiledGrammar, defaultOptions?: ParseOptions): (input: string, options?: ParseOptions) => ParseError | ParseResult<T>;
+declare function createParser(grammar: {
+    parse: (input: string, options?: any) => any;
+}): (input: string) => any;
 /**
- * Parse with automatic error recovery
+ * Enhanced error recovery with multiple strategies
  */
-declare function parseWithRecovery<T = any>(grammar: CompiledGrammar, input: string, options?: ParseOptions): {
+declare function parseWithAdvancedRecovery<T = any>(grammar: CompiledGrammar, input: string, options?: ParseOptions): {
     result?: T;
     errors: ParseError[];
+    recoveryStrategy?: string;
 };
 /**
  * Batch parse multiple inputs
@@ -126,5 +129,72 @@ declare function validateSyntax(grammar: CompiledGrammar, input: string, options
     valid: boolean;
     error?: ParseError;
 };
+interface ParseMetrics {
+    duration: number;
+    inputLength: number;
+    memoryUsage?: number;
+    cacheHits?: number;
+    cacheMisses?: number;
+}
+interface ParseResultWithMetrics<T = any> extends ParseResult<T> {
+    metrics: ParseMetrics;
+}
+interface ParseErrorWithMetrics extends ParseError {
+    metrics: ParseMetrics;
+}
+/**
+ * Performance-aware parser with metrics
+ */
+declare class PerformanceParser<T = any> {
+    private enableCache;
+    private grammar;
+    private cache;
+    private metrics;
+    constructor(grammar: CompiledGrammar, enableCache?: boolean);
+    parse(input: string, options?: ParseOptions): ParseResultWithMetrics<T> | ParseErrorWithMetrics;
+    private getCacheKey;
+    private updateMetrics;
+    getMetrics(): {
+        cacheHits: number;
+        cacheMisses: number;
+        totalParseTime: number;
+        averageParseTime: number;
+        parseCount: number;
+    };
+    clearCache(): void;
+    getCacheSize(): number;
+}
+interface StreamingOptions extends ParseOptions {
+    chunkSize?: number;
+    delimiter?: string;
+    bufferSize?: number;
+    onProgress?: (processed: number, total: number) => void;
+    onChunk?: (result: ParseResult<any> | ParseError, chunk: string) => void;
+}
+interface StreamingResult<T = any> {
+    results: Array<ParseResult<T> | ParseError>;
+    totalProcessed: number;
+    successCount: number;
+    errorCount: number;
+    duration: number;
+}
+/**
+ * Streaming parser for large inputs with chunking support
+ */
+declare class StreamingParser<T = any> {
+    private grammar;
+    private buffer;
+    private processed;
+    private results;
+    constructor(grammar: CompiledGrammar);
+    parseStream(input: ReadableStream<string> | AsyncIterable<string>, options?: StreamingOptions): Promise<StreamingResult<T>>;
+    private processChunk;
+    private getReader;
+    private reset;
+    getProgress(): {
+        processed: number;
+        buffered: number;
+    };
+}
 
-export { type ASTNode, type CompiledGrammar, type ErrorFormatter, type LexerConfig, type Location, type ParseError, type ParseResult, type Token, compileGrammar, createASTNode, createLexer, createParser, formatError, formatLocation, highlightSnippet, parseInput, parseMultiple, parseStream, parseWithRecovery, parseWithTimeout, traverseAST, validateSyntax };
+export { type ASTNode, type CompiledGrammar, type ErrorFormatter, type LexerConfig, type Location, type ParseError, type ParseResult, PerformanceParser, StreamingParser, type Token, compileGrammar, createASTNode, createLexer, createParser, formatError, formatLocation, highlightSnippet, parseInput, parseMultiple, parseStream, parseWithAdvancedRecovery, parseWithTimeout, traverseAST, validateSyntax };

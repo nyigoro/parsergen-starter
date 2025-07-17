@@ -1,5 +1,5 @@
 import type { Parser, ParserBuildOptions } from 'peggy';
-import { formatError } from '../utils/index';
+import {  formatError, formatCompilationError, formatAnyError } from '../utils/index';
 import PEG from 'peggy';
 
 const generate = PEG.generate;
@@ -48,8 +48,11 @@ export function compileGrammar(
       options: defaultOptions
     };
   } catch (error: any) {
-    const formattedError = formatError(error);
-    throw new Error(`Grammar compilation failed: ${formattedError}`);
+    // Use the enhanced error formatting - fallback to formatAnyError if formatCompilationError not available
+    const formattedError = formatCompilationError ? 
+      formatCompilationError(error, grammar) : 
+      formatAnyError(error);
+    throw new Error(`Grammar compilation failed:\n${formattedError}`);
   }
 }
 
@@ -87,44 +90,183 @@ export function validateGrammar(grammar: string): { valid: boolean; error?: stri
   }
 }
 
-/**
- * Extract grammar metadata (rules, start rule, etc.)
- */
-export function analyzeGrammar(grammar: string): {
-  rules: string[];
+export interface GrammarAnalysis {
+  rules: RuleInfo[];
   startRule?: string;
   imports: string[];
   exports: string[];
-} {
-  const rules: string[] = [];
+  dependencies: Map<string, string[]>;
+  unreachableRules: string[];
+  leftRecursive: string[];
+  warnings: string[];
+}
+
+export interface RuleInfo {
+  name: string;
+  line: number;
+  column: number;
+  expression: string;
+  references: string[];
+  isStartRule: boolean;
+  isLeftRecursive: boolean;
+}
+
+/**
+ * Enhanced grammar analysis with dependency tracking
+ */
+export function analyzeGrammarAdvanced(grammar: string): GrammarAnalysis {
+  const lines = grammar.split('\n');
+  const rules: RuleInfo[] = [];
   const imports: string[] = [];
   const exports: string[] = [];
+  const dependencies = new Map<string, string[]>();
+  const warnings: string[] = [];
   
-  // Simple regex-based extraction (could be improved with proper parsing)
-  const rulePattern = /^(\w+)\s*=/gm;
-  const importPattern = /import\s+(\w+)/g;
-  const exportPattern = /export\s+(\w+)/g;
+  // More robust rule parsing
+  let currentRule: RuleInfo | null = null;
+  let inRule = false;
+  let braceCount = 0;
   
-  let match;
-  
-  while ((match = rulePattern.exec(grammar)) !== null) {
-    rules.push(match[1]);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    
+    // Skip comments and empty lines
+    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || !trimmed) {
+      continue;
+    }
+    
+    // Check for rule definition
+    const ruleMatch = trimmed.match(/^(\w+)\s*=/);
+    if (ruleMatch && !inRule) {
+      if (currentRule) {
+        rules.push(currentRule);
+      }
+      
+      currentRule = {
+        name: ruleMatch[1],
+        line: i + 1,
+        column: line.indexOf(ruleMatch[1]) + 1,
+        expression: '',
+        references: [],
+        isStartRule: rules.length === 0,
+        isLeftRecursive: false
+      };
+      inRule = true;
+    }
+    
+    if (inRule && currentRule) {
+      currentRule.expression += line + '\n';
+      
+      // Track braces to know when rule ends
+      braceCount += (line.match(/{/g) || []).length;
+      braceCount -= (line.match(/}/g) || []).length;
+      
+      // Rule ends when we hit a new rule or end of input
+      if (i === lines.length - 1 || 
+          (i < lines.length - 1 && lines[i + 1].trim().match(/^\w+\s*=/) && braceCount === 0)) {
+        
+        // Extract references from the rule
+        const references = extractReferences(currentRule.expression);
+        currentRule.references = references;
+        dependencies.set(currentRule.name, references);
+        
+        // Check for left recursion
+        currentRule.isLeftRecursive = checkLeftRecursion(currentRule.expression, currentRule.name);
+        
+        rules.push(currentRule);
+        inRule = false;
+        braceCount = 0;
+      }
+    }
+    
+    // Check for imports/exports
+    const importMatch = trimmed.match(/import\s+(\w+)/);
+    if (importMatch) {
+      imports.push(importMatch[1]);
+    }
+    
+    const exportMatch = trimmed.match(/export\s+(\w+)/);
+    if (exportMatch) {
+      exports.push(exportMatch[1]);
+    }
   }
   
-  while ((match = importPattern.exec(grammar)) !== null) {
-    imports.push(match[1]);
+  // Find unreachable rules
+  const reachableRules = new Set<string>();
+  const startRule = rules.find(r => r.isStartRule);
+  
+  if (startRule) {
+    findReachableRules(startRule.name, dependencies, reachableRules);
   }
   
-  while ((match = exportPattern.exec(grammar)) !== null) {
-    exports.push(match[1]);
+  const unreachableRules = rules
+    .filter(r => !reachableRules.has(r.name))
+    .map(r => r.name);
+  
+  const leftRecursive = rules
+    .filter(r => r.isLeftRecursive)
+    .map(r => r.name);
+  
+  // Generate warnings
+  if (unreachableRules.length > 0) {
+    warnings.push(`Unreachable rules: ${unreachableRules.join(', ')}`);
+  }
+  
+  if (leftRecursive.length > 0) {
+    warnings.push(`Left-recursive rules: ${leftRecursive.join(', ')}`);
   }
   
   return {
     rules,
-    startRule: rules[0], // First rule is typically the start rule
+    startRule: startRule?.name,
     imports,
-    exports
+    exports,
+    dependencies,
+    unreachableRules,
+    leftRecursive,
+    warnings
   };
+}
+
+function extractReferences(expression: string): string[] {
+  const references: string[] = [];
+  // Match rule references (identifiers that aren't keywords)
+  const matches = expression.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
+  
+  if (matches) {
+    const keywords = new Set(['return', 'if', 'else', 'while', 'for', 'function', 'var', 'let', 'const']);
+    const uniqueRefs = new Set(matches.filter(m => !keywords.has(m)));
+    references.push(...uniqueRefs);
+  }
+  
+  return references;
+}
+
+function checkLeftRecursion(expression: string, ruleName: string): boolean {
+  // Simple check for immediate left recursion
+  const firstAlternative = expression.split('|')[0];
+  const trimmed = firstAlternative.replace(/\s+/g, ' ').trim();
+  return trimmed.startsWith(`${ruleName} `) || trimmed.startsWith(`${ruleName}/`);
+}
+
+function findReachableRules(
+  ruleName: string,
+  dependencies: Map<string, string[]>,
+  reachable: Set<string>
+): void {
+  if (reachable.has(ruleName)) {
+    return;
+  }
+  
+  reachable.add(ruleName);
+  const deps = dependencies.get(ruleName) || [];
+  
+  for (const dep of deps) {
+    if (dependencies.has(dep)) {
+      findReachableRules(dep, dependencies, reachable);
+    }
+  }
 }
 
 /**

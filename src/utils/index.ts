@@ -3,10 +3,27 @@
 // 📦 Utility Exports
 // ==========================
 
-export { formatError, formatLocation, formatErrorWithColors } from './format.ts';
-export { 
-  createASTNode, 
-  traverseAST, 
+export {
+  formatError,
+  formatLocation,
+  formatErrorWithColors,
+  formatMultipleErrors,
+  formatCompilationError,
+  formatAnyError,
+  formatAnyErrors,
+  wrapCompilationError,
+  formatErrorWithSuggestions,
+  formatSuccessMessage,
+  formatWarningMessage,
+  formatInfoMessage,
+  getErrorSuggestions,
+  getErrorContext,
+  formatDebugError,
+  isGrammarError
+} from './format.ts';
+export {
+  createASTNode,
+  traverseAST,
   traversePreOrder,
   traversePostOrder,
   findNodesByType,
@@ -16,13 +33,15 @@ export {
   printAST,
   getASTStats
 } from './ast.ts';
-export { 
-  highlightSnippet, 
+
+export {
+  highlightSnippet,
   highlightSnippetAdvanced,
   highlightMultipleLocations,
   createSnippet,
   getLocationFromOffset,
   getOffsetFromLocation
 } from './highlight.ts';
+
 export type { ASTNode, ASTVisitor } from './ast.ts';
 export type { Location, Position, ErrorFormatter } from './types.ts';

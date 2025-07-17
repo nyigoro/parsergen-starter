@@ -1,24 +1,37 @@
 // src/index.ts
-// ==========================
-// 🌐 Main Entry - ParserGen API
-// ==========================
+// ============================================
+// 🌐 ParserGen Main API Surface (Public Entry)
+// ============================================
 
-export { compileGrammar, type CompiledGrammar } from './grammar/index';
+// 🧠 Grammar Compilation
+export {
+  compileGrammar,
+  type CompiledGrammar,
+} from './grammar/index';
 
-export { createLexer, type LexerConfig, type Token } from './lexer/index';
+// 🔤 Lexer and Tokenization
+export {
+  createLexer,
+  type LexerConfig,
+  type Token,
+} from './lexer/index';
 
+// 📥 Parsing and Input Handling
 export {
   parseInput,
-  createParser,
   parseMultiple,
   parseStream,
   parseWithTimeout,
-  parseWithRecovery,
   validateSyntax,
+  parseWithAdvancedRecovery,
+  createParser,
+  StreamingParser,
+  PerformanceParser,
   type ParseResult,
   type ParseError,
 } from './parser/index';
 
+// 🧾 Utilities and AST Helpers
 export {
   formatError,
   formatLocation,
