@@ -34,7 +34,7 @@
     "*.config.js",
     "*.config.ts",
     "jest.config.ts",
-    "prettier.config.js",
+    "prettier.config.cjs",
     "eslint.config.js"
   ],
   "exclude": [

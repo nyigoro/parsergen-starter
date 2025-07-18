@@ -24,8 +24,11 @@ export interface LexerState {
 export function createLexer(config: LexerConfig): moo.Lexer {
   try {
     return moo.compile(config);
-  } catch (error: any) {
-    throw new Error(`Lexer compilation failed: ${error.message}`);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      throw new Error(`Lexer compilation failed: ${error.message}`);
+    }
+    throw new Error(`Lexer compilation failed: ${String(error)}`);
   }
 }
 
@@ -35,8 +38,8 @@ export function createLexer(config: LexerConfig): moo.Lexer {
 export function createStatefulLexer(states: LexerState): moo.Lexer {
   try {
     return moo.states(states);
-  } catch (error: any) {
-    throw new Error(`Stateful lexer compilation failed: ${error.message}`);
+  } catch (error: unknown) {
+    throw new Error(`Stateful lexer compilation failed: ${String(error)}`);
   }
 }
 
@@ -238,12 +241,12 @@ export function safeTokenize(lexer: moo.Lexer, input: string): { tokens: Token[]
   try {
     const tokens = tokenize(lexer, input);
     return { tokens };
-  } catch (error: any) {
+  } catch (error: unknown) {
     const lexerError = new LexerError(
-      error.message,
-      error.line || 1,
-      error.col || 1,
-      error.offset || 0
+      error instanceof Error ? error.message : String(error),
+      error instanceof LexerError ? error.line : 1,
+      error instanceof LexerError ? error.col : 1,
+      error instanceof LexerError ? error.offset : 0
     );
     return { tokens: [], error: lexerError };
   }

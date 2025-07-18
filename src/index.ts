@@ -19,16 +19,22 @@ export {
 // 📥 Parsing and Input Handling
 export {
   parseInput,
+  parseWithSemanticAnalysis,
   parseMultiple,
   parseStream,
   parseWithTimeout,
   validateSyntax,
   parseWithAdvancedRecovery,
   createParser,
+  ASTWalker,
+  ASTTransformer,
+  SymbolTable,
+  DiagnosticCollector,
+  LanguageServer,
+  REPL,
   StreamingParser,
+  ParserUtils,
   PerformanceParser,
-  type ParseResult,
-  type ParseError,
 } from './parser/index';
 
 // 🧾 Utilities and AST Helpers
