@@ -30,7 +30,12 @@
     "cli/**/*",
     "demo/**/*",
     "tests/**/*",
-    "types/**/*"
+    "types/**/*",
+    "*.config.js",
+    "*.config.ts",
+    "jest.config.ts",
+    "prettier.config.js",
+    "eslint.config.js"
   ],
   "exclude": [
     "node_modules",

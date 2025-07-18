@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import path from 'node:path';
 import fs from 'node:fs/promises';
 import { watchFile } from 'node:fs';
 import { argv } from 'node:process';
@@ -110,10 +109,12 @@ async function main() {
   // Validate
   if (args.includes('--validate')) {
     const result = validateGrammar(grammarText);
-    result.valid
-      ? console.log('✅ Grammar is valid.')
-      : console.error('❌ Grammar is invalid:\n' + result.error);
-    process.exit(result.valid ? 0 : 1);
+    if (result.valid) {
+  console.log('✅ Grammar is valid.');
+} else {
+  console.error('❌ Grammar is invalid:\n' + result.error);
+}
+process.exit(result.valid ? 0 : 1);
   }
 
   // Analyze

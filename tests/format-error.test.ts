@@ -38,7 +38,8 @@ describe('Error Formatting Utilities', () => {
   it('should format error with ANSI colors', () => {
     const parsed = toParseError(samplePeggyError);
     const output = formatErrorWithColors(parsed, true);
-    expect(output).toContain('❌');
+    expect(output).toContain('SyntaxError:');
+    // eslint-disable-next-line no-control-regex
     expect(output).toMatch(/\x1b\[\d+m/); // Checks for ANSI color codes
   });
 
