@@ -25,7 +25,8 @@
     "dev:ui": "vite",
     "build:ui": "vite build",
     "lint": "eslint src --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write ."
   },
   "keywords": [
     "parser",
