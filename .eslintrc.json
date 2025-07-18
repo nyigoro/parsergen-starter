@@ -5,8 +5,8 @@
   "plugins": ["@typescript-eslint"],
   "extends": [
     "eslint:recommended",
-    "@typescript-eslint/recommended",
-    "prettier"
+    "plugin:@typescript-eslint/recommended",
+    "plugin:prettier/recommended"
   ],
   "env": {
     "es2021": true,

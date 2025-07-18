@@ -5,6 +5,8 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
@@ -29,40 +31,42 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // node_modules/peggy/lib/grammar-location.js
 var require_grammar_location = __commonJS({
   "node_modules/peggy/lib/grammar-location.js"(exports2, module2) {
     "use strict";
-    var GrammarLocation = class {
+    var _a;
+    var GrammarLocation = (_a = class {
       /**
-       * Create an instance.
-       *
-       * @param {any} source The original grammarSource.  Should be a string or
-       *   have a toString() method.
-       * @param {import("./peg").Location} start The starting offset for the
-       *   grammar in the larger file.
-       */
+      * Create an instance.
+      *
+      * @param {any} source The original grammarSource.  Should be a string or
+      *   have a toString() method.
+      * @param {import("./peg").Location} start The starting offset for the
+      *   grammar in the larger file.
+      */
       constructor(source, start) {
         this.source = source;
         this.start = start;
       }
       /**
-       * Coerce to a string.
-       *
-       * @returns {string} The source, stringified.
-       */
+      * Coerce to a string.
+      *
+      * @returns {string} The source, stringified.
+      */
       toString() {
         return String(this.source);
       }
       /**
-       * Return a new Location offset from the given location by the start of the
-       * grammar.
-       *
-       * @param {import("./peg").Location} loc The location as if the start of the
-       *   grammar was the start of the file.
-       * @returns {import("./peg").Location} The offset location.
-       */
+      * Return a new Location offset from the given location by the start of the
+      * grammar.
+      *
+      * @param {import("./peg").Location} loc The location as if the start of the
+      *   grammar was the start of the file.
+      * @returns {import("./peg").Location} The offset location.
+      */
       offset(loc) {
         return {
           line: loc.line + this.start.line - 1,
@@ -71,13 +75,13 @@ var require_grammar_location = __commonJS({
         };
       }
       /**
-       * If the range has a grammarSource that is a GrammarLocation, offset the
-       * start of that range by the GrammarLocation.
-       *
-       * @param {import("./peg").LocationRange} range The range to extract from.
-       * @returns {import("./peg").Location} The offset start if possible, or the
-       *   original start.
-       */
+      * If the range has a grammarSource that is a GrammarLocation, offset the
+      * start of that range by the GrammarLocation.
+      *
+      * @param {import("./peg").LocationRange} range The range to extract from.
+      * @returns {import("./peg").Location} The offset start if possible, or the
+      *   original start.
+      */
       static offsetStart(range) {
         if (range.source && typeof range.source.offset === "function") {
           return range.source.offset(range.start);
@@ -85,20 +89,20 @@ var require_grammar_location = __commonJS({
         return range.start;
       }
       /**
-       * If the range has a grammarSource that is a GrammarLocation, offset the
-       * end of that range by the GrammarLocation.
-       *
-       * @param {import("./peg").LocationRange} range The range to extract from.
-       * @returns {import("./peg").Location} The offset end if possible, or the
-       *   original end.
-       */
+      * If the range has a grammarSource that is a GrammarLocation, offset the
+      * end of that range by the GrammarLocation.
+      *
+      * @param {import("./peg").LocationRange} range The range to extract from.
+      * @returns {import("./peg").Location} The offset end if possible, or the
+      *   original end.
+      */
       static offsetEnd(range) {
         if (range.source && typeof range.source.offset === "function") {
           return range.source.offset(range.end);
         }
         return range.end;
       }
-    };
+    }, __name(_a, "GrammarLocation"), _a);
     module2.exports = GrammarLocation;
   }
 });
@@ -108,13 +112,14 @@ var require_grammar_error = __commonJS({
   "node_modules/peggy/lib/grammar-error.js"(exports2, module2) {
     "use strict";
     var GrammarLocation = require_grammar_location();
-    var GrammarError = class extends SyntaxError {
+    var _a;
+    var GrammarError = (_a = class extends SyntaxError {
       /**
-       *
-       * @param {string} message
-       * @param {PEG.LocationRange} [location]
-       * @param {PEG.DiagnosticNote[]} [diagnostics]
-       */
+      *
+      * @param {string} message
+      * @param {PEG.LocationRange} [location]
+      * @param {PEG.DiagnosticNote[]} [diagnostics]
+      */
       constructor(message, location, diagnostics) {
         super(message);
         this.name = "GrammarError";
@@ -126,7 +131,12 @@ var require_grammar_error = __commonJS({
         this.stage = null;
         this.problems = [
           /** @type {PEG.Problem} */
-          ["error", message, location, diagnostics]
+          [
+            "error",
+            message,
+            location,
+            diagnostics
+          ]
         ];
       }
       toString() {
@@ -148,28 +158,28 @@ var require_grammar_error = __commonJS({
         return str;
       }
       /**
-       * Format the error with associated sources.  The `location.source` should have
-       * a `toString()` representation in order the result to look nice. If source
-       * is `null` or `undefined`, it is skipped from the output
-       *
-       * Sample output:
-       * ```
-       * Error: Label "head" is already defined
-       *  --> examples/arithmetics.pegjs:15:17
-       *    |
-       * 15 |   = head:Factor head:(_ ("*" / "/") _ Factor)* {
-       *    |                 ^^^^
-       * note: Original label location
-       *  --> examples/arithmetics.pegjs:15:5
-       *    |
-       * 15 |   = head:Factor head:(_ ("*" / "/") _ Factor)* {
-       *    |     ^^^^
-       * ```
-       *
-       * @param {import("./peg").SourceText[]} sources mapping from location source to source text
-       *
-       * @returns {string} the formatted error
-       */
+      * Format the error with associated sources.  The `location.source` should have
+      * a `toString()` representation in order the result to look nice. If source
+      * is `null` or `undefined`, it is skipped from the output
+      *
+      * Sample output:
+      * ```
+      * Error: Label "head" is already defined
+      *  --> examples/arithmetics.pegjs:15:17
+      *    |
+      * 15 |   = head:Factor head:(_ ("*" / "/") _ Factor)* {
+      *    |                 ^^^^
+      * note: Original label location
+      *  --> examples/arithmetics.pegjs:15:5
+      *    |
+      * 15 |   = head:Factor head:(_ ("*" / "/") _ Factor)* {
+      *    |     ^^^^
+      * ```
+      *
+      * @param {import("./peg").SourceText[]} sources mapping from location source to source text
+      *
+      * @returns {string} the formatted error
+      */
       format(sources) {
         const srcLines = sources.map(({ source, text }) => ({
           source,
@@ -203,21 +213,13 @@ ${"".padEnd(indent)} | ${"".padEnd(s.column - 1)}${"".padEnd(hatLen, "^")}`;
           }
           return str;
         }
+        __name(entry, "entry");
         function formatProblem(severity, message, location, diagnostics = []) {
           let maxLine = -Infinity;
           if (location) {
-            maxLine = diagnostics.reduce(
-              (t, { location: location2 }) => Math.max(
-                t,
-                GrammarLocation.offsetStart(location2).line
-              ),
-              location.start.line
-            );
+            maxLine = diagnostics.reduce((t, { location: location2 }) => Math.max(t, GrammarLocation.offsetStart(location2).line), location.start.line);
           } else {
-            maxLine = Math.max.apply(
-              null,
-              diagnostics.map((d) => d.location.start.line)
-            );
+            maxLine = Math.max.apply(null, diagnostics.map((d) => d.location.start.line));
           }
           maxLine = maxLine.toString().length;
           let str = `${severity}: ${message}`;
@@ -229,9 +231,10 @@ ${"".padEnd(indent)} | ${"".padEnd(s.column - 1)}${"".padEnd(hatLen, "^")}`;
           }
           return str;
         }
+        __name(formatProblem, "formatProblem");
         return this.problems.filter((p) => p[0] !== "info").map((p) => formatProblem(...p)).join("\n\n");
       }
-    };
+    }, __name(_a, "GrammarError"), _a);
     module2.exports = GrammarError;
   }
 });
@@ -245,16 +248,20 @@ var require_visitor = __commonJS({
         function visit(node, ...args) {
           return functions[node.type](node, ...args);
         }
+        __name(visit, "visit");
         function visitNop() {
         }
+        __name(visitNop, "visitNop");
         function visitExpression(node, ...args) {
           return visit(node.expression, ...args);
         }
+        __name(visitExpression, "visitExpression");
         function visitChildren(property) {
           return function(node, ...args) {
             node[property].forEach((child) => visit(child, ...args));
           };
         }
+        __name(visitChildren, "visitChildren");
         const DEFAULT_FUNCTIONS = {
           grammar(node, ...args) {
             for (const imp of node.imports) {
@@ -331,18 +338,21 @@ var require_asts = __commonJS({
       if (!(a && b)) {
         return a || b;
       }
-      const aa = Array.isArray(a) ? a : [a];
+      const aa = Array.isArray(a) ? a : [
+        a
+      ];
       aa.push(b);
       return aa;
     }
+    __name(combinePossibleArrays, "combinePossibleArrays");
     var asts = {
       /**
-       * Find the rule with the given name, if it exists.
-       *
-       * @param {PEG.ast.Grammar} ast
-       * @param {string} name
-       * @returns {PEG.ast.Rule | undefined}
-       */
+      * Find the rule with the given name, if it exists.
+      *
+      * @param {PEG.ast.Grammar} ast
+      * @param {string} name
+      * @returns {PEG.ast.Rule | undefined}
+      */
       findRule(ast2, name) {
         for (let i = 0; i < ast2.rules.length; i++) {
           if (ast2.rules[i].name === name) {
@@ -352,13 +362,13 @@ var require_asts = __commonJS({
         return void 0;
       },
       /**
-       * Find the index of the rule with the given name, if it exists.
-       * Otherwise returns -1.
-       *
-       * @param {PEG.ast.Grammar} ast
-       * @param {string} name
-       * @returns {number}
-       */
+      * Find the index of the rule with the given name, if it exists.
+      * Otherwise returns -1.
+      *
+      * @param {PEG.ast.Grammar} ast
+      * @param {string} name
+      * @returns {number}
+      */
       indexOfRule(ast2, name) {
         for (let i = 0; i < ast2.rules.length; i++) {
           if (ast2.rules[i].name === name) {
@@ -371,9 +381,11 @@ var require_asts = __commonJS({
         function consumesTrue() {
           return true;
         }
+        __name(consumesTrue, "consumesTrue");
         function consumesFalse() {
           return false;
         }
+        __name(consumesFalse, "consumesFalse");
         const consumes = visitor2.build({
           choice(node2) {
             return node2.alternatives.every(consumes);
@@ -416,14 +428,8 @@ var require_asts = __commonJS({
       },
       combine(asts2) {
         return asts2.reduce((combined, ast2) => {
-          combined.topLevelInitializer = combinePossibleArrays(
-            combined.topLevelInitializer,
-            ast2.topLevelInitializer
-          );
-          combined.initializer = combinePossibleArrays(
-            combined.initializer,
-            ast2.initializer
-          );
+          combined.topLevelInitializer = combinePossibleArrays(combined.topLevelInitializer, ast2.topLevelInitializer);
+          combined.initializer = combinePossibleArrays(combined.initializer, ast2.initializer);
           combined.rules = combined.rules.concat(ast2.rules);
           return combined;
         });
@@ -473,6 +479,7 @@ var require_add_imported_rules = __commonJS({
         libraryNumber++;
       }
     }
+    __name(addImportedRules2, "addImportedRules");
     module2.exports = addImportedRules2;
   }
 });
@@ -494,22 +501,21 @@ var require_fix_library_numbers = __commonJS({
       }
       return -1;
     }
+    __name(findLibraryNumber, "findLibraryNumber");
     function fixLibraryNumbers2(ast2, _options, session2) {
       const check = visitor2.build({
         library_ref(node) {
           if (node.libraryNumber === -1) {
             node.libraryNumber = findLibraryNumber(ast2, node.library);
             if (node.libraryNumber === -1) {
-              session2.error(
-                `Unknown module "${node.library}"`,
-                node.location
-              );
+              session2.error(`Unknown module "${node.library}"`, node.location);
             }
           }
         }
       });
       check(ast2);
     }
+    __name(fixLibraryNumbers2, "fixLibraryNumbers");
     module2.exports = fixLibraryNumbers2;
   }
 });
@@ -522,89 +528,50 @@ var require_opcodes = __commonJS({
       // Stack Manipulation
       /** @deprecated Unused */
       PUSH: 0,
-      // PUSH c
       PUSH_EMPTY_STRING: 35,
-      // PUSH_EMPTY_STRING
       PUSH_UNDEFINED: 1,
-      // PUSH_UNDEFINED
       PUSH_NULL: 2,
-      // PUSH_NULL
       PUSH_FAILED: 3,
-      // PUSH_FAILED
       PUSH_EMPTY_ARRAY: 4,
-      // PUSH_EMPTY_ARRAY
       PUSH_CURR_POS: 5,
-      // PUSH_CURR_POS
       POP: 6,
-      // POP
       POP_CURR_POS: 7,
-      // POP_CURR_POS
       POP_N: 8,
-      // POP_N n
       NIP: 9,
-      // NIP
       APPEND: 10,
-      // APPEND
       WRAP: 11,
-      // WRAP n
       TEXT: 12,
-      // TEXT
       PLUCK: 36,
-      // PLUCK n, k, p1, ..., pK
       // Conditions and Loops
       IF: 13,
-      // IF t, f
       IF_ERROR: 14,
-      // IF_ERROR t, f
       IF_NOT_ERROR: 15,
-      // IF_NOT_ERROR t, f
       IF_LT: 30,
-      // IF_LT min, t, f
       IF_GE: 31,
-      // IF_GE max, t, f
       IF_LT_DYNAMIC: 32,
-      // IF_LT_DYNAMIC min, t, f
       IF_GE_DYNAMIC: 33,
-      // IF_GE_DYNAMIC max, t, f
       WHILE_NOT_ERROR: 16,
-      // WHILE_NOT_ERROR b
       // Matching
       MATCH_ANY: 17,
-      // MATCH_ANY a, f, ...
       MATCH_STRING: 18,
-      // MATCH_STRING s, a, f, ...
       MATCH_STRING_IC: 19,
-      // MATCH_STRING_IC s, a, f, ...
       MATCH_CHAR_CLASS: 20,
-      // MATCH_CHAR_CLASS c, a, f, ...
       MATCH_UNICODE_CLASS: 42,
-      // MATCH_UNICODE_CLASS c, a, f, ...
       /** @deprecated Replaced with `MATCH_CHAR_CLASS` */
       MATCH_REGEXP: 20,
-      // MATCH_REGEXP r, a, f, ...
       ACCEPT_N: 21,
-      // ACCEPT_N n
       ACCEPT_STRING: 22,
-      // ACCEPT_STRING s
       FAIL: 23,
-      // FAIL e
       // Calls
       LOAD_SAVED_POS: 24,
-      // LOAD_SAVED_POS p
       UPDATE_SAVED_POS: 25,
-      // UPDATE_SAVED_POS
       CALL: 26,
-      // CALL f, n, pc, p1, p2, ..., pN
       // Rules
       RULE: 27,
-      // RULE r
       LIBRARY_RULE: 41,
-      // LIBRARY_RULE moduleIndex, whatIndex
       // Failure Reporting
       SILENT_FAILS_ON: 28,
-      // SILENT_FAILS_ON
       SILENT_FAILS_OFF: 29,
-      // SILENT_FAILS_OFF
       // Because the tests have hard-coded opcode numbers, don't renumber
       // existing opcodes.  New opcodes that have been put in the correct
       // sections above are repeated here in order to ensure we don't
@@ -618,15 +585,9 @@ var require_opcodes = __commonJS({
       // PUSH_EMPTY_STRING: 35
       // PLUCK: 36
       SOURCE_MAP_PUSH: 37,
-      // SOURCE_MAP_PUSH loc-index
       SOURCE_MAP_POP: 38,
-      // SOURCE_MAP_POP
       SOURCE_MAP_LABEL_PUSH: 39,
-      // SOURCE_MAP_LABEL_PUSH sp, literal-index, loc-index
       SOURCE_MAP_LABEL_POP: 40
-      // SOURCE_MAP_LABEL_POP sp
-      // LIBRARY_RULE:         41,
-      // MATCH_UNICODE_CLASS:  42,
     };
     module2.exports = opcodes;
   }
@@ -636,39 +597,39 @@ var require_opcodes = __commonJS({
 var require_intern = __commonJS({
   "node_modules/peggy/lib/compiler/intern.js"(exports2, module2) {
     "use strict";
-    var Intern = class {
+    var _a;
+    var Intern = (_a = class {
       /**
-       * @typedef {object} InternOptions
-       * @property {(input: V) => string} [stringify=String] Represent the
-       *   converted input as a string, for value comparison.
-       * @property {(input: T) => V} [convert=(x) => x] Convert the input to its
-       *   stored form.  Required if type V is not the same as type T.  Return
-       *   falsy value to have this input not be added; add() will return -1 in
-       *   this case.
-       */
+      * @typedef {object} InternOptions
+      * @property {(input: V) => string} [stringify=String] Represent the
+      *   converted input as a string, for value comparison.
+      * @property {(input: T) => V} [convert=(x) => x] Convert the input to its
+      *   stored form.  Required if type V is not the same as type T.  Return
+      *   falsy value to have this input not be added; add() will return -1 in
+      *   this case.
+      */
       /**
-       * @param {InternOptions} [options]
-       */
+      * @param {InternOptions} [options]
+      */
       constructor(options2) {
         this.options = {
           stringify: String,
-          convert: (x) => (
-            /** @type {V} */
+          convert: /* @__PURE__ */ __name((x) => (
             /** @type {unknown} */
             x
-          ),
+          ), "convert"),
           ...options2
         };
         this.items = [];
         this.offsets = /* @__PURE__ */ Object.create(null);
       }
       /**
-       * Intern an item, getting it's asssociated number.  Returns -1 for falsy
-       * inputs. O(1) with constants tied to the convert and stringify options.
-       *
-       * @param {T} input
-       * @return {number}
-       */
+      * Intern an item, getting it's asssociated number.  Returns -1 for falsy
+      * inputs. O(1) with constants tied to the convert and stringify options.
+      *
+      * @param {T} input
+      * @return {number}
+      */
       add(input) {
         const c = this.options.convert(input);
         if (!c) {
@@ -683,21 +644,21 @@ var require_intern = __commonJS({
         return num;
       }
       /**
-       * @param {number} i
-       * @returns {V}
-       */
+      * @param {number} i
+      * @returns {V}
+      */
       get(i) {
         return this.items[i];
       }
       /**
-       * @template U
-       * @param {(value: V, index: number, array: V[]) => U} fn
-       * @returns {U[]}
-       */
+      * @template U
+      * @param {(value: V, index: number, array: V[]) => U} fn
+      * @returns {U[]}
+      */
       map(fn) {
         return this.items.map(fn);
       }
-    };
+    }, __name(_a, "Intern"), _a);
     module2.exports = Intern;
   }
 });
@@ -716,13 +677,16 @@ var require_inference_match_result = __commonJS({
       function sometimesMatch(node) {
         return node.match = SOMETIMES_MATCH;
       }
+      __name(sometimesMatch, "sometimesMatch");
       function alwaysMatch(node) {
         inference(node.expression);
         return node.match = ALWAYS_MATCH;
       }
+      __name(alwaysMatch, "alwaysMatch");
       function inferenceExpression(node) {
         return node.match = inference(node.expression);
       }
+      __name(inferenceExpression, "inferenceExpression");
       function inferenceElements(elements, forChoice) {
         const length = elements.length;
         let always = 0;
@@ -744,6 +708,7 @@ var require_inference_match_result = __commonJS({
         }
         return never > 0 ? NEVER_MATCH : SOMETIMES_MATCH;
       }
+      __name(inferenceElements, "inferenceElements");
       const inference = visitor2.build({
         rule(node) {
           let oldResult;
@@ -754,10 +719,7 @@ var require_inference_match_result = __commonJS({
               oldResult = node.match;
               node.match = inference(node.expression);
               if (++count > 6) {
-                throw new GrammarError(
-                  "Infinity cycle detected when trying to evaluate node match result",
-                  node.location
-                );
+                throw new GrammarError("Infinity cycle detected when trying to evaluate node match result", node.location);
               }
             } while (oldResult !== node.match);
           }
@@ -834,6 +796,7 @@ var require_inference_match_result = __commonJS({
       });
       inference(ast2);
     }
+    __name(inferenceMatchResult2, "inferenceMatchResult");
     inferenceMatchResult2.ALWAYS_MATCH = ALWAYS_MATCH;
     inferenceMatchResult2.SOMETIMES_MATCH = SOMETIMES_MATCH;
     inferenceMatchResult2.NEVER_MATCH = NEVER_MATCH;
@@ -855,12 +818,12 @@ var require_generate_bytecode = __commonJS({
       const classes = new Intern({
         stringify: JSON.stringify,
         /** @type {(input: PEG.ast.CharacterClass) => PEG.ast.GrammarCharacterClass} */
-        convert: (node) => ({
+        convert: /* @__PURE__ */ __name((node) => ({
           value: node.parts,
           inverted: node.inverted,
           ignoreCase: node.ignoreCase,
           unicode: node.unicode
-        })
+        }), "convert")
       });
       const expectations = new Intern({
         stringify: JSON.stringify
@@ -879,9 +842,11 @@ var require_generate_bytecode = __commonJS({
         const index = functions.findIndex((f) => JSON.stringify(f) === pattern);
         return index === -1 ? functions.push(func) - 1 : index;
       }
+      __name(addFunctionConst, "addFunctionConst");
       function addLocation(location) {
         return locations.push(location) - 1;
       }
+      __name(addLocation, "addLocation");
       function cloneEnv(env) {
         const clone = {};
         Object.keys(env).forEach((name) => {
@@ -889,9 +854,11 @@ var require_generate_bytecode = __commonJS({
         });
         return clone;
       }
+      __name(cloneEnv, "cloneEnv");
       function buildSequence(first, ...args) {
         return first.concat(...args);
       }
+      __name(buildSequence, "buildSequence");
       function buildCondition(match, condCode, thenCode, elseCode) {
         if (match === ALWAYS_MATCH) {
           return thenCode;
@@ -899,76 +866,93 @@ var require_generate_bytecode = __commonJS({
         if (match === NEVER_MATCH) {
           return elseCode;
         }
-        return condCode.concat(
-          [thenCode.length, elseCode.length],
-          thenCode,
-          elseCode
-        );
+        return condCode.concat([
+          thenCode.length,
+          elseCode.length
+        ], thenCode, elseCode);
       }
+      __name(buildCondition, "buildCondition");
       function buildLoop(condCode, bodyCode) {
-        return condCode.concat([bodyCode.length], bodyCode);
+        return condCode.concat([
+          bodyCode.length
+        ], bodyCode);
       }
+      __name(buildLoop, "buildLoop");
       function buildCall(functionIndex, delta, env, sp) {
         const params = Object.keys(env).map((name) => sp - env[name]);
-        return [op.CALL, functionIndex, delta, params.length].concat(params);
+        return [
+          op.CALL,
+          functionIndex,
+          delta,
+          params.length
+        ].concat(params);
       }
+      __name(buildCall, "buildCall");
       function buildSimplePredicate(expression, negative, context) {
         const match = expression.match || 0;
         return buildSequence(
-          [op.PUSH_CURR_POS],
-          [op.SILENT_FAILS_ON],
+          [
+            op.PUSH_CURR_POS
+          ],
+          [
+            op.SILENT_FAILS_ON
+          ],
           // eslint-disable-next-line no-use-before-define -- Mutual recursion
           generate2(expression, {
             sp: context.sp + 1,
             env: cloneEnv(context.env),
             action: null
           }),
-          [op.SILENT_FAILS_OFF],
-          buildCondition(
-            negative ? -match : match,
-            [negative ? op.IF_ERROR : op.IF_NOT_ERROR],
-            buildSequence(
-              [op.POP],
-              [negative ? op.POP : op.POP_CURR_POS],
-              [op.PUSH_UNDEFINED]
-            ),
-            buildSequence(
-              [op.POP],
-              [negative ? op.POP_CURR_POS : op.POP],
-              [op.PUSH_FAILED]
-            )
-          )
+          [
+            op.SILENT_FAILS_OFF
+          ],
+          buildCondition(negative ? -match : match, [
+            negative ? op.IF_ERROR : op.IF_NOT_ERROR
+          ], buildSequence([
+            op.POP
+          ], [
+            negative ? op.POP : op.POP_CURR_POS
+          ], [
+            op.PUSH_UNDEFINED
+          ]), buildSequence([
+            op.POP
+          ], [
+            negative ? op.POP_CURR_POS : op.POP
+          ], [
+            op.PUSH_FAILED
+          ]))
         );
       }
+      __name(buildSimplePredicate, "buildSimplePredicate");
       function buildSemanticPredicate(node, negative, context) {
-        const functionIndex = addFunctionConst(
-          true,
-          Object.keys(context.env),
-          node
-        );
-        return buildSequence(
-          [op.UPDATE_SAVED_POS],
-          buildCall(functionIndex, 0, context.env, context.sp),
-          buildCondition(
-            node.match || 0,
-            [op.IF],
-            buildSequence(
-              [op.POP],
-              negative ? [op.PUSH_FAILED] : [op.PUSH_UNDEFINED]
-            ),
-            buildSequence(
-              [op.POP],
-              negative ? [op.PUSH_UNDEFINED] : [op.PUSH_FAILED]
-            )
-          )
-        );
+        const functionIndex = addFunctionConst(true, Object.keys(context.env), node);
+        return buildSequence([
+          op.UPDATE_SAVED_POS
+        ], buildCall(functionIndex, 0, context.env, context.sp), buildCondition(node.match || 0, [
+          op.IF
+        ], buildSequence([
+          op.POP
+        ], negative ? [
+          op.PUSH_FAILED
+        ] : [
+          op.PUSH_UNDEFINED
+        ]), buildSequence([
+          op.POP
+        ], negative ? [
+          op.PUSH_UNDEFINED
+        ] : [
+          op.PUSH_FAILED
+        ])));
       }
+      __name(buildSemanticPredicate, "buildSemanticPredicate");
       function buildAppendLoop(expressionCode) {
-        return buildLoop(
-          [op.WHILE_NOT_ERROR],
-          buildSequence([op.APPEND], expressionCode)
-        );
+        return buildLoop([
+          op.WHILE_NOT_ERROR
+        ], buildSequence([
+          op.APPEND
+        ], expressionCode));
       }
+      __name(buildAppendLoop, "buildAppendLoop");
       function unknownBoundary(boundary) {
         const b = (
           /** @type {{ type: string }} */
@@ -976,23 +960,33 @@ var require_generate_bytecode = __commonJS({
         );
         return new Error(`Unknown boundary type "${b.type}" for the "repeated" node`);
       }
+      __name(unknownBoundary, "unknownBoundary");
       function buildRangeCall(boundary, env, sp, offset) {
         switch (boundary.type) {
           case "constant":
-            return { pre: [], post: [], sp };
+            return {
+              pre: [],
+              post: [],
+              sp
+            };
           case "variable":
             boundary.sp = offset + sp - env[boundary.value];
-            return { pre: [], post: [], sp };
+            return {
+              pre: [],
+              post: [],
+              sp
+            };
           case "function": {
             boundary.sp = offset;
-            const functionIndex = addFunctionConst(
-              true,
-              Object.keys(env),
-              { code: boundary.value, codeLocation: boundary.codeLocation }
-            );
+            const functionIndex = addFunctionConst(true, Object.keys(env), {
+              code: boundary.value,
+              codeLocation: boundary.codeLocation
+            });
             return {
               pre: buildCall(functionIndex, 0, env, sp),
-              post: [op.NIP],
+              post: [
+                op.NIP
+              ],
               // +1 for the function result
               sp: sp + 1
             };
@@ -1002,53 +996,62 @@ var require_generate_bytecode = __commonJS({
             throw unknownBoundary(boundary);
         }
       }
+      __name(buildRangeCall, "buildRangeCall");
       function buildCheckMax(expressionCode, max) {
         if (max.value !== null) {
-          const checkCode = max.type === "constant" ? [op.IF_GE, max.value] : [op.IF_GE_DYNAMIC, max.sp || 0];
+          const checkCode = max.type === "constant" ? [
+            op.IF_GE,
+            max.value
+          ] : [
+            op.IF_GE_DYNAMIC,
+            max.sp || 0
+          ];
           return buildCondition(
             SOMETIMES_MATCH,
             checkCode,
-            // if (r.length >= max)   stack:[ [elem...] ]
-            [op.PUSH_FAILED],
-            //   elem = peg$FAILED;   stack:[ [elem...], peg$FAILED ]
+            [
+              op.PUSH_FAILED
+            ],
             expressionCode
             // else
           );
         }
         return expressionCode;
       }
+      __name(buildCheckMax, "buildCheckMax");
       function buildCheckMin(expressionCode, min) {
-        const checkCode = min.type === "constant" ? [op.IF_LT, min.value] : [op.IF_LT_DYNAMIC, min.sp || 0];
-        return buildSequence(
-          expressionCode,
-          // result = [elem...];      stack:[ pos, [elem...] ]
-          buildCondition(
-            SOMETIMES_MATCH,
-            checkCode,
-            // if (result.length < min) {
-            /* eslint-disable @stylistic/indent -- Clarity */
-            [
-              op.POP,
-              op.POP_CURR_POS,
-              //   currPos = savedPos;    stack:[  ]
-              op.PUSH_FAILED
-            ],
-            //   result = peg$FAILED;   stack:[ peg$FAILED ]
-            /* eslint-enable @stylistic/indent */
-            [op.NIP]
-            // }                        stack:[ [elem...] ]
-          )
-        );
+        const checkCode = min.type === "constant" ? [
+          op.IF_LT,
+          min.value
+        ] : [
+          op.IF_LT_DYNAMIC,
+          min.sp || 0
+        ];
+        return buildSequence(expressionCode, buildCondition(
+          SOMETIMES_MATCH,
+          checkCode,
+          /* eslint-disable @stylistic/indent -- Clarity */
+          [
+            op.POP,
+            op.POP_CURR_POS,
+            op.PUSH_FAILED
+          ],
+          /* eslint-enable @stylistic/indent */
+          [
+            op.NIP
+          ]
+          // }                        stack:[ [elem...] ]
+        ));
       }
+      __name(buildCheckMin, "buildCheckMin");
       function buildRangeBody(delimiterNode, expressionMatch, expressionCode, context, offset) {
         if (delimiterNode) {
           return buildSequence(
-            //                          stack:[  ]
-            [op.PUSH_CURR_POS],
-            // pos = peg$currPos;       stack:[ pos ]
+            [
+              op.PUSH_CURR_POS
+            ],
             // eslint-disable-next-line no-use-before-define -- Mutual recursion
             generate2(delimiterNode, {
-              // item = delim();          stack:[ pos, delim ]
               // +1 for the saved offset
               sp: context.sp + offset + 1,
               env: cloneEnv(context.env),
@@ -1056,36 +1059,34 @@ var require_generate_bytecode = __commonJS({
             }),
             buildCondition(
               delimiterNode.match || 0,
-              [op.IF_NOT_ERROR],
-              // if (item !== peg$FAILED) {
-              buildSequence(
-                [op.POP],
-                //                          stack:[ pos ]
-                expressionCode,
-                //   item = expr();         stack:[ pos, item ]
-                buildCondition(
-                  -expressionMatch,
-                  [op.IF_ERROR],
-                  //   if (item === peg$FAILED) {
-                  // If element FAILED, rollback currPos to saved value.
-                  /* eslint-disable @stylistic/indent -- Clarity */
-                  [
-                    op.POP,
-                    //                          stack:[ pos ]
-                    op.POP_CURR_POS,
-                    //     peg$currPos = pos;   stack:[  ]
-                    op.PUSH_FAILED
-                  ],
-                  //     item = peg$FAILED;   stack:[ peg$FAILED ]
-                  /* eslint-enable @stylistic/indent */
-                  // Else, just drop saved currPos.
-                  [op.NIP]
-                  //   }                      stack:[ item ]
-                )
-              ),
-              // }
+              [
+                op.IF_NOT_ERROR
+              ],
+              buildSequence([
+                op.POP
+              ], expressionCode, buildCondition(
+                -expressionMatch,
+                [
+                  op.IF_ERROR
+                ],
+                // If element FAILED, rollback currPos to saved value.
+                /* eslint-disable @stylistic/indent -- Clarity */
+                [
+                  op.POP,
+                  op.POP_CURR_POS,
+                  op.PUSH_FAILED
+                ],
+                /* eslint-enable @stylistic/indent */
+                // Else, just drop saved currPos.
+                [
+                  op.NIP
+                ]
+                //   }                      stack:[ item ]
+              )),
               // If delimiter FAILED, currPos not changed, so just drop it.
-              [op.NIP]
+              [
+                op.NIP
+              ]
               //                          stack:[ peg$FAILED ]
             )
             //                          stack:[ <?> ]
@@ -1093,6 +1094,7 @@ var require_generate_bytecode = __commonJS({
         }
         return expressionCode;
       }
+      __name(buildRangeBody, "buildRangeBody");
       function wrapGenerators(generators) {
         if (options2 && options2.output === "source-and-map") {
           Object.keys(generators).forEach((name) => {
@@ -1102,21 +1104,18 @@ var require_generate_bytecode = __commonJS({
               if (generated === void 0 || !node.location) {
                 return generated;
               }
-              return buildSequence(
-                [
-                  op.SOURCE_MAP_PUSH,
-                  addLocation(node.location)
-                ],
-                generated,
-                [
-                  op.SOURCE_MAP_POP
-                ]
-              );
+              return buildSequence([
+                op.SOURCE_MAP_PUSH,
+                addLocation(node.location)
+              ], generated, [
+                op.SOURCE_MAP_POP
+              ]);
             };
           });
         }
         return visitor2.build(generators);
       }
+      __name(wrapGenerators, "wrapGenerators");
       const generate2 = wrapGenerators({
         grammar(node) {
           node.rules.forEach(generate2);
@@ -1130,24 +1129,27 @@ var require_generate_bytecode = __commonJS({
         rule(node) {
           node.bytecode = generate2(node.expression, {
             sp: -1,
-            // Stack pointer
             env: {},
-            // Mapping of label names to stack positions
             pluck: [],
-            // Fields that have been picked
             action: null
-            // Action nodes pass themselves to children here
           });
         },
         named(node, context) {
           const match = node.match || 0;
-          const nameIndex = match === ALWAYS_MATCH ? -1 : expectations.add({ type: "rule", value: node.name });
-          return buildSequence(
-            [op.SILENT_FAILS_ON],
-            generate2(node.expression, context),
-            [op.SILENT_FAILS_OFF],
-            buildCondition(-match, [op.IF_ERROR], [op.FAIL, nameIndex], [])
-          );
+          const nameIndex = match === ALWAYS_MATCH ? -1 : expectations.add({
+            type: "rule",
+            value: node.name
+          });
+          return buildSequence([
+            op.SILENT_FAILS_ON
+          ], generate2(node.expression, context), [
+            op.SILENT_FAILS_OFF
+          ], buildCondition(-match, [
+            op.IF_ERROR
+          ], [
+            op.FAIL,
+            nameIndex
+          ], []));
         },
         choice(node, context) {
           function buildAlternativesCode(alternatives, context2) {
@@ -1160,19 +1162,13 @@ var require_generate_bytecode = __commonJS({
             if (match === ALWAYS_MATCH) {
               return first;
             }
-            return buildSequence(
-              first,
-              alternatives.length > 1 ? buildCondition(
-                SOMETIMES_MATCH,
-                [op.IF_ERROR],
-                buildSequence(
-                  [op.POP],
-                  buildAlternativesCode(alternatives.slice(1), context2)
-                ),
-                []
-              ) : []
-            );
+            return buildSequence(first, alternatives.length > 1 ? buildCondition(SOMETIMES_MATCH, [
+              op.IF_ERROR
+            ], buildSequence([
+              op.POP
+            ], buildAlternativesCode(alternatives.slice(1), context2)), []) : []);
           }
+          __name(buildAlternativesCode, "buildAlternativesCode");
           return buildAlternativesCode(node.alternatives, context);
         },
         action(node, context) {
@@ -1185,84 +1181,76 @@ var require_generate_bytecode = __commonJS({
           });
           const match = node.expression.match || 0;
           const functionIndex = emitCall && match !== NEVER_MATCH ? addFunctionConst(false, Object.keys(env), node) : -1;
-          return emitCall ? buildSequence(
-            [op.PUSH_CURR_POS],
-            expressionCode,
-            buildCondition(
-              match,
-              [op.IF_NOT_ERROR],
-              buildSequence(
-                [op.LOAD_SAVED_POS, 1],
-                buildCall(functionIndex, 1, env, context.sp + 2)
-              ),
-              []
-            ),
-            [op.NIP]
-          ) : expressionCode;
+          return emitCall ? buildSequence([
+            op.PUSH_CURR_POS
+          ], expressionCode, buildCondition(match, [
+            op.IF_NOT_ERROR
+          ], buildSequence([
+            op.LOAD_SAVED_POS,
+            1
+          ], buildCall(functionIndex, 1, env, context.sp + 2)), []), [
+            op.NIP
+          ]) : expressionCode;
         },
         sequence(node, context) {
           function buildElementsCode(elements, context2) {
             if (elements.length > 0) {
               const processedCount = node.elements.length - elements.length + 1;
-              return buildSequence(
-                generate2(elements[0], {
-                  sp: context2.sp,
-                  env: context2.env,
-                  pluck: context2.pluck,
-                  action: null
-                }),
-                buildCondition(
-                  elements[0].match || 0,
-                  [op.IF_NOT_ERROR],
-                  buildElementsCode(elements.slice(1), {
-                    sp: context2.sp + 1,
-                    env: context2.env,
-                    pluck: context2.pluck,
-                    action: context2.action
-                  }),
-                  buildSequence(
-                    processedCount > 1 ? [op.POP_N, processedCount] : [op.POP],
-                    [op.POP_CURR_POS],
-                    [op.PUSH_FAILED]
-                  )
-                )
-              );
+              return buildSequence(generate2(elements[0], {
+                sp: context2.sp,
+                env: context2.env,
+                pluck: context2.pluck,
+                action: null
+              }), buildCondition(elements[0].match || 0, [
+                op.IF_NOT_ERROR
+              ], buildElementsCode(elements.slice(1), {
+                sp: context2.sp + 1,
+                env: context2.env,
+                pluck: context2.pluck,
+                action: context2.action
+              }), buildSequence(processedCount > 1 ? [
+                op.POP_N,
+                processedCount
+              ] : [
+                op.POP
+              ], [
+                op.POP_CURR_POS
+              ], [
+                op.PUSH_FAILED
+              ])));
             } else {
               if (context2.pluck && context2.pluck.length > 0) {
-                return buildSequence(
-                  [op.PLUCK, node.elements.length + 1, context2.pluck.length],
-                  context2.pluck.map((eSP) => context2.sp - eSP)
-                );
+                return buildSequence([
+                  op.PLUCK,
+                  node.elements.length + 1,
+                  context2.pluck.length
+                ], context2.pluck.map((eSP) => context2.sp - eSP));
               }
               if (context2.action) {
-                const functionIndex = addFunctionConst(
-                  false,
-                  Object.keys(context2.env),
-                  context2.action
-                );
-                return buildSequence(
-                  [op.LOAD_SAVED_POS, node.elements.length],
-                  buildCall(
-                    functionIndex,
-                    node.elements.length + 1,
-                    context2.env,
-                    context2.sp
-                  )
-                );
+                const functionIndex = addFunctionConst(false, Object.keys(context2.env), context2.action);
+                return buildSequence([
+                  op.LOAD_SAVED_POS,
+                  node.elements.length
+                ], buildCall(functionIndex, node.elements.length + 1, context2.env, context2.sp));
               } else {
-                return buildSequence([op.WRAP, node.elements.length], [op.NIP]);
+                return buildSequence([
+                  op.WRAP,
+                  node.elements.length
+                ], [
+                  op.NIP
+                ]);
               }
             }
           }
-          return buildSequence(
-            [op.PUSH_CURR_POS],
-            buildElementsCode(node.elements, {
-              sp: context.sp + 1,
-              env: context.env,
-              pluck: [],
-              action: context.action
-            })
-          );
+          __name(buildElementsCode, "buildElementsCode");
+          return buildSequence([
+            op.PUSH_CURR_POS
+          ], buildElementsCode(node.elements, {
+            sp: context.sp + 1,
+            env: context.env,
+            pluck: [],
+            action: context.action
+          }));
         },
         labeled(node, context) {
           let env = context.env;
@@ -1281,34 +1269,34 @@ var require_generate_bytecode = __commonJS({
             action: null
           });
           if (label && node.labelLocation && options2 && options2.output === "source-and-map") {
-            return buildSequence(
-              [
-                op.SOURCE_MAP_LABEL_PUSH,
-                sp,
-                literals.add(label),
-                addLocation(node.labelLocation)
-              ],
-              expression,
-              [op.SOURCE_MAP_LABEL_POP, sp]
-            );
+            return buildSequence([
+              op.SOURCE_MAP_LABEL_PUSH,
+              sp,
+              literals.add(label),
+              addLocation(node.labelLocation)
+            ], expression, [
+              op.SOURCE_MAP_LABEL_POP,
+              sp
+            ]);
           }
           return expression;
         },
         text(node, context) {
-          return buildSequence(
-            [op.PUSH_CURR_POS],
-            generate2(node.expression, {
-              sp: context.sp + 1,
-              env: cloneEnv(context.env),
-              action: null
-            }),
-            buildCondition(
-              node.match || 0,
-              [op.IF_NOT_ERROR],
-              buildSequence([op.POP], [op.TEXT]),
-              [op.NIP]
-            )
-          );
+          return buildSequence([
+            op.PUSH_CURR_POS
+          ], generate2(node.expression, {
+            sp: context.sp + 1,
+            env: cloneEnv(context.env),
+            action: null
+          }), buildCondition(node.match || 0, [
+            op.IF_NOT_ERROR
+          ], buildSequence([
+            op.POP
+          ], [
+            op.TEXT
+          ]), [
+            op.NIP
+          ]));
         },
         simple_and(node, context) {
           return buildSimplePredicate(node.expression, false, context);
@@ -1317,22 +1305,25 @@ var require_generate_bytecode = __commonJS({
           return buildSimplePredicate(node.expression, true, context);
         },
         optional(node, context) {
-          return buildSequence(
-            generate2(node.expression, {
-              sp: context.sp,
-              env: cloneEnv(context.env),
-              action: null
-            }),
-            buildCondition(
-              // Check expression match, not the node match
-              // If expression always match, no need to replace FAILED to NULL,
-              // because FAILED will never appeared
-              -(node.expression.match || 0),
-              [op.IF_ERROR],
-              buildSequence([op.POP], [op.PUSH_NULL]),
-              []
-            )
-          );
+          return buildSequence(generate2(node.expression, {
+            sp: context.sp,
+            env: cloneEnv(context.env),
+            action: null
+          }), buildCondition(
+            // Check expression match, not the node match
+            // If expression always match, no need to replace FAILED to NULL,
+            // because FAILED will never appeared
+            -(node.expression.match || 0),
+            [
+              op.IF_ERROR
+            ],
+            buildSequence([
+              op.POP
+            ], [
+              op.PUSH_NULL
+            ]),
+            []
+          ));
         },
         zero_or_more(node, context) {
           const expressionCode = generate2(node.expression, {
@@ -1340,12 +1331,11 @@ var require_generate_bytecode = __commonJS({
             env: cloneEnv(context.env),
             action: null
           });
-          return buildSequence(
-            [op.PUSH_EMPTY_ARRAY],
-            expressionCode,
-            buildAppendLoop(expressionCode),
-            [op.POP]
-          );
+          return buildSequence([
+            op.PUSH_EMPTY_ARRAY
+          ], expressionCode, buildAppendLoop(expressionCode), [
+            op.POP
+          ]);
         },
         one_or_more(node, context) {
           const expressionCode = generate2(node.expression, {
@@ -1353,17 +1343,25 @@ var require_generate_bytecode = __commonJS({
             env: cloneEnv(context.env),
             action: null
           });
-          return buildSequence(
-            [op.PUSH_EMPTY_ARRAY],
-            expressionCode,
-            buildCondition(
-              // Condition depends on the expression match, not the node match
-              node.expression.match || 0,
-              [op.IF_NOT_ERROR],
-              buildSequence(buildAppendLoop(expressionCode), [op.POP]),
-              buildSequence([op.POP], [op.POP], [op.PUSH_FAILED])
-            )
-          );
+          return buildSequence([
+            op.PUSH_EMPTY_ARRAY
+          ], expressionCode, buildCondition(
+            // Condition depends on the expression match, not the node match
+            node.expression.match || 0,
+            [
+              op.IF_NOT_ERROR
+            ],
+            buildSequence(buildAppendLoop(expressionCode), [
+              op.POP
+            ]),
+            buildSequence([
+              op.POP
+            ], [
+              op.POP
+            ], [
+              op.PUSH_FAILED
+            ])
+          ));
         },
         repeated(node, context) {
           const min = node.min ? node.min : node.max;
@@ -1378,7 +1376,11 @@ var require_generate_bytecode = __commonJS({
             // +1 for the saved position
             // +1 if we have a "function" maximum it occupies an additional slot in the stack
             2 + (node.max.type === "function" ? 1 : 0)
-          ) : { pre: [], post: [], sp: context.sp };
+          ) : {
+            pre: [],
+            post: [],
+            sp: context.sp
+          };
           const maxCode = buildRangeCall(node.max, context.env, minCode.sp, offset);
           const firstExpressionCode = generate2(node.expression, {
             sp: maxCode.sp + offset,
@@ -1391,26 +1393,22 @@ var require_generate_bytecode = __commonJS({
             env: cloneEnv(context.env),
             action: null
           }) : firstExpressionCode;
-          const bodyCode = buildRangeBody(
-            node.delimiter,
-            node.expression.match || 0,
-            expressionCode,
-            context,
-            offset
-          );
+          const bodyCode = buildRangeBody(node.delimiter, node.expression.match || 0, expressionCode, context, offset);
           const checkMaxCode = buildCheckMax(bodyCode, node.max);
           const firstElemCode = hasBoundedMax ? buildCheckMax(firstExpressionCode, node.max) : firstExpressionCode;
           const mainLoopCode = buildSequence(
             // If the low boundary present, then backtracking is possible, so save the current pos
-            hasMin ? [op.PUSH_CURR_POS] : [],
-            // var savedPos = curPos;   stack:[ pos ]
-            [op.PUSH_EMPTY_ARRAY],
-            // var result = [];         stack:[ pos, [] ]
+            hasMin ? [
+              op.PUSH_CURR_POS
+            ] : [],
+            [
+              op.PUSH_EMPTY_ARRAY
+            ],
             firstElemCode,
-            // var elem = expr();       stack:[ pos, [], elem ]
             buildAppendLoop(checkMaxCode),
-            // while(...)r.push(elem);  stack:[ pos, [...], elem|peg$FAILED ]
-            [op.POP]
+            [
+              op.POP
+            ]
             //                          stack:[ pos, [...] ] (pop elem===`peg$FAILED`)
           );
           return buildSequence(
@@ -1436,7 +1434,10 @@ var require_generate_bytecode = __commonJS({
           return buildSemanticPredicate(node, true, context);
         },
         rule_ref(node) {
-          return [op.RULE, asts.indexOfRule(ast2, node.name)];
+          return [
+            op.RULE,
+            asts.indexOfRule(ast2, node.name)
+          ];
         },
         library_ref(node) {
           return [
@@ -1449,22 +1450,32 @@ var require_generate_bytecode = __commonJS({
           if (node.value.length > 0) {
             const match = node.match || 0;
             const needConst = match === SOMETIMES_MATCH || match === ALWAYS_MATCH && !node.ignoreCase;
-            const stringIndex = needConst ? literals.add(
-              node.ignoreCase ? node.value.toLowerCase() : node.value
-            ) : -1;
+            const stringIndex = needConst ? literals.add(node.ignoreCase ? node.value.toLowerCase() : node.value) : -1;
             const expectedIndex = match !== ALWAYS_MATCH ? expectations.add({
               type: "literal",
               value: node.value,
               ignoreCase: node.ignoreCase
             }) : -1;
-            return buildCondition(
-              match,
-              node.ignoreCase ? [op.MATCH_STRING_IC, stringIndex] : [op.MATCH_STRING, stringIndex],
-              node.ignoreCase ? [op.ACCEPT_N, node.value.length] : [op.ACCEPT_STRING, stringIndex],
-              [op.FAIL, expectedIndex]
-            );
+            return buildCondition(match, node.ignoreCase ? [
+              op.MATCH_STRING_IC,
+              stringIndex
+            ] : [
+              op.MATCH_STRING,
+              stringIndex
+            ], node.ignoreCase ? [
+              op.ACCEPT_N,
+              node.value.length
+            ] : [
+              op.ACCEPT_STRING,
+              stringIndex
+            ], [
+              op.FAIL,
+              expectedIndex
+            ]);
           }
-          return [op.PUSH_EMPTY_STRING];
+          return [
+            op.PUSH_EMPTY_STRING
+          ];
         },
         class(node) {
           const match = node.match || 0;
@@ -1476,31 +1487,36 @@ var require_generate_bytecode = __commonJS({
             ignoreCase: node.ignoreCase,
             unicode: node.unicode
           }) : -1;
-          return buildCondition(
-            match,
-            [
-              node.unicode ? op.MATCH_UNICODE_CLASS : op.MATCH_CHAR_CLASS,
-              classIndex
-            ],
-            [op.ACCEPT_N, node.unicode ? -1 : 1],
-            [op.FAIL, expectedIndex]
-          );
+          return buildCondition(match, [
+            node.unicode ? op.MATCH_UNICODE_CLASS : op.MATCH_CHAR_CLASS,
+            classIndex
+          ], [
+            op.ACCEPT_N,
+            node.unicode ? -1 : 1
+          ], [
+            op.FAIL,
+            expectedIndex
+          ]);
         },
         any(node) {
           const match = node.match || 0;
           const expectedIndex = match !== ALWAYS_MATCH ? expectations.add({
             type: "any"
           }) : -1;
-          return buildCondition(
-            match,
-            [op.MATCH_ANY],
-            [op.ACCEPT_N, 1],
-            [op.FAIL, expectedIndex]
-          );
+          return buildCondition(match, [
+            op.MATCH_ANY
+          ], [
+            op.ACCEPT_N,
+            1
+          ], [
+            op.FAIL,
+            expectedIndex
+          ]);
         }
       });
       generate2(ast2);
     }
+    __name(generateBytecode2, "generateBytecode");
     module2.exports = generateBytecode2;
   }
 });
@@ -1531,7 +1547,8 @@ var require_base64_vlq = __commonJS({
     function toVLQSigned(aValue) {
       return aValue < 0 ? (-aValue << 1) + 1 : (aValue << 1) + 0;
     }
-    exports2.encode = function base64VLQ_encode(aValue) {
+    __name(toVLQSigned, "toVLQSigned");
+    exports2.encode = /* @__PURE__ */ __name(function base64VLQ_encode(aValue) {
       let encoded = "";
       let digit;
       let vlq = toVLQSigned(aValue);
@@ -1544,7 +1561,7 @@ var require_base64_vlq = __commonJS({
         encoded += base642.encode(digit);
       } while (vlq > 0);
       return encoded;
-    };
+    }, "base64VLQ_encode");
   }
 });
 
@@ -1560,6 +1577,7 @@ var require_util = __commonJS({
       }
       throw new Error('"' + aName + '" is a required argument.');
     }
+    __name(getArg, "getArg");
     exports2.getArg = getArg;
     var supportsNullProto = function() {
       const obj = /* @__PURE__ */ Object.create(null);
@@ -1568,12 +1586,14 @@ var require_util = __commonJS({
     function identity(s) {
       return s;
     }
+    __name(identity, "identity");
     function toSetString(aStr) {
       if (isProtoString(aStr)) {
         return "$" + aStr;
       }
       return aStr;
     }
+    __name(toSetString, "toSetString");
     exports2.toSetString = supportsNullProto ? identity : toSetString;
     function fromSetString(aStr) {
       if (isProtoString(aStr)) {
@@ -1581,6 +1601,7 @@ var require_util = __commonJS({
       }
       return aStr;
     }
+    __name(fromSetString, "fromSetString");
     exports2.fromSetString = supportsNullProto ? identity : fromSetString;
     function isProtoString(s) {
       if (!s) {
@@ -1600,6 +1621,7 @@ var require_util = __commonJS({
       }
       return true;
     }
+    __name(isProtoString, "isProtoString");
     function strcmp(aStr1, aStr2) {
       if (aStr1 === aStr2) {
         return 0;
@@ -1615,6 +1637,7 @@ var require_util = __commonJS({
       }
       return -1;
     }
+    __name(strcmp, "strcmp");
     function compareByGeneratedPositionsInflated(mappingA, mappingB) {
       let cmp = mappingA.generatedLine - mappingB.generatedLine;
       if (cmp !== 0) {
@@ -1638,6 +1661,7 @@ var require_util = __commonJS({
       }
       return strcmp(mappingA.name, mappingB.name);
     }
+    __name(compareByGeneratedPositionsInflated, "compareByGeneratedPositionsInflated");
     exports2.compareByGeneratedPositionsInflated = compareByGeneratedPositionsInflated;
     var PROTOCOL = "http:";
     var PROTOCOL_AND_HOST = `${PROTOCOL}//host`;
@@ -1658,9 +1682,11 @@ var require_util = __commonJS({
         return computeRelativeURL(base, result);
       };
     }
+    __name(createSafeHandler, "createSafeHandler");
     function withBase(url, base) {
       return new URL(url, base).toString();
     }
+    __name(withBase, "withBase");
     function buildUniqueSegment(prefix, str) {
       let id = 0;
       do {
@@ -1668,6 +1694,7 @@ var require_util = __commonJS({
         if (str.indexOf(ident) === -1) return ident;
       } while (true);
     }
+    __name(buildUniqueSegment, "buildUniqueSegment");
     function buildSafeBase(str) {
       const maxDotParts = str.split("..").length - 1;
       const segment = buildUniqueSegment("p", str);
@@ -1677,6 +1704,7 @@ var require_util = __commonJS({
       }
       return base;
     }
+    __name(buildSafeBase, "buildSafeBase");
     var ABSOLUTE_SCHEME = /^[A-Za-z0-9\+\-\.]+:/;
     function getURLType(url) {
       if (url[0] === "/") {
@@ -1685,6 +1713,7 @@ var require_util = __commonJS({
       }
       return ABSOLUTE_SCHEME.test(url) ? "absolute" : "path-relative";
     }
+    __name(getURLType, "getURLType");
     function computeRelativeURL(rootURL, targetURL) {
       if (typeof rootURL === "string") rootURL = new URL(rootURL);
       if (typeof targetURL === "string") targetURL = new URL(targetURL);
@@ -1700,6 +1729,7 @@ var require_util = __commonJS({
       const relativePath = rootParts.map(() => "..").concat(targetParts).join("/");
       return relativePath + targetURL.search + targetURL.hash;
     }
+    __name(computeRelativeURL, "computeRelativeURL");
     var ensureDirectory = createSafeHandler((url) => {
       url.pathname = url.pathname.replace(/\/?$/, "/");
     });
@@ -1720,27 +1750,25 @@ var require_util = __commonJS({
         return normalize(aPath);
       }
       if (rootType === "scheme-relative") {
-        return withBase(aPath, withBase(aRoot, PROTOCOL_AND_HOST)).slice(
-          PROTOCOL.length
-        );
+        return withBase(aPath, withBase(aRoot, PROTOCOL_AND_HOST)).slice(PROTOCOL.length);
       }
       if (pathType === "path-absolute") {
         return normalize(aPath);
       }
       if (rootType === "path-absolute") {
-        return withBase(aPath, withBase(aRoot, PROTOCOL_AND_HOST)).slice(
-          PROTOCOL_AND_HOST.length
-        );
+        return withBase(aPath, withBase(aRoot, PROTOCOL_AND_HOST)).slice(PROTOCOL_AND_HOST.length);
       }
       const base = buildSafeBase(aPath + aRoot);
       const newPath = withBase(aPath, withBase(aRoot, base));
       return computeRelativeURL(base, newPath);
     }
+    __name(join, "join");
     exports2.join = join;
     function relative(rootURL, targetURL) {
       const result = relativeIfPossible(rootURL, targetURL);
       return typeof result === "string" ? result : normalize(targetURL);
     }
+    __name(relative, "relative");
     exports2.relative = relative;
     function relativeIfPossible(rootURL, targetURL) {
       const urlType = getURLType(rootURL);
@@ -1760,6 +1788,7 @@ var require_util = __commonJS({
       }
       return computeRelativeURL(root, target);
     }
+    __name(relativeIfPossible, "relativeIfPossible");
   }
 });
 
@@ -1767,35 +1796,36 @@ var require_util = __commonJS({
 var require_array_set = __commonJS({
   "node_modules/source-map-generator/lib/array-set.js"(exports2) {
     "use strict";
-    var ArraySet = class _ArraySet {
+    var _a;
+    var ArraySet = (_a = class {
       constructor() {
         this._array = [];
         this._set = /* @__PURE__ */ new Map();
       }
       /**
-       * Static method for creating ArraySet instances from an existing array.
-       */
+      * Static method for creating ArraySet instances from an existing array.
+      */
       static fromArray(aArray, aAllowDuplicates) {
-        const set = new _ArraySet();
+        const set = new _a();
         for (let i = 0, len = aArray.length; i < len; i++) {
           set.add(aArray[i], aAllowDuplicates);
         }
         return set;
       }
       /**
-       * Return how many unique items are in this ArraySet. If duplicates have been
-       * added, than those do not count towards the size.
-       *
-       * @returns Number
-       */
+      * Return how many unique items are in this ArraySet. If duplicates have been
+      * added, than those do not count towards the size.
+      *
+      * @returns Number
+      */
       size() {
         return this._set.size;
       }
       /**
-       * Add the given string to this set.
-       *
-       * @param String aStr
-       */
+      * Add the given string to this set.
+      *
+      * @param String aStr
+      */
       add(aStr, aAllowDuplicates) {
         const isDuplicate = this.has(aStr);
         const idx = this._array.length;
@@ -1807,18 +1837,18 @@ var require_array_set = __commonJS({
         }
       }
       /**
-       * Is the given string a member of this set?
-       *
-       * @param String aStr
-       */
+      * Is the given string a member of this set?
+      *
+      * @param String aStr
+      */
       has(aStr) {
         return this._set.has(aStr);
       }
       /**
-       * What is the index of the given string in the array?
-       *
-       * @param String aStr
-       */
+      * What is the index of the given string in the array?
+      *
+      * @param String aStr
+      */
       indexOf(aStr) {
         const idx = this._set.get(aStr);
         if (idx >= 0) {
@@ -1827,10 +1857,10 @@ var require_array_set = __commonJS({
         throw new Error('"' + aStr + '" is not in the set.');
       }
       /**
-       * What is the element at the given index?
-       *
-       * @param Number aIdx
-       */
+      * What is the element at the given index?
+      *
+      * @param Number aIdx
+      */
       at(aIdx) {
         if (aIdx >= 0 && aIdx < this._array.length) {
           return this._array[aIdx];
@@ -1838,14 +1868,14 @@ var require_array_set = __commonJS({
         throw new Error("No element indexed by " + aIdx);
       }
       /**
-       * Returns the array representation of this set (which has the proper indices
-       * indicated by indexOf). Note that this is a copy of the internal array used
-       * for storing the members so that no one can mess with internal state.
-       */
+      * Returns the array representation of this set (which has the proper indices
+      * indicated by indexOf). Note that this is a copy of the internal array used
+      * for storing the members so that no one can mess with internal state.
+      */
       toArray() {
         return this._array.slice();
       }
-    };
+    }, __name(_a, "ArraySet"), _a);
     exports2.ArraySet = ArraySet;
   }
 });
@@ -1862,26 +1892,31 @@ var require_mapping_list = __commonJS({
       const columnB = mappingB.generatedColumn;
       return lineB > lineA || lineB == lineA && columnB >= columnA || util.compareByGeneratedPositionsInflated(mappingA, mappingB) <= 0;
     }
-    var MappingList = class {
+    __name(generatedPositionAfter, "generatedPositionAfter");
+    var _a;
+    var MappingList = (_a = class {
       constructor() {
         this._array = [];
         this._sorted = true;
-        this._last = { generatedLine: -1, generatedColumn: 0 };
+        this._last = {
+          generatedLine: -1,
+          generatedColumn: 0
+        };
       }
       /**
-       * Iterate through internal items. This method takes the same arguments that
-       * `Array.prototype.forEach` takes.
-       *
-       * NOTE: The order of the mappings is NOT guaranteed.
-       */
+      * Iterate through internal items. This method takes the same arguments that
+      * `Array.prototype.forEach` takes.
+      *
+      * NOTE: The order of the mappings is NOT guaranteed.
+      */
       unsortedForEach(aCallback, aThisArg) {
         this._array.forEach(aCallback, aThisArg);
       }
       /**
-       * Add the given source mapping.
-       *
-       * @param Object aMapping
-       */
+      * Add the given source mapping.
+      *
+      * @param Object aMapping
+      */
       add(aMapping) {
         if (generatedPositionAfter(this._last, aMapping)) {
           this._last = aMapping;
@@ -1892,14 +1927,14 @@ var require_mapping_list = __commonJS({
         }
       }
       /**
-       * Returns the flat, sorted array of mappings. The mappings are sorted by
-       * generated position.
-       *
-       * WARNING: This method returns internal data without copying, for
-       * performance. The return value must NOT be mutated, and should be treated as
-       * an immutable borrow. If you want to take ownership, you must make your own
-       * copy.
-       */
+      * Returns the flat, sorted array of mappings. The mappings are sorted by
+      * generated position.
+      *
+      * WARNING: This method returns internal data without copying, for
+      * performance. The return value must NOT be mutated, and should be treated as
+      * an immutable borrow. If you want to take ownership, you must make your own
+      * copy.
+      */
       toArray() {
         if (!this._sorted) {
           this._array.sort(util.compareByGeneratedPositionsInflated);
@@ -1907,7 +1942,7 @@ var require_mapping_list = __commonJS({
         }
         return this._array;
       }
-    };
+    }, __name(_a, "MappingList"), _a);
     exports2.MappingList = MappingList;
   }
 });
@@ -1920,7 +1955,8 @@ var require_source_map_generator = __commonJS({
     var util = require_util();
     var ArraySet = require_array_set().ArraySet;
     var MappingList = require_mapping_list().MappingList;
-    var SourceMapGenerator = class _SourceMapGenerator {
+    var _a;
+    var SourceMapGenerator = (_a = class {
       constructor(aArgs) {
         if (!aArgs) {
           aArgs = {};
@@ -1934,13 +1970,13 @@ var require_source_map_generator = __commonJS({
         this._sourcesContents = null;
       }
       /**
-       * Creates a new SourceMapGenerator based on a SourceMapConsumer
-       *
-       * @param aSourceMapConsumer The SourceMap.
-       */
+      * Creates a new SourceMapGenerator based on a SourceMapConsumer
+      *
+      * @param aSourceMapConsumer The SourceMap.
+      */
       static fromSourceMap(aSourceMapConsumer) {
         const sourceRoot = aSourceMapConsumer.sourceRoot;
-        const generator = new _SourceMapGenerator({
+        const generator = new _a({
           file: aSourceMapConsumer.file,
           sourceRoot
         });
@@ -1982,15 +2018,15 @@ var require_source_map_generator = __commonJS({
         return generator;
       }
       /**
-       * Add a single mapping from original source line and column to the generated
-       * source's line and column for this source map being created. The mapping
-       * object should have the following properties:
-       *
-       *   - generated: An object with the generated line and column positions.
-       *   - original: An object with the original line and column positions.
-       *   - source: The original source file (relative to the sourceRoot).
-       *   - name: An optional original token name for this mapping.
-       */
+      * Add a single mapping from original source line and column to the generated
+      * source's line and column for this source map being created. The mapping
+      * object should have the following properties:
+      *
+      *   - generated: An object with the generated line and column positions.
+      *   - original: An object with the original line and column positions.
+      *   - source: The original source file (relative to the sourceRoot).
+      *   - name: An optional original token name for this mapping.
+      */
       addMapping(aArgs) {
         const generated = util.getArg(aArgs, "generated");
         const original = util.getArg(aArgs, "original", null);
@@ -2021,8 +2057,8 @@ var require_source_map_generator = __commonJS({
         });
       }
       /**
-       * Set the source content for a source file.
-       */
+      * Set the source content for a source file.
+      */
       setSourceContent(aSourceFile, aSourceContent) {
         let source = aSourceFile;
         if (this._sourceRoot != null) {
@@ -2041,28 +2077,26 @@ var require_source_map_generator = __commonJS({
         }
       }
       /**
-       * Applies the mappings of a sub-source-map for a specific source file to the
-       * source map being generated. Each mapping to the supplied source file is
-       * rewritten using the supplied source map. Note: The resolution for the
-       * resulting mappings is the minimium of this map and the supplied map.
-       *
-       * @param aSourceMapConsumer The source map to be applied.
-       * @param aSourceFile Optional. The filename of the source file.
-       *        If omitted, SourceMapConsumer's file property will be used.
-       * @param aSourceMapPath Optional. The dirname of the path to the source map
-       *        to be applied. If relative, it is relative to the SourceMapConsumer.
-       *        This parameter is needed when the two source maps aren't in the same
-       *        directory, and the source map to be applied contains relative source
-       *        paths. If so, those relative source paths need to be rewritten
-       *        relative to the SourceMapGenerator.
-       */
+      * Applies the mappings of a sub-source-map for a specific source file to the
+      * source map being generated. Each mapping to the supplied source file is
+      * rewritten using the supplied source map. Note: The resolution for the
+      * resulting mappings is the minimium of this map and the supplied map.
+      *
+      * @param aSourceMapConsumer The source map to be applied.
+      * @param aSourceFile Optional. The filename of the source file.
+      *        If omitted, SourceMapConsumer's file property will be used.
+      * @param aSourceMapPath Optional. The dirname of the path to the source map
+      *        to be applied. If relative, it is relative to the SourceMapConsumer.
+      *        This parameter is needed when the two source maps aren't in the same
+      *        directory, and the source map to be applied contains relative source
+      *        paths. If so, those relative source paths need to be rewritten
+      *        relative to the SourceMapGenerator.
+      */
       applySourceMap(aSourceMapConsumer, aSourceFile, aSourceMapPath) {
         let sourceFile = aSourceFile;
         if (aSourceFile == null) {
           if (aSourceMapConsumer.file == null) {
-            throw new Error(
-              `SourceMapGenerator.prototype.applySourceMap requires either an explicit source file, or the source map's "file" property. Both were omitted.`
-            );
+            throw new Error(`SourceMapGenerator.prototype.applySourceMap requires either an explicit source file, or the source map's "file" property. Both were omitted.`);
           }
           sourceFile = aSourceMapConsumer.file;
         }
@@ -2118,39 +2152,35 @@ var require_source_map_generator = __commonJS({
         }, this);
       }
       /**
-       * A mapping can have one of the three levels of data:
-       *
-       *   1. Just the generated position.
-       *   2. The Generated position, original position, and original source.
-       *   3. Generated and original position, original source, as well as a name
-       *      token.
-       *
-       * To maintain consistency, we validate that any new mapping being added falls
-       * in to one of these categories.
-       */
+      * A mapping can have one of the three levels of data:
+      *
+      *   1. Just the generated position.
+      *   2. The Generated position, original position, and original source.
+      *   3. Generated and original position, original source, as well as a name
+      *      token.
+      *
+      * To maintain consistency, we validate that any new mapping being added falls
+      * in to one of these categories.
+      */
       _validateMapping(aGenerated, aOriginal, aSource, aName) {
         if (aOriginal && typeof aOriginal.line !== "number" && typeof aOriginal.column !== "number") {
-          throw new Error(
-            "original.line and original.column are not numbers -- you probably meant to omit the original mapping entirely and only map the generated position. If so, pass null for the original mapping instead of an object with empty or null values."
-          );
+          throw new Error("original.line and original.column are not numbers -- you probably meant to omit the original mapping entirely and only map the generated position. If so, pass null for the original mapping instead of an object with empty or null values.");
         }
         if (aGenerated && "line" in aGenerated && "column" in aGenerated && aGenerated.line > 0 && aGenerated.column >= 0 && !aOriginal && !aSource && !aName) {
         } else if (aGenerated && "line" in aGenerated && "column" in aGenerated && aOriginal && "line" in aOriginal && "column" in aOriginal && aGenerated.line > 0 && aGenerated.column >= 0 && aOriginal.line > 0 && aOriginal.column >= 0 && aSource) {
         } else {
-          throw new Error(
-            "Invalid mapping: " + JSON.stringify({
-              generated: aGenerated,
-              source: aSource,
-              original: aOriginal,
-              name: aName
-            })
-          );
+          throw new Error("Invalid mapping: " + JSON.stringify({
+            generated: aGenerated,
+            source: aSource,
+            original: aOriginal,
+            name: aName
+          }));
         }
       }
       /**
-       * Serialize the accumulated mappings in to the stream of base 64 VLQs
-       * specified by the source map format.
-       */
+      * Serialize the accumulated mappings in to the stream of base 64 VLQs
+      * specified by the source map format.
+      */
       _serializeMappings() {
         let previousGeneratedColumn = 0;
         let previousGeneratedLine = 1;
@@ -2179,21 +2209,15 @@ var require_source_map_generator = __commonJS({
             }
             next += ",";
           }
-          next += base64VLQ.encode(
-            mapping.generatedColumn - previousGeneratedColumn
-          );
+          next += base64VLQ.encode(mapping.generatedColumn - previousGeneratedColumn);
           previousGeneratedColumn = mapping.generatedColumn;
           if (mapping.source != null) {
             sourceIdx = this._sources.indexOf(mapping.source);
             next += base64VLQ.encode(sourceIdx - previousSource);
             previousSource = sourceIdx;
-            next += base64VLQ.encode(
-              mapping.originalLine - 1 - previousOriginalLine
-            );
+            next += base64VLQ.encode(mapping.originalLine - 1 - previousOriginalLine);
             previousOriginalLine = mapping.originalLine - 1;
-            next += base64VLQ.encode(
-              mapping.originalColumn - previousOriginalColumn
-            );
+            next += base64VLQ.encode(mapping.originalColumn - previousOriginalColumn);
             previousOriginalColumn = mapping.originalColumn;
             if (mapping.name != null) {
               nameIdx = this._names.indexOf(mapping.name);
@@ -2218,8 +2242,8 @@ var require_source_map_generator = __commonJS({
         }, this);
       }
       /**
-       * Externalize the source map.
-       */
+      * Externalize the source map.
+      */
       toJSON() {
         const map = {
           version: this._version,
@@ -2234,20 +2258,17 @@ var require_source_map_generator = __commonJS({
           map.sourceRoot = this._sourceRoot;
         }
         if (this._sourcesContents) {
-          map.sourcesContent = this._generateSourcesContent(
-            map.sources,
-            map.sourceRoot
-          );
+          map.sourcesContent = this._generateSourcesContent(map.sources, map.sourceRoot);
         }
         return map;
       }
       /**
-       * Render the source map being generated to a string.
-       */
+      * Render the source map being generated to a string.
+      */
       toString() {
         return JSON.stringify(this.toJSON());
       }
-    };
+    }, __name(_a, "SourceMapGenerator"), _a);
     SourceMapGenerator.prototype._version = 3;
     exports2.SourceMapGenerator = SourceMapGenerator;
   }
@@ -2262,7 +2283,8 @@ var require_source_node = __commonJS({
     var REGEX_NEWLINE = /(\r?\n)/;
     var NEWLINE_CODE = 10;
     var isSourceNode = "$$$isSourceNode$$$";
-    var SourceNode = class _SourceNode {
+    var _a;
+    var SourceNode = (_a = class {
       constructor(aLine, aColumn, aSource, aChunks, aName) {
         this.children = [];
         this.sourceContents = {};
@@ -2274,25 +2296,26 @@ var require_source_node = __commonJS({
         if (aChunks != null) this.add(aChunks);
       }
       /**
-       * Creates a SourceNode from generated code and a SourceMapConsumer.
-       *
-       * @param aGeneratedCode The generated code
-       * @param aSourceMapConsumer The SourceMap for the generated code
-       * @param aRelativePath Optional. The path that relative sources in the
-       *        SourceMapConsumer should be relative to.
-       */
+      * Creates a SourceNode from generated code and a SourceMapConsumer.
+      *
+      * @param aGeneratedCode The generated code
+      * @param aSourceMapConsumer The SourceMap for the generated code
+      * @param aRelativePath Optional. The path that relative sources in the
+      *        SourceMapConsumer should be relative to.
+      */
       static fromStringWithSourceMap(aGeneratedCode, aSourceMapConsumer, aRelativePath) {
-        const node = new _SourceNode();
+        const node = new _a();
         const remainingLines = aGeneratedCode.split(REGEX_NEWLINE);
         let remainingLinesIndex = 0;
-        const shiftNextLine = function() {
+        const shiftNextLine = /* @__PURE__ */ __name(function() {
           const lineContents = getNextLine();
           const newLine = getNextLine() || "";
           return lineContents + newLine;
           function getNextLine() {
             return remainingLinesIndex < remainingLines.length ? remainingLines[remainingLinesIndex++] : void 0;
           }
-        };
+          __name(getNextLine, "getNextLine");
+        }, "shiftNextLine");
         let lastGeneratedLine = 1, lastGeneratedColumn = 0;
         let lastMapping = null;
         let nextLine;
@@ -2304,13 +2327,8 @@ var require_source_node = __commonJS({
               lastGeneratedColumn = 0;
             } else {
               nextLine = remainingLines[remainingLinesIndex] || "";
-              const code = nextLine.substr(
-                0,
-                mapping.generatedColumn - lastGeneratedColumn
-              );
-              remainingLines[remainingLinesIndex] = nextLine.substr(
-                mapping.generatedColumn - lastGeneratedColumn
-              );
+              const code = nextLine.substr(0, mapping.generatedColumn - lastGeneratedColumn);
+              remainingLines[remainingLinesIndex] = nextLine.substr(mapping.generatedColumn - lastGeneratedColumn);
               lastGeneratedColumn = mapping.generatedColumn;
               addMappingWithCode(lastMapping, code);
               lastMapping = mapping;
@@ -2324,9 +2342,7 @@ var require_source_node = __commonJS({
           if (lastGeneratedColumn < mapping.generatedColumn) {
             nextLine = remainingLines[remainingLinesIndex] || "";
             node.add(nextLine.substr(0, mapping.generatedColumn));
-            remainingLines[remainingLinesIndex] = nextLine.substr(
-              mapping.generatedColumn
-            );
+            remainingLines[remainingLinesIndex] = nextLine.substr(mapping.generatedColumn);
             lastGeneratedColumn = mapping.generatedColumn;
           }
           lastMapping = mapping;
@@ -2352,24 +2368,17 @@ var require_source_node = __commonJS({
             node.add(code);
           } else {
             const source = aRelativePath ? util.join(aRelativePath, mapping.source) : mapping.source;
-            node.add(
-              new _SourceNode(
-                mapping.originalLine,
-                mapping.originalColumn,
-                source,
-                code,
-                mapping.name
-              )
-            );
+            node.add(new _a(mapping.originalLine, mapping.originalColumn, source, code, mapping.name));
           }
         }
+        __name(addMappingWithCode, "addMappingWithCode");
       }
       /**
-       * Add a chunk of generated JS to this source node.
-       *
-       * @param aChunk A string snippet of generated JS code, another instance of
-       *        SourceNode, or an array where each member is one of those things.
-       */
+      * Add a chunk of generated JS to this source node.
+      *
+      * @param aChunk A string snippet of generated JS code, another instance of
+      *        SourceNode, or an array where each member is one of those things.
+      */
       add(aChunk) {
         if (Array.isArray(aChunk)) {
           aChunk.forEach(function(chunk) {
@@ -2380,18 +2389,16 @@ var require_source_node = __commonJS({
             this.children.push(aChunk);
           }
         } else {
-          throw new TypeError(
-            "Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk
-          );
+          throw new TypeError("Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk);
         }
         return this;
       }
       /**
-       * Add a chunk of generated JS to the beginning of this source node.
-       *
-       * @param aChunk A string snippet of generated JS code, another instance of
-       *        SourceNode, or an array where each member is one of those things.
-       */
+      * Add a chunk of generated JS to the beginning of this source node.
+      *
+      * @param aChunk A string snippet of generated JS code, another instance of
+      *        SourceNode, or an array where each member is one of those things.
+      */
       prepend(aChunk) {
         if (Array.isArray(aChunk)) {
           for (let i = aChunk.length - 1; i >= 0; i--) {
@@ -2400,19 +2407,17 @@ var require_source_node = __commonJS({
         } else if (aChunk[isSourceNode] || typeof aChunk === "string") {
           this.children.unshift(aChunk);
         } else {
-          throw new TypeError(
-            "Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk
-          );
+          throw new TypeError("Expected a SourceNode, string, or an array of SourceNodes and strings. Got " + aChunk);
         }
         return this;
       }
       /**
-       * Walk over the tree of JS snippets in this node and its children. The
-       * walking function is called once for each snippet of JS and is passed that
-       * snippet and the its original associated source's line/column location.
-       *
-       * @param aFn The traversal function.
-       */
+      * Walk over the tree of JS snippets in this node and its children. The
+      * walking function is called once for each snippet of JS and is passed that
+      * snippet and the its original associated source's line/column location.
+      *
+      * @param aFn The traversal function.
+      */
       walk(aFn) {
         let chunk;
         for (let i = 0, len = this.children.length; i < len; i++) {
@@ -2430,11 +2435,11 @@ var require_source_node = __commonJS({
         }
       }
       /**
-       * Like `String.prototype.join` except for SourceNodes. Inserts `aStr` between
-       * each of `this.children`.
-       *
-       * @param aSep The separator.
-       */
+      * Like `String.prototype.join` except for SourceNodes. Inserts `aStr` between
+      * each of `this.children`.
+      *
+      * @param aSep The separator.
+      */
       join(aSep) {
         let newChildren;
         let i;
@@ -2451,42 +2456,39 @@ var require_source_node = __commonJS({
         return this;
       }
       /**
-       * Call String.prototype.replace on the very right-most source snippet. Useful
-       * for trimming whitespace from the end of a source node, etc.
-       *
-       * @param aPattern The pattern to replace.
-       * @param aReplacement The thing to replace the pattern with.
-       */
+      * Call String.prototype.replace on the very right-most source snippet. Useful
+      * for trimming whitespace from the end of a source node, etc.
+      *
+      * @param aPattern The pattern to replace.
+      * @param aReplacement The thing to replace the pattern with.
+      */
       replaceRight(aPattern, aReplacement) {
         const lastChild = this.children[this.children.length - 1];
         if (lastChild[isSourceNode]) {
           lastChild.replaceRight(aPattern, aReplacement);
         } else if (typeof lastChild === "string") {
-          this.children[this.children.length - 1] = lastChild.replace(
-            aPattern,
-            aReplacement
-          );
+          this.children[this.children.length - 1] = lastChild.replace(aPattern, aReplacement);
         } else {
           this.children.push("".replace(aPattern, aReplacement));
         }
         return this;
       }
       /**
-       * Set the source content for a source file. This will be added to the SourceMapGenerator
-       * in the sourcesContent field.
-       *
-       * @param aSourceFile The filename of the source file
-       * @param aSourceContent The content of the source file
-       */
+      * Set the source content for a source file. This will be added to the SourceMapGenerator
+      * in the sourcesContent field.
+      *
+      * @param aSourceFile The filename of the source file
+      * @param aSourceContent The content of the source file
+      */
       setSourceContent(aSourceFile, aSourceContent) {
         this.sourceContents[util.toSetString(aSourceFile)] = aSourceContent;
       }
       /**
-       * Walk over the tree of SourceNodes. The walking function is called for each
-       * source file content and is passed the filename and source content.
-       *
-       * @param aFn The traversal function.
-       */
+      * Walk over the tree of SourceNodes. The walking function is called for each
+      * source file content and is passed the filename and source content.
+      *
+      * @param aFn The traversal function.
+      */
       walkSourceContents(aFn) {
         for (let i = 0, len = this.children.length; i < len; i++) {
           if (this.children[i][isSourceNode]) {
@@ -2499,9 +2501,9 @@ var require_source_node = __commonJS({
         }
       }
       /**
-       * Return the string representation of this source node. Walks over the tree
-       * and concatenates all the various snippets together to one string.
-       */
+      * Return the string representation of this source node. Walks over the tree
+      * and concatenates all the various snippets together to one string.
+      */
       toString() {
         let str = "";
         this.walk(function(chunk) {
@@ -2510,9 +2512,9 @@ var require_source_node = __commonJS({
         return str;
       }
       /**
-       * Returns the string representation of this source node along with a source
-       * map.
-       */
+      * Returns the string representation of this source node along with a source
+      * map.
+      */
       toStringWithSourceMap(aArgs) {
         const generated = {
           code: "",
@@ -2586,9 +2588,12 @@ var require_source_node = __commonJS({
         this.walkSourceContents(function(sourceFile, sourceContent) {
           map.setSourceContent(sourceFile, sourceContent);
         });
-        return { code: generated.code, map };
+        return {
+          code: generated.code,
+          map
+        };
       }
-    };
+    }, __name(_a, "SourceNode"), _a);
     exports2.SourceNode = SourceNode;
   }
 });
@@ -2608,15 +2613,16 @@ var require_stack = __commonJS({
     "use strict";
     var { SourceNode } = require_source_map();
     var GrammarLocation = require_grammar_location();
-    var Stack = class _Stack {
+    var _a;
+    var Stack = (_a = class {
       /**
-       * Constructs the helper for tracking variable slots of the stack virtual machine
-       *
-       * @param {string} ruleName The name of rule that will be used in error messages
-       * @param {string} varName The prefix for generated names of variables
-       * @param {string} type The type of the variables. For JavaScript there are `var` or `let`
-       * @param {number[]} bytecode Bytecode for error messages
-       */
+      * Constructs the helper for tracking variable slots of the stack virtual machine
+      *
+      * @param {string} ruleName The name of rule that will be used in error messages
+      * @param {string} varName The prefix for generated names of variables
+      * @param {string} type The type of the variables. For JavaScript there are `var` or `let`
+      * @param {number[]} bytecode Bytecode for error messages
+      */
       constructor(ruleName, varName, type, bytecode) {
         this.sp = -1;
         this.maxSp = -1;
@@ -2628,219 +2634,209 @@ var require_stack = __commonJS({
         this.sourceMapStack = [];
       }
       /**
-       * Returns name of the variable at the index `i`.
-       *
-       * @param {number} i Index for which name must be generated
-       * @return {string} Generated name
-       *
-       * @throws {RangeError} If `i < 0`, which means a stack underflow (there are more `pop`s than `push`es)
-       */
+      * Returns name of the variable at the index `i`.
+      *
+      * @param {number} i Index for which name must be generated
+      * @return {string} Generated name
+      *
+      * @throws {RangeError} If `i < 0`, which means a stack underflow (there are more `pop`s than `push`es)
+      */
       name(i) {
         if (i < 0) {
-          throw new RangeError(
-            `Rule '${this.ruleName}': The variable stack underflow: attempt to use a variable '${this.varName}<x>' at an index ${i}.
-Bytecode: ${this.bytecode}`
-          );
+          throw new RangeError(`Rule '${this.ruleName}': The variable stack underflow: attempt to use a variable '${this.varName}<x>' at an index ${i}.
+Bytecode: ${this.bytecode}`);
         }
         return this.varName + i;
       }
       /**
-       *
-       * @param {PEG.LocationRange} location
-       * @param {SourceArray} chunks
-       * @param {string} [name]
-       * @returns
-       */
+      *
+      * @param {PEG.LocationRange} location
+      * @param {SourceArray} chunks
+      * @param {string} [name]
+      * @returns
+      */
       static sourceNode(location, chunks, name) {
         const start = GrammarLocation.offsetStart(location);
-        return new SourceNode(
-          start.line,
-          start.column ? start.column - 1 : null,
-          String(location.source),
-          chunks,
-          name
-        );
+        return new SourceNode(start.line, start.column ? start.column - 1 : null, String(location.source), chunks, name);
       }
       /**
-       * Assigns `exprCode` to the new variable in the stack, returns generated code.
-       * As the result, the size of a stack increases on 1.
-       *
-       * @param {string} exprCode Any expression code that must be assigned to the new variable in the stack
-       * @return {string|SourceNode} Assignment code
-       */
+      * Assigns `exprCode` to the new variable in the stack, returns generated code.
+      * As the result, the size of a stack increases on 1.
+      *
+      * @param {string} exprCode Any expression code that must be assigned to the new variable in the stack
+      * @return {string|SourceNode} Assignment code
+      */
       push(exprCode) {
         if (++this.sp > this.maxSp) {
           this.maxSp = this.sp;
         }
         const label = this.labels[this.sp];
-        const code = [this.name(this.sp), " = ", exprCode, ";"];
+        const code = [
+          this.name(this.sp),
+          " = ",
+          exprCode,
+          ";"
+        ];
         if (label) {
           if (this.sourceMapStack.length) {
-            const sourceNode = _Stack.sourceNode(
-              label.location,
-              code.splice(0, 2),
-              label.label
-            );
+            const sourceNode = _a.sourceNode(label.location, code.splice(0, 2), label.label);
             const { parts, location } = this.sourceMapPopInternal();
             const newLoc = location.start.offset < label.location.end.offset ? {
               start: label.location.end,
               end: location.end,
               source: location.source
             } : location;
-            const outerNode = _Stack.sourceNode(
-              newLoc,
-              code.concat("\n")
-            );
-            this.sourceMapStack.push([parts, parts.length + 1, location]);
-            return new SourceNode(
-              null,
-              null,
-              label.location.source,
-              [sourceNode, outerNode]
-            );
+            const outerNode = _a.sourceNode(newLoc, code.concat("\n"));
+            this.sourceMapStack.push([
+              parts,
+              parts.length + 1,
+              location
+            ]);
+            return new SourceNode(null, null, label.location.source, [
+              sourceNode,
+              outerNode
+            ]);
           } else {
-            return _Stack.sourceNode(
-              label.location,
-              code.concat("\n")
-            );
+            return _a.sourceNode(label.location, code.concat("\n"));
           }
         }
         return code.join("");
       }
       /**
-       * @overload
-       * @param {undefined} [n]
-       * @return {string}
-       */
+      * @overload
+      * @param {undefined} [n]
+      * @return {string}
+      */
       /**
-       * @overload
-       * @param {number} n
-       * @return {string[]}
-       */
+      * @overload
+      * @param {number} n
+      * @return {string[]}
+      */
       /**
-       * Returns name or `n` names of the variable(s) from the top of the stack.
-       *
-       * @param {number} [n] Quantity of variables, which need to be removed from the stack
-       * @returns {string[]|string} Generated name(s). If n is defined then it returns an
-       *                            array of length `n`
-       *
-       * @throws {RangeError} If the stack underflow (there are more `pop`s than `push`es)
-       */
+      * Returns name or `n` names of the variable(s) from the top of the stack.
+      *
+      * @param {number} [n] Quantity of variables, which need to be removed from the stack
+      * @returns {string[]|string} Generated name(s). If n is defined then it returns an
+      *                            array of length `n`
+      *
+      * @throws {RangeError} If the stack underflow (there are more `pop`s than `push`es)
+      */
       pop(n) {
         if (n !== void 0) {
           this.sp -= n;
-          return Array.from({ length: n }, (v, i) => this.name(this.sp + 1 + i));
+          return Array.from({
+            length: n
+          }, (v, i) => this.name(this.sp + 1 + i));
         }
         return this.name(this.sp--);
       }
       /**
-       * Returns name of the first free variable. The same as `index(0)`.
-       *
-       * @return {string} Generated name
-       *
-       * @throws {RangeError} If the stack is empty (there was no `push`'s yet)
-       */
+      * Returns name of the first free variable. The same as `index(0)`.
+      *
+      * @return {string} Generated name
+      *
+      * @throws {RangeError} If the stack is empty (there was no `push`'s yet)
+      */
       top() {
         return this.name(this.sp);
       }
       /**
-       * Returns name of the variable at index `i`.
-       *
-       * @param {number} i Index of the variable from top of the stack
-       * @return {string} Generated name
-       *
-       * @throws {RangeError} If `i < 0` or more than the stack size
-       */
+      * Returns name of the variable at index `i`.
+      *
+      * @param {number} i Index of the variable from top of the stack
+      * @return {string} Generated name
+      *
+      * @throws {RangeError} If `i < 0` or more than the stack size
+      */
       index(i) {
         if (i < 0) {
-          throw new RangeError(
-            `Rule '${this.ruleName}': The variable stack overflow: attempt to get a variable at a negative index ${i}.
-Bytecode: ${this.bytecode}`
-          );
+          throw new RangeError(`Rule '${this.ruleName}': The variable stack overflow: attempt to get a variable at a negative index ${i}.
+Bytecode: ${this.bytecode}`);
         }
         return this.name(this.sp - i);
       }
       /**
-       * Returns variable name that contains result (bottom of the stack).
-       *
-       * @return {string} Generated name
-       *
-       * @throws {RangeError} If the stack is empty (there was no `push`es yet)
-       */
+      * Returns variable name that contains result (bottom of the stack).
+      *
+      * @return {string} Generated name
+      *
+      * @throws {RangeError} If the stack is empty (there was no `push`es yet)
+      */
       result() {
         if (this.maxSp < 0) {
-          throw new RangeError(
-            `Rule '${this.ruleName}': The variable stack is empty, can't get the result.
-Bytecode: ${this.bytecode}`
-          );
+          throw new RangeError(`Rule '${this.ruleName}': The variable stack is empty, can't get the result.
+Bytecode: ${this.bytecode}`);
         }
         return this.name(0);
       }
       /**
-       * Returns defines of all used variables.
-       *
-       * @return {string} Generated define variable expression with the type `this.type`.
-       *         If the stack is empty, returns empty string
-       */
+      * Returns defines of all used variables.
+      *
+      * @return {string} Generated define variable expression with the type `this.type`.
+      *         If the stack is empty, returns empty string
+      */
       defines() {
         if (this.maxSp < 0) {
           return "";
         }
-        return this.type + " " + Array.from({ length: this.maxSp + 1 }, (v, i) => this.name(i)).join(", ") + ";";
+        return this.type + " " + Array.from({
+          length: this.maxSp + 1
+        }, (v, i) => this.name(i)).join(", ") + ";";
       }
       /**
-       * Checks that code in the `generateIf` and `generateElse` move the stack pointer in the same way.
-       *
-       * @template T
-       * @param {number} pos Opcode number for error messages
-       * @param {() => T} generateIf First function that works with this stack
-       * @param {(() => T)|null} [generateElse] Second function that works with this stack
-       * @return {T[]}
-       *
-       * @throws {Error} If `generateElse` is defined and the stack pointer moved differently in the
-       *         `generateIf` and `generateElse`
-       */
+      * Checks that code in the `generateIf` and `generateElse` move the stack pointer in the same way.
+      *
+      * @template T
+      * @param {number} pos Opcode number for error messages
+      * @param {() => T} generateIf First function that works with this stack
+      * @param {(() => T)|null} [generateElse] Second function that works with this stack
+      * @return {T[]}
+      *
+      * @throws {Error} If `generateElse` is defined and the stack pointer moved differently in the
+      *         `generateIf` and `generateElse`
+      */
       checkedIf(pos, generateIf, generateElse) {
         const baseSp = this.sp;
         const ifResult = generateIf();
         if (!generateElse) {
-          return [ifResult];
+          return [
+            ifResult
+          ];
         }
         const thenSp = this.sp;
         this.sp = baseSp;
         const elseResult = generateElse();
         if (thenSp !== this.sp) {
-          throw new Error(
-            "Rule '" + this.ruleName + "', position " + pos + ": Branches of a condition can't move the stack pointer differently (before: " + baseSp + ", after then: " + thenSp + ", after else: " + this.sp + "). Bytecode: " + this.bytecode
-          );
+          throw new Error("Rule '" + this.ruleName + "', position " + pos + ": Branches of a condition can't move the stack pointer differently (before: " + baseSp + ", after then: " + thenSp + ", after else: " + this.sp + "). Bytecode: " + this.bytecode);
         }
-        return [ifResult, elseResult];
+        return [
+          ifResult,
+          elseResult
+        ];
       }
       /**
-       * Checks that code in the `generateBody` do not move stack pointer.
-       *
-       * @template T
-       * @param {number} pos Opcode number for error messages
-       * @param {() => T} generateBody Function that works with this stack
-       * @return {T}
-       *
-       * @throws {Error} If `generateBody` move the stack pointer (if it contains unbalanced `push`es and `pop`s)
-       */
+      * Checks that code in the `generateBody` do not move stack pointer.
+      *
+      * @template T
+      * @param {number} pos Opcode number for error messages
+      * @param {() => T} generateBody Function that works with this stack
+      * @return {T}
+      *
+      * @throws {Error} If `generateBody` move the stack pointer (if it contains unbalanced `push`es and `pop`s)
+      */
       checkedLoop(pos, generateBody) {
         const baseSp = this.sp;
         const result = generateBody();
         if (baseSp !== this.sp) {
-          throw new Error(
-            "Rule '" + this.ruleName + "', position " + pos + ": Body of a loop can't move the stack pointer (before: " + baseSp + ", after: " + this.sp + "). Bytecode: " + this.bytecode
-          );
+          throw new Error("Rule '" + this.ruleName + "', position " + pos + ": Body of a loop can't move the stack pointer (before: " + baseSp + ", after: " + this.sp + "). Bytecode: " + this.bytecode);
         }
         return result;
       }
       /**
-       *
-       * @param {SourceArray} parts
-       * @param {PEG.LocationRange} location
-       */
+      *
+      * @param {SourceArray} parts
+      * @param {PEG.LocationRange} location
+      */
       sourceMapPush(parts, location) {
         if (this.sourceMapStack.length) {
           const top = this.sourceMapStack[this.sourceMapStack.length - 1];
@@ -2859,39 +2855,29 @@ Bytecode: ${this.bytecode}`
         ]);
       }
       /**
-       * @returns {{parts:SourceArray,location:PEG.LocationRange}}
-       */
+      * @returns {{parts:SourceArray,location:PEG.LocationRange}}
+      */
       sourceMapPopInternal() {
         const elt = this.sourceMapStack.pop();
         if (!elt) {
-          throw new RangeError(
-            `Rule '${this.ruleName}': Attempting to pop an empty source map stack.
-Bytecode: ${this.bytecode}`
-          );
+          throw new RangeError(`Rule '${this.ruleName}': Attempting to pop an empty source map stack.
+Bytecode: ${this.bytecode}`);
         }
-        const [
-          parts,
-          index,
-          location
-        ] = elt;
-        const chunks = parts.splice(index).map(
-          (chunk) => chunk instanceof SourceNode ? chunk : chunk + "\n"
-        );
+        const [parts, index, location] = elt;
+        const chunks = parts.splice(index).map((chunk) => chunk instanceof SourceNode ? chunk : chunk + "\n");
         if (chunks.length) {
           const start = GrammarLocation.offsetStart(location);
-          parts.push(new SourceNode(
-            start.line,
-            start.column - 1,
-            String(location.source),
-            chunks
-          ));
+          parts.push(new SourceNode(start.line, start.column - 1, String(location.source), chunks));
         }
-        return { parts, location };
+        return {
+          parts,
+          location
+        };
       }
       /**
-       * @param {number} [offset]
-       * @returns {[SourceArray, number, PEG.LocationRange]|undefined}
-       */
+      * @param {number} [offset]
+      * @returns {[SourceArray, number, PEG.LocationRange]|undefined}
+      */
       sourceMapPop(offset) {
         const { location } = this.sourceMapPopInternal();
         if (this.sourceMapStack.length && location.end.offset < this.sourceMapStack[this.sourceMapStack.length - 1][2].end.offset) {
@@ -2909,7 +2895,7 @@ Bytecode: ${this.bytecode}`
         }
         return void 0;
       }
-    };
+    }, __name(_a, "Stack"), _a);
     module2.exports = Stack;
   }
 });
@@ -2929,6 +2915,7 @@ var require_utils = __commonJS({
     function hex(ch) {
       return ch.codePointAt(0).toString(16).toUpperCase();
     }
+    __name(hex, "hex");
     exports2.hex = hex;
     function stringEscape(s) {
       if (typeof s === "object") {
@@ -2936,6 +2923,7 @@ var require_utils = __commonJS({
       }
       return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\0/g, "\\0").replace(/\x08/g, "\\b").replace(/\t/g, "\\t").replace(/\n/g, "\\n").replace(/\v/g, "\\v").replace(/\f/g, "\\f").replace(/\r/g, "\\r").replace(/[\u{10000}-\u{10FFFF}]/gu, (ch) => `\\u{${hex(ch)}}`).replace(/[\x00-\x0F]/g, (ch) => "\\x0" + hex(ch)).replace(/[\x10-\x1F\x7F-\xFF]/g, (ch) => "\\x" + hex(ch)).replace(/[\u0100-\u0FFF]/g, (ch) => "\\u0" + hex(ch)).replace(/[\u1000-\uFFFF]/g, (ch) => "\\u" + hex(ch));
     }
+    __name(stringEscape, "stringEscape");
     exports2.stringEscape = stringEscape;
     function regexpClassEscape(s) {
       if (typeof s === "object") {
@@ -2943,6 +2931,7 @@ var require_utils = __commonJS({
       }
       return s.replace(/\\/g, "\\\\").replace(/\//g, "\\/").replace(/]/g, "\\]").replace(/\^/g, "\\^").replace(/-/g, "\\-").replace(/\0/g, "\\0").replace(/\x08/g, "\\b").replace(/\t/g, "\\t").replace(/\n/g, "\\n").replace(/\v/g, "\\v").replace(/\f/g, "\\f").replace(/\r/g, "\\r").replace(/[\x00-\x0F]/g, (ch) => "\\x0" + hex(ch)).replace(/[\x10-\x1F\x7F-\xFF]/g, (ch) => "\\x" + hex(ch)).replace(/[\u{10000}-\u{10FFFF}]/gu, (ch) => "\\u{" + hex(ch) + "}").replace(/[\u0100-\u0FFF]/g, (ch) => "\\u0" + hex(ch)).replace(/[\u1000-\uFFFF]/g, (ch) => "\\u" + hex(ch));
     }
+    __name(regexpClassEscape, "regexpClassEscape");
     exports2.regexpClassEscape = regexpClassEscape;
     function base642(u8) {
       const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -2967,6 +2956,7 @@ var require_utils = __commonJS({
       }
       return res;
     }
+    __name(base642, "base64");
     exports2.base64 = base642;
     function codePointLen1(s) {
       const iter = s[Symbol.iterator]();
@@ -2980,6 +2970,7 @@ var require_utils = __commonJS({
       }
       return first.value.codePointAt(0);
     }
+    __name(codePointLen1, "codePointLen1");
     exports2.codePointLen1 = codePointLen1;
   }
 });
@@ -3002,7 +2993,8 @@ var require_parser = __commonJS({
       "&": "semantic_and",
       "!": "semantic_not"
     };
-    var peg$SyntaxError = class extends SyntaxError {
+    var _a;
+    var peg$SyntaxError = (_a = class extends SyntaxError {
       constructor(message, expected, found, location) {
         super(message);
         this.expected = expected;
@@ -3038,6 +3030,7 @@ var require_parser = __commonJS({
         function hex(ch) {
           return ch.codePointAt(0).toString(16).toUpperCase();
         }
+        __name(hex, "hex");
         const nonPrintable = Object.prototype.hasOwnProperty.call(RegExp.prototype, "unicode") ? new RegExp("[\\p{C}\\p{Mn}\\p{Mc}]", "gu") : null;
         function unicodeEscape(s) {
           if (nonPrintable) {
@@ -3045,20 +3038,21 @@ var require_parser = __commonJS({
           }
           return s;
         }
+        __name(unicodeEscape, "unicodeEscape");
         function literalEscape(s) {
           return unicodeEscape(s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\0/g, "\\0").replace(/\t/g, "\\t").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/[\x00-\x0F]/g, (ch) => "\\x0" + hex(ch)).replace(/[\x10-\x1F\x7F-\x9F]/g, (ch) => "\\x" + hex(ch)));
         }
+        __name(literalEscape, "literalEscape");
         function classEscape(s) {
           return unicodeEscape(s.replace(/\\/g, "\\\\").replace(/\]/g, "\\]").replace(/\^/g, "\\^").replace(/-/g, "\\-").replace(/\0/g, "\\0").replace(/\t/g, "\\t").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/[\x00-\x0F]/g, (ch) => "\\x0" + hex(ch)).replace(/[\x10-\x1F\x7F-\x9F]/g, (ch) => "\\x" + hex(ch)));
         }
+        __name(classEscape, "classEscape");
         const DESCRIBE_EXPECTATION_FNS = {
           literal(expectation) {
             return '"' + literalEscape(expectation.text) + '"';
           },
           class(expectation) {
-            const escapedParts = expectation.parts.map(
-              (part) => Array.isArray(part) ? classEscape(part[0]) + "-" + classEscape(part[1]) : classEscape(part)
-            );
+            const escapedParts = expectation.parts.map((part) => Array.isArray(part) ? classEscape(part[0]) + "-" + classEscape(part[1]) : classEscape(part));
             return "[" + (expectation.inverted ? "^" : "") + escapedParts.join("") + "]" + (expectation.unicode ? "u" : "");
           },
           any() {
@@ -3074,6 +3068,7 @@ var require_parser = __commonJS({
         function describeExpectation(expectation) {
           return DESCRIBE_EXPECTATION_FNS[expectation.type](expectation);
         }
+        __name(describeExpectation, "describeExpectation");
         function describeExpected(expected2) {
           const descriptions = expected2.map(describeExpectation);
           descriptions.sort();
@@ -3096,12 +3091,14 @@ var require_parser = __commonJS({
               return descriptions.slice(0, -1).join(", ") + ", or " + descriptions[descriptions.length - 1];
           }
         }
+        __name(describeExpected, "describeExpected");
         function describeFound(found2) {
           return found2 ? '"' + literalEscape(found2) + '"' : "end of input";
         }
+        __name(describeFound, "describeFound");
         return "Expected " + describeExpected(expected) + " but " + describeFound(found) + " found.";
       }
-    };
+    }, __name(_a, "peg$SyntaxError"), _a);
     function peg$parse(input, options2) {
       options2 = options2 !== void 0 ? options2 : {};
       const peg$FAILED = {};
@@ -3186,64 +3183,191 @@ var require_parser = __commonJS({
       const peg$e10 = peg$literalExpectation("/", false);
       const peg$e11 = peg$literalExpectation("@", false);
       const peg$e12 = peg$literalExpectation(":", false);
-      const peg$e13 = peg$classExpectation(["!", "$", "&"], false, false, false);
-      const peg$e14 = peg$classExpectation([["*", "+"], "?"], false, false, false);
+      const peg$e13 = peg$classExpectation([
+        "!",
+        "$",
+        "&"
+      ], false, false, false);
+      const peg$e14 = peg$classExpectation([
+        [
+          "*",
+          "+"
+        ],
+        "?"
+      ], false, false, false);
       const peg$e15 = peg$literalExpectation("|", false);
       const peg$e16 = peg$literalExpectation("..", false);
       const peg$e17 = peg$literalExpectation("(", false);
       const peg$e18 = peg$literalExpectation(")", false);
       const peg$e19 = peg$literalExpectation(".", false);
-      const peg$e20 = peg$classExpectation(["!", "&"], false, false, false);
-      const peg$e21 = peg$classExpectation([["\0", "\uD7FF"], ["\uE000", "\uFFFF"]], false, false, false);
-      const peg$e22 = peg$classExpectation([["\uD800", "\uDBFF"]], false, false, false);
-      const peg$e23 = peg$classExpectation([["\uDC00", "\uDFFF"]], false, false, false);
-      const peg$e24 = peg$classExpectation([["\uD800", "\uDFFF"]], false, false, false);
+      const peg$e20 = peg$classExpectation([
+        "!",
+        "&"
+      ], false, false, false);
+      const peg$e21 = peg$classExpectation([
+        [
+          "\0",
+          "\uD7FF"
+        ],
+        [
+          "\uE000",
+          "\uFFFF"
+        ]
+      ], false, false, false);
+      const peg$e22 = peg$classExpectation([
+        [
+          "\uD800",
+          "\uDBFF"
+        ]
+      ], false, false, false);
+      const peg$e23 = peg$classExpectation([
+        [
+          "\uDC00",
+          "\uDFFF"
+        ]
+      ], false, false, false);
+      const peg$e24 = peg$classExpectation([
+        [
+          "\uD800",
+          "\uDFFF"
+        ]
+      ], false, false, false);
       const peg$e25 = peg$otherExpectation("whitespace");
-      const peg$e26 = peg$classExpectation(["	", ["\v", "\f"], " ", "\\p{Zs}", "\xA0", "\uFEFF"], false, false, true);
-      const peg$e27 = peg$classExpectation(["\n", "\r", "\u2028", "\u2029"], false, false, false);
+      const peg$e26 = peg$classExpectation([
+        "	",
+        [
+          "\v",
+          "\f"
+        ],
+        " ",
+        "\\p{Zs}",
+        "\xA0",
+        "\uFEFF"
+      ], false, false, true);
+      const peg$e27 = peg$classExpectation([
+        "\n",
+        "\r",
+        "\u2028",
+        "\u2029"
+      ], false, false, false);
       const peg$e28 = peg$otherExpectation("end of line");
       const peg$e29 = peg$literalExpectation("\n", false);
       const peg$e30 = peg$literalExpectation("\r\n", false);
-      const peg$e31 = peg$classExpectation(["\r", ["\u2028", "\u2029"]], false, false, false);
+      const peg$e31 = peg$classExpectation([
+        "\r",
+        [
+          "\u2028",
+          "\u2029"
+        ]
+      ], false, false, false);
       const peg$e32 = peg$otherExpectation("comment");
       const peg$e33 = peg$literalExpectation("/*", false);
       const peg$e34 = peg$literalExpectation("*/", false);
       const peg$e35 = peg$literalExpectation("//", false);
       const peg$e36 = peg$otherExpectation("identifier");
-      const peg$e37 = peg$classExpectation(["\\p{ID_Start}", "_"], false, false, true);
+      const peg$e37 = peg$classExpectation([
+        "\\p{ID_Start}",
+        "_"
+      ], false, false, true);
       const peg$e38 = peg$literalExpectation("\\", false);
-      const peg$e39 = peg$classExpectation(["$", "\\p{ID_Continue}"], false, false, true);
+      const peg$e39 = peg$classExpectation([
+        "$",
+        "\\p{ID_Continue}"
+      ], false, false, true);
       const peg$e40 = peg$otherExpectation("literal");
       const peg$e41 = peg$literalExpectation("i", false);
       const peg$e42 = peg$otherExpectation("string");
       const peg$e43 = peg$literalExpectation('"', false);
       const peg$e44 = peg$literalExpectation("'", false);
-      const peg$e45 = peg$classExpectation(["\n", "\r", '"', "\\", ["\u2028", "\u2029"]], false, false, false);
-      const peg$e46 = peg$classExpectation(["\n", "\r", "'", "\\", ["\u2028", "\u2029"]], false, false, false);
+      const peg$e45 = peg$classExpectation([
+        "\n",
+        "\r",
+        '"',
+        "\\",
+        [
+          "\u2028",
+          "\u2029"
+        ]
+      ], false, false, false);
+      const peg$e46 = peg$classExpectation([
+        "\n",
+        "\r",
+        "'",
+        "\\",
+        [
+          "\u2028",
+          "\u2029"
+        ]
+      ], false, false, false);
       const peg$e47 = peg$otherExpectation("character class");
       const peg$e48 = peg$literalExpectation("[", false);
       const peg$e49 = peg$literalExpectation("^", false);
       const peg$e50 = peg$literalExpectation("]", false);
       const peg$e51 = peg$literalExpectation("p", true);
       const peg$e52 = peg$literalExpectation("_", false);
-      const peg$e53 = peg$classExpectation([["a", "z"]], false, true, false);
+      const peg$e53 = peg$classExpectation([
+        [
+          "a",
+          "z"
+        ]
+      ], false, true, false);
       const peg$e54 = peg$literalExpectation("u", false);
       const peg$e55 = peg$literalExpectation("-", false);
-      const peg$e56 = peg$classExpectation(["\n", "\r", ["\\", "]"], ["\u2028", "\u2029"]], false, false, false);
+      const peg$e56 = peg$classExpectation([
+        "\n",
+        "\r",
+        [
+          "\\",
+          "]"
+        ],
+        [
+          "\u2028",
+          "\u2029"
+        ]
+      ], false, false, false);
       const peg$e57 = peg$literalExpectation("0", false);
-      const peg$e58 = peg$classExpectation(['"', "'", "\\"], false, false, false);
+      const peg$e58 = peg$classExpectation([
+        '"',
+        "'",
+        "\\"
+      ], false, false, false);
       const peg$e59 = peg$literalExpectation("b", false);
       const peg$e60 = peg$literalExpectation("f", false);
       const peg$e61 = peg$literalExpectation("n", false);
       const peg$e62 = peg$literalExpectation("r", false);
       const peg$e63 = peg$literalExpectation("t", false);
       const peg$e64 = peg$literalExpectation("v", false);
-      const peg$e65 = peg$classExpectation([["0", "9"], "p", "u", "x"], false, false, false);
+      const peg$e65 = peg$classExpectation([
+        [
+          "0",
+          "9"
+        ],
+        "p",
+        "u",
+        "x"
+      ], false, false, false);
       const peg$e66 = peg$literalExpectation("x", false);
-      const peg$e67 = peg$classExpectation([["0", "9"]], false, false, false);
-      const peg$e68 = peg$classExpectation([["0", "9"], ["a", "f"]], false, true, false);
+      const peg$e67 = peg$classExpectation([
+        [
+          "0",
+          "9"
+        ]
+      ], false, false, false);
+      const peg$e68 = peg$classExpectation([
+        [
+          "0",
+          "9"
+        ],
+        [
+          "a",
+          "f"
+        ]
+      ], false, true, false);
       const peg$e69 = peg$otherExpectation("code block");
-      const peg$e70 = peg$classExpectation(["{", "}"], false, false, false);
+      const peg$e70 = peg$classExpectation([
+        "{",
+        "}"
+      ], false, false, false);
       function peg$f0(imports, topLevelInitializer, initializer, rules) {
         return {
           type: "grammar",
@@ -3254,9 +3378,14 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f0, "peg$f0");
       function peg$f1(imports, body) {
-        return [imports, body];
+        return [
+          imports,
+          body
+        ];
       }
+      __name(peg$f1, "peg$f1");
       function peg$f2(code) {
         return {
           type: "top_level_initializer",
@@ -3264,6 +3393,7 @@ var require_parser = __commonJS({
           codeLocation: location()
         };
       }
+      __name(peg$f2, "peg$f2");
       function peg$f3(code) {
         return {
           type: "top_level_initializer",
@@ -3271,6 +3401,7 @@ var require_parser = __commonJS({
           codeLocation: location()
         };
       }
+      __name(peg$f3, "peg$f3");
       function peg$f4(what, from) {
         return {
           type: "grammar_import",
@@ -3279,6 +3410,7 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f4, "peg$f4");
       function peg$f5(from) {
         return {
           type: "grammar_import",
@@ -3287,13 +3419,17 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f5, "peg$f5");
       function peg$f6(first, others) {
         if (!others) {
-          return [first];
+          return [
+            first
+          ];
         }
         others.unshift(first);
         return others;
       }
+      __name(peg$f6, "peg$f6");
       function peg$f7(binding) {
         return {
           type: "import_binding_default",
@@ -3301,16 +3437,21 @@ var require_parser = __commonJS({
           location: binding[1]
         };
       }
+      __name(peg$f7, "peg$f7");
       function peg$f8(binding) {
-        return [{
-          type: "import_binding_all",
-          binding: binding[0],
-          location: binding[1]
-        }];
+        return [
+          {
+            type: "import_binding_all",
+            binding: binding[0],
+            location: binding[1]
+          }
+        ];
       }
+      __name(peg$f8, "peg$f8");
       function peg$f9() {
         return [];
       }
+      __name(peg$f9, "peg$f9");
       function peg$f10(rename, binding) {
         return {
           type: "import_binding_rename",
@@ -3320,6 +3461,7 @@ var require_parser = __commonJS({
           location: binding[1]
         };
       }
+      __name(peg$f10, "peg$f10");
       function peg$f11(binding) {
         return {
           type: "import_binding",
@@ -3327,21 +3469,36 @@ var require_parser = __commonJS({
           location: binding[1]
         };
       }
-      function peg$f12(module3) {
-        return { type: "import_module_specifier", module: module3, location: location() };
+      __name(peg$f11, "peg$f11");
+      function peg$f12(module1) {
+        return {
+          type: "import_module_specifier",
+          module: module1,
+          location: location()
+        };
       }
+      __name(peg$f12, "peg$f12");
       function peg$f13(id) {
-        return [id, location()];
+        return [
+          id,
+          location()
+        ];
       }
+      __name(peg$f13, "peg$f13");
       function peg$f14(id) {
-        return [id, location()];
+        return [
+          id,
+          location()
+        ];
       }
+      __name(peg$f14, "peg$f14");
       function peg$f15(id) {
         if (reservedWords.has(id[0])) {
           error(`Binding identifier can't be a reserved word "${id[0]}"`, id[1]);
         }
         return id[0];
       }
+      __name(peg$f15, "peg$f15");
       function peg$f16(code) {
         return {
           type: "top_level_initializer",
@@ -3350,6 +3507,7 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f16, "peg$f16");
       function peg$f17(code) {
         return {
           type: "initializer",
@@ -3358,6 +3516,7 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f17, "peg$f17");
       function peg$f18(name, displayName, expression) {
         return {
           type: "rule",
@@ -3372,13 +3531,17 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f18, "peg$f18");
       function peg$f19(head, tail) {
         return tail.length > 0 ? {
           type: "choice",
-          alternatives: [head].concat(tail),
+          alternatives: [
+            head
+          ].concat(tail),
           location: location()
         } : head;
       }
+      __name(peg$f19, "peg$f19");
       function peg$f20(expression, code) {
         return code !== null ? {
           type: "action",
@@ -3388,13 +3551,17 @@ var require_parser = __commonJS({
           location: location()
         } : expression;
       }
+      __name(peg$f20, "peg$f20");
       function peg$f21(head, tail) {
         return tail.length > 0 || head.type === "labeled" && head.pick ? {
           type: "sequence",
-          elements: [head].concat(tail),
+          elements: [
+            head
+          ].concat(tail),
           location: location()
         } : head;
       }
+      __name(peg$f21, "peg$f21");
       function peg$f22(pluck, label, expression) {
         if (expression.type.startsWith("semantic_")) {
           error('"@" cannot be used on a semantic predicate', pluck);
@@ -3409,6 +3576,7 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f22, "peg$f22");
       function peg$f23(label, expression) {
         return {
           type: "labeled",
@@ -3418,15 +3586,18 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f23, "peg$f23");
       function peg$f24() {
         return location();
       }
+      __name(peg$f24, "peg$f24");
       function peg$f25(label) {
         if (reservedWords.has(label[0])) {
           error(`Label can't be a reserved word "${label[0]}"`, label[1]);
         }
         return label;
       }
+      __name(peg$f25, "peg$f25");
       function peg$f26(operator, expression) {
         return {
           type: OPS_TO_PREFIXED_TYPES[operator],
@@ -3434,6 +3605,7 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f26, "peg$f26");
       function peg$f27(expression, operator) {
         return {
           type: OPS_TO_SUFFIXED_TYPES[operator],
@@ -3441,6 +3613,7 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f27, "peg$f27");
       function peg$f28(expression, boundaries, delimiter) {
         const min = boundaries[0];
         const max = boundaries[1];
@@ -3456,21 +3629,43 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f28, "peg$f28");
       function peg$f29(min, max) {
         return [
-          min !== null ? min : { type: "constant", value: 0 },
-          max !== null ? max : { type: "constant", value: null }
+          min !== null ? min : {
+            type: "constant",
+            value: 0
+          },
+          max !== null ? max : {
+            type: "constant",
+            value: null
+          }
         ];
       }
+      __name(peg$f29, "peg$f29");
       function peg$f30(exact) {
-        return [null, exact];
+        return [
+          null,
+          exact
+        ];
       }
+      __name(peg$f30, "peg$f30");
       function peg$f31(value) {
-        return { type: "constant", value, location: location() };
+        return {
+          type: "constant",
+          value,
+          location: location()
+        };
       }
+      __name(peg$f31, "peg$f31");
       function peg$f32(value) {
-        return { type: "variable", value: value[0], location: location() };
+        return {
+          type: "variable",
+          value: value[0],
+          location: location()
+        };
       }
+      __name(peg$f32, "peg$f32");
       function peg$f33(value) {
         return {
           type: "function",
@@ -3479,9 +3674,15 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f33, "peg$f33");
       function peg$f34(expression) {
-        return expression.type === "labeled" || expression.type === "sequence" ? { type: "group", expression, location: location() } : expression;
+        return expression.type === "labeled" || expression.type === "sequence" ? {
+          type: "group",
+          expression,
+          location: location()
+        } : expression;
       }
+      __name(peg$f34, "peg$f34");
       function peg$f35(library, name) {
         return {
           type: "library_ref",
@@ -3491,9 +3692,15 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f35, "peg$f35");
       function peg$f36(name) {
-        return { type: "rule_ref", name: name[0], location: location() };
+        return {
+          type: "rule_ref",
+          name: name[0],
+          location: location()
+        };
       }
+      __name(peg$f36, "peg$f36");
       function peg$f37(operator, code) {
         return {
           type: OPS_TO_SEMANTIC_PREDICATE_TYPES[operator],
@@ -3502,9 +3709,14 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f37, "peg$f37");
       function peg$f38(head, tail) {
-        return [head + tail.join(""), location()];
+        return [
+          head + tail.join(""),
+          location()
+        ];
       }
+      __name(peg$f38, "peg$f38");
       function peg$f39(value, ignoreCase) {
         return {
           type: "literal",
@@ -3513,16 +3725,24 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f39, "peg$f39");
       function peg$f40(chars) {
         return chars.join("");
       }
+      __name(peg$f40, "peg$f40");
       function peg$f41(chars) {
         return chars.join("");
       }
+      __name(peg$f41, "peg$f41");
       function peg$f42(inverted, parts, flags) {
         if (inverted && parts.length === 0) {
           if (flags.unicode) {
-            parts = [["\uD800", "\uDFFF"]];
+            parts = [
+              [
+                "\uD800",
+                "\uDFFF"
+              ]
+            ];
           } else {
             return {
               type: "any",
@@ -3536,11 +3756,10 @@ var require_parser = __commonJS({
           inverted: Boolean(inverted),
           ignoreCase: Boolean(flags.ignoreCase),
           location: location(),
-          unicode: Boolean(flags.unicode) || parts.flat().some(
-            (c) => typeof c === "object" && c.unicode || c.codePointAt(0) > 65535
-          )
+          unicode: Boolean(flags.unicode) || parts.flat().some((c) => typeof c === "object" && c.unicode || c.codePointAt(0) > 65535)
         };
       }
+      __name(peg$f42, "peg$f42");
       function peg$f43(value) {
         try {
           new RegExp(`[\\${value}]`, "u");
@@ -3554,6 +3773,7 @@ var require_parser = __commonJS({
           location: location()
         };
       }
+      __name(peg$f43, "peg$f43");
       function peg$f44(flags) {
         const ret = Object.fromEntries(flags);
         if (Object.keys(ret).length !== flags.length) {
@@ -3561,65 +3781,101 @@ var require_parser = __commonJS({
         }
         return ret;
       }
+      __name(peg$f44, "peg$f44");
       function peg$f45() {
-        return ["ignoreCase", true];
+        return [
+          "ignoreCase",
+          true
+        ];
       }
+      __name(peg$f45, "peg$f45");
       function peg$f46() {
-        return ["unicode", true];
+        return [
+          "unicode",
+          true
+        ];
       }
+      __name(peg$f46, "peg$f46");
       function peg$f47(begin, end) {
         if (begin.codePointAt(0) > end.codePointAt(0)) {
-          error(
-            "Invalid character range: " + text() + "."
-          );
+          error("Invalid character range: " + text() + ".");
         }
-        return [begin, end];
+        return [
+          begin,
+          end
+        ];
       }
+      __name(peg$f47, "peg$f47");
       function peg$f48() {
         return "";
       }
+      __name(peg$f48, "peg$f48");
       function peg$f49() {
         return "\0";
       }
+      __name(peg$f49, "peg$f49");
       function peg$f50() {
         return "\b";
       }
+      __name(peg$f50, "peg$f50");
       function peg$f51() {
         return "\f";
       }
+      __name(peg$f51, "peg$f51");
       function peg$f52() {
         return "\n";
       }
+      __name(peg$f52, "peg$f52");
       function peg$f53() {
         return "\r";
       }
+      __name(peg$f53, "peg$f53");
       function peg$f54() {
         return "	";
       }
+      __name(peg$f54, "peg$f54");
       function peg$f55() {
         return "\v";
       }
+      __name(peg$f55, "peg$f55");
       function peg$f56(digits) {
         return String.fromCharCode(parseInt(digits, 16));
       }
+      __name(peg$f56, "peg$f56");
       function peg$f57(digits) {
         return String.fromCharCode(parseInt(digits, 16));
       }
+      __name(peg$f57, "peg$f57");
       function peg$f58(digits) {
         return String.fromCodePoint(parseInt(digits, 16));
       }
+      __name(peg$f58, "peg$f58");
       function peg$f59() {
-        return { type: "any", location: location() };
+        return {
+          type: "any",
+          location: location()
+        };
       }
+      __name(peg$f59, "peg$f59");
       function peg$f60(code) {
-        return [code, location()];
+        return [
+          code,
+          location()
+        ];
       }
+      __name(peg$f60, "peg$f60");
       function peg$f61(digits) {
         return parseInt(digits, 10);
       }
+      __name(peg$f61, "peg$f61");
       let peg$currPos = options2.peg$currPos | 0;
       let peg$savedPos = peg$currPos;
-      const peg$posDetailsCache = [{ line: 1, column: 1 }];
+      const peg$posDetailsCache = [
+        {
+          line: 1,
+          column: 1
+        }
+      ];
       let peg$maxFailPos = peg$currPos;
       let peg$maxFailExpected = options2.peg$maxFailExpected || [];
       let peg$silentFails = options2.peg$silentFails | 0;
@@ -3633,9 +3889,11 @@ var require_parser = __commonJS({
       function text() {
         return input.substring(peg$savedPos, peg$currPos);
       }
+      __name(text, "text");
       function offset() {
         return peg$savedPos;
       }
+      __name(offset, "offset");
       function range() {
         return {
           source: peg$source,
@@ -3643,21 +3901,23 @@ var require_parser = __commonJS({
           end: peg$currPos
         };
       }
+      __name(range, "range");
       function location() {
         return peg$computeLocation(peg$savedPos, peg$currPos);
       }
+      __name(location, "location");
       function expected(description, location2) {
         location2 = location2 !== void 0 ? location2 : peg$computeLocation(peg$savedPos, peg$currPos);
-        throw peg$buildStructuredError(
-          [peg$otherExpectation(description)],
-          input.substring(peg$savedPos, peg$currPos),
-          location2
-        );
+        throw peg$buildStructuredError([
+          peg$otherExpectation(description)
+        ], input.substring(peg$savedPos, peg$currPos), location2);
       }
+      __name(expected, "expected");
       function error(message, location2) {
         location2 = location2 !== void 0 ? location2 : peg$computeLocation(peg$savedPos, peg$currPos);
         throw peg$buildSimpleError(message, location2);
       }
+      __name(error, "error");
       function peg$getUnicode(pos = peg$currPos) {
         const cp = input.codePointAt(pos);
         if (cp === void 0) {
@@ -3665,21 +3925,44 @@ var require_parser = __commonJS({
         }
         return String.fromCodePoint(cp);
       }
+      __name(peg$getUnicode, "peg$getUnicode");
       function peg$literalExpectation(text2, ignoreCase) {
-        return { type: "literal", text: text2, ignoreCase };
+        return {
+          type: "literal",
+          text: text2,
+          ignoreCase
+        };
       }
+      __name(peg$literalExpectation, "peg$literalExpectation");
       function peg$classExpectation(parts, inverted, ignoreCase, unicode) {
-        return { type: "class", parts, inverted, ignoreCase, unicode };
+        return {
+          type: "class",
+          parts,
+          inverted,
+          ignoreCase,
+          unicode
+        };
       }
+      __name(peg$classExpectation, "peg$classExpectation");
       function peg$anyExpectation() {
-        return { type: "any" };
+        return {
+          type: "any"
+        };
       }
+      __name(peg$anyExpectation, "peg$anyExpectation");
       function peg$endExpectation() {
-        return { type: "end" };
+        return {
+          type: "end"
+        };
       }
+      __name(peg$endExpectation, "peg$endExpectation");
       function peg$otherExpectation(description) {
-        return { type: "other", description };
+        return {
+          type: "other",
+          description
+        };
       }
+      __name(peg$otherExpectation, "peg$otherExpectation");
       function peg$computePosDetails(pos) {
         let details = peg$posDetailsCache[pos];
         let p;
@@ -3711,6 +3994,7 @@ var require_parser = __commonJS({
           return details;
         }
       }
+      __name(peg$computePosDetails, "peg$computePosDetails");
       function peg$computeLocation(startPos, endPos, offset2) {
         const startPosDetails = peg$computePosDetails(startPos);
         const endPosDetails = peg$computePosDetails(endPos);
@@ -3733,6 +4017,7 @@ var require_parser = __commonJS({
         }
         return res;
       }
+      __name(peg$computeLocation, "peg$computeLocation");
       function peg$fail(expected2) {
         if (peg$currPos < peg$maxFailPos) {
           return;
@@ -3743,17 +4028,15 @@ var require_parser = __commonJS({
         }
         peg$maxFailExpected.push(expected2);
       }
+      __name(peg$fail, "peg$fail");
       function peg$buildSimpleError(message, location2) {
         return new peg$SyntaxError(message, null, null, location2);
       }
+      __name(peg$buildSimpleError, "peg$buildSimpleError");
       function peg$buildStructuredError(expected2, found, location2) {
-        return new peg$SyntaxError(
-          peg$SyntaxError.buildMessage(expected2, found),
-          expected2,
-          found,
-          location2
-        );
+        return new peg$SyntaxError(peg$SyntaxError.buildMessage(expected2, found), expected2, found, location2);
       }
+      __name(peg$buildStructuredError, "peg$buildStructuredError");
       function peg$parseGrammar() {
         let s0, s1, s2, s3, s4, s5, s6, s7, s8;
         s0 = peg$currPos;
@@ -3818,6 +4101,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseGrammar, "peg$parseGrammar");
       function peg$parseImportsAndSource() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -3827,6 +4111,7 @@ var require_parser = __commonJS({
         s0 = peg$f1(s1, s2);
         return s0;
       }
+      __name(peg$parseImportsAndSource, "peg$parseImportsAndSource");
       function peg$parseGrammarBody() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -3859,6 +4144,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseGrammarBody, "peg$parseGrammarBody");
       function peg$parseImportsAsText() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -3870,6 +4156,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseImportsAsText, "peg$parseImportsAsText");
       function peg$parseImportDeclarations() {
         let s0, s1;
         s0 = [];
@@ -3880,6 +4167,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseImportDeclarations, "peg$parseImportDeclarations");
       function peg$parseImportDeclaration() {
         let s0, s1, s2, s3, s4, s5, s6, s7, s8, s9;
         s0 = peg$currPos;
@@ -3912,7 +4200,10 @@ var require_parser = __commonJS({
                 }
               }
               if (s9 !== peg$FAILED) {
-                s8 = [s8, s9];
+                s8 = [
+                  s8,
+                  s9
+                ];
                 s7 = s8;
               } else {
                 peg$currPos = s7;
@@ -3963,7 +4254,10 @@ var require_parser = __commonJS({
                 }
               }
               if (s7 !== peg$FAILED) {
-                s6 = [s6, s7];
+                s6 = [
+                  s6,
+                  s7
+                ];
                 s5 = s6;
               } else {
                 peg$currPos = s5;
@@ -3985,6 +4279,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseImportDeclaration, "peg$parseImportDeclaration");
       function peg$parseImportClause() {
         let s0, s1, s2, s3, s4, s5, s6;
         s0 = peg$parseNameSpaceImport();
@@ -4034,6 +4329,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseImportClause, "peg$parseImportClause");
       function peg$parseImportedDefaultBinding() {
         let s0, s1;
         s0 = peg$currPos;
@@ -4045,6 +4341,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseImportedDefaultBinding, "peg$parseImportedDefaultBinding");
       function peg$parseNameSpaceImport() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -4088,6 +4385,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseNameSpaceImport, "peg$parseNameSpaceImport");
       function peg$parseNamedImports() {
         let s0, s1, s2, s3, s4, s5, s6, s7;
         s0 = peg$currPos;
@@ -4150,7 +4448,10 @@ var require_parser = __commonJS({
               }
               if (s6 !== peg$FAILED) {
                 s7 = peg$parse__();
-                s6 = [s6, s7];
+                s6 = [
+                  s6,
+                  s7
+                ];
                 s5 = s6;
               } else {
                 peg$currPos = s5;
@@ -4185,6 +4486,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseNamedImports, "peg$parseNamedImports");
       function peg$parseFromClause() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -4212,6 +4514,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseFromClause, "peg$parseFromClause");
       function peg$parseImportsList() {
         let s0, s1, s2, s3, s4, s5, s6;
         s0 = peg$currPos;
@@ -4233,7 +4536,11 @@ var require_parser = __commonJS({
           }
           if (s5 !== peg$FAILED) {
             s6 = peg$parse__();
-            s4 = [s4, s5, s6];
+            s4 = [
+              s4,
+              s5,
+              s6
+            ];
             s3 = s4;
           } else {
             peg$currPos = s3;
@@ -4259,6 +4566,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseImportsList, "peg$parseImportsList");
       function peg$parseImportSpecifier() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -4303,6 +4611,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseImportSpecifier, "peg$parseImportSpecifier");
       function peg$parseModuleSpecifier() {
         let s0, s1;
         s0 = peg$currPos;
@@ -4314,6 +4623,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseModuleSpecifier, "peg$parseModuleSpecifier");
       function peg$parseImportedBinding() {
         let s0, s1;
         s0 = peg$currPos;
@@ -4325,6 +4635,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseImportedBinding, "peg$parseImportedBinding");
       function peg$parseModuleExportName() {
         let s0, s1;
         s0 = peg$parseIdentifierName();
@@ -4339,6 +4650,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseModuleExportName, "peg$parseModuleExportName");
       function peg$parseBindingIdentifier() {
         let s0, s1;
         s0 = peg$currPos;
@@ -4350,6 +4662,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseBindingIdentifier, "peg$parseBindingIdentifier");
       function peg$parseTopLevelInitializer() {
         let s0, s1, s2, s3, s4;
         s0 = peg$currPos;
@@ -4397,6 +4710,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseTopLevelInitializer, "peg$parseTopLevelInitializer");
       function peg$parseInitializer() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -4416,6 +4730,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseInitializer, "peg$parseInitializer");
       function peg$parseRule() {
         let s0, s1, s2, s3, s4, s5, s6, s7;
         s0 = peg$currPos;
@@ -4469,6 +4784,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseRule, "peg$parseRule");
       function peg$parseChoiceExpression() {
         let s0, s1, s2, s3, s4, s5, s6, s7;
         s0 = peg$currPos;
@@ -4534,6 +4850,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseChoiceExpression, "peg$parseChoiceExpression");
       function peg$parseActionExpression() {
         let s0, s1, s2, s3, s4;
         s0 = peg$currPos;
@@ -4559,6 +4876,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseActionExpression, "peg$parseActionExpression");
       function peg$parseSequenceExpression() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -4594,6 +4912,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSequenceExpression, "peg$parseSequenceExpression");
       function peg$parseLabeledExpression() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -4637,6 +4956,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseLabeledExpression, "peg$parseLabeledExpression");
       function peg$parsePluck() {
         let s0, s1;
         s0 = peg$currPos;
@@ -4656,6 +4976,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parsePluck, "peg$parsePluck");
       function peg$parseLabelColon() {
         let s0, s1, s2, s3, s4;
         s0 = peg$currPos;
@@ -4685,6 +5006,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseLabelColon, "peg$parseLabelColon");
       function peg$parsePrefixedExpression() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -4708,6 +5030,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parsePrefixedExpression, "peg$parsePrefixedExpression");
       function peg$parsePrefixedOperator() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -4721,6 +5044,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parsePrefixedOperator, "peg$parsePrefixedOperator");
       function peg$parseSuffixedExpression() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -4747,6 +5071,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSuffixedExpression, "peg$parseSuffixedExpression");
       function peg$parseSuffixedOperator() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -4760,6 +5085,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSuffixedOperator, "peg$parseSuffixedOperator");
       function peg$parseRepeatedExpression() {
         let s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11;
         s0 = peg$currPos;
@@ -4837,6 +5163,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseRepeatedExpression, "peg$parseRepeatedExpression");
       function peg$parseBoundaries() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -4877,6 +5204,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseBoundaries, "peg$parseBoundaries");
       function peg$parseBoundary() {
         let s0, s1;
         s0 = peg$currPos;
@@ -4906,6 +5234,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseBoundary, "peg$parseBoundary");
       function peg$parsePrimaryExpression() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$parseLiteralMatcher();
@@ -4964,6 +5293,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parsePrimaryExpression, "peg$parsePrimaryExpression");
       function peg$parseRuleReferenceExpression() {
         let s0, s1, s2, s3, s4, s5, s6, s7;
         s0 = peg$currPos;
@@ -5007,7 +5337,10 @@ var require_parser = __commonJS({
             s6 = peg$parseStringLiteral();
             if (s6 !== peg$FAILED) {
               s7 = peg$parse__();
-              s6 = [s6, s7];
+              s6 = [
+                s6,
+                s7
+              ];
               s5 = s6;
             } else {
               peg$currPos = s5;
@@ -5026,7 +5359,11 @@ var require_parser = __commonJS({
               }
             }
             if (s6 !== peg$FAILED) {
-              s4 = [s4, s5, s6];
+              s4 = [
+                s4,
+                s5,
+                s6
+              ];
               s3 = s4;
             } else {
               peg$currPos = s3;
@@ -5053,6 +5390,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseRuleReferenceExpression, "peg$parseRuleReferenceExpression");
       function peg$parseSemanticPredicateExpression() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -5073,6 +5411,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSemanticPredicateExpression, "peg$parseSemanticPredicateExpression");
       function peg$parseSemanticPredicateOperator() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -5086,6 +5425,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSemanticPredicateOperator, "peg$parseSemanticPredicateOperator");
       function peg$parseSourceCharacter() {
         let s0;
         s0 = peg$parseSourceCharacterLow();
@@ -5094,6 +5434,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSourceCharacter, "peg$parseSourceCharacter");
       function peg$parseSourceCharacterLow() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -5107,6 +5448,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSourceCharacterLow, "peg$parseSourceCharacterLow");
       function peg$parseSourceCharacterHigh() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -5131,7 +5473,10 @@ var require_parser = __commonJS({
             }
           }
           if (s3 !== peg$FAILED) {
-            s2 = [s2, s3];
+            s2 = [
+              s2,
+              s3
+            ];
             s1 = s2;
           } else {
             peg$currPos = s1;
@@ -5159,6 +5504,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSourceCharacterHigh, "peg$parseSourceCharacterHigh");
       function peg$parseWhiteSpace() {
         let s0, s1;
         peg$silentFails++;
@@ -5180,6 +5526,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseWhiteSpace, "peg$parseWhiteSpace");
       function peg$parseLineTerminator() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -5193,6 +5540,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseLineTerminator, "peg$parseLineTerminator");
       function peg$parseLineTerminatorSequence() {
         let s0, s1;
         peg$silentFails++;
@@ -5236,6 +5584,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseLineTerminatorSequence, "peg$parseLineTerminatorSequence");
       function peg$parseComment() {
         let s0, s1;
         peg$silentFails++;
@@ -5252,6 +5601,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseComment, "peg$parseComment");
       function peg$parseMultiLineComment() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -5288,7 +5638,10 @@ var require_parser = __commonJS({
           if (s4 !== peg$FAILED) {
             s5 = peg$parseSourceCharacter();
             if (s5 !== peg$FAILED) {
-              s4 = [s4, s5];
+              s4 = [
+                s4,
+                s5
+              ];
               s3 = s4;
             } else {
               peg$currPos = s3;
@@ -5322,7 +5675,10 @@ var require_parser = __commonJS({
             if (s4 !== peg$FAILED) {
               s5 = peg$parseSourceCharacter();
               if (s5 !== peg$FAILED) {
-                s4 = [s4, s5];
+                s4 = [
+                  s4,
+                  s5
+                ];
                 s3 = s4;
               } else {
                 peg$currPos = s3;
@@ -5343,7 +5699,11 @@ var require_parser = __commonJS({
             }
           }
           if (s3 !== peg$FAILED) {
-            s1 = [s1, s2, s3];
+            s1 = [
+              s1,
+              s2,
+              s3
+            ];
             s0 = s1;
           } else {
             peg$currPos = s0;
@@ -5355,6 +5715,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseMultiLineComment, "peg$parseMultiLineComment");
       function peg$parseMultiLineCommentNoLineTerminator() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -5394,7 +5755,10 @@ var require_parser = __commonJS({
           if (s4 !== peg$FAILED) {
             s5 = peg$parseSourceCharacter();
             if (s5 !== peg$FAILED) {
-              s4 = [s4, s5];
+              s4 = [
+                s4,
+                s5
+              ];
               s3 = s4;
             } else {
               peg$currPos = s3;
@@ -5431,7 +5795,10 @@ var require_parser = __commonJS({
             if (s4 !== peg$FAILED) {
               s5 = peg$parseSourceCharacter();
               if (s5 !== peg$FAILED) {
-                s4 = [s4, s5];
+                s4 = [
+                  s4,
+                  s5
+                ];
                 s3 = s4;
               } else {
                 peg$currPos = s3;
@@ -5452,7 +5819,11 @@ var require_parser = __commonJS({
             }
           }
           if (s3 !== peg$FAILED) {
-            s1 = [s1, s2, s3];
+            s1 = [
+              s1,
+              s2,
+              s3
+            ];
             s0 = s1;
           } else {
             peg$currPos = s0;
@@ -5464,6 +5835,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseMultiLineCommentNoLineTerminator, "peg$parseMultiLineCommentNoLineTerminator");
       function peg$parseSingleLineComment() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -5492,7 +5864,10 @@ var require_parser = __commonJS({
           if (s4 !== peg$FAILED) {
             s5 = peg$parseSourceCharacter();
             if (s5 !== peg$FAILED) {
-              s4 = [s4, s5];
+              s4 = [
+                s4,
+                s5
+              ];
               s3 = s4;
             } else {
               peg$currPos = s3;
@@ -5518,7 +5893,10 @@ var require_parser = __commonJS({
             if (s4 !== peg$FAILED) {
               s5 = peg$parseSourceCharacter();
               if (s5 !== peg$FAILED) {
-                s4 = [s4, s5];
+                s4 = [
+                  s4,
+                  s5
+                ];
                 s3 = s4;
               } else {
                 peg$currPos = s3;
@@ -5529,7 +5907,10 @@ var require_parser = __commonJS({
               s3 = peg$FAILED;
             }
           }
-          s1 = [s1, s2];
+          s1 = [
+            s1,
+            s2
+          ];
           s0 = s1;
         } else {
           peg$currPos = s0;
@@ -5537,6 +5918,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSingleLineComment, "peg$parseSingleLineComment");
       function peg$parseIdentifierName() {
         let s0, s1, s2, s3;
         peg$silentFails++;
@@ -5564,6 +5946,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseIdentifierName, "peg$parseIdentifierName");
       function peg$parseIdentifierStart() {
         let s0, s1, s2;
         s0 = peg$getUnicode();
@@ -5601,6 +5984,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseIdentifierStart, "peg$parseIdentifierStart");
       function peg$parseIdentifierPart() {
         let s0;
         s0 = peg$getUnicode();
@@ -5614,6 +5998,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseIdentifierPart, "peg$parseIdentifierPart");
       function peg$parseLiteralMatcher() {
         let s0, s1, s2;
         peg$silentFails++;
@@ -5647,6 +6032,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseLiteralMatcher, "peg$parseLiteralMatcher");
       function peg$parseStringLiteral() {
         let s0, s1, s2, s3;
         peg$silentFails++;
@@ -5735,6 +6121,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseStringLiteral, "peg$parseStringLiteral");
       function peg$parseDoubleStringCharacter() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -5760,7 +6147,10 @@ var require_parser = __commonJS({
         if (s2 !== peg$FAILED) {
           s3 = peg$parseSourceCharacter();
           if (s3 !== peg$FAILED) {
-            s2 = [s2, s3];
+            s2 = [
+              s2,
+              s3
+            ];
             s1 = s2;
           } else {
             peg$currPos = s1;
@@ -5804,6 +6194,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseDoubleStringCharacter, "peg$parseDoubleStringCharacter");
       function peg$parseSingleStringCharacter() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -5829,7 +6220,10 @@ var require_parser = __commonJS({
         if (s2 !== peg$FAILED) {
           s3 = peg$parseSourceCharacter();
           if (s3 !== peg$FAILED) {
-            s2 = [s2, s3];
+            s2 = [
+              s2,
+              s3
+            ];
             s1 = s2;
           } else {
             peg$currPos = s1;
@@ -5873,6 +6267,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSingleStringCharacter, "peg$parseSingleStringCharacter");
       function peg$parseCharacterClassMatcher() {
         let s0, s1, s2, s3, s4, s5;
         peg$silentFails++;
@@ -5947,6 +6342,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseCharacterClassMatcher, "peg$parseCharacterClassMatcher");
       function peg$parseAtomEscape() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -5973,6 +6369,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseAtomEscape, "peg$parseAtomEscape");
       function peg$parseCharacterClassEscape() {
         let s0, s1, s2, s3, s4, s5, s6;
         s0 = peg$currPos;
@@ -6010,7 +6407,12 @@ var require_parser = __commonJS({
                 }
               }
               if (s6 !== peg$FAILED) {
-                s3 = [s3, s4, s5, s6];
+                s3 = [
+                  s3,
+                  s4,
+                  s5,
+                  s6
+                ];
                 s2 = s3;
               } else {
                 peg$currPos = s2;
@@ -6040,6 +6442,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseCharacterClassEscape, "peg$parseCharacterClassEscape");
       function peg$parseUnicodePropertyValueExpression() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -6057,7 +6460,11 @@ var require_parser = __commonJS({
           if (s2 !== peg$FAILED) {
             s3 = peg$parseUnicodePropertyValue();
             if (s3 !== peg$FAILED) {
-              s1 = [s1, s2, s3];
+              s1 = [
+                s1,
+                s2,
+                s3
+              ];
               s0 = s1;
             } else {
               peg$currPos = s0;
@@ -6076,6 +6483,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseUnicodePropertyValueExpression, "peg$parseUnicodePropertyValueExpression");
       function peg$parseUnicodePropertyName() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -6096,6 +6504,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseUnicodePropertyName, "peg$parseUnicodePropertyName");
       function peg$parseUnicodePropertyValue() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -6116,6 +6525,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseUnicodePropertyValue, "peg$parseUnicodePropertyValue");
       function peg$parseLoneUnicodePropertyNameOrValue() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -6136,6 +6546,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseLoneUnicodePropertyNameOrValue, "peg$parseLoneUnicodePropertyNameOrValue");
       function peg$parseUnicodePropertyValueCharacter() {
         let s0;
         s0 = peg$parseUnicodePropertyNameCharacter();
@@ -6144,6 +6555,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseUnicodePropertyValueCharacter, "peg$parseUnicodePropertyValueCharacter");
       function peg$parseUnicodePropertyNameCharacter() {
         let s0;
         s0 = peg$parseAsciiLetter();
@@ -6160,6 +6572,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseUnicodePropertyNameCharacter, "peg$parseUnicodePropertyNameCharacter");
       function peg$parseAsciiLetter() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -6173,6 +6586,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseAsciiLetter, "peg$parseAsciiLetter");
       function peg$parseClassFlags() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -6187,6 +6601,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseClassFlags, "peg$parseClassFlags");
       function peg$parseClassFlag() {
         let s0, s1;
         s0 = peg$currPos;
@@ -6223,6 +6638,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseClassFlag, "peg$parseClassFlag");
       function peg$parseClassCharacterRange() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -6256,6 +6672,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseClassCharacterRange, "peg$parseClassCharacterRange");
       function peg$parseClassCharacter() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -6281,7 +6698,10 @@ var require_parser = __commonJS({
         if (s2 !== peg$FAILED) {
           s3 = peg$parseSourceCharacter();
           if (s3 !== peg$FAILED) {
-            s2 = [s2, s3];
+            s2 = [
+              s2,
+              s3
+            ];
             s1 = s2;
           } else {
             peg$currPos = s1;
@@ -6325,6 +6745,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseClassCharacter, "peg$parseClassCharacter");
       function peg$parseLineContinuation() {
         let s0, s1, s2;
         s0 = peg$currPos;
@@ -6352,6 +6773,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseLineContinuation, "peg$parseLineContinuation");
       function peg$parseEscapeSequence() {
         let s0, s1, s2, s3;
         s0 = peg$parseCharacterEscapeSequence();
@@ -6397,6 +6819,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseEscapeSequence, "peg$parseEscapeSequence");
       function peg$parseCharacterEscapeSequence() {
         let s0;
         s0 = peg$parseSingleEscapeCharacter();
@@ -6405,6 +6828,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseCharacterEscapeSequence, "peg$parseCharacterEscapeSequence");
       function peg$parseSingleEscapeCharacter() {
         let s0, s1;
         s0 = input.charAt(peg$currPos);
@@ -6520,6 +6944,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseSingleEscapeCharacter, "peg$parseSingleEscapeCharacter");
       function peg$parseNonEscapeCharacter() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -6540,7 +6965,10 @@ var require_parser = __commonJS({
         if (s2 !== peg$FAILED) {
           s3 = peg$parseSourceCharacter();
           if (s3 !== peg$FAILED) {
-            s2 = [s2, s3];
+            s2 = [
+              s2,
+              s3
+            ];
             s1 = s2;
           } else {
             peg$currPos = s1;
@@ -6557,6 +6985,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseNonEscapeCharacter, "peg$parseNonEscapeCharacter");
       function peg$parseEscapeCharacter() {
         let s0;
         s0 = peg$parseSingleEscapeCharacter();
@@ -6573,6 +7002,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseEscapeCharacter, "peg$parseEscapeCharacter");
       function peg$parseHexEscapeSequence() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -6592,7 +7022,10 @@ var require_parser = __commonJS({
           if (s4 !== peg$FAILED) {
             s5 = peg$parseHexDigit();
             if (s5 !== peg$FAILED) {
-              s4 = [s4, s5];
+              s4 = [
+                s4,
+                s5
+              ];
               s3 = s4;
             } else {
               peg$currPos = s3;
@@ -6620,6 +7053,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseHexEscapeSequence, "peg$parseHexEscapeSequence");
       function peg$parseUnicodeEscapeSequence() {
         let s0, s1, s2, s3, s4, s5, s6, s7;
         s0 = peg$currPos;
@@ -6643,7 +7077,12 @@ var require_parser = __commonJS({
               if (s6 !== peg$FAILED) {
                 s7 = peg$parseHexDigit();
                 if (s7 !== peg$FAILED) {
-                  s4 = [s4, s5, s6, s7];
+                  s4 = [
+                    s4,
+                    s5,
+                    s6,
+                    s7
+                  ];
                   s3 = s4;
                 } else {
                   peg$currPos = s3;
@@ -6747,6 +7186,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseUnicodeEscapeSequence, "peg$parseUnicodeEscapeSequence");
       function peg$parseDecimalDigit() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -6760,6 +7200,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseDecimalDigit, "peg$parseDecimalDigit");
       function peg$parseHexDigit() {
         let s0;
         s0 = input.charAt(peg$currPos);
@@ -6773,6 +7214,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseHexDigit, "peg$parseHexDigit");
       function peg$parseAnyMatcher() {
         let s0, s1;
         s0 = peg$currPos;
@@ -6792,6 +7234,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseAnyMatcher, "peg$parseAnyMatcher");
       function peg$parseCodeBlock() {
         let s0, s1, s2, s3;
         peg$silentFails++;
@@ -6835,6 +7278,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseCodeBlock, "peg$parseCodeBlock");
       function peg$parseBareCodeBlock() {
         let s0, s1;
         s0 = peg$currPos;
@@ -6844,6 +7288,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseBareCodeBlock, "peg$parseBareCodeBlock");
       function peg$parseCode() {
         let s0, s1, s2, s3, s4, s5;
         s0 = peg$currPos;
@@ -6871,7 +7316,10 @@ var require_parser = __commonJS({
         if (s4 !== peg$FAILED) {
           s5 = peg$parseSourceCharacter();
           if (s5 !== peg$FAILED) {
-            s4 = [s4, s5];
+            s4 = [
+              s4,
+              s5
+            ];
             s3 = s4;
           } else {
             peg$currPos = s3;
@@ -6906,7 +7354,10 @@ var require_parser = __commonJS({
             if (s4 !== peg$FAILED) {
               s5 = peg$parseSourceCharacter();
               if (s5 !== peg$FAILED) {
-                s4 = [s4, s5];
+                s4 = [
+                  s4,
+                  s5
+                ];
                 s3 = s4;
               } else {
                 peg$currPos = s3;
@@ -6943,7 +7394,11 @@ var require_parser = __commonJS({
               }
             }
             if (s5 !== peg$FAILED) {
-              s3 = [s3, s4, s5];
+              s3 = [
+                s3,
+                s4,
+                s5
+              ];
               s2 = s3;
             } else {
               peg$currPos = s2;
@@ -6979,7 +7434,10 @@ var require_parser = __commonJS({
           if (s4 !== peg$FAILED) {
             s5 = peg$parseSourceCharacter();
             if (s5 !== peg$FAILED) {
-              s4 = [s4, s5];
+              s4 = [
+                s4,
+                s5
+              ];
               s3 = s4;
             } else {
               peg$currPos = s3;
@@ -7014,7 +7472,10 @@ var require_parser = __commonJS({
               if (s4 !== peg$FAILED) {
                 s5 = peg$parseSourceCharacter();
                 if (s5 !== peg$FAILED) {
-                  s4 = [s4, s5];
+                  s4 = [
+                    s4,
+                    s5
+                  ];
                   s3 = s4;
                 } else {
                   peg$currPos = s3;
@@ -7051,7 +7512,11 @@ var require_parser = __commonJS({
                 }
               }
               if (s5 !== peg$FAILED) {
-                s3 = [s3, s4, s5];
+                s3 = [
+                  s3,
+                  s4,
+                  s5
+                ];
                 s2 = s3;
               } else {
                 peg$currPos = s2;
@@ -7066,6 +7531,7 @@ var require_parser = __commonJS({
         s0 = input.substring(s0, peg$currPos);
         return s0;
       }
+      __name(peg$parseCode, "peg$parseCode");
       function peg$parseInteger() {
         let s0, s1, s2, s3;
         s0 = peg$currPos;
@@ -7092,6 +7558,7 @@ var require_parser = __commonJS({
         s0 = s1;
         return s0;
       }
+      __name(peg$parseInteger, "peg$parseInteger");
       function peg$parse__() {
         let s0, s1;
         s0 = [];
@@ -7114,6 +7581,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parse__, "peg$parse__");
       function peg$parse_() {
         let s0, s1;
         s0 = [];
@@ -7130,6 +7598,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parse_, "peg$parse_");
       function peg$parseEOS() {
         let s0, s1, s2, s3;
         s0 = [];
@@ -7145,7 +7614,10 @@ var require_parser = __commonJS({
           }
         }
         if (s3 !== peg$FAILED) {
-          s2 = [s2, s3];
+          s2 = [
+            s2,
+            s3
+          ];
           s1 = s2;
         } else {
           peg$currPos = s1;
@@ -7166,7 +7638,10 @@ var require_parser = __commonJS({
               }
             }
             if (s3 !== peg$FAILED) {
-              s2 = [s2, s3];
+              s2 = [
+                s2,
+                s3
+              ];
               s1 = s2;
             } else {
               peg$currPos = s1;
@@ -7185,7 +7660,11 @@ var require_parser = __commonJS({
           }
           s3 = peg$parseLineTerminatorSequence();
           if (s3 !== peg$FAILED) {
-            s1 = [s1, s2, s3];
+            s1 = [
+              s1,
+              s2,
+              s3
+            ];
             s0 = s1;
           } else {
             peg$currPos = s0;
@@ -7196,7 +7675,10 @@ var require_parser = __commonJS({
             s1 = peg$parse__();
             s2 = peg$parseEOF();
             if (s2 !== peg$FAILED) {
-              s1 = [s1, s2];
+              s1 = [
+                s1,
+                s2
+              ];
               s0 = s1;
             } else {
               peg$currPos = s0;
@@ -7206,6 +7688,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseEOS, "peg$parseEOS");
       function peg$parseEOF() {
         let s0, s1;
         s0 = peg$currPos;
@@ -7228,6 +7711,7 @@ var require_parser = __commonJS({
         }
         return s0;
       }
+      __name(peg$parseEOF, "peg$parseEOF");
       const reservedWords = new Set(options2.reservedWords);
       peg$result = peg$startRuleFunction();
       const peg$success = peg$result !== peg$FAILED && peg$currPos === input.length;
@@ -7235,12 +7719,9 @@ var require_parser = __commonJS({
         if (peg$result !== peg$FAILED && peg$currPos < input.length) {
           peg$fail(peg$endExpectation());
         }
-        throw peg$buildStructuredError(
-          peg$maxFailExpected,
-          peg$maxFailPos < input.length ? peg$getUnicode(peg$maxFailPos) : null,
-          peg$maxFailPos < input.length ? peg$computeLocation(peg$maxFailPos, peg$maxFailPos + 1) : peg$computeLocation(peg$maxFailPos, peg$maxFailPos)
-        );
+        throw peg$buildStructuredError(peg$maxFailExpected, peg$maxFailPos < input.length ? peg$getUnicode(peg$maxFailPos) : null, peg$maxFailPos < input.length ? peg$computeLocation(peg$maxFailPos, peg$maxFailPos + 1) : peg$computeLocation(peg$maxFailPos, peg$maxFailPos));
       }
+      __name(peg$throw, "peg$throw");
       if (options2.peg$library) {
         return (
           /** @type {any} */
@@ -7261,8 +7742,12 @@ var require_parser = __commonJS({
         peg$throw();
       }
     }
+    __name(peg$parse, "peg$parse");
     module2.exports = {
-      StartRules: ["Grammar", "ImportsAndSource"],
+      StartRules: [
+        "Grammar",
+        "ImportsAndSource"
+      ],
       SyntaxError: peg$SyntaxError,
       parse: peg$parse
     };
@@ -7287,27 +7772,14 @@ var require_generate_js = __commonJS({
       const column = start.column - 1;
       const lines = code.split("\n");
       if (lines.length === 1) {
-        return new SourceNode(
-          line,
-          column,
-          String(location.source),
-          code,
-          name
-        );
+        return new SourceNode(line, column, String(location.source), code, name);
       }
-      return new SourceNode(
-        null,
-        null,
-        String(location.source),
-        lines.map((l, i) => new SourceNode(
-          line + i,
-          i === 0 ? column : 0,
-          String(location.source),
-          i === lines.length - 1 ? l : [l, "\n"],
-          name
-        ))
-      );
+      return new SourceNode(null, null, String(location.source), lines.map((l, i) => new SourceNode(line + i, i === 0 ? column : 0, String(location.source), i === lines.length - 1 ? l : [
+        l,
+        "\n"
+      ], name)));
     }
+    __name(toSourceNode, "toSourceNode");
     function wrapInSourceNode(prefix, chunk, location, suffix, name) {
       if (location) {
         const end = GrammarLocation.offsetEnd(location);
@@ -7325,26 +7797,20 @@ var require_generate_js = __commonJS({
           )
         ]);
       }
-      return new SourceNode(null, null, null, [prefix, chunk, suffix]);
+      return new SourceNode(null, null, null, [
+        prefix,
+        chunk,
+        suffix
+      ]);
     }
+    __name(wrapInSourceNode, "wrapInSourceNode");
     function generateJS2(ast2, options2) {
       if (!ast2.literals || !ast2.locations || !ast2.classes || !ast2.expectations || !ast2.functions || !ast2.importedNames) {
-        throw new Error(
-          "generateJS: generate bytecode was not called."
-        );
+        throw new Error("generateJS: generate bytecode was not called.");
       }
-      const {
-        literals,
-        locations,
-        classes,
-        expectations,
-        functions,
-        importedNames
-      } = ast2;
+      const { literals, locations, classes, expectations, functions, importedNames } = ast2;
       if (!options2.allowedStartRules) {
-        throw new Error(
-          "generateJS: options.allowedStartRules was not set."
-        );
+        throw new Error("generateJS: options.allowedStartRules was not set.");
       }
       const { allowedStartRules } = options2;
       const dependencies = options2.dependencies || {};
@@ -7353,6 +7819,7 @@ var require_generate_js = __commonJS({
         const body = leadingSpace ? str.replace(new RegExp(`^${leadingSpace[1]}`, "gm"), indent) : str;
         return body.replace(/[ \t]+$/, "");
       }
+      __name(reIndent, "reIndent");
       function indent2(code) {
         let sawEol = true;
         let inSourceNode = 0;
@@ -7374,33 +7841,43 @@ var require_generate_js = __commonJS({
           sawEol = !inSourceNode || code2.endsWith("\n");
           return code2;
         }
+        __name(helper, "helper");
         return helper(code);
       }
+      __name(indent2, "indent2");
       function l(i) {
         return "peg$c" + i;
       }
+      __name(l, "l");
       function r(i) {
         return "peg$r" + i;
       }
+      __name(r, "r");
       function e(i) {
         return "peg$e" + i;
       }
+      __name(e, "e");
       function f(i) {
         return "peg$f" + i;
       }
+      __name(f, "f");
       function gi(i) {
         return "peg$import" + i;
       }
+      __name(gi, "gi");
       function name(name2) {
         return "peg$parse" + name2;
       }
+      __name(name, "name");
       function generateTables() {
         function buildLiteral(literal) {
           return '"' + stringEscape(literal) + '"';
         }
+        __name(buildLiteral, "buildLiteral");
         function buildRegexp(cls) {
           return "/^[" + (cls.inverted ? "^" : "") + cls.value.map((part) => Array.isArray(part) ? regexpClassEscape(part[0]) + "-" + regexpClassEscape(part[1]) : regexpClassEscape(part)).join("") + "]/" + (cls.ignoreCase ? "i" : "") + (cls.unicode ? "u" : "");
         }
+        __name(buildRegexp, "buildRegexp");
         function buildExpectation(e2) {
           switch (e2.type) {
             case "rule": {
@@ -7420,113 +7897,46 @@ var require_generate_js = __commonJS({
               throw new Error("Unknown expectation type (" + JSON.stringify(e2) + ")");
           }
         }
+        __name(buildExpectation, "buildExpectation");
         function buildFunc(a, i) {
-          return wrapInSourceNode(
-            `
-  function ${f(i)}(${a.params.join(", ")}) {`,
-            reIndent(a.body, "    "),
-            a.location,
-            "  }"
-          );
+          return wrapInSourceNode(`
+  function ${f(i)}(${a.params.join(", ")}) {`, reIndent(a.body, "    "), a.location, "  }");
         }
-        return new SourceNode(
-          null,
-          null,
-          options2.grammarSource,
-          [
-            literals.map(
-              (c, i) => "  const " + l(i) + " = " + buildLiteral(c) + ";"
-            ).concat("", classes.map(
-              (c, i) => "  const " + r(i) + " = " + buildRegexp(c) + ";"
-            )).concat("", expectations.map(
-              (c, i) => "  const " + e(i) + " = " + buildExpectation(c) + ";"
-            )).concat("").join("\n"),
-            ...functions.map(buildFunc)
-          ]
-        );
+        __name(buildFunc, "buildFunc");
+        return new SourceNode(null, null, options2.grammarSource, [
+          literals.map((c, i) => "  const " + l(i) + " = " + buildLiteral(c) + ";").concat("", classes.map((c, i) => "  const " + r(i) + " = " + buildRegexp(c) + ";")).concat("", expectations.map((c, i) => "  const " + e(i) + " = " + buildExpectation(c) + ";")).concat("").join("\n"),
+          ...functions.map(buildFunc)
+        ]);
       }
+      __name(generateTables, "generateTables");
       function generateRuleHeader(ruleNameCode, ruleIndexCode) {
         const parts = [];
         parts.push("");
         if (options2.trace) {
-          parts.push(
-            "peg$tracer.trace({",
-            '  type: "rule.enter",',
-            "  rule: " + ruleNameCode + ",",
-            "  location: peg$computeLocation(startPos, startPos, true)",
-            "});",
-            ""
-          );
+          parts.push("peg$tracer.trace({", '  type: "rule.enter",', "  rule: " + ruleNameCode + ",", "  location: peg$computeLocation(startPos, startPos, true)", "});", "");
         }
         if (options2.cache) {
-          parts.push(
-            "const key = peg$currPos * " + ast2.rules.length + " + " + ruleIndexCode + ";",
-            "const cached = peg$resultsCache[key];",
-            "",
-            "if (cached) {",
-            "  peg$currPos = cached.nextPos;",
-            ""
-          );
+          parts.push("const key = peg$currPos * " + ast2.rules.length + " + " + ruleIndexCode + ";", "const cached = peg$resultsCache[key];", "", "if (cached) {", "  peg$currPos = cached.nextPos;", "");
           if (options2.trace) {
-            parts.push(
-              "if (cached.result !== peg$FAILED) {",
-              "  peg$tracer.trace({",
-              '    type: "rule.match",',
-              "    rule: " + ruleNameCode + ",",
-              "    result: cached.result,",
-              "    location: peg$computeLocation(startPos, peg$currPos, true)",
-              "  });",
-              "} else {",
-              "  peg$tracer.trace({",
-              '    type: "rule.fail",',
-              "    rule: " + ruleNameCode + ",",
-              "    location: peg$computeLocation(startPos, startPos, true)",
-              "  });",
-              "}",
-              ""
-            );
+            parts.push("if (cached.result !== peg$FAILED) {", "  peg$tracer.trace({", '    type: "rule.match",', "    rule: " + ruleNameCode + ",", "    result: cached.result,", "    location: peg$computeLocation(startPos, peg$currPos, true)", "  });", "} else {", "  peg$tracer.trace({", '    type: "rule.fail",', "    rule: " + ruleNameCode + ",", "    location: peg$computeLocation(startPos, startPos, true)", "  });", "}", "");
           }
-          parts.push(
-            "  return cached.result;",
-            "}",
-            ""
-          );
+          parts.push("  return cached.result;", "}", "");
         }
         return parts;
       }
+      __name(generateRuleHeader, "generateRuleHeader");
       function generateRuleFooter(ruleNameCode, resultCode) {
         const parts = [];
         if (options2.cache) {
-          parts.push(
-            "",
-            "peg$resultsCache[key] = { nextPos: peg$currPos, result: " + resultCode + " };"
-          );
+          parts.push("", "peg$resultsCache[key] = { nextPos: peg$currPos, result: " + resultCode + " };");
         }
         if (options2.trace) {
-          parts.push(
-            "",
-            "if (" + resultCode + " !== peg$FAILED) {",
-            "  peg$tracer.trace({",
-            '    type: "rule.match",',
-            "    rule: " + ruleNameCode + ",",
-            "    result: " + resultCode + ",",
-            "    location: peg$computeLocation(startPos, peg$currPos, true)",
-            "  });",
-            "} else {",
-            "  peg$tracer.trace({",
-            '    type: "rule.fail",',
-            "    rule: " + ruleNameCode + ",",
-            "    location: peg$computeLocation(startPos, startPos, true)",
-            "  });",
-            "}"
-          );
+          parts.push("", "if (" + resultCode + " !== peg$FAILED) {", "  peg$tracer.trace({", '    type: "rule.match",', "    rule: " + ruleNameCode + ",", "    result: " + resultCode + ",", "    location: peg$computeLocation(startPos, peg$currPos, true)", "  });", "} else {", "  peg$tracer.trace({", '    type: "rule.fail",', "    rule: " + ruleNameCode + ",", "    location: peg$computeLocation(startPos, startPos, true)", "  });", "}");
         }
-        parts.push(
-          "",
-          "return " + resultCode + ";"
-        );
+        parts.push("", "return " + resultCode + ";");
         return parts;
       }
+      __name(generateRuleFooter, "generateRuleFooter");
       function generateRuleFunction(rule) {
         const parts = [];
         const bytecode = (
@@ -7543,17 +7953,13 @@ var require_generate_js = __commonJS({
             const baseLength = argCount + 3;
             const thenLength = bc[ip + baseLength - 2];
             const elseLength = bc[ip + baseLength - 1];
-            const [thenCode, elseCode] = stack.checkedIf(
-              ip,
-              () => {
-                ip += baseLength + thenLength;
-                return (thenFn || compile)(bc.slice(ip - thenLength, ip));
-              },
-              elseLength > 0 ? () => {
-                ip += elseLength;
-                return compile(bc.slice(ip - elseLength, ip));
-              } : null
-            );
+            const [thenCode, elseCode] = stack.checkedIf(ip, () => {
+              ip += baseLength + thenLength;
+              return (thenFn || compile)(bc.slice(ip - thenLength, ip));
+            }, elseLength > 0 ? () => {
+              ip += elseLength;
+              return compile(bc.slice(ip - elseLength, ip));
+            } : null);
             parts2.push("if (" + cond + ") {");
             parts2.push(...indent2(thenCode));
             if (elseLength > 0) {
@@ -7562,6 +7968,7 @@ var require_generate_js = __commonJS({
             }
             parts2.push("}");
           }
+          __name(compileCondition, "compileCondition");
           function getChunkCode(inputChunkLength) {
             switch (inputChunkLength) {
               case -1:
@@ -7572,6 +7979,7 @@ var require_generate_js = __commonJS({
                 return `input.substr(peg$currPos, ${inputChunkLength})`;
             }
           }
+          __name(getChunkCode, "getChunkCode");
           function getIncrCode(inputChunkLength, varName) {
             switch (inputChunkLength) {
               case -1:
@@ -7582,6 +7990,7 @@ var require_generate_js = __commonJS({
                 return "peg$currPos += (" + inputChunkLength + ");";
             }
           }
+          __name(getIncrCode, "getIncrCode");
           function compileInputChunkCondition(condFn, argCount, inputChunkLength) {
             const baseLength = argCount + 3;
             let inputChunk = getChunkCode(inputChunkLength);
@@ -7589,15 +7998,16 @@ var require_generate_js = __commonJS({
             if (bc[ip + baseLength] === op.ACCEPT_N && bc[ip + baseLength + 1] === inputChunkLength) {
               parts2.push(stack.push(inputChunk));
               inputChunk = stack.pop();
-              thenFn = (bc2) => {
+              thenFn = /* @__PURE__ */ __name((bc2) => {
                 stack.sp++;
                 const code2 = compile(bc2.slice(2));
                 code2.unshift(getIncrCode(inputChunkLength, inputChunk));
                 return code2;
-              };
+              }, "thenFn");
             }
             compileCondition(condFn(inputChunk, thenFn !== null), argCount, thenFn);
           }
+          __name(compileInputChunkCondition, "compileInputChunkCondition");
           function compileLoop(cond) {
             const baseLength = 2;
             const bodyLength = bc[ip + baseLength - 1];
@@ -7609,12 +8019,12 @@ var require_generate_js = __commonJS({
             parts2.push(...indent2(bodyCode));
             parts2.push("}");
           }
+          __name(compileLoop, "compileLoop");
           function compileCall(baseLength) {
             const paramsLength = bc[ip + baseLength - 1];
-            return f(bc[ip + 1]) + "(" + bc.slice(ip + baseLength, ip + baseLength + paramsLength).map(
-              (p) => stack.index(p)
-            ).join(", ") + ")";
+            return f(bc[ip + 1]) + "(" + bc.slice(ip + baseLength, ip + baseLength + paramsLength).map((p) => stack.index(p)).join(", ") + ")";
           }
+          __name(compileCall, "compileCall");
           while (ip < end) {
             switch (bc[ip]) {
               case op.PUSH_EMPTY_STRING:
@@ -7665,15 +8075,11 @@ var require_generate_js = __commonJS({
                 ip++;
                 break;
               case op.WRAP:
-                parts2.push(
-                  stack.push("[" + stack.pop(bc[ip + 1]).join(", ") + "]")
-                );
+                parts2.push(stack.push("[" + stack.pop(bc[ip + 1]).join(", ") + "]"));
                 ip += 2;
                 break;
               case op.TEXT:
-                parts2.push(
-                  stack.push("input.substring(" + stack.pop() + ", peg$currPos)")
-                );
+                parts2.push(stack.push("input.substring(" + stack.pop() + ", peg$currPos)"));
                 ip++;
                 break;
               case op.PLUCK: {
@@ -7717,44 +8123,28 @@ var require_generate_js = __commonJS({
               case op.MATCH_STRING: {
                 const litNum = bc[ip + 1];
                 const literal = literals[litNum];
-                compileInputChunkCondition(
-                  (inputChunk, optimized) => {
-                    if (literal.length > 1) {
-                      return `${inputChunk} === ${l(litNum)}`;
-                    }
-                    inputChunk = !optimized ? "input.charCodeAt(peg$currPos)" : `${inputChunk}.charCodeAt(0)`;
-                    return `${inputChunk} === ${literal.charCodeAt(0)}`;
-                  },
-                  1,
-                  literal.length
-                );
+                compileInputChunkCondition((inputChunk, optimized) => {
+                  if (literal.length > 1) {
+                    return `${inputChunk} === ${l(litNum)}`;
+                  }
+                  inputChunk = !optimized ? "input.charCodeAt(peg$currPos)" : `${inputChunk}.charCodeAt(0)`;
+                  return `${inputChunk} === ${literal.charCodeAt(0)}`;
+                }, 1, literal.length);
                 break;
               }
               case op.MATCH_STRING_IC: {
                 const litNum = bc[ip + 1];
-                compileInputChunkCondition(
-                  (inputChunk) => `${inputChunk}.toLowerCase() === ${l(litNum)}`,
-                  1,
-                  literals[litNum].length
-                );
+                compileInputChunkCondition((inputChunk) => `${inputChunk}.toLowerCase() === ${l(litNum)}`, 1, literals[litNum].length);
                 break;
               }
               case op.MATCH_CHAR_CLASS: {
                 const regNum = bc[ip + 1];
-                compileInputChunkCondition(
-                  (inputChunk) => `${r(regNum)}.test(${inputChunk})`,
-                  1,
-                  1
-                );
+                compileInputChunkCondition((inputChunk) => `${r(regNum)}.test(${inputChunk})`, 1, 1);
                 break;
               }
               case op.MATCH_UNICODE_CLASS: {
                 const regNum = bc[ip + 1];
-                compileInputChunkCondition(
-                  (inputChunk) => `${r(regNum)}.test(${inputChunk})`,
-                  1,
-                  -1
-                );
+                compileInputChunkCondition((inputChunk) => `${r(regNum)}.test(${inputChunk})`, 1, -1);
                 break;
               }
               case op.ACCEPT_N:
@@ -7764,9 +8154,7 @@ var require_generate_js = __commonJS({
                 break;
               case op.ACCEPT_STRING:
                 parts2.push(stack.push(l(bc[ip + 1])));
-                parts2.push(
-                  literals[bc[ip + 1]].length > 1 ? "peg$currPos += " + literals[bc[ip + 1]].length + ";" : "peg$currPos++;"
-                );
+                parts2.push(literals[bc[ip + 1]].length > 1 ? "peg$currPos += " + literals[bc[ip + 1]].length + ";" : "peg$currPos++;");
                 ip += 2;
                 break;
               case op.FAIL:
@@ -7808,10 +8196,7 @@ var require_generate_js = __commonJS({
                 ip++;
                 break;
               case op.SOURCE_MAP_PUSH:
-                stack.sourceMapPush(
-                  parts2,
-                  locations[bc[ip + 1]]
-                );
+                stack.sourceMapPush(parts2, locations[bc[ip + 1]]);
                 ip += 2;
                 break;
               case op.SOURCE_MAP_POP: {
@@ -7837,37 +8222,28 @@ var require_generate_js = __commonJS({
           }
           return parts2;
         }
+        __name(compile, "compile");
         const code = compile(bytecode);
-        parts.push(wrapInSourceNode(
-          "function ",
-          name(rule.name),
-          rule.nameLocation,
-          "() {\n",
-          rule.name
-        ));
+        parts.push(wrapInSourceNode("function ", name(rule.name), rule.nameLocation, "() {\n", rule.name));
         if (options2.trace) {
           parts.push("  var startPos = peg$currPos;");
         }
         parts.push(indent2(stack.defines()));
-        parts.push(...indent2(generateRuleHeader(
-          '"' + stringEscape(rule.name) + '"',
-          asts.indexOfRule(ast2, rule.name)
-        )));
+        parts.push(...indent2(generateRuleHeader('"' + stringEscape(rule.name) + '"', asts.indexOfRule(ast2, rule.name))));
         parts.push(...indent2(code));
-        parts.push(...indent2(generateRuleFooter(
-          '"' + stringEscape(rule.name) + '"',
-          stack.result()
-        )));
+        parts.push(...indent2(generateRuleFooter('"' + stringEscape(rule.name) + '"', stack.result())));
         parts.push("}");
         parts.push("");
         return parts;
       }
+      __name(generateRuleFunction, "generateRuleFunction");
       function ast2SourceNode(node) {
         if (node.codeLocation) {
           return toSourceNode(node.code, node.codeLocation, "$" + node.type);
         }
         return node.code;
       }
+      __name(ast2SourceNode, "ast2SourceNode");
       function generateToplevel() {
         const parts = [];
         let topLevel = ast2.topLevelInitializer;
@@ -7877,17 +8253,11 @@ var require_generate_js = __commonJS({
               const imps = [];
               const codes = [];
               for (const tli of topLevel) {
-                const [
-                  imports,
-                  code
-                ] = (
+                const [imports, code] = (
                   /** @type {PEG.ast.TopLevelInitializer[]} */
                   parse(tli.code, {
                     startRule: "ImportsAndSource",
-                    grammarSource: new GrammarLocation(
-                      tli.codeLocation.source,
-                      tli.codeLocation.start
-                    )
+                    grammarSource: new GrammarLocation(tli.codeLocation.source, tli.codeLocation.start)
                   })
                 );
                 if (imports.code) {
@@ -7909,434 +8279,23 @@ var require_generate_js = __commonJS({
             parts.push("");
           }
         }
-        parts.push(
-          "class peg$SyntaxError extends SyntaxError {",
-          "  constructor(message, expected, found, location) {",
-          "    super(message);",
-          "    this.expected = expected;",
-          "    this.found = found;",
-          "    this.location = location;",
-          '    this.name = "SyntaxError";',
-          "  }",
-          "",
-          "  format(sources) {",
-          '    let str = "Error: " + this.message;',
-          "    if (this.location) {",
-          "      let src = null;",
-          "      const st = sources.find(s => s.source === this.location.source);",
-          "      if (st) {",
-          "        src = st.text.split(/\\r\\n|\\n|\\r/g);",
-          "      }",
-          "      const s = this.location.start;",
-          '      const offset_s = (this.location.source && (typeof this.location.source.offset === "function"))',
-          "        ? this.location.source.offset(s)",
-          "        : s;",
-          '      const loc = this.location.source + ":" + offset_s.line + ":" + offset_s.column;',
-          "      if (src) {",
-          "        const e = this.location.end;",
-          '        const filler = "".padEnd(offset_s.line.toString().length, " ");',
-          "        const line = src[s.line - 1];",
-          "        const last = s.line === e.line ? e.column : line.length + 1;",
-          "        const hatLen = (last - s.column) || 1;",
-          '        str += "\\n --> " + loc + "\\n"',
-          '            + filler + " |\\n"',
-          '            + offset_s.line + " | " + line + "\\n"',
-          '            + filler + " | " + "".padEnd(s.column - 1, " ")',
-          '            + "".padEnd(hatLen, "^");',
-          "      } else {",
-          '        str += "\\n at " + loc;',
-          "      }",
-          "    }",
-          "    return str;",
-          "  }",
-          "",
-          "  static buildMessage(expected, found) {",
-          "    function hex(ch) {",
-          "      return ch.codePointAt(0).toString(16).toUpperCase();",
-          "    }",
-          "",
-          '    const nonPrintable = Object.prototype.hasOwnProperty.call(RegExp.prototype, "unicode")',
-          '      ? new RegExp("[\\\\p{C}\\\\p{Mn}\\\\p{Mc}]", "gu")',
-          "      : null;",
-          "    function unicodeEscape(s) {",
-          "      if (nonPrintable) {",
-          '        return s.replace(nonPrintable,  ch => "\\\\u{" + hex(ch) + "}");',
-          "      }",
-          "      return s;",
-          "    }",
-          "",
-          "    function literalEscape(s) {",
-          "      return unicodeEscape(s",
-          '        .replace(/\\\\/g, "\\\\\\\\")',
-          // Backslash
-          '        .replace(/"/g,  "\\\\\\"")',
-          // Closing double quote
-          '        .replace(/\\0/g, "\\\\0")',
-          // Null
-          '        .replace(/\\t/g, "\\\\t")',
-          // Horizontal tab
-          '        .replace(/\\n/g, "\\\\n")',
-          // Line feed
-          '        .replace(/\\r/g, "\\\\r")',
-          // Carriage return
-          '        .replace(/[\\x00-\\x0F]/g,          ch => "\\\\x0" + hex(ch))',
-          '        .replace(/[\\x10-\\x1F\\x7F-\\x9F]/g, ch => "\\\\x"  + hex(ch)));',
-          "    }",
-          "",
-          "    function classEscape(s) {",
-          "      return unicodeEscape(s",
-          '        .replace(/\\\\/g, "\\\\\\\\")',
-          // Backslash
-          '        .replace(/\\]/g, "\\\\]")',
-          // Closing bracket
-          '        .replace(/\\^/g, "\\\\^")',
-          // Caret
-          '        .replace(/-/g,  "\\\\-")',
-          // Dash
-          '        .replace(/\\0/g, "\\\\0")',
-          // Null
-          '        .replace(/\\t/g, "\\\\t")',
-          // Horizontal tab
-          '        .replace(/\\n/g, "\\\\n")',
-          // Line feed
-          '        .replace(/\\r/g, "\\\\r")',
-          // Carriage return
-          '        .replace(/[\\x00-\\x0F]/g,          ch => "\\\\x0" + hex(ch))',
-          '        .replace(/[\\x10-\\x1F\\x7F-\\x9F]/g, ch => "\\\\x"  + hex(ch)));',
-          "    }",
-          "",
-          "    const DESCRIBE_EXPECTATION_FNS = {",
-          "      literal(expectation) {",
-          '        return "\\"" + literalEscape(expectation.text) + "\\"";',
-          "      },",
-          "",
-          "      class(expectation) {",
-          "        const escapedParts = expectation.parts.map(",
-          "          part => (Array.isArray(part)",
-          '            ? classEscape(part[0]) + "-" + classEscape(part[1])',
-          "            : classEscape(part))",
-          "        );",
-          "",
-          '        return "[" + (expectation.inverted ? "^" : "") + escapedParts.join("") + "]" + (expectation.unicode ? "u" : "");',
-          "      },",
-          "",
-          "      any() {",
-          '        return "any character";',
-          "      },",
-          "",
-          "      end() {",
-          '        return "end of input";',
-          "      },",
-          "",
-          "      other(expectation) {",
-          "        return expectation.description;",
-          "      },",
-          "    };",
-          "",
-          "    function describeExpectation(expectation) {",
-          "      return DESCRIBE_EXPECTATION_FNS[expectation.type](expectation);",
-          "    }",
-          "",
-          "    function describeExpected(expected) {",
-          "      const descriptions = expected.map(describeExpectation);",
-          "      descriptions.sort();",
-          "",
-          "      if (descriptions.length > 0) {",
-          "        let j = 1;",
-          "        for (let i = 1; i < descriptions.length; i++) {",
-          "          if (descriptions[i - 1] !== descriptions[i]) {",
-          "            descriptions[j] = descriptions[i];",
-          "            j++;",
-          "          }",
-          "        }",
-          "        descriptions.length = j;",
-          "      }",
-          "",
-          "      switch (descriptions.length) {",
-          "        case 1:",
-          "          return descriptions[0];",
-          "",
-          "        case 2:",
-          '          return descriptions[0] + " or " + descriptions[1];',
-          "",
-          "        default:",
-          '          return descriptions.slice(0, -1).join(", ")',
-          '            + ", or "',
-          "            + descriptions[descriptions.length - 1];",
-          "      }",
-          "    }",
-          "",
-          "    function describeFound(found) {",
-          '      return found ? "\\"" + literalEscape(found) + "\\"" : "end of input";',
-          "    }",
-          "",
-          '    return "Expected " + describeExpected(expected) + " but " + describeFound(found) + " found.";',
-          "  }",
-          "}",
-          ""
-        );
+        parts.push("class peg$SyntaxError extends SyntaxError {", "  constructor(message, expected, found, location) {", "    super(message);", "    this.expected = expected;", "    this.found = found;", "    this.location = location;", '    this.name = "SyntaxError";', "  }", "", "  format(sources) {", '    let str = "Error: " + this.message;', "    if (this.location) {", "      let src = null;", "      const st = sources.find(s => s.source === this.location.source);", "      if (st) {", "        src = st.text.split(/\\r\\n|\\n|\\r/g);", "      }", "      const s = this.location.start;", '      const offset_s = (this.location.source && (typeof this.location.source.offset === "function"))', "        ? this.location.source.offset(s)", "        : s;", '      const loc = this.location.source + ":" + offset_s.line + ":" + offset_s.column;', "      if (src) {", "        const e = this.location.end;", '        const filler = "".padEnd(offset_s.line.toString().length, " ");', "        const line = src[s.line - 1];", "        const last = s.line === e.line ? e.column : line.length + 1;", "        const hatLen = (last - s.column) || 1;", '        str += "\\n --> " + loc + "\\n"', '            + filler + " |\\n"', '            + offset_s.line + " | " + line + "\\n"', '            + filler + " | " + "".padEnd(s.column - 1, " ")', '            + "".padEnd(hatLen, "^");', "      } else {", '        str += "\\n at " + loc;', "      }", "    }", "    return str;", "  }", "", "  static buildMessage(expected, found) {", "    function hex(ch) {", "      return ch.codePointAt(0).toString(16).toUpperCase();", "    }", "", '    const nonPrintable = Object.prototype.hasOwnProperty.call(RegExp.prototype, "unicode")', '      ? new RegExp("[\\\\p{C}\\\\p{Mn}\\\\p{Mc}]", "gu")', "      : null;", "    function unicodeEscape(s) {", "      if (nonPrintable) {", '        return s.replace(nonPrintable,  ch => "\\\\u{" + hex(ch) + "}");', "      }", "      return s;", "    }", "", "    function literalEscape(s) {", "      return unicodeEscape(s", '        .replace(/\\\\/g, "\\\\\\\\")', '        .replace(/"/g,  "\\\\\\"")', '        .replace(/\\0/g, "\\\\0")', '        .replace(/\\t/g, "\\\\t")', '        .replace(/\\n/g, "\\\\n")', '        .replace(/\\r/g, "\\\\r")', '        .replace(/[\\x00-\\x0F]/g,          ch => "\\\\x0" + hex(ch))', '        .replace(/[\\x10-\\x1F\\x7F-\\x9F]/g, ch => "\\\\x"  + hex(ch)));', "    }", "", "    function classEscape(s) {", "      return unicodeEscape(s", '        .replace(/\\\\/g, "\\\\\\\\")', '        .replace(/\\]/g, "\\\\]")', '        .replace(/\\^/g, "\\\\^")', '        .replace(/-/g,  "\\\\-")', '        .replace(/\\0/g, "\\\\0")', '        .replace(/\\t/g, "\\\\t")', '        .replace(/\\n/g, "\\\\n")', '        .replace(/\\r/g, "\\\\r")', '        .replace(/[\\x00-\\x0F]/g,          ch => "\\\\x0" + hex(ch))', '        .replace(/[\\x10-\\x1F\\x7F-\\x9F]/g, ch => "\\\\x"  + hex(ch)));', "    }", "", "    const DESCRIBE_EXPECTATION_FNS = {", "      literal(expectation) {", '        return "\\"" + literalEscape(expectation.text) + "\\"";', "      },", "", "      class(expectation) {", "        const escapedParts = expectation.parts.map(", "          part => (Array.isArray(part)", '            ? classEscape(part[0]) + "-" + classEscape(part[1])', "            : classEscape(part))", "        );", "", '        return "[" + (expectation.inverted ? "^" : "") + escapedParts.join("") + "]" + (expectation.unicode ? "u" : "");', "      },", "", "      any() {", '        return "any character";', "      },", "", "      end() {", '        return "end of input";', "      },", "", "      other(expectation) {", "        return expectation.description;", "      },", "    };", "", "    function describeExpectation(expectation) {", "      return DESCRIBE_EXPECTATION_FNS[expectation.type](expectation);", "    }", "", "    function describeExpected(expected) {", "      const descriptions = expected.map(describeExpectation);", "      descriptions.sort();", "", "      if (descriptions.length > 0) {", "        let j = 1;", "        for (let i = 1; i < descriptions.length; i++) {", "          if (descriptions[i - 1] !== descriptions[i]) {", "            descriptions[j] = descriptions[i];", "            j++;", "          }", "        }", "        descriptions.length = j;", "      }", "", "      switch (descriptions.length) {", "        case 1:", "          return descriptions[0];", "", "        case 2:", '          return descriptions[0] + " or " + descriptions[1];', "", "        default:", '          return descriptions.slice(0, -1).join(", ")', '            + ", or "', "            + descriptions[descriptions.length - 1];", "      }", "    }", "", "    function describeFound(found) {", '      return found ? "\\"" + literalEscape(found) + "\\"" : "end of input";', "    }", "", '    return "Expected " + describeExpected(expected) + " but " + describeFound(found) + " found.";', "  }", "}", "");
         if (options2.trace) {
-          parts.push(
-            "class peg$DefaultTracer {",
-            "  constructor() {",
-            "    this.indentLevel = 0;",
-            "  }",
-            "",
-            "  trace(event) {",
-            "    const that = this;",
-            "",
-            "    function log(event) {",
-            "      console?.log?.(",
-            '        event.location.start.line + ":" + event.location.start.column + "-"',
-            '          + event.location.end.line + ":" + event.location.end.column + " "',
-            '          + event.type.padEnd(10, " ")',
-            '          + "".padEnd((that.indentLevel * 2) + 1, " ") + event.rule',
-            "       );",
-            "    }",
-            "",
-            "    switch (event.type) {",
-            '      case "rule.enter":',
-            "        log(event);",
-            "        this.indentLevel++;",
-            "        break;",
-            "",
-            '      case "rule.match":',
-            "        this.indentLevel--;",
-            "        log(event);",
-            "        break;",
-            "",
-            '      case "rule.fail":',
-            "        this.indentLevel--;",
-            "        log(event);",
-            "        break;",
-            "",
-            "      default:",
-            '        throw new Error("Invalid event type: " + event.type + ".");',
-            "    }",
-            "  }",
-            "}",
-            ""
-          );
+          parts.push("class peg$DefaultTracer {", "  constructor() {", "    this.indentLevel = 0;", "  }", "", "  trace(event) {", "    const that = this;", "", "    function log(event) {", "      console?.log?.(", '        event.location.start.line + ":" + event.location.start.column + "-"', '          + event.location.end.line + ":" + event.location.end.column + " "', '          + event.type.padEnd(10, " ")', '          + "".padEnd((that.indentLevel * 2) + 1, " ") + event.rule', "       );", "    }", "", "    switch (event.type) {", '      case "rule.enter":', "        log(event);", "        this.indentLevel++;", "        break;", "", '      case "rule.match":', "        this.indentLevel--;", "        log(event);", "        break;", "", '      case "rule.fail":', "        this.indentLevel--;", "        log(event);", "        break;", "", "      default:", '        throw new Error("Invalid event type: " + event.type + ".");', "    }", "  }", "}", "");
         }
         const startRuleFunctions = "{\n" + allowedStartRules.map((r2) => `    ${r2}: ${name(r2)},
 `).join("") + "  }";
         const startRuleFunction = name(allowedStartRules[0]);
-        parts.push(
-          "function peg$parse(input, options) {",
-          "  options = options !== undefined ? options : {};",
-          "",
-          "  const peg$FAILED = {};",
-          "  const peg$source = options.grammarSource;",
-          "",
-          "  const peg$startRuleFunctions = " + startRuleFunctions + ";",
-          "  let peg$startRuleFunction = " + startRuleFunction + ";",
-          "",
-          generateTables(),
-          "",
-          "  let peg$currPos = options.peg$currPos | 0;",
-          "  let peg$savedPos = peg$currPos;",
-          "  const peg$posDetailsCache = [{ line: 1, column: 1 }];",
-          "  let peg$maxFailPos = peg$currPos;",
-          "  let peg$maxFailExpected = options.peg$maxFailExpected || [];",
-          "  let peg$silentFails = options.peg$silentFails | 0;",
-          // 0 = report failures, > 0 = silence failures
-          ""
-        );
+        parts.push("function peg$parse(input, options) {", "  options = options !== undefined ? options : {};", "", "  const peg$FAILED = {};", "  const peg$source = options.grammarSource;", "", "  const peg$startRuleFunctions = " + startRuleFunctions + ";", "  let peg$startRuleFunction = " + startRuleFunction + ";", "", generateTables(), "", "  let peg$currPos = options.peg$currPos | 0;", "  let peg$savedPos = peg$currPos;", "  const peg$posDetailsCache = [{ line: 1, column: 1 }];", "  let peg$maxFailPos = peg$currPos;", "  let peg$maxFailExpected = options.peg$maxFailExpected || [];", "  let peg$silentFails = options.peg$silentFails | 0;", "");
         if (options2.cache) {
-          parts.push(
-            "  let peg$resultsCache = {};",
-            ""
-          );
+          parts.push("  let peg$resultsCache = {};", "");
         }
         if (options2.trace) {
-          parts.push(
-            '  let peg$tracer = "tracer" in options ? options.tracer : new peg$DefaultTracer();',
-            ""
-          );
+          parts.push('  let peg$tracer = "tracer" in options ? options.tracer : new peg$DefaultTracer();', "");
         }
-        parts.push(
-          "  let peg$result;",
-          "",
-          "  if (options.startRule) {",
-          "    if (!(options.startRule in peg$startRuleFunctions)) {",
-          `      throw new Error("Can't start parsing from rule \\"" + options.startRule + "\\".");`,
-          "    }",
-          "",
-          "    peg$startRuleFunction = peg$startRuleFunctions[options.startRule];",
-          "  }",
-          "",
-          "  function text() {",
-          "    return input.substring(peg$savedPos, peg$currPos);",
-          "  }",
-          "",
-          "  function offset() {",
-          "    return peg$savedPos;",
-          "  }",
-          "",
-          "  function range() {",
-          "    return {",
-          "      source: peg$source,",
-          "      start: peg$savedPos,",
-          "      end: peg$currPos,",
-          "    };",
-          "  }",
-          "",
-          "  function location() {",
-          "    return peg$computeLocation(peg$savedPos, peg$currPos);",
-          "  }",
-          "",
-          "  function expected(description, location) {",
-          "    location = location !== undefined",
-          "      ? location",
-          "      : peg$computeLocation(peg$savedPos, peg$currPos);",
-          "",
-          "    throw peg$buildStructuredError(",
-          "      [peg$otherExpectation(description)],",
-          "      input.substring(peg$savedPos, peg$currPos),",
-          "      location",
-          "    );",
-          "  }",
-          "",
-          "  function error(message, location) {",
-          "    location = location !== undefined",
-          "      ? location",
-          "      : peg$computeLocation(peg$savedPos, peg$currPos);",
-          "",
-          "    throw peg$buildSimpleError(message, location);",
-          "  }",
-          "",
-          "  function peg$getUnicode(pos = peg$currPos) {",
-          "    const cp = input.codePointAt(pos);",
-          "    if (cp === undefined) {",
-          '      return "";',
-          "    }",
-          "    return String.fromCodePoint(cp);",
-          "  }",
-          "",
-          "  function peg$literalExpectation(text, ignoreCase) {",
-          '    return { type: "literal", text, ignoreCase };',
-          "  }",
-          "",
-          "  function peg$classExpectation(parts, inverted, ignoreCase, unicode) {",
-          '    return { type: "class", parts, inverted, ignoreCase, unicode };',
-          "  }",
-          "",
-          "  function peg$anyExpectation() {",
-          '    return { type: "any" };',
-          "  }",
-          "",
-          "  function peg$endExpectation() {",
-          '    return { type: "end" };',
-          "  }",
-          "",
-          "  function peg$otherExpectation(description) {",
-          '    return { type: "other", description };',
-          "  }",
-          "",
-          "  function peg$computePosDetails(pos) {",
-          "    let details = peg$posDetailsCache[pos];",
-          "    let p;",
-          "",
-          "    if (details) {",
-          "      return details;",
-          "    } else {",
-          "      if (pos >= peg$posDetailsCache.length) {",
-          "        p = peg$posDetailsCache.length - 1;",
-          "      } else {",
-          "        p = pos;",
-          "        while (!peg$posDetailsCache[--p]) {}",
-          "      }",
-          "",
-          "      details = peg$posDetailsCache[p];",
-          "      details = {",
-          "        line: details.line,",
-          "        column: details.column,",
-          "      };",
-          "",
-          "      while (p < pos) {",
-          "        if (input.charCodeAt(p) === 10) {",
-          "          details.line++;",
-          "          details.column = 1;",
-          "        } else {",
-          "          details.column++;",
-          "        }",
-          "",
-          "        p++;",
-          "      }",
-          "",
-          "      peg$posDetailsCache[pos] = details;",
-          "",
-          "      return details;",
-          "    }",
-          "  }",
-          "",
-          "  function peg$computeLocation(startPos, endPos, offset) {",
-          "    const startPosDetails = peg$computePosDetails(startPos);",
-          "    const endPosDetails = peg$computePosDetails(endPos);",
-          "",
-          "    const res = {",
-          "      source: peg$source,",
-          "      start: {",
-          "        offset: startPos,",
-          "        line: startPosDetails.line,",
-          "        column: startPosDetails.column,",
-          "      },",
-          "      end: {",
-          "        offset: endPos,",
-          "        line: endPosDetails.line,",
-          "        column: endPosDetails.column,",
-          "      },",
-          "    };",
-          '    if (offset && peg$source && (typeof peg$source.offset === "function")) {',
-          "      res.start = peg$source.offset(res.start);",
-          "      res.end = peg$source.offset(res.end);",
-          "    }",
-          "    return res;",
-          "  }",
-          "",
-          "  function peg$fail(expected) {",
-          "    if (peg$currPos < peg$maxFailPos) { return; }",
-          "",
-          "    if (peg$currPos > peg$maxFailPos) {",
-          "      peg$maxFailPos = peg$currPos;",
-          "      peg$maxFailExpected = [];",
-          "    }",
-          "",
-          "    peg$maxFailExpected.push(expected);",
-          "  }",
-          "",
-          "  function peg$buildSimpleError(message, location) {",
-          "    return new peg$SyntaxError(message, null, null, location);",
-          "  }",
-          "",
-          "  function peg$buildStructuredError(expected, found, location) {",
-          "    return new peg$SyntaxError(",
-          "      peg$SyntaxError.buildMessage(expected, found),",
-          "      expected,",
-          "      found,",
-          "      location",
-          "    );",
-          "  }",
-          ""
-        );
+        parts.push("  let peg$result;", "", "  if (options.startRule) {", "    if (!(options.startRule in peg$startRuleFunctions)) {", `      throw new Error("Can't start parsing from rule \\"" + options.startRule + "\\".");`, "    }", "", "    peg$startRuleFunction = peg$startRuleFunctions[options.startRule];", "  }", "", "  function text() {", "    return input.substring(peg$savedPos, peg$currPos);", "  }", "", "  function offset() {", "    return peg$savedPos;", "  }", "", "  function range() {", "    return {", "      source: peg$source,", "      start: peg$savedPos,", "      end: peg$currPos,", "    };", "  }", "", "  function location() {", "    return peg$computeLocation(peg$savedPos, peg$currPos);", "  }", "", "  function expected(description, location) {", "    location = location !== undefined", "      ? location", "      : peg$computeLocation(peg$savedPos, peg$currPos);", "", "    throw peg$buildStructuredError(", "      [peg$otherExpectation(description)],", "      input.substring(peg$savedPos, peg$currPos),", "      location", "    );", "  }", "", "  function error(message, location) {", "    location = location !== undefined", "      ? location", "      : peg$computeLocation(peg$savedPos, peg$currPos);", "", "    throw peg$buildSimpleError(message, location);", "  }", "", "  function peg$getUnicode(pos = peg$currPos) {", "    const cp = input.codePointAt(pos);", "    if (cp === undefined) {", '      return "";', "    }", "    return String.fromCodePoint(cp);", "  }", "", "  function peg$literalExpectation(text, ignoreCase) {", '    return { type: "literal", text, ignoreCase };', "  }", "", "  function peg$classExpectation(parts, inverted, ignoreCase, unicode) {", '    return { type: "class", parts, inverted, ignoreCase, unicode };', "  }", "", "  function peg$anyExpectation() {", '    return { type: "any" };', "  }", "", "  function peg$endExpectation() {", '    return { type: "end" };', "  }", "", "  function peg$otherExpectation(description) {", '    return { type: "other", description };', "  }", "", "  function peg$computePosDetails(pos) {", "    let details = peg$posDetailsCache[pos];", "    let p;", "", "    if (details) {", "      return details;", "    } else {", "      if (pos >= peg$posDetailsCache.length) {", "        p = peg$posDetailsCache.length - 1;", "      } else {", "        p = pos;", "        while (!peg$posDetailsCache[--p]) {}", "      }", "", "      details = peg$posDetailsCache[p];", "      details = {", "        line: details.line,", "        column: details.column,", "      };", "", "      while (p < pos) {", "        if (input.charCodeAt(p) === 10) {", "          details.line++;", "          details.column = 1;", "        } else {", "          details.column++;", "        }", "", "        p++;", "      }", "", "      peg$posDetailsCache[pos] = details;", "", "      return details;", "    }", "  }", "", "  function peg$computeLocation(startPos, endPos, offset) {", "    const startPosDetails = peg$computePosDetails(startPos);", "    const endPosDetails = peg$computePosDetails(endPos);", "", "    const res = {", "      source: peg$source,", "      start: {", "        offset: startPos,", "        line: startPosDetails.line,", "        column: startPosDetails.column,", "      },", "      end: {", "        offset: endPos,", "        line: endPosDetails.line,", "        column: endPosDetails.column,", "      },", "    };", '    if (offset && peg$source && (typeof peg$source.offset === "function")) {', "      res.start = peg$source.offset(res.start);", "      res.end = peg$source.offset(res.end);", "    }", "    return res;", "  }", "", "  function peg$fail(expected) {", "    if (peg$currPos < peg$maxFailPos) { return; }", "", "    if (peg$currPos > peg$maxFailPos) {", "      peg$maxFailPos = peg$currPos;", "      peg$maxFailExpected = [];", "    }", "", "    peg$maxFailExpected.push(expected);", "  }", "", "  function peg$buildSimpleError(message, location) {", "    return new peg$SyntaxError(message, null, null, location);", "  }", "", "  function peg$buildStructuredError(expected, found, location) {", "    return new peg$SyntaxError(", "      peg$SyntaxError.buildMessage(expected, found),", "      expected,", "      found,", "      location", "    );", "  }", "");
         if (ast2.imports.length > 0) {
-          parts.push(
-            "  function peg$callLibrary(lib, startRule) {",
-            "    const opts = Object.assign({}, options, {",
-            "      startRule: startRule,",
-            "      peg$currPos: peg$currPos,",
-            "      peg$silentFails: peg$silentFails,",
-            "      peg$library: true,",
-            "      peg$maxFailExpected: peg$maxFailExpected",
-            "    });",
-            "    const res = lib.parse(input, opts);",
-            "    peg$currPos = res.peg$currPos;",
-            "    peg$maxFailPos = res.peg$maxFailPos;",
-            "    peg$maxFailExpected = res.peg$maxFailExpected;",
-            "    return (res.peg$result === res.peg$FAILED) ? peg$FAILED : res.peg$result;",
-            "  }",
-            ""
-          );
+          parts.push("  function peg$callLibrary(lib, startRule) {", "    const opts = Object.assign({}, options, {", "      startRule: startRule,", "      peg$currPos: peg$currPos,", "      peg$silentFails: peg$silentFails,", "      peg$library: true,", "      peg$maxFailExpected: peg$maxFailExpected", "    });", "    const res = lib.parse(input, opts);", "    peg$currPos = res.peg$currPos;", "    peg$maxFailPos = res.peg$maxFailPos;", "    peg$maxFailExpected = res.peg$maxFailExpected;", "    return (res.peg$result === res.peg$FAILED) ? peg$FAILED : res.peg$result;", "  }", "");
         }
         ast2.rules.forEach((rule) => {
           parts.push(...indent2(generateRuleFunction(rule)));
@@ -8397,6 +8356,7 @@ var require_generate_js = __commonJS({
           parts.map((s) => s instanceof SourceNode ? s : s + "\n")
         );
       }
+      __name(generateToplevel, "generateToplevel");
       function generateWrapper(toplevelCode) {
         function generateGeneratedByComment() {
           return [
@@ -8405,21 +8365,22 @@ var require_generate_js = __commonJS({
             "// https://peggyjs.org/"
           ];
         }
+        __name(generateGeneratedByComment, "generateGeneratedByComment");
         function generateParserObject() {
-          const res = ["{"];
+          const res = [
+            "{"
+          ];
           if (options2.trace) {
             res.push("  DefaultTracer: peg$DefaultTracer,");
           }
           if (options2.allowedStartRules) {
             res.push("  StartRules: [" + options2.allowedStartRules.map((r2) => '"' + r2 + '"').join(", ") + "],");
           }
-          res.push(
-            "  SyntaxError: peg$SyntaxError,",
-            "  parse: peg$parse,"
-          );
+          res.push("  SyntaxError: peg$SyntaxError,", "  parse: peg$parse,");
           res.push("}");
           return res.join("\n");
         }
+        __name(generateParserObject, "generateParserObject");
         const generators = {
           bare() {
             if (Object.keys(dependencies).length > 0 || ast2.imports.length > 0) {
@@ -8437,30 +8398,18 @@ var require_generate_js = __commonJS({
           commonjs() {
             const dependencyVars = Object.keys(dependencies);
             const parts2 = generateGeneratedByComment();
-            parts2.push(
-              "",
-              '"use strict";'
-            );
+            parts2.push("", '"use strict";');
             if (dependencyVars.length > 0) {
               dependencyVars.forEach((variable) => {
-                parts2.push(
-                  "const " + variable + ' = require("' + stringEscape(dependencies[variable]) + '");'
-                );
+                parts2.push("const " + variable + ' = require("' + stringEscape(dependencies[variable]) + '");');
               });
               parts2.push("");
             }
             const impLen = ast2.imports.length;
             for (let i = 0; i < impLen; i++) {
-              parts2.push(
-                "const " + gi(i) + ' = require("' + stringEscape(ast2.imports[i].from.module) + '");'
-              );
+              parts2.push("const " + gi(i) + ' = require("' + stringEscape(ast2.imports[i].from.module) + '");');
             }
-            parts2.push(
-              "",
-              toplevelCode,
-              "",
-              "module.exports = " + generateParserObject() + ";"
-            );
+            parts2.push("", toplevelCode, "", "module.exports = " + generateParserObject() + ";");
             return parts2;
           },
           es() {
@@ -8469,40 +8418,20 @@ var require_generate_js = __commonJS({
             parts2.push("");
             if (dependencyVars.length > 0) {
               dependencyVars.forEach((variable) => {
-                parts2.push(
-                  "import " + variable + ' from "' + stringEscape(dependencies[variable]) + '";'
-                );
+                parts2.push("import " + variable + ' from "' + stringEscape(dependencies[variable]) + '";');
               });
               parts2.push("");
             }
             for (let i = 0; i < ast2.imports.length; i++) {
-              parts2.push(
-                "import * as " + gi(i) + ' from "' + stringEscape(ast2.imports[i].from.module) + '";'
-              );
+              parts2.push("import * as " + gi(i) + ' from "' + stringEscape(ast2.imports[i].from.module) + '";');
             }
-            parts2.push(
-              "",
-              toplevelCode,
-              ""
-            );
-            parts2.push(
-              "const peg$allowedStartRules = [",
-              "  " + (options2.allowedStartRules ? options2.allowedStartRules.map((r2) => '"' + r2 + '"').join(",\n  ") : ""),
-              "];",
-              ""
-            );
-            parts2.push(
-              "export {"
-            );
+            parts2.push("", toplevelCode, "");
+            parts2.push("const peg$allowedStartRules = [", "  " + (options2.allowedStartRules ? options2.allowedStartRules.map((r2) => '"' + r2 + '"').join(",\n  ") : ""), "];", "");
+            parts2.push("export {");
             if (options2.trace) {
               parts2.push("  peg$DefaultTracer as DefaultTracer,");
             }
-            parts2.push(
-              "  peg$allowedStartRules as StartRules,",
-              "  peg$SyntaxError as SyntaxError,",
-              "  peg$parse as parse",
-              "};"
-            );
+            parts2.push("  peg$allowedStartRules as StartRules,", "  peg$SyntaxError as SyntaxError,", "  peg$parse as parse", "};");
             return parts2;
           },
           amd() {
@@ -8511,9 +8440,7 @@ var require_generate_js = __commonJS({
             }
             const dependencyVars = Object.keys(dependencies);
             const dependencyIds = dependencyVars.map((v) => dependencies[v]);
-            const deps = "[" + dependencyIds.map(
-              (id) => '"' + stringEscape(id) + '"'
-            ).join(", ") + "]";
+            const deps = "[" + dependencyIds.map((id) => '"' + stringEscape(id) + '"').join(", ") + "]";
             const params = dependencyVars.join(", ");
             return [
               ...generateGeneratedByComment(),
@@ -8548,36 +8475,15 @@ var require_generate_js = __commonJS({
             }
             const dependencyVars = Object.keys(dependencies);
             const dependencyIds = dependencyVars.map((v) => dependencies[v]);
-            const deps = "[" + dependencyIds.map(
-              (id) => '"' + stringEscape(id) + '"'
-            ).join(", ") + "]";
-            const requires = dependencyIds.map(
-              (id) => 'require("' + stringEscape(id) + '")'
-            ).join(", ");
+            const deps = "[" + dependencyIds.map((id) => '"' + stringEscape(id) + '"').join(", ") + "]";
+            const requires = dependencyIds.map((id) => 'require("' + stringEscape(id) + '")').join(", ");
             const params = dependencyVars.join(", ");
             const parts2 = generateGeneratedByComment();
-            parts2.push(
-              "(function(root, factory) {",
-              '  if (typeof define === "function" && define.amd) {',
-              "    define(" + deps + ", factory);",
-              '  } else if (typeof module === "object" && module.exports) {',
-              "    module.exports = factory(" + requires + ");"
-            );
+            parts2.push("(function(root, factory) {", '  if (typeof define === "function" && define.amd) {', "    define(" + deps + ", factory);", '  } else if (typeof module === "object" && module.exports) {', "    module.exports = factory(" + requires + ");");
             if (options2.exportVar) {
-              parts2.push(
-                "  } else {",
-                "    root." + options2.exportVar + " = factory();"
-              );
+              parts2.push("  } else {", "    root." + options2.exportVar + " = factory();");
             }
-            parts2.push(
-              "  }",
-              "})(this, function(" + params + ") {",
-              '  "use strict";',
-              toplevelCode,
-              "",
-              indent2("return " + generateParserObject() + ";"),
-              "});"
-            );
+            parts2.push("  }", "})(this, function(" + params + ") {", '  "use strict";', toplevelCode, "", indent2("return " + generateParserObject() + ";"), "});");
             return parts2;
           }
         };
@@ -8590,8 +8496,10 @@ var require_generate_js = __commonJS({
           parts.map((s) => s instanceof SourceNode ? s : s + "\n")
         );
       }
+      __name(generateWrapper, "generateWrapper");
       ast2.code = generateWrapper(generateToplevel());
     }
+    __name(generateJS2, "generateJS");
     module2.exports = generateJS2;
   }
 });
@@ -8606,30 +8514,31 @@ var require_remove_proxy_rules = __commonJS({
       function isProxyRule(node) {
         return node.type === "rule" && node.expression.type === "rule_ref";
       }
+      __name(isProxyRule, "isProxyRule");
       function replaceRuleRefs(ast3, from, to) {
         const replace = visitor2.build({
           rule_ref(node) {
             if (node.name === from) {
               node.name = to;
-              session2.info(
-                `Proxy rule "${from}" replaced by the rule "${to}"`,
-                node.location,
-                [{
+              session2.info(`Proxy rule "${from}" replaced by the rule "${to}"`, node.location, [
+                {
                   message: "This rule will be used",
                   location: asts.findRule(ast3, to).nameLocation
-                }]
-              );
+                }
+              ]);
             }
           }
         });
         replace(ast3);
       }
+      __name(replaceRuleRefs, "replaceRuleRefs");
       ast2.rules.forEach((rule) => {
         if (isProxyRule(rule)) {
           replaceRuleRefs(ast2, rule.name, rule.expression.name);
         }
       });
     }
+    __name(removeProxyRules2, "removeProxyRules");
     module2.exports = removeProxyRules2;
   }
 });
@@ -8655,10 +8564,17 @@ var require_merge_character_classes = __commonJS({
         t[key] = s[key];
       });
     }
+    __name(cloneOver, "cloneOver");
     function cleanParts(parts) {
       parts.sort((a, b) => {
-        const [aStart, aEnd] = Array.isArray(a) ? a : [a, a];
-        const [bStart, bEnd] = Array.isArray(b) ? b : [b, b];
+        const [aStart, aEnd] = Array.isArray(a) ? a : [
+          a,
+          a
+        ];
+        const [bStart, bEnd] = Array.isArray(b) ? b : [
+          b,
+          b
+        ];
         if (aStart !== bStart) {
           return aStart < bStart ? -1 : 1;
         }
@@ -8671,7 +8587,10 @@ var require_merge_character_classes = __commonJS({
       let prevEnd = "";
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
-        const [curStart, curEnd] = Array.isArray(part) ? part : [part, part];
+        const [curStart, curEnd] = Array.isArray(part) ? part : [
+          part,
+          part
+        ];
         if (typeof curStart === "string" && typeof curEnd === "string" && typeof prevStart === "string" && typeof prevEnd === "string") {
           if (curEnd <= prevEnd) {
             parts.splice(i--, 1);
@@ -8679,7 +8598,10 @@ var require_merge_character_classes = __commonJS({
           }
           if (prevEnd.charCodeAt(0) + 1 >= curStart.charCodeAt(0)) {
             parts.splice(i--, 1);
-            parts[i] = [prevStart, prevEnd = curEnd];
+            parts[i] = [
+              prevStart,
+              prevEnd = curEnd
+            ];
             continue;
           }
         }
@@ -8688,6 +8610,7 @@ var require_merge_character_classes = __commonJS({
       }
       return parts;
     }
+    __name(cleanParts, "cleanParts");
     var LAST_LOW = String.fromCodePoint(55295);
     var FIRST_SURROGATE = 55296;
     var LAST_SURROGATE = 57343;
@@ -8695,8 +8618,8 @@ var require_merge_character_classes = __commonJS({
     function splitUnicodeRanges(ast2, session2) {
       const split = visitor2.build({
         /**
-         * @param {PEG.ast.CharacterClass} node
-         */
+        * @param {PEG.ast.CharacterClass} node
+        */
         class(node) {
           if (!node.unicode) {
             return;
@@ -8709,11 +8632,11 @@ var require_merge_character_classes = __commonJS({
                 c.codePointAt(0)
               ));
               if (s < FIRST_SURROGATE && e > LAST_SURROGATE) {
-                session2.info(
-                  `Removing surrogate range from [${stringEscape(p[0])}-${stringEscape(p[1])}]`,
-                  node.location
-                );
-                extras.push([FIRST_HIGH, p[1]]);
+                session2.info(`Removing surrogate range from [${stringEscape(p[0])}-${stringEscape(p[1])}]`, node.location);
+                extras.push([
+                  FIRST_HIGH,
+                  p[1]
+                ]);
                 p[1] = LAST_LOW;
               }
             }
@@ -8723,6 +8646,7 @@ var require_merge_character_classes = __commonJS({
       });
       split(ast2);
     }
+    __name(splitUnicodeRanges, "splitUnicodeRanges");
     function mergeCharacterClasses2(ast2, _options, session2) {
       const rules = /* @__PURE__ */ Object.create(null);
       ast2.rules.forEach((rule) => rules[rule.name] = rule.expression);
@@ -8730,21 +8654,26 @@ var require_merge_character_classes = __commonJS({
       splitUnicodeRanges(ast2, session2);
       const [asClass, merge] = [
         /**
-         * Determine whether a node can be represented as a simple character class,
-         * and return that class if so.
-         *
-         * @param {PEG.ast.Expression} node - the node to inspect
-         * @param {boolean} [clone=false] - if true, always return a new node that
-         *   can be modified by the caller
-         * @returns {PEG.ast.CharacterClass | null}
-         */
+        * Determine whether a node can be represented as a simple character class,
+        * and return that class if so.
+        *
+        * @param {PEG.ast.Expression} node - the node to inspect
+        * @param {boolean} [clone=false] - if true, always return a new node that
+        *   can be modified by the caller
+        * @returns {PEG.ast.CharacterClass | null}
+        */
         (node, clone = false) => {
           switch (node.type) {
             case "class":
               if (node.inverted) {
                 break;
               }
-              return clone ? { ...node, parts: [...node.parts] } : node;
+              return clone ? {
+                ...node,
+                parts: [
+                  ...node.parts
+                ]
+              } : node;
             case "literal": {
               const ul = codePointLen1(node.value);
               if (ul < 0) {
@@ -8752,7 +8681,9 @@ var require_merge_character_classes = __commonJS({
               }
               return {
                 type: "class",
-                parts: [node.value],
+                parts: [
+                  node.value
+                ],
                 inverted: false,
                 ignoreCase: node.ignoreCase,
                 location: node.location,
@@ -8778,7 +8709,6 @@ var require_merge_character_classes = __commonJS({
           return null;
         },
         visitor2.build({
-          // "merge"
           choice(node) {
             let prev = null;
             let changed = false;
@@ -8806,9 +8736,7 @@ var require_merge_character_classes = __commonJS({
               }
             });
             if (changed) {
-              node.alternatives = node.alternatives.filter(
-                (alt, i, arr) => !i || alt !== arr[i - 1]
-              );
+              node.alternatives = node.alternatives.filter((alt, i, arr) => !i || alt !== arr[i - 1]);
               node.alternatives.forEach((alt, i) => {
                 if (alt.type === "class") {
                   alt.parts = cleanParts(alt.parts);
@@ -8842,6 +8770,7 @@ var require_merge_character_classes = __commonJS({
         merge(rule.expression);
       });
     }
+    __name(mergeCharacterClasses2, "mergeCharacterClasses");
     module2.exports = mergeCharacterClasses2;
   }
 });
@@ -8856,7 +8785,9 @@ var require_remove_unused_rules = __commonJS({
       ast2.rules.forEach((rule) => {
         rules[rule.name] = rule;
       });
-      const queue = [...options2.allowedStartRules];
+      const queue = [
+        ...options2.allowedStartRules
+      ];
       const found = /* @__PURE__ */ new Set();
       const findRefs = visitor2.build({
         rule_ref(node) {
@@ -8878,6 +8809,7 @@ var require_remove_unused_rules = __commonJS({
         return false;
       });
     }
+    __name(removeUnusedRules2, "removeUnusedRules");
     module2.exports = removeUnusedRules2;
   }
 });
@@ -8892,20 +8824,19 @@ var require_report_duplicate_imports = __commonJS({
         for (const what of imp.what) {
           if (what.type === "import_binding_all") {
             if (Object.prototype.hasOwnProperty.call(all, what.binding)) {
-              session2.error(
-                `Module "${what.binding}" is already imported`,
-                what.location,
-                [{
+              session2.error(`Module "${what.binding}" is already imported`, what.location, [
+                {
                   message: "Original module location",
                   location: all[what.binding]
-                }]
-              );
+                }
+              ]);
             }
             all[what.binding] = what.location;
           }
         }
       }
     }
+    __name(reportDuplicateImports2, "reportDuplicateImports");
     module2.exports = reportDuplicateImports2;
   }
 });
@@ -8923,9 +8854,11 @@ var require_report_duplicate_labels = __commonJS({
         });
         return clone;
       }
+      __name(cloneEnv, "cloneEnv");
       function checkExpressionWithClonedEnv(node, env) {
         check(node.expression, cloneEnv(env));
       }
+      __name(checkExpressionWithClonedEnv, "checkExpressionWithClonedEnv");
       const check = visitor2.build({
         rule(node) {
           check(node.expression, {});
@@ -8939,14 +8872,12 @@ var require_report_duplicate_labels = __commonJS({
         labeled(node, env) {
           const label = node.label;
           if (label && Object.prototype.hasOwnProperty.call(env, label)) {
-            session2.error(
-              `Label "${node.label}" is already defined`,
-              node.labelLocation,
-              [{
+            session2.error(`Label "${node.label}" is already defined`, node.labelLocation, [
+              {
                 message: "Original label location",
                 location: env[label]
-              }]
-            );
+              }
+            ]);
           }
           check(node.expression, env);
           env[node.label] = node.labelLocation;
@@ -8967,6 +8898,7 @@ var require_report_duplicate_labels = __commonJS({
       });
       check(ast2);
     }
+    __name(reportDuplicateLabels2, "reportDuplicateLabels");
     module2.exports = reportDuplicateLabels2;
   }
 });
@@ -8981,14 +8913,12 @@ var require_report_duplicate_rules = __commonJS({
       const check = visitor2.build({
         rule(node) {
           if (Object.prototype.hasOwnProperty.call(rules, node.name)) {
-            session2.error(
-              `Rule "${node.name}" is already defined`,
-              node.nameLocation,
-              [{
+            session2.error(`Rule "${node.name}" is already defined`, node.nameLocation, [
+              {
                 message: "Original rule location",
                 location: rules[node.name]
-              }]
-            );
+              }
+            ]);
             return;
           }
           rules[node.name] = node.nameLocation;
@@ -8996,6 +8926,7 @@ var require_report_duplicate_rules = __commonJS({
       });
       check(ast2);
     }
+    __name(reportDuplicateRules2, "reportDuplicateRules");
     module2.exports = reportDuplicateRules2;
   }
 });
@@ -9049,14 +8980,10 @@ var require_report_infinite_recursion = __commonJS({
           const rule = asts.findRule(ast2, node.name);
           if (visitedRules.indexOf(node.name) !== -1) {
             visitedRules.push(node.name);
-            session2.error(
-              "Possible infinite loop when parsing (left recursion: " + visitedRules.join(" -> ") + ")",
-              rule.nameLocation,
-              backtraceRefs.map((ref, i, a) => ({
-                message: i + 1 !== a.length ? `Step ${i + 1}: call of the rule "${ref.name}" without input consumption` : `Step ${i + 1}: calls itself without input consumption - left recursion`,
-                location: ref.location
-              }))
-            );
+            session2.error("Possible infinite loop when parsing (left recursion: " + visitedRules.join(" -> ") + ")", rule.nameLocation, backtraceRefs.map((ref, i, a) => ({
+              message: i + 1 !== a.length ? `Step ${i + 1}: call of the rule "${ref.name}" without input consumption` : `Step ${i + 1}: calls itself without input consumption - left recursion`,
+              location: ref.location
+            })));
             return;
           }
           if (rule) {
@@ -9067,6 +8994,7 @@ var require_report_infinite_recursion = __commonJS({
       });
       check(ast2);
     }
+    __name(reportInfiniteRecursion2, "reportInfiniteRecursion");
     module2.exports = reportInfiniteRecursion2;
   }
 });
@@ -9081,18 +9009,12 @@ var require_report_infinite_repetition = __commonJS({
       const check = visitor2.build({
         zero_or_more(node) {
           if (!asts.alwaysConsumesOnSuccess(ast2, node.expression)) {
-            session2.error(
-              "Possible infinite loop when parsing (repetition used with an expression that may not consume any input)",
-              node.location
-            );
+            session2.error("Possible infinite loop when parsing (repetition used with an expression that may not consume any input)", node.location);
           }
         },
         one_or_more(node) {
           if (!asts.alwaysConsumesOnSuccess(ast2, node.expression)) {
-            session2.error(
-              "Possible infinite loop when parsing (repetition used with an expression that may not consume any input)",
-              node.location
-            );
+            session2.error("Possible infinite loop when parsing (repetition used with an expression that may not consume any input)", node.location);
           }
         },
         repeated(node) {
@@ -9103,21 +9025,16 @@ var require_report_infinite_repetition = __commonJS({
             return;
           }
           if (node.max.value === null) {
-            session2.error(
-              "Possible infinite loop when parsing (unbounded range repetition used with an expression that may not consume any input)",
-              node.location
-            );
+            session2.error("Possible infinite loop when parsing (unbounded range repetition used with an expression that may not consume any input)", node.location);
           } else {
             const min = node.min ? node.min : node.max;
-            session2.warning(
-              min.type === "constant" && node.max.type === "constant" ? `An expression may not consume any input and may always match ${node.max.value} times` : "An expression may not consume any input and may always match with a maximum repetition count",
-              node.location
-            );
+            session2.warning(min.type === "constant" && node.max.type === "constant" ? `An expression may not consume any input and may always match ${node.max.value} times` : "An expression may not consume any input and may always match with a maximum repetition count", node.location);
           }
         }
       });
       check(ast2);
     }
+    __name(reportInfiniteRepetition2, "reportInfiniteRepetition");
     module2.exports = reportInfiniteRepetition2;
   }
 });
@@ -9132,15 +9049,13 @@ var require_report_undefined_rules = __commonJS({
       const check = visitor2.build({
         rule_ref(node) {
           if (!asts.findRule(ast2, node.name)) {
-            session2.error(
-              `Rule "${node.name}" is not defined`,
-              node.location
-            );
+            session2.error(`Rule "${node.name}" is not defined`, node.location);
           }
         }
       });
       check(ast2);
     }
+    __name(reportUndefinedRules2, "reportUndefinedRules");
     module2.exports = reportUndefinedRules2;
   }
 });
@@ -9158,14 +9073,12 @@ var require_report_incorrect_plucking = __commonJS({
         labeled(node, action) {
           if (node.pick) {
             if (action) {
-              session2.error(
-                '"@" cannot be used with an action block',
-                node.labelLocation,
-                [{
+              session2.error('"@" cannot be used with an action block', node.labelLocation, [
+                {
                   message: "Action block location",
                   location: action.codeLocation
-                }]
-              );
+                }
+              ]);
             }
           }
           check(node.expression);
@@ -9173,6 +9086,7 @@ var require_report_incorrect_plucking = __commonJS({
       });
       check(ast2);
     }
+    __name(reportIncorrectPlucking2, "reportIncorrectPlucking");
     module2.exports = reportIncorrectPlucking2;
   }
 });
@@ -9186,57 +9100,43 @@ var require_report_unreachable = __commonJS({
     function reportUnreachable2(ast2, options2, session2) {
       const visit = visitor2.build({
         /**
-         * @param {PEG.ast.Choice} node
-         */
+        * @param {PEG.ast.Choice} node
+        */
         choice(node) {
           node.alternatives.forEach((a) => visit(a));
           for (let i = 0; i < node.alternatives.length - 1; i++) {
             const alt = node.alternatives[i];
             if (alt.match === ALWAYS_MATCH) {
-              session2.warning(
-                "Always matches.  Following alternatives may not be reachable.",
-                alt.location
-              );
+              session2.warning("Always matches.  Following alternatives may not be reachable.", alt.location);
             }
           }
         },
         /**
-         * @param {PEG.ast.Prefixed} node
-         */
+        * @param {PEG.ast.Prefixed} node
+        */
         simple_and(node) {
           visit(node.expression);
           if (node.expression.match === ALWAYS_MATCH) {
-            session2.warning(
-              "Always matches, making the & predicate redundant.",
-              node.expression.location
-            );
+            session2.warning("Always matches, making the & predicate redundant.", node.expression.location);
           } else if (node.expression.match === NEVER_MATCH) {
-            session2.warning(
-              "Never matches, making the & predicate always fail.",
-              node.expression.location
-            );
+            session2.warning("Never matches, making the & predicate always fail.", node.expression.location);
           }
         },
         /**
-         * @param {PEG.ast.Prefixed} node
-         */
+        * @param {PEG.ast.Prefixed} node
+        */
         simple_not(node) {
           visit(node.expression);
           if (node.expression.match === ALWAYS_MATCH) {
-            session2.warning(
-              "Always matches, making the ! predicate always fail.",
-              node.expression.location
-            );
+            session2.warning("Always matches, making the ! predicate always fail.", node.expression.location);
           } else if (node.expression.match === NEVER_MATCH) {
-            session2.warning(
-              "Never matches, making the ! predicate redundant.",
-              node.expression.location
-            );
+            session2.warning("Never matches, making the ! predicate redundant.", node.expression.location);
           }
         }
       });
       visit(ast2);
     }
+    __name(reportUnreachable2, "reportUnreachable");
     module2.exports = reportUnreachable2;
   }
 });
@@ -9246,7 +9146,8 @@ var require_session = __commonJS({
   "node_modules/peggy/lib/compiler/session.js"(exports2, module2) {
     "use strict";
     var GrammarError = require_grammar_error();
-    var Defaults = class {
+    var _a;
+    var Defaults = (_a = class {
       constructor(options2) {
         options2 = typeof options2 !== "undefined" ? options2 : {};
         if (typeof options2.error === "function") {
@@ -9268,8 +9169,9 @@ var require_session = __commonJS({
       // eslint-disable-next-line class-methods-use-this -- Abstract
       info() {
       }
-    };
-    var Session2 = class {
+    }, __name(_a, "Defaults"), _a);
+    var _a2;
+    var Session2 = (_a2 = class {
       constructor(options2) {
         this._callbacks = new Defaults(options2);
         this._firstError = null;
@@ -9284,15 +9186,24 @@ var require_session = __commonJS({
           this._firstError.stage = this.stage;
           this._firstError.problems = this.problems;
         }
-        this.problems.push(["error", ...args]);
+        this.problems.push([
+          "error",
+          ...args
+        ]);
         this._callbacks.error(this.stage, ...args);
       }
       warning(...args) {
-        this.problems.push(["warning", ...args]);
+        this.problems.push([
+          "warning",
+          ...args
+        ]);
         this._callbacks.warning(this.stage, ...args);
       }
       info(...args) {
-        this.problems.push(["info", ...args]);
+        this.problems.push([
+          "info",
+          ...args
+        ]);
         this._callbacks.info(this.stage, ...args);
       }
       checkErrors() {
@@ -9300,7 +9211,7 @@ var require_session = __commonJS({
           throw this._firstError;
         }
       }
-    };
+    }, __name(_a2, "Session"), _a2);
     module2.exports = Session2;
   }
 });
@@ -9340,12 +9251,14 @@ var require_compiler = __commonJS({
       });
       return processedOptions;
     }
+    __name(processOptions, "processOptions");
     function isSourceMapCapable(target) {
       if (typeof target === "string") {
         return target.length > 0;
       }
       return target && typeof target.offset === "function";
     }
+    __name(isSourceMapCapable, "isSourceMapCapable");
     var compiler = {
       // AST node visitor builder. Useful mainly for plugins which manipulate the
       // AST.
@@ -9377,7 +9290,6 @@ var require_compiler = __commonJS({
         ],
         semantic: [
           reportUnreachable
-          // Not a transform, but has to be after inferenceMatchResult
         ],
         generate: [
           generateBytecode,
@@ -9390,7 +9302,9 @@ var require_compiler = __commonJS({
       // cause its malfunction.
       compile(ast, passes, options) {
         options = options !== void 0 ? options : {};
-        const defaultStartRules = [ast.rules[0].name];
+        const defaultStartRules = [
+          ast.rules[0].name
+        ];
         options = processOptions(options, {
           allowedStartRules: defaultStartRules,
           cache: false,
@@ -9445,9 +9359,7 @@ var require_compiler = __commonJS({
             }
             const sourceMap = ast.code.toStringWithSourceMap();
             const encoder = new TextEncoder();
-            const b64 = base64(
-              encoder.encode(JSON.stringify(sourceMap.map.toJSON()))
-            );
+            const b64 = base64(encoder.encode(JSON.stringify(sourceMap.map.toJSON())));
             return sourceMap.code + `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${b64}
 `;
           }
@@ -9547,29 +9459,17 @@ var require_peg = __commonJS({
       // - volatile
       // These are not reserved keywords, but using them as variable names is problematic.
       "arguments",
-      // Conflicts with a special variable available inside functions.
       "eval"
-      // Redeclaring eval() is prohibited in strict mode
-      // A few identifiers have a special meaning in some contexts without being
-      // reserved words of any kind. These we don't need to worry about as they can
-      // all be safely used as variable names.
-      //
-      // - as
-      // - async
-      // - from
-      // - get
-      // - of
-      // - set
     ];
     var peg = {
       // Peggy version (filled in by /tools/release).
       VERSION,
       /**
-       * Default list of reserved words. Contains list of currently and future
-       * JavaScript (ECMAScript 2015) reserved words.
-       *
-       * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#reserved_words
-       */
+      * Default list of reserved words. Contains list of currently and future
+      * JavaScript (ECMAScript 2015) reserved words.
+      *
+      * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#reserved_words
+      */
       RESERVED_WORDS,
       GrammarError,
       GrammarLocation,
@@ -9593,6 +9493,7 @@ var require_peg = __commonJS({
           });
           return converted;
         }
+        __name(copyPasses, "copyPasses");
         const plugins = "plugins" in options2 ? options2.plugins : [];
         const config = {
           parser: peg.parser,
@@ -9603,22 +9504,18 @@ var require_peg = __commonJS({
           p.use(config, options2);
         });
         if (!Array.isArray(grammar)) {
-          grammar = [{
-            source: options2.grammarSource,
-            text: grammar
-          }];
+          grammar = [
+            {
+              source: options2.grammarSource,
+              text: grammar
+            }
+          ];
         }
-        const combined = asts.combine(
-          grammar.map(({ source, text }) => config.parser.parse(text, {
-            grammarSource: source,
-            reservedWords: config.reservedWords
-          }))
-        );
-        return peg.compiler.compile(
-          combined,
-          config.passes,
-          options2
-        );
+        const combined = asts.combine(grammar.map(({ source, text }) => config.parser.parse(text, {
+          grammarSource: source,
+          reservedWords: config.reservedWords
+        })));
+        return peg.compiler.compile(combined, config.passes, options2);
       }
     };
     module2.exports = peg;
@@ -9666,15 +9563,18 @@ function highlightSnippet(input, location, useColor = true) {
   if (lineNum < lines.length) resultLines.push(`${lineNum + 1}: ${lines[lineNum]}`);
   return resultLines.join("\n");
 }
+__name(highlightSnippet, "highlightSnippet");
 
 // src/utils/format.ts
 var import_chalk2 = __toESM(require("chalk"), 1);
 function isParseError(err) {
   return err && typeof err === "object" && typeof err.error === "string";
 }
+__name(isParseError, "isParseError");
 function isPeggyError(err) {
   return err && typeof err === "object" && typeof err.message === "string" && (err.location || err.expected || err.found !== void 0);
 }
+__name(isPeggyError, "isPeggyError");
 function toParseError(err) {
   if (isParseError(err)) {
     return err;
@@ -9711,16 +9611,21 @@ function toParseError(err) {
     snippet: void 0
   };
 }
+__name(toParseError, "toParseError");
 function isValidLocation(loc) {
   return loc && typeof loc === "object" && loc.start && loc.end && typeof loc.start.line === "number" && typeof loc.start.column === "number" && typeof loc.start.offset === "number" && typeof loc.end.line === "number" && typeof loc.end.column === "number" && typeof loc.end.offset === "number";
 }
+__name(isValidLocation, "isValidLocation");
 function formatLocation(location) {
   const { start, end } = location;
   return start.line === end.line && start.column === end.column ? `Line ${start.line}, Col ${start.column}` : `Line ${start.line}, Col ${start.column} \u2192 Line ${end.line}, Col ${end.column}`;
 }
+__name(formatLocation, "formatLocation");
 function formatError(error) {
   const errorMessage = error.error || "Unknown error";
-  const parts = [`\u274C Parse Error: ${errorMessage}`];
+  const parts = [
+    `\u274C Parse Error: ${errorMessage}`
+  ];
   if (error.location) {
     parts.push(`\u21AA at ${formatLocation(error.location)}`);
   }
@@ -9740,6 +9645,7 @@ function formatError(error) {
   }
   return parts.join("\n");
 }
+__name(formatError, "formatError");
 function formatErrorWithColors(error, useColors = true) {
   if (!useColors) {
     return formatError(error);
@@ -9767,10 +9673,12 @@ function formatErrorWithColors(error, useColors = true) {
   }
   return parts.join("\n");
 }
+__name(formatErrorWithColors, "formatErrorWithColors");
 function formatAnyError(err, useColors = true) {
   const parseError = toParseError(err);
   return formatErrorWithColors(parseError, useColors);
 }
+__name(formatAnyError, "formatAnyError");
 function getErrorSuggestions(error) {
   const suggestions = [];
   const errorMsg = error.error?.toLowerCase() || "";
@@ -9792,6 +9700,7 @@ function getErrorSuggestions(error) {
   }
   return suggestions;
 }
+__name(getErrorSuggestions, "getErrorSuggestions");
 function formatErrorWithSuggestions(error, useColors = true) {
   const baseFormatted = formatErrorWithColors(error, useColors);
   const suggestions = getErrorSuggestions(error);
@@ -9806,6 +9715,7 @@ function formatErrorWithSuggestions(error, useColors = true) {
   return `${baseFormatted}${suggestionHeader}
 ${formattedSuggestions}`;
 }
+__name(formatErrorWithSuggestions, "formatErrorWithSuggestions");
 function formatCompilationError(err, grammarSource) {
   const parseError = toParseError(err);
   if (grammarSource && !parseError.input) {
@@ -9813,21 +9723,30 @@ function formatCompilationError(err, grammarSource) {
   }
   return formatErrorWithSuggestions(parseError, true);
 }
+__name(formatCompilationError, "formatCompilationError");
 
 // src/utils/ast.ts
 function createASTNode(type, value, children = [], location, metadata) {
-  const node = { type, value, children, location };
+  const node = {
+    type,
+    value,
+    children,
+    location
+  };
   if (metadata) node.metadata = metadata;
   return node;
 }
+__name(createASTNode, "createASTNode");
 function traverseAST(node, visit, parent, path = []) {
   visit(node, parent, path);
   if (node.children) {
-    node.children.forEach(
-      (child, index) => traverseAST(child, visit, node, [...path, `children[${index}]`])
-    );
+    node.children.forEach((child, index) => traverseAST(child, visit, node, [
+      ...path,
+      `children[${index}]`
+    ]));
   }
 }
+__name(traverseAST, "traverseAST");
 
 // src/grammar/index.ts
 var import_peggy = __toESM(require_peg(), 1);
@@ -9835,7 +9754,9 @@ var generate = import_peggy.default.generate;
 function compileGrammar(grammar, options2 = {}) {
   try {
     const defaultOptions = {
-      allowedStartRules: ["*"],
+      allowedStartRules: [
+        "*"
+      ],
       cache: false,
       format: "bare",
       optimize: "speed",
@@ -9855,6 +9776,7 @@ function compileGrammar(grammar, options2 = {}) {
 ${formattedError}`);
   }
 }
+__name(compileGrammar, "compileGrammar");
 
 // src/lexer/index.ts
 var import_moo = __toESM(require("moo"), 1);
@@ -9865,6 +9787,7 @@ function createLexer(config) {
     throw new Error(`Lexer compilation failed: ${error.message}`);
   }
 }
+__name(createLexer, "createLexer");
 
 // src/parser/index.ts
 function parseInput(grammar, input, options2 = {}) {
@@ -9878,6 +9801,7 @@ function parseInput(grammar, input, options2 = {}) {
     return createParseError(error, input, options2);
   }
 }
+__name(parseInput, "parseInput");
 function createParser(grammar) {
   return (input) => {
     try {
@@ -9893,6 +9817,7 @@ function createParser(grammar) {
     }
   };
 }
+__name(createParser, "createParser");
 function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
   const errors = [];
   const recoveryStrategies = [
@@ -9904,13 +9829,19 @@ function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
   ];
   try {
     const result = grammar.parse(input, options2);
-    return { result, errors, recoveryStrategy: "original" };
+    return {
+      result,
+      errors,
+      recoveryStrategy: "original"
+    };
   } catch (error) {
     const parseError = createParseError(error, input, options2);
     errors.push(parseError);
     const lines = input.split("\n");
     if (!parseError.location) {
-      return { errors };
+      return {
+        errors
+      };
     }
     const errorLine = parseError.location.start.line;
     if (errorLine > 0 && errorLine <= lines.length) {
@@ -9920,7 +9851,11 @@ function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
           ...lines.slice(errorLine)
         ].join("\n");
         const result = grammar.parse(recoveredInput, options2);
-        return { result, errors, recoveryStrategy: "removeErrorLine" };
+        return {
+          result,
+          errors,
+          recoveryStrategy: "removeErrorLine"
+        };
       } catch (recoveryError) {
         errors.push(createParseError(recoveryError, input, options2));
       }
@@ -9930,29 +9865,47 @@ function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
         const recoveredInput = lines.slice(0, errorLine - 1).join("\n");
         if (recoveredInput.trim()) {
           const result = grammar.parse(recoveredInput, options2);
-          return { result, errors, recoveryStrategy: "removeFromError" };
+          return {
+            result,
+            errors,
+            recoveryStrategy: "removeFromError"
+          };
         }
       } catch (recoveryError) {
         errors.push(createParseError(recoveryError, input, options2));
       }
     }
     if (parseError.expected) {
-      const commonTokens = [";", "}", ")", "]", '"', "'"];
+      const commonTokens = [
+        ";",
+        "}",
+        ")",
+        "]",
+        '"',
+        "'"
+      ];
       for (const token of commonTokens) {
         if (parseError.expected.includes(token)) {
           try {
             const errorPos = parseError.location.start.offset;
             const recoveredInput = input.slice(0, errorPos) + token + input.slice(errorPos);
             const result = grammar.parse(recoveredInput, options2);
-            return { result, errors, recoveryStrategy: "insertMissing" };
+            return {
+              result,
+              errors,
+              recoveryStrategy: "insertMissing"
+            };
           } catch (recoveryError) {
           }
         }
       }
     }
-    return { errors };
+    return {
+      errors
+    };
   }
 }
+__name(parseWithAdvancedRecovery, "parseWithAdvancedRecovery");
 function createParseError(error, input, options2) {
   const parseError = {
     success: false,
@@ -9974,9 +9927,7 @@ function createParseError(error, input, options2) {
     };
   }
   if (error.expected) {
-    parseError.expected = error.expected.map(
-      (exp) => exp.description || exp.text || exp.toString()
-    );
+    parseError.expected = error.expected.map((exp) => exp.description || exp.text || exp.toString());
   }
   if (error.found !== void 0) {
     parseError.found = error.found.toString();
@@ -9987,6 +9938,7 @@ function createParseError(error, input, options2) {
   }
   return parseError;
 }
+__name(createParseError, "createParseError");
 function generateErrorSnippet(input, location) {
   const lines = input.split("\n");
   const lineNum = location.start.line;
@@ -10006,9 +9958,11 @@ function generateErrorSnippet(input, location) {
   }
   return contextLines.join("\n");
 }
+__name(generateErrorSnippet, "generateErrorSnippet");
 function parseMultiple(grammar, inputs, options2 = {}) {
   return inputs.map((input) => parseInput(grammar, input, options2));
 }
+__name(parseMultiple, "parseMultiple");
 async function parseStream(grammar, inputs, options2 = {}) {
   const results = [];
   for await (const input of inputs) {
@@ -10017,6 +9971,7 @@ async function parseStream(grammar, inputs, options2 = {}) {
   }
   return results;
 }
+__name(parseStream, "parseStream");
 function parseWithTimeout(grammar, input, timeoutMs, options2 = {}) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -10032,10 +9987,13 @@ function parseWithTimeout(grammar, input, timeoutMs, options2 = {}) {
     }
   });
 }
+__name(parseWithTimeout, "parseWithTimeout");
 function validateSyntax(grammar, input, options2 = {}) {
   try {
     grammar.parse(input, options2);
-    return { valid: true };
+    return {
+      valid: true
+    };
   } catch (error) {
     return {
       valid: false,
@@ -10043,17 +10001,20 @@ function validateSyntax(grammar, input, options2 = {}) {
     };
   }
 }
-var PerformanceParser = class {
+__name(validateSyntax, "validateSyntax");
+var _PerformanceParser = class _PerformanceParser {
   constructor(grammar, enableCache = true) {
-    this.enableCache = enableCache;
-    this.cache = /* @__PURE__ */ new Map();
-    this.metrics = {
+    __publicField(this, "enableCache");
+    __publicField(this, "grammar");
+    __publicField(this, "cache", /* @__PURE__ */ new Map());
+    __publicField(this, "metrics", {
       cacheHits: 0,
       cacheMisses: 0,
       totalParseTime: 0,
       averageParseTime: 0,
       parseCount: 0
-    };
+    });
+    this.enableCache = enableCache;
     this.grammar = grammar;
   }
   parse(input, options2 = {}) {
@@ -10117,7 +10078,9 @@ var PerformanceParser = class {
     this.metrics.averageParseTime = this.metrics.totalParseTime / this.metrics.parseCount;
   }
   getMetrics() {
-    return { ...this.metrics };
+    return {
+      ...this.metrics
+    };
   }
   clearCache() {
     this.cache.clear();
@@ -10126,22 +10089,19 @@ var PerformanceParser = class {
     return this.cache.size;
   }
 };
-var StreamingParser = class {
+__name(_PerformanceParser, "PerformanceParser");
+var PerformanceParser = _PerformanceParser;
+var _StreamingParser = class _StreamingParser {
   constructor(grammar) {
-    this.buffer = "";
-    this.processed = 0;
-    this.results = [];
+    __publicField(this, "grammar");
+    __publicField(this, "buffer", "");
+    __publicField(this, "processed", 0);
+    __publicField(this, "results", []);
     this.grammar = grammar;
   }
   async parseStream(input, options2 = {}) {
     const startTime = performance.now();
-    const {
-      chunkSize = 1024,
-      delimiter = "\n",
-      bufferSize = 1e4,
-      onProgress,
-      onChunk
-    } = options2;
+    const { chunkSize = 1024, delimiter = "\n", bufferSize = 1e4, onProgress, onChunk } = options2;
     this.reset();
     try {
       const reader = this.getReader(input);
@@ -10218,6 +10178,8 @@ var StreamingParser = class {
     };
   }
 };
+__name(_StreamingParser, "StreamingParser");
+var StreamingParser = _StreamingParser;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   PerformanceParser,
