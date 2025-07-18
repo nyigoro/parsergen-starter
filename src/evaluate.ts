@@ -31,6 +31,6 @@ export function evaluate(node: ASTNode): number {
     }
 
     default:
-      throw new Error(`Unknown node type: ${(node as any).type}`);
+      throw new Error(`Unknown node type: ${(node as ASTNode).type}`);
   }
 }

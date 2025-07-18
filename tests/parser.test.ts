@@ -1,4 +1,4 @@
-import { ParserUtils } from '@/parser';
+
 import { compileGrammar, parseInput } from '../src/index';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +13,7 @@ describe('Math PEG Parser', () => {
     const result = parseInput(parser, input);
     expect(result.success).toBe(true);
     if (result.success) {
-      const successResult = result as { result: any };
+      const successResult = result as { result: unknown };
       expect(successResult.result).toBeDefined();
     }
   });
@@ -21,8 +21,8 @@ describe('Math PEG Parser', () => {
   test('throws error on bad input', () => {
     const input = '3 + * 2';
     const result = parseInput(parser, input);
-    expect(ParserUtils.isError(result)).toBe(true);
     expect(result.success).toBe(false);
+    expect(result).toHaveProperty('error');
     if (!result.success) {
       const errorResult = result as { error: string };
       expect(errorResult.error).toMatch(/expected/i);

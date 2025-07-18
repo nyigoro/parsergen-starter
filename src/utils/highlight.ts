@@ -1,5 +1,5 @@
 import type { Location } from './types';
-import chalk from 'chalk';
+import * as colors from 'colorette'; // Use colorette
 
 /**
  * Highlight the source input with a caret (^) and optional colorization
@@ -17,11 +17,11 @@ export function highlightSnippet(input: string, location: Location, useColor = t
   const pointerLine = ' '.repeat(prefix.length + colNum - 1) + '^';
 
   const lineStr = useColor
-    ? prefix + chalk.redBright(targetLine)
+    ? prefix + colors.red(targetLine) // Using colors.red (colorette's default red is bright)
     : prefix + targetLine;
 
   const pointerStr = useColor
-    ? chalk.yellow(pointerLine)
+    ? colors.yellow(pointerLine)
     : pointerLine;
 
   const resultLines = [];
@@ -38,8 +38,8 @@ export function highlightSnippet(input: string, location: Location, useColor = t
  * Enhanced snippet highlighting with range support and more context
  */
 export function highlightSnippetAdvanced(
-  input: string, 
-  location: Location, 
+  input: string,
+  location: Location,
   options: {
     useColor?: boolean;
     contextLines?: number;
@@ -72,7 +72,7 @@ export function highlightSnippetAdvanced(
 
   for (let i = firstLine; i <= lastLine; i++) {
     const line = lines[i - 1];
-    const truncatedLine = line.length > maxLineLength 
+    const truncatedLine = line.length > maxLineLength
       ? line.substring(0, maxLineLength) + '...'
       : line;
 
@@ -90,20 +90,20 @@ export function highlightSnippetAdvanced(
           const before = displayLine.substring(0, startCol - 1);
           const highlight = displayLine.substring(startCol - 1, endCol - 1);
           const after = displayLine.substring(endCol - 1);
-          displayLine = before + chalk.bgRed(highlight) + after;
+          displayLine = before + colors.bgRed(highlight) + after;
         } else if (i === startLine) {
           // First line of multi-line highlight
           const before = displayLine.substring(0, startCol - 1);
           const highlight = displayLine.substring(startCol - 1);
-          displayLine = before + chalk.bgRed(highlight);
+          displayLine = before + colors.bgRed(highlight);
         } else if (i === endLine) {
           // Last line of multi-line highlight
           const highlight = displayLine.substring(0, endCol - 1);
           const after = displayLine.substring(endCol - 1);
-          displayLine = chalk.bgRed(highlight) + after;
+          displayLine = colors.bgRed(highlight) + after;
         } else {
           // Middle lines of multi-line highlight
-          displayLine = chalk.bgRed(displayLine);
+          displayLine = colors.bgRed(displayLine);
         }
       }
     }
@@ -119,8 +119,8 @@ export function highlightSnippetAdvanced(
       const pointerStart = lineNumStr.length + startCol - 1;
       const pointerLength = Math.max(1, endCol - startCol);
       const pointer = ' '.repeat(pointerStart) + '^'.repeat(pointerLength);
-      
-      resultLines.push(useColor ? chalk.yellow(pointer) : pointer);
+
+      resultLines.push(useColor ? colors.yellow(pointer) : pointer);
     }
   }
 
@@ -140,17 +140,17 @@ export function highlightMultipleLocations(
   } = {}
 ): string {
   const { useColor = true, contextLines = 1, showLineNumbers = true } = options;
-  
+
   const lines = input.split('\n');
-  const colors = ['red', 'blue', 'green', 'yellow', 'magenta', 'cyan'] as const;
-  
-  // Sort locations by line number
-  const sortedLocations = [...locations].sort((a, b) => 
+  const colorNames = ['red', 'blue', 'green', 'yellow', 'magenta', 'cyan'] as const;
+
+  type ColoretteStyleName = typeof colorNames[number];
+
+  const sortedLocations = [...locations].sort((a, b) =>
     a.location.start.line - b.location.start.line
   );
 
-  // Find the range of lines to display
-  const firstLine = Math.max(1, 
+  const firstLine = Math.max(1,
     Math.min(...sortedLocations.map(l => l.location.start.line)) - contextLines
   );
   const lastLine = Math.min(lines.length,
@@ -168,49 +168,49 @@ export function highlightMultipleLocations(
 
     let displayLine = line;
 
-    // Apply highlights for this line
-    const lineLocations = sortedLocations.filter(l => 
+    const lineLocations = sortedLocations.filter(l =>
       l.location.start.line <= i && l.location.end.line >= i
     );
 
     if (useColor && lineLocations.length > 0) {
-      // Sort by column for proper highlighting
       lineLocations.sort((a, b) => a.location.start.column - b.location.start.column);
-      
+
       let offset = 0;
       for (const [index, { location, color }] of lineLocations.entries()) {
-        const colorName = color || colors[index % colors.length];
-        const chalkColor = chalk[colorName as keyof typeof chalk] || chalk.red;
-        
+        const colorName = (color || colorNames[index % colorNames.length]) as ColoretteStyleName;
+        // Ensure colorFn is a function that takes a string and returns a string
+        const colorFn: (text: string) => string = colors[colorName] || colors.red;
+
         const startCol = i === location.start.line ? location.start.column - 1 : 0;
         const endCol = i === location.end.line ? location.end.column - 1 : line.length;
-        
+
         const before = displayLine.substring(0, startCol + offset);
         const highlight = displayLine.substring(startCol + offset, endCol + offset);
         const after = displayLine.substring(endCol + offset);
-        
-        displayLine = before + (chalkColor as any).underline(highlight) + after;
-        offset += (chalkColor as any).underline('').length; // Account for ANSI codes
+
+        // FIX: Apply underline as a separate function call to the result of the color function
+        displayLine = before + colors.underline(colorFn(highlight)) + after;
+        // FIX: Calculate offset using colors.underline directly
+        offset += colors.underline('').length;
       }
     }
 
     resultLines.push(lineNumStr + displayLine);
 
-    // Add pointer lines
     for (const [index, { location, label }] of lineLocations.entries()) {
       if (i === location.start.line && location.start.line === location.end.line) {
-        const colorName = colors[index % colors.length];
-        const chalkColor = useColor ? (chalk[colorName as keyof typeof chalk] || chalk.red) : null;
-        
+        const colorName = colorNames[index % colorNames.length] as ColoretteStyleName;
+        const colorFn: ((text: string) => string) | null = useColor ? (colors[colorName] || colors.red) : null;
+
         const pointerStart = lineNumStr.length + location.start.column - 1;
         const pointerLength = Math.max(1, location.end.column - location.start.column);
         const pointer = ' '.repeat(pointerStart) + '^'.repeat(pointerLength);
         const labelStr = label ? ` ${label}` : '';
-        
-        const pointerLine = chalkColor 
-          ? (chalkColor as any)(pointer + labelStr)
+
+        const pointerLine = colorFn
+          ? colorFn(pointer + labelStr) // Call the color function directly
           : pointer + labelStr;
-        
+
         resultLines.push(pointerLine);
       }
     }
@@ -246,7 +246,7 @@ export function getLocationFromOffset(input: string, offset: number): {
   const lines = input.substring(0, offset).split('\n');
   const line = lines.length;
   const column = lines[lines.length - 1].length + 1;
-  
+
   return { line, column, offset };
 }
 
@@ -255,15 +255,15 @@ export function getLocationFromOffset(input: string, offset: number): {
  */
 export function getOffsetFromLocation(input: string, line: number, column: number): number {
   const lines = input.split('\n');
-  
+
   if (line < 1 || line > lines.length) return -1;
   if (column < 1 || column > lines[line - 1].length + 1) return -1;
-  
+
   let offset = 0;
   for (let i = 0; i < line - 1; i++) {
     offset += lines[i].length + 1; // +1 for newline
   }
   offset += column - 1;
-  
+
   return offset;
 }

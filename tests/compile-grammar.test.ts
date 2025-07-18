@@ -1,6 +1,7 @@
 // tests/compile-grammar.test.ts
 import { compileGrammar } from '../src/index';
 import { formatCompilationError } from '../src/utils/format';
+import { Location } from '../src/utils/types';
 
 describe('compileGrammar', () => {
   it('should compile valid grammar and return a parser', () => {
@@ -56,8 +57,8 @@ describe('compileGrammar', () => {
     try {
       compileGrammar(badGrammar);
       throw new Error('Expected compileGrammar to throw');
-    } catch (err: any) {
-      const formatted = formatCompilationError(err.message, err.location);
+    } catch (err: unknown) {
+      const formatted = formatCompilationError((err as { message: string; location: Location | undefined }).message, badGrammar);
       expect(formatted).toMatch(/Rule\s+"Term"\s+is\s+not\s+defined/);
     }
   });

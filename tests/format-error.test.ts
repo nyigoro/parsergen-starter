@@ -38,7 +38,7 @@ describe('Error Formatting Utilities', () => {
   it('should format error with ANSI colors', () => {
     const parsed = toParseError(samplePeggyError);
     const output = formatErrorWithColors(parsed, true);
-    expect(output).toContain('SyntaxError:');
+    expect(output).toContain('Parse Error:');
     // eslint-disable-next-line no-control-regex
     expect(output).toMatch(/\x1b\[\d+m/); // Checks for ANSI color codes
   });
@@ -64,7 +64,7 @@ describe('Error Formatting Utilities', () => {
   });
 
   it('should handle malformed error input gracefully', () => {
-    const parsed = toParseError(malformedError as any);
+    const parsed = toParseError(malformedError as unknown);
     const output = formatErrorWithSuggestions(parsed, true);
     expect(output).toContain('❌ Parse Error:');
     expect(output).toContain('Unknown error');

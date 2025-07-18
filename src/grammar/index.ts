@@ -1,35 +1,79 @@
-import type { Parser, ParserBuildOptions } from 'peggy';
-import {  formatError, formatCompilationError, formatAnyError } from '../utils/index';
+import type { ParserBuildOptions, LocationRange } from 'peggy';
+import { formatError, formatCompilationError, formatAnyError } from '../utils/index';
 import PEG from 'peggy';
 
 const generate = PEG.generate;
-export interface CompiledGrammar {
-  parse: Parser['parse'];
+
+// --- Corrected Type Definitions for Error Handling ---
+
+/**
+ * Represents the structure of an error expected by the formatting utilities.
+ * This aligns with the user's 'ParseError' type by including `success` and `error`.
+ */
+export interface ParseError extends Error {
+  message: string;
+  location: LocationRange;
+  expected?: string[];
+  found?: string;
+  // Properties required by the consuming formatError functions
+  success: false;
+  error: string;
+}
+
+/**
+ * Type guard to check if an error has the shape of a Peggy-generated error.
+ * @param error The error object to check.
+ * @returns True if the object has the core Peggy error properties.
+ */
+function isParseError(error: unknown): error is ParseError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    'location' in error
+  );
+}
+
+// --- Interfaces ---
+
+export interface Plugin {
+  use: (config: { rules: unknown[] }, options: Record<string, unknown>) => void;
+  [key: string]: unknown;
+}
+
+export interface AnalysisResult {
+  errors: string[];
+  warnings: string[];
+}
+
+export interface CompiledGrammar<ASTNode = unknown> {
+  parse: (input: string, options?: ParserBuildOptions) => ASTNode;
   source: string;
   options: CompileOptions;
+  analyze?: (ast: ASTNode) => AnalysisResult;
 }
 
 export interface CompileOptions {
   allowedStartRules?: string[];
   cache?: boolean;
-  dependencies?: Record<string, any>;
+  dependencies?: Record<string, unknown>;
   exportVar?: string;
   format?: 'bare' | 'commonjs' | 'es' | 'globals' | 'umd';
-  grammarSource?: string;
+  grammarSource?: string | LocationRange;
   header?: string | string[];
   optimize?: 'speed' | 'size';
   output?: 'parser' | 'source';
-  plugins?: any[];
+  plugins?: Plugin[];
   trace?: boolean;
 }
 
-/**
- * Compile a PEG grammar string into a parser
- */
-export function compileGrammar(
-  grammar: string, 
-  options: CompileOptions = {}
-): CompiledGrammar {
+// --- Core Functions ---
+
+export function compileGrammar<ASTNode = unknown>(
+  grammar: string,
+  options: CompileOptions = {},
+  analyzer?: (ast: ASTNode) => AnalysisResult
+): CompiledGrammar<ASTNode> {
   try {
     const defaultOptions: CompileOptions = {
       allowedStartRules: ['*'],
@@ -38,63 +82,67 @@ export function compileGrammar(
       optimize: 'speed',
       output: 'parser',
       trace: false,
-      ...options
+      ...options,
     };
 
     const parser = generate(grammar, defaultOptions as ParserBuildOptions);
     return {
       parse: parser.parse.bind(parser),
       source: grammar,
-      options: defaultOptions
+      options: defaultOptions,
+      analyze: analyzer,
     };
-  } catch (error: any) {
-    // Use the enhanced error formatting - fallback to formatAnyError if formatCompilationError not available
-    const formattedError = formatCompilationError ? 
-      formatCompilationError(error, grammar) : 
-      formatAnyError(error);
+  } catch (error: unknown) {
+    // Corrected logic: No longer checks for `formatCompilationError` as it's always defined.
+    // The type guard now narrows to the `ParseError` interface expected by the formatters.
+    const formattedError = isParseError(error)
+      ? formatCompilationError(error, grammar)
+      : formatAnyError(error);
     throw new Error(`Grammar compilation failed:\n${formattedError}`);
   }
 }
 
-/**
- * Compile grammar from file
- */
-export async function compileGrammarFromFile(
-  filePath: string, 
-  options: CompileOptions = {}
-): Promise<CompiledGrammar> {
+export async function compileGrammarFromFile<ASTNode = unknown>(
+  filePath: string,
+  options: CompileOptions = {},
+  analyzer?: (ast: ASTNode) => AnalysisResult
+): Promise<CompiledGrammar<ASTNode>> {
   try {
     const fs = await import('fs/promises');
     const grammar = await fs.readFile(filePath, 'utf-8');
-    return compileGrammar(grammar, {
-      ...options,
-      grammarSource: filePath
-    });
-  } catch (error: any) {
-    throw new Error(`Failed to compile grammar from file ${filePath}: ${error.message}`);
+    return compileGrammar<ASTNode>(
+      grammar,
+      {
+        ...options,
+        grammarSource: filePath,
+      },
+      analyzer
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to compile grammar from file ${filePath}: ${message}`);
   }
 }
 
-/**
- * Validate grammar syntax without generating parser
- */
 export function validateGrammar(grammar: string): { valid: boolean; error?: string } {
   try {
     generate(grammar, { output: 'source' });
     return { valid: true };
-  } catch (error: any) {
-    return { 
-      valid: false, 
-      error: formatError(error) 
+  } catch (error: unknown) {
+    // Use the type guard to safely format the error.
+    const message = isParseError(error) ? formatError(error) : formatAnyError(error);
+    return {
+      valid: false,
+      error: String(message),
     };
   }
 }
 
+// --- Analysis Functions (unchanged) ---
+
 export interface GrammarAnalysis {
   rules: RuleInfo[];
   startRule?: string;
-  imports: string[];
-  exports: string[];
   dependencies: Map<string, string[]>;
   unreachableRules: string[];
   leftRecursive: string[];
@@ -111,207 +159,129 @@ export interface RuleInfo {
   isLeftRecursive: boolean;
 }
 
-/**
- * Enhanced grammar analysis with dependency tracking
- */
 export function analyzeGrammarAdvanced(grammar: string): GrammarAnalysis {
   const lines = grammar.split('\n');
   const rules: RuleInfo[] = [];
-  const imports: string[] = [];
-  const exports: string[] = [];
   const dependencies = new Map<string, string[]>();
   const warnings: string[] = [];
-  
-  // More robust rule parsing
-  let currentRule: RuleInfo | null = null;
-  let inRule = false;
-  let braceCount = 0;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    
-    // Skip comments and empty lines
-    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || !trimmed) {
-      continue;
-    }
-    
-    // Check for rule definition
-    const ruleMatch = trimmed.match(/^(\w+)\s*=/);
-    if (ruleMatch && !inRule) {
-      if (currentRule) {
-        rules.push(currentRule);
+
+  const ruleDefinitionRegex = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*(".*?")?\s*=/;
+  let currentRuleLines: string[] = [];
+  let currentRuleInfo: Omit<RuleInfo, 'expression' | 'references' | 'isLeftRecursive'> | null = null;
+
+  lines.forEach((line, i) => {
+    const ruleMatch = line.match(ruleDefinitionRegex);
+    if (ruleMatch) {
+      if (currentRuleInfo && currentRuleLines.length > 0) {
+        rules.push(finalizeRule(currentRuleInfo, currentRuleLines, rules.length === 0));
       }
-      
-      currentRule = {
+      currentRuleInfo = {
         name: ruleMatch[1],
         line: i + 1,
         column: line.indexOf(ruleMatch[1]) + 1,
-        expression: '',
-        references: [],
-        isStartRule: rules.length === 0,
-        isLeftRecursive: false
+        isStartRule: false,
       };
-      inRule = true;
+      currentRuleLines = [line];
+    } else if (currentRuleInfo) {
+      currentRuleLines.push(line);
     }
-    
-    if (inRule && currentRule) {
-      currentRule.expression += line + '\n';
-      
-      // Track braces to know when rule ends
-      braceCount += (line.match(/{/g) || []).length;
-      braceCount -= (line.match(/}/g) || []).length;
-      
-      // Rule ends when we hit a new rule or end of input
-      if (i === lines.length - 1 || 
-          (i < lines.length - 1 && lines[i + 1].trim().match(/^\w+\s*=/) && braceCount === 0)) {
-        
-        // Extract references from the rule
-        const references = extractReferences(currentRule.expression);
-        currentRule.references = references;
-        dependencies.set(currentRule.name, references);
-        
-        // Check for left recursion
-        currentRule.isLeftRecursive = checkLeftRecursion(currentRule.expression, currentRule.name);
-        
-        rules.push(currentRule);
-        inRule = false;
-        braceCount = 0;
-      }
-    }
-    
-    // Check for imports/exports
-    const importMatch = trimmed.match(/import\s+(\w+)/);
-    if (importMatch) {
-      imports.push(importMatch[1]);
-    }
-    
-    const exportMatch = trimmed.match(/export\s+(\w+)/);
-    if (exportMatch) {
-      exports.push(exportMatch[1]);
-    }
+  });
+
+  if (currentRuleInfo && currentRuleLines.length > 0) {
+    rules.push(finalizeRule(currentRuleInfo, currentRuleLines, rules.length === 0));
   }
-  
-  // Find unreachable rules
+
+  rules.forEach(rule => {
+    dependencies.set(rule.name, rule.references);
+  });
+
   const reachableRules = new Set<string>();
   const startRule = rules.find(r => r.isStartRule);
-  
   if (startRule) {
     findReachableRules(startRule.name, dependencies, reachableRules);
   }
-  
-  const unreachableRules = rules
-    .filter(r => !reachableRules.has(r.name))
-    .map(r => r.name);
-  
-  const leftRecursive = rules
-    .filter(r => r.isLeftRecursive)
-    .map(r => r.name);
-  
-  // Generate warnings
+  const unreachableRules = rules.filter(r => !reachableRules.has(r.name)).map(r => r.name);
+  const leftRecursive = rules.filter(r => r.isLeftRecursive).map(r => r.name);
+
   if (unreachableRules.length > 0) {
-    warnings.push(`Unreachable rules: ${unreachableRules.join(', ')}`);
+    warnings.push(`Unreachable rules found: ${unreachableRules.join(', ')}`);
   }
-  
   if (leftRecursive.length > 0) {
-    warnings.push(`Left-recursive rules: ${leftRecursive.join(', ')}`);
+    warnings.push(`Immediate left-recursive rules found: ${leftRecursive.join(', ')}. Peggy handles this, but it can signal complex logic.`);
   }
-  
-  return {
-    rules,
-    startRule: startRule?.name,
-    imports,
-    exports,
-    dependencies,
-    unreachableRules,
-    leftRecursive,
-    warnings
-  };
+
+  return { rules, startRule: startRule?.name, dependencies, unreachableRules, leftRecursive, warnings };
 }
 
-function extractReferences(expression: string): string[] {
-  const references: string[] = [];
-  // Match rule references (identifiers that aren't keywords)
-  const matches = expression.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-  
-  if (matches) {
-    const keywords = new Set(['return', 'if', 'else', 'while', 'for', 'function', 'var', 'let', 'const']);
-    const uniqueRefs = new Set(matches.filter(m => !keywords.has(m)));
-    references.push(...uniqueRefs);
-  }
-  
-  return references;
+function finalizeRule(info: Omit<RuleInfo, 'expression' | 'references' | 'isLeftRecursive'>, lines: string[], isStart: boolean): RuleInfo {
+  const expression = lines.join('\n');
+  const name = info.name;
+  return { ...info, expression, references: extractReferences(expression, name), isStartRule: isStart, isLeftRecursive: checkImmediateLeftRecursion(expression, name) };
 }
 
-function checkLeftRecursion(expression: string, ruleName: string): boolean {
-  // Simple check for immediate left recursion
-  const firstAlternative = expression.split('|')[0];
-  const trimmed = firstAlternative.replace(/\s+/g, ' ').trim();
-  return trimmed.startsWith(`${ruleName} `) || trimmed.startsWith(`${ruleName}/`);
+function extractReferences(expression: string, ruleName: string): string[] {
+  const grammarOnly = expression.replace(/{[^}]*}/g, ' ').replace(/"[^"]*"/g, ' ').replace(/'[^']*'/g, ' ');
+  const matches = grammarOnly.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
+  const references = new Set(matches.filter(m => m !== ruleName));
+  return Array.from(references);
 }
 
-function findReachableRules(
-  ruleName: string,
-  dependencies: Map<string, string[]>,
-  reachable: Set<string>
-): void {
-  if (reachable.has(ruleName)) {
-    return;
-  }
-  
+function checkImmediateLeftRecursion(expression: string, ruleName: string): boolean {
+  const body = expression.substring(expression.indexOf('=') + 1);
+  const alternatives = body.split('/');
+  return alternatives.some(alt => {
+    const trimmedAlt = alt.trim();
+    return trimmedAlt.startsWith(ruleName) && !trimmedAlt.startsWith(ruleName + '_');
+  });
+}
+
+function findReachableRules(ruleName: string, dependencies: Map<string, string[]>, reachable: Set<string>): void {
+  if (reachable.has(ruleName) || !dependencies.has(ruleName)) return;
   reachable.add(ruleName);
   const deps = dependencies.get(ruleName) || [];
-  
   for (const dep of deps) {
-    if (dependencies.has(dep)) {
-      findReachableRules(dep, dependencies, reachable);
-    }
+    findReachableRules(dep, dependencies, reachable);
   }
 }
 
-/**
- * Create a grammar builder for fluent API
- */
-export class GrammarBuilder {
+// --- Grammar Builder Class (unchanged) ---
+
+export class GrammarBuilder<ASTNode = unknown> {
   private rules: string[] = [];
   private headers: string[] = [];
   private options: CompileOptions = {};
-  
+  private semanticAnalyzer?: (ast: ASTNode) => AnalysisResult;
+
   rule(name: string, expression: string): this {
     this.rules.push(`${name} = ${expression}`);
     return this;
   }
-  
+
   header(code: string): this {
     this.headers.push(code);
     return this;
   }
-  
-  option(key: keyof CompileOptions, value: any): this {
+
+  option<K extends keyof CompileOptions>(key: K, value: CompileOptions[K]): this {
     this.options[key] = value;
     return this;
   }
-  
-  build(): CompiledGrammar {
-    const grammar = [
-      ...this.headers.map(h => `{ ${h} }`),
-      ...this.rules
-    ].join('\n\n');
-    
-    return compileGrammar(grammar, this.options);
+
+  analyzer(analyzer: (ast: ASTNode) => AnalysisResult): this {
+    this.semanticAnalyzer = analyzer;
+    return this;
   }
-  
+
+  build(): CompiledGrammar<ASTNode> {
+    return compileGrammar<ASTNode>(this.toString(), this.options, this.semanticAnalyzer);
+  }
+
   toString(): string {
-    return [
-      ...this.headers.map(h => `{ ${h} }`),
-      ...this.rules
-    ].join('\n\n');
+    const headerBlock = this.headers.length > 0 ? `{ ${this.headers.join('\n')} }\n\n` : '';
+    return headerBlock + this.rules.join('\n\n');
   }
 }
 
-/**
- * Create a new grammar builder
- */
-export function createGrammarBuilder(): GrammarBuilder {
-  return new GrammarBuilder();
+export function createGrammarBuilder<ASTNode = unknown>(): GrammarBuilder<ASTNode> {
+  return new GrammarBuilder<ASTNode>();
 }

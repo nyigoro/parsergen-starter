@@ -383,7 +383,7 @@ export function parseWithSemanticAnalysis<T extends ASTNode>( // T extends ASTNo
 
   try {
     // Attempt to parse the input. The result is expected to be the AST.
-    const ast: T = grammar.parse(input, enhancedOptions);
+    const ast: T = grammar.parse(input, enhancedOptions) as T; // Explicitly cast to T
 
     // If a semantic analyzer is provided, run it
     if (analyzerInstance) {
@@ -713,7 +713,7 @@ export function parseInput<T = ASTNode>( // Default T to ASTNode
   options: ParserOptions = {}
 ): ParseResult<T> | ParseError {
   try {
-    const result: T = grammar.parse(input, options); // Assume grammar.parse returns T (the AST)
+    const result: T = grammar.parse(input, options) as T; // Explicitly cast to T
     return {
       result,
       success: true,
@@ -721,7 +721,8 @@ export function parseInput<T = ASTNode>( // Default T to ASTNode
       symbols: options.enableSymbolTable ? new SymbolTable() : undefined, // SymbolTable is created here, but needs to be populated by an analyzer
       diagnostics: options.enableDiagnostics ? [] : undefined // Diagnostics are empty here, would be populated by analyzer or parser if it supports it
     };
-  } catch (error: unknown) {
+  }
+  catch (error: unknown) {
     return createParseError(error, input, options);
   }
 }
@@ -732,7 +733,7 @@ export function parseInput<T = ASTNode>( // Default T to ASTNode
 export function createParser(grammar: { parse: (input: string, options?: ParserOptions) => ASTNode }) { // Changed options type and return type
   return (input: string) => {
     try {
-      const result: ASTNode = grammar.parse(input);
+      const result: ASTNode = grammar.parse(input) as ASTNode; // Explicitly cast to ASTNode
       return result; // Return the AST directly
     } catch (err) {
       return {
@@ -757,7 +758,7 @@ export function parseWithAdvancedRecovery<T = ASTNode>( // Default T to ASTNode
 
   // Try original parse first
   try {
-    const result: T = grammar.parse(input, _options);
+    const result: T = grammar.parse(input, _options) as T; // Explicitly cast to T
     return { result, errors, recoveryStrategy: 'original' };
   } catch (error: unknown) {
     const parseError = createParseError(error, input, _options);
@@ -778,7 +779,7 @@ export function parseWithAdvancedRecovery<T = ASTNode>( // Default T to ASTNode
           ...lines.slice(errorLine)
         ].join('\n');
 
-        const result: T = grammar.parse(recoveredInput, _options);
+        const result: T = grammar.parse(recoveredInput, _options) as T; // Explicitly cast to T
         return { result, errors, recoveryStrategy: 'removeErrorLine' };
       } catch (_recoveryError: unknown) { // _recoveryError marked as unused
         errors.push(createParseError(_recoveryError, input, _options));
@@ -790,7 +791,7 @@ export function parseWithAdvancedRecovery<T = ASTNode>( // Default T to ASTNode
       try {
         const recoveredInput = lines.slice(0, errorLine - 1).join('\n');
         if (recoveredInput.trim()) {
-          const result: T = grammar.parse(recoveredInput, _options);
+          const result: T = grammar.parse(recoveredInput, _options) as T; // Explicitly cast to T
           return { result, errors, recoveryStrategy: 'removeFromError' };
         }
       } catch (_recoveryError: unknown) { // _recoveryError marked as unused
@@ -808,7 +809,7 @@ export function parseWithAdvancedRecovery<T = ASTNode>( // Default T to ASTNode
             const recoveredInput =
               input.slice(0, errorPos) + token + input.slice(errorPos);
 
-            const result: T = grammar.parse(recoveredInput, _options);
+            const result: T = grammar.parse(recoveredInput, _options) as T; // Explicitly cast to T
             return { result, errors, recoveryStrategy: 'insertMissing' };
           } catch (_recoveryError: unknown) { // _recoveryError marked as unused
             // Continue to next token
@@ -1059,14 +1060,14 @@ export class PerformanceParser {
   }
 
   getMetrics(): Record<string, { avg: number; min: number; max: number; count: number }> {
-    const result: Record<string, { avg: number; min: number; max: number; count: number }> = {};
+    const result: Record<string, { avg: number; min: number; max: number; count: number }> = {}; // Corrected 'number' to 'count'
 
     for (const [key, times] of this.metrics) {
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
       const min = Math.min(...times);
       const max = Math.max(...times);
 
-      result[key] = { avg, min, max, count: times.length };
+      result[key] = { avg, min, max, count: times.length }; // Corrected 'number' to 'count'
     }
 
     return result;

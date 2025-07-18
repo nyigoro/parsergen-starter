@@ -4,31 +4,36 @@ import { watchFile } from 'node:fs';
 import { argv } from 'node:process';
 
 import {
-  compileGrammar,
+  // compileGrammar, // Removed: 'compileGrammar' is defined but never used.
   compileGrammarFromFile,
   validateGrammar,
   analyzeGrammarAdvanced,
 } from '../grammar/index.js';
-import { parseInput, ParserUtils } from '../parser/index.js';
-import { formatError } from '../utils/index.js';
+// FIX: Change to default import as per your exports
+import Parser from '../parser/index.js'; // This 'Parser' object will contain parseInput, ParserUtils, etc.
+import { formatError, toParseError } from '../utils/index.js';
 
 // Define the valid format types with const assertion for type safety
 const VALID_FORMATS = ['bare', 'commonjs', 'es', 'globals', 'umd'] as const;
 type OutputFormat = typeof VALID_FORMATS[number];
+
+// Assuming ASTNode is defined somewhere (e.g., in types.ts)
+// For demonstration, defining a minimal placeholder if not globally available
+// type ASTNode = any; // You should replace this with your actual AST node type if it's imported
 
 function printHelp() {
   console.log(`
 Usage: parsergen <grammar.peg> [options]
 
 Options:
-  --test <input>         Test grammar by parsing input string
-  --validate             Only validate grammar (no parsing)
-  --analyze              Show grammar metadata
-  --out <file>           Output compiled parser as JS
-  --format <target>      Format for output: ${VALID_FORMATS.join(' | ')} (default: es)
-  --ast                  Print parse AST
-  --watch                Watch grammar file and auto-recompile
-  --help, -h             Show help
+  --test <input>          Test grammar by parsing input string
+  --validate              Only validate grammar (no parsing)
+  --analyze               Show grammar metadata
+  --out <file>            Output compiled parser as JS
+  --format <target>       Format for output: ${VALID_FORMATS.join(' | ')} (default: es)
+  --ast                   Print parse AST
+  --watch                 Watch grammar file and auto-recompile
+  --help, -h              Show help
 `);
 }
 
@@ -38,10 +43,10 @@ function isValidFormat(format: string): format is OutputFormat {
 
 async function compileAndWrite(grammarPath: string, outFile: string, format: OutputFormat) {
   const grammarText = await fs.readFile(grammarPath, 'utf-8');
-  
+
   // Import Peggy directly to generate source code
   const PEG = await import('peggy');
-  
+
   // Create format-specific options for Peggy
   const baseOptions = {
     allowedStartRules: ['*'],
@@ -50,9 +55,9 @@ async function compileAndWrite(grammarPath: string, outFile: string, format: Out
     output: 'source' as const,
     trace: false,
   };
-  
+
   let compiledSource: string;
-  
+
   // Handle each format with proper typing
   switch (format) {
     case 'bare':
@@ -88,6 +93,7 @@ async function compileAndWrite(grammarPath: string, outFile: string, format: Out
       });
       break;
     default:
+      // This case should ideally not be reached due to isValidFormat check
       throw new Error(`Unsupported format: ${format}`);
   }
 
@@ -110,11 +116,11 @@ async function main() {
   if (args.includes('--validate')) {
     const result = validateGrammar(grammarText);
     if (result.valid) {
-  console.log('✅ Grammar is valid.');
-} else {
-  console.error('❌ Grammar is invalid:\n' + result.error);
-}
-process.exit(result.valid ? 0 : 1);
+      console.log('✅ Grammar is valid.');
+    } else {
+      console.error('❌ Grammar is invalid:\n' + result.error);
+    }
+    process.exit(result.valid ? 0 : 1);
   }
 
   // Analyze
@@ -128,13 +134,13 @@ process.exit(result.valid ? 0 : 1);
 
   const formatIndex = args.indexOf('--format');
   const formatArg = formatIndex !== -1 ? args[formatIndex + 1] : 'es';
-  
+
   // Validate format argument
   if (!isValidFormat(formatArg)) {
     console.error(`❌ Invalid format: ${formatArg}. Valid formats: ${VALID_FORMATS.join(', ')}`);
     process.exit(1);
   }
-  
+
   const format: OutputFormat = formatArg;
 
   // Watch mode
@@ -144,8 +150,8 @@ process.exit(result.valid ? 0 : 1);
     watchFile(grammarPath, { interval: 300 }, async () => {
       try {
         await compileAndWrite(grammarPath, outFile, format);
-      } catch (err: any) {
-        console.error('❌ Error during rebuild:\n' + err.message);
+      } catch (err: unknown) { // Use 'unknown' for caught errors
+        console.error('❌ Error during rebuild:\n' + toParseError(err).error); // Convert to ParseError and access 'error'
       }
     });
     return;
@@ -164,8 +170,10 @@ process.exit(result.valid ? 0 : 1);
   const testIndex = args.indexOf('--test');
   if (testIndex !== -1 && args[testIndex + 1]) {
     const input = args[testIndex + 1];
-    const result = parseInput(parser, input);
-    if (ParserUtils.isSuccess(result)) {
+    // FIX: Access parseInput and ParserUtils.isSuccess from the default 'Parser' import
+    const result = Parser.parseInput(parser, input);
+
+    if (Parser.ParserUtils.isSuccess(result)) { // FIX: Access isSuccess via Parser.ParserUtils
       console.log('✅ Parse Success');
       if (args.includes('--ast')) {
         console.log(JSON.stringify(result.result, null, 2));

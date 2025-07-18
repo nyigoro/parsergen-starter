@@ -2,11 +2,11 @@ import type { Location } from './types';
 
 export interface ASTNode {
   type: string;
-  value?: any;
+  value?: unknown; 
   children?: ASTNode[];
   location?: Location;
   // Optional metadata for debugging/tooling
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Enhanced type for more flexible traversal
@@ -14,10 +14,10 @@ export type ASTVisitor<T = void> = (node: ASTNode, parent?: ASTNode, path?: stri
 
 export function createASTNode(
   type: string,
-  value?: any,
+  value?: unknown, 
   children: ASTNode[] = [],
   location?: ASTNode['location'],
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown> 
 ): ASTNode {
   const node: ASTNode = { type, value, children, location };
   if (metadata) node.metadata = metadata;
@@ -26,14 +26,14 @@ export function createASTNode(
 
 // Enhanced traversal with more control
 export function traverseAST(
-  node: ASTNode, 
+  node: ASTNode,
   visit: (node: ASTNode, parent?: ASTNode, path?: string[]) => void,
   parent?: ASTNode,
   path: string[] = []
 ): void {
   visit(node, parent, path);
   if (node.children) {
-    node.children.forEach((child, index) => 
+    node.children.forEach((child, index) =>
       traverseAST(child, visit, node, [...path, `children[${index}]`])
     );
   }
@@ -49,14 +49,14 @@ export function traversePreOrder<T>(
   const results: T[] = [];
   const result = visit(node, parent, path);
   results.push(result);
-  
+
   if (node.children) {
     node.children.forEach((child, index) => {
       const childResults = traversePreOrder(child, visit, node, [...path, `children[${index}]`]);
       results.push(...childResults);
     });
   }
-  
+
   return results;
 }
 
@@ -68,17 +68,17 @@ export function traversePostOrder<T>(
   path: string[] = []
 ): T[] {
   const results: T[] = [];
-  
+
   if (node.children) {
     node.children.forEach((child, index) => {
       const childResults = traversePostOrder(child, visit, node, [...path, `children[${index}]`]);
       results.push(...childResults);
     });
   }
-  
+
   const result = visit(node, parent, path);
   results.push(result);
-  
+
   return results;
 }
 
@@ -96,14 +96,14 @@ export function findNodesByType(node: ASTNode, type: string): ASTNode[] {
 // Find first node by predicate
 export function findNode(node: ASTNode, predicate: (node: ASTNode) => boolean): ASTNode | null {
   if (predicate(node)) return node;
-  
+
   if (node.children) {
     for (const child of node.children) {
       const found = findNode(child, predicate);
       if (found) return found;
     }
   }
-  
+
   return null;
 }
 
@@ -113,15 +113,15 @@ export function transformAST(
   transformer: (node: ASTNode, parent?: ASTNode) => ASTNode,
   parent?: ASTNode
 ): ASTNode {
-  const transformedChildren = node.children?.map(child => 
+  const transformedChildren = node.children?.map(child =>
     transformAST(child, transformer, node)
   );
-  
+
   const transformedNode: ASTNode = {
     ...node,
     children: transformedChildren
   };
-  
+
   return transformer(transformedNode, parent);
 }
 
@@ -131,23 +131,23 @@ export function serializeAST(
   filter?: (node: ASTNode) => boolean,
   depth: number = 0,
   maxDepth: number = Infinity
-): any {
+): unknown { // Changed from 'any' to 'unknown'
   if (depth > maxDepth) return null;
   if (filter && !filter(node)) return null;
-  
-  const serialized: any = {
+
+  const serialized: Record<string, unknown> = { // Changed from 'any' to 'Record<string, unknown>'
     type: node.type,
     ...(node.value !== undefined && { value: node.value }),
     ...(node.location && { location: node.location }),
     ...(node.metadata && { metadata: node.metadata })
   };
-  
+
   if (node.children && node.children.length > 0) {
     serialized.children = node.children
       .map(child => serializeAST(child, filter, depth + 1, maxDepth))
       .filter(child => child !== null);
   }
-  
+
   return serialized;
 }
 
@@ -155,7 +155,7 @@ export function serializeAST(
 export function printAST(node: ASTNode, indent: string = '', isLast: boolean = true): string {
   const lines: string[] = [];
   const prefix = indent + (isLast ? '└── ' : '├── ');
-  
+
   let nodeStr = `${prefix}${node.type}`;
   if (node.value !== undefined) {
     nodeStr += `: ${JSON.stringify(node.value)}`;
@@ -163,9 +163,9 @@ export function printAST(node: ASTNode, indent: string = '', isLast: boolean = t
   if (node.location) {
     nodeStr += ` (${node.location.start.line}:${node.location.start.column})`;
   }
-  
+
   lines.push(nodeStr);
-  
+
   if (node.children) {
     const newIndent = indent + (isLast ? '    ' : '│   ');
     node.children.forEach((child, index) => {
@@ -173,7 +173,7 @@ export function printAST(node: ASTNode, indent: string = '', isLast: boolean = t
       lines.push(printAST(child, newIndent, childIsLast));
     });
   }
-  
+
   return lines.join('\n');
 }
 
@@ -190,19 +190,19 @@ export function getASTStats(node: ASTNode): {
     nodeTypes: {} as Record<string, number>,
     leafNodes: 0
   };
-  
+
   function collect(current: ASTNode, depth: number = 0) {
     stats.totalNodes++;
     stats.maxDepth = Math.max(stats.maxDepth, depth);
     stats.nodeTypes[current.type] = (stats.nodeTypes[current.type] || 0) + 1;
-    
+
     if (!current.children || current.children.length === 0) {
       stats.leafNodes++;
     } else {
       current.children.forEach(child => collect(child, depth + 1));
     }
   }
-  
+
   collect(node);
   return stats;
 }
