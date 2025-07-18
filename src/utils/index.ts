@@ -19,7 +19,8 @@ export {
   getErrorSuggestions,
   getErrorContext,
   formatDebugError,
-  isGrammarError
+  isGrammarError,
+  toParseError,
 } from './format.ts';
 export {
   createASTNode,

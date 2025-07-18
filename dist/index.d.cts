@@ -1,28 +1,36 @@
-import { Parser } from 'peggy';
+import { LocationRange, ParserBuildOptions } from 'peggy';
 import moo from 'moo';
 
-interface CompiledGrammar {
-    parse: Parser['parse'];
+interface Plugin {
+    use: (config: {
+        rules: unknown[];
+    }, options: Record<string, unknown>) => void;
+    [key: string]: unknown;
+}
+interface AnalysisResult {
+    errors: string[];
+    warnings: string[];
+}
+interface CompiledGrammar<ASTNode = unknown> {
+    parse: (input: string, options?: ParserBuildOptions) => ASTNode;
     source: string;
     options: CompileOptions;
+    analyze?: (ast: ASTNode) => AnalysisResult;
 }
 interface CompileOptions {
     allowedStartRules?: string[];
     cache?: boolean;
-    dependencies?: Record<string, any>;
+    dependencies?: Record<string, unknown>;
     exportVar?: string;
     format?: 'bare' | 'commonjs' | 'es' | 'globals' | 'umd';
-    grammarSource?: string;
+    grammarSource?: string | LocationRange;
     header?: string | string[];
     optimize?: 'speed' | 'size';
     output?: 'parser' | 'source';
-    plugins?: any[];
+    plugins?: Plugin[];
     trace?: boolean;
 }
-/**
- * Compile a PEG grammar string into a parser
- */
-declare function compileGrammar(grammar: string, options?: CompileOptions): CompiledGrammar;
+declare function compileGrammar<ASTNode = unknown>(grammar: string, options?: CompileOptions, analyzer?: (ast: ASTNode) => AnalysisResult): CompiledGrammar<ASTNode>;
 
 interface Token {
     type: string;
@@ -57,24 +65,52 @@ interface ErrorFormatter {
 declare function formatLocation(location: Location): string;
 declare function formatError(error: ParseError): string;
 
-interface ASTNode {
+interface ASTNode$1 {
     type: string;
-    value?: any;
-    children?: ASTNode[];
+    value?: unknown;
+    children?: ASTNode$1[];
     location?: Location;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
-declare function createASTNode(type: string, value?: any, children?: ASTNode[], location?: ASTNode['location'], metadata?: Record<string, any>): ASTNode;
-declare function traverseAST(node: ASTNode, visit: (node: ASTNode, parent?: ASTNode, path?: string[]) => void, parent?: ASTNode, path?: string[]): void;
+declare function createASTNode(type: string, value?: unknown, children?: ASTNode$1[], location?: ASTNode$1['location'], metadata?: Record<string, unknown>): ASTNode$1;
+declare function traverseAST(node: ASTNode$1, visit: (node: ASTNode$1, parent?: ASTNode$1, path?: string[]) => void, parent?: ASTNode$1, path?: string[]): void;
 
 /**
  * Highlight the source input with a caret (^) and optional colorization
  */
 declare function highlightSnippet(input: string, location: Location, useColor?: boolean): string;
 
-interface ParseResult<T = any> {
+interface ParserTracer {
+    trace(event: {
+        type: string;
+        rule: string;
+        result?: unknown;
+        location: Location;
+    }): void;
+}
+interface ParserOptions {
+    grammarSource?: string;
+    startRule?: string;
+    tracer?: ParserTracer;
+    enableSymbolTable?: boolean;
+    enableDiagnostics?: boolean;
+    enableOptimization?: boolean;
+    peg$library?: boolean;
+    [key: string]: unknown;
+}
+interface ASTNode {
+    type: string;
+    location?: Location;
+    children?: ASTNode[];
+    value?: unknown;
+    metadata?: Record<string, unknown>;
+}
+interface ParseResult<T = ASTNode> {
     result: T;
     success: true;
+    ast?: ASTNode;
+    symbols?: SymbolTable;
+    diagnostics?: Diagnostic[];
 }
 interface ParseError {
     success: false;
@@ -85,116 +121,214 @@ interface ParseError {
     stack?: string;
     input?: string;
     snippet?: string;
+    diagnostics?: Diagnostic[];
 }
-interface ParseOptions {
-    grammarSource?: string;
-    startRule?: string;
-    tracer?: any;
-    [key: string]: any;
+declare class SymbolTable {
+    private scopes;
+    private currentScope;
+    private scopeStack;
+    constructor();
+    enterScope(scopeName: string): void;
+    exitScope(): void;
+    define(symbol: Symbol): void;
+    lookup(name: string): Symbol | undefined;
+    getAllSymbols(): Symbol[];
+    getSymbolsInScope(scopeName: string): Symbol[];
+    getCurrentScope(): string;
 }
-/**
- * Parse input using a compiled grammar
- */
-declare function parseInput<T = any>(grammar: CompiledGrammar, input: string, options?: ParseOptions): ParseResult<T> | ParseError;
+interface Symbol {
+    name: string;
+    type: string;
+    scope: string;
+    location: Location;
+    value?: unknown;
+    metadata?: Record<string, unknown>;
+}
+interface Diagnostic {
+    severity: 'error' | 'warning' | 'info' | 'hint';
+    message: string;
+    location: Location;
+    code?: string;
+    source?: string;
+    relatedInformation?: DiagnosticRelatedInformation[];
+}
+interface DiagnosticRelatedInformation {
+    location: Location;
+    message: string;
+}
+declare class DiagnosticCollector {
+    private diagnostics;
+    error(message: string, location: Location, code?: string): void;
+    warning(message: string, location: Location, code?: string): void;
+    info(message: string, location: Location, code?: string): void;
+    hint(message: string, location: Location, code?: string): void;
+    getDiagnostics(): Diagnostic[];
+    addDiagnostics(newDiagnostics: Diagnostic[]): void;
+    clear(): void;
+    hasDiagnostics(): boolean;
+    hasErrors(): boolean;
+}
+interface ASTVisitor<T = unknown> {
+    visit(node: ASTNode, _context?: unknown): T;
+    visitChildren?(node: ASTNode, _context?: unknown): T | void;
+}
+declare class ASTWalker {
+    static walk<T>(node: ASTNode, visitor: ASTVisitor<T>, context?: unknown): T;
+    static walkPostOrder<T>(node: ASTNode, visitor: ASTVisitor<T>, context?: unknown): T;
+}
+interface ASTTransform {
+    transform(node: ASTNode): ASTNode;
+    shouldTransform?(node: ASTNode): boolean;
+}
+declare class ASTTransformer {
+    private transforms;
+    addTransform(transform: ASTTransform): void;
+    transform(ast: ASTNode): ASTNode;
+    private applyTransform;
+}
+declare abstract class SemanticAnalyzer {
+    protected symbolTable: SymbolTable;
+    protected diagnostics: DiagnosticCollector;
+    constructor(symbolTable: SymbolTable, diagnostics: DiagnosticCollector);
+    abstract analyze(ast: ASTNode): void;
+    getSymbolTable(): SymbolTable;
+    getDiagnostics(): Diagnostic[];
+    hasErrors(): boolean;
+}
+declare abstract class Interpreter<T = unknown> {
+    protected environment: Map<string, unknown>;
+    protected callStack: string[];
+    abstract interpret(ast: ASTNode): T;
+    protected getVariable(name: string): unknown;
+    protected setVariable(name: string, value: unknown): void;
+    protected enterFunction(name: string): void;
+    protected exitFunction(): void;
+    protected getCurrentFunction(): string | undefined;
+    getEnvironment(): Map<string, unknown>;
+}
+declare function parseWithSemanticAnalysis<T extends ASTNode>(// T extends ASTNode
+grammar: CompiledGrammar, input: string, analyzerInstance?: SemanticAnalyzer, // Renamed to avoid conflict with class name
+options?: ParserOptions): ParseResult<T> | ParseError;
+interface LSPCapabilities {
+    textDocument?: {
+        completion?: boolean;
+        hover?: boolean;
+        signatureHelp?: boolean;
+        definition?: boolean;
+        references?: boolean;
+        documentHighlight?: boolean;
+        documentSymbol?: boolean;
+        codeAction?: boolean;
+        codeLens?: boolean;
+        formatting?: boolean;
+        rangeFormatting?: boolean;
+        onTypeFormatting?: boolean;
+        rename?: boolean;
+        publishDiagnostics?: boolean;
+        foldingRange?: boolean;
+        selectionRange?: boolean;
+        semanticTokens?: boolean;
+    };
+}
+interface CompletionItem {
+    label: string;
+    kind: 'Text' | 'Method' | 'Function' | 'Constructor' | 'Field' | 'Variable' | 'Class' | 'Interface' | 'Module' | 'Property' | 'Unit' | 'Value' | 'Enum' | 'Keyword' | 'Snippet' | 'Color' | 'File' | 'Reference';
+    detail?: string;
+    documentation?: string;
+    insertText?: string;
+    sortText?: string;
+    filterText?: string;
+}
+declare class LanguageServer {
+    private grammar;
+    private symbolTable;
+    private diagnosticCollector;
+    private capabilities;
+    constructor(grammar: CompiledGrammar, capabilities?: LSPCapabilities);
+    completion(_input: string, _position: {
+        line: number;
+        column: number;
+    }): Promise<CompletionItem[]>;
+    hover(input: string, position: {
+        line: number;
+        column: number;
+    }): Promise<string | null>;
+    getDiagnosticsForInput(input: string): Promise<Diagnostic[]>;
+    private getCompletionKind;
+    private getWordAtPosition;
+}
+declare class REPL {
+    private grammar;
+    private interpreter?;
+    private history;
+    private variables;
+    constructor(grammar: CompiledGrammar, interpreter?: Interpreter);
+    evaluate(input: string): Promise<{
+        result: unknown;
+        output: string;
+        error?: string;
+    }>;
+    getHistory(): string[];
+    clearHistory(): void;
+    private formatOutput;
+    private formatAST;
+}
+declare function parseInput<T = ASTNode>(// Default T to ASTNode
+grammar: CompiledGrammar, input: string, options?: ParserOptions): ParseResult<T> | ParseError;
 /**
  * Create a parser function from a compiled grammar
  */
 declare function createParser(grammar: {
-    parse: (input: string, options?: any) => any;
-}): (input: string) => any;
+    parse: (input: string, options?: ParserOptions) => ASTNode;
+}): (input: string) => ASTNode | {
+    success: boolean;
+    error: string;
+    input: string;
+    stack: string | undefined;
+};
 /**
  * Enhanced error recovery with multiple strategies
  */
-declare function parseWithAdvancedRecovery<T = any>(grammar: CompiledGrammar, input: string, options?: ParseOptions): {
+declare function parseWithAdvancedRecovery<T = ASTNode>(// Default T to ASTNode
+grammar: CompiledGrammar, input: string, _options?: ParserOptions): {
     result?: T;
     errors: ParseError[];
     recoveryStrategy?: string;
 };
-/**
- * Batch parse multiple inputs
- */
-declare function parseMultiple<T = any>(grammar: CompiledGrammar, inputs: string[], options?: ParseOptions): Array<ParseResult<T> | ParseError>;
-/**
- * Parse stream of inputs
- */
-declare function parseStream<T = any>(grammar: CompiledGrammar, inputs: AsyncIterable<string>, options?: ParseOptions): Promise<Array<ParseResult<T> | ParseError>>;
-/**
- * Parse with timeout
- */
-declare function parseWithTimeout<T = any>(grammar: CompiledGrammar, input: string, timeoutMs: number, options?: ParseOptions): Promise<ParseResult<T> | ParseError>;
-/**
- * Validate input syntax without generating AST
- */
-declare function validateSyntax(grammar: CompiledGrammar, input: string, options?: ParseOptions): {
+declare function parseMultiple<T = ASTNode>(// Default T to ASTNode
+grammar: CompiledGrammar, inputs: string[], options?: ParserOptions): Array<ParseResult<T> | ParseError>;
+declare function parseStream<T = ASTNode>(// Default T to ASTNode
+grammar: CompiledGrammar, stream: ReadableStream<string>, options?: ParserOptions): AsyncGenerator<ParseResult<T> | ParseError>;
+declare function parseWithTimeout<T = ASTNode>(// Default T to ASTNode
+grammar: CompiledGrammar, input: string, timeoutMs: number, options?: ParserOptions): Promise<ParseResult<T> | ParseError>;
+declare function validateSyntax(grammar: CompiledGrammar, input: string, options?: ParserOptions): {
     valid: boolean;
-    error?: ParseError;
+    errors: string[];
 };
-interface ParseMetrics {
-    duration: number;
-    inputLength: number;
-    memoryUsage?: number;
-    cacheHits?: number;
-    cacheMisses?: number;
-}
-interface ParseResultWithMetrics<T = any> extends ParseResult<T> {
-    metrics: ParseMetrics;
-}
-interface ParseErrorWithMetrics extends ParseError {
-    metrics: ParseMetrics;
-}
-/**
- * Performance-aware parser with metrics
- */
-declare class PerformanceParser<T = any> {
-    private enableCache;
-    private grammar;
-    private cache;
-    private metrics;
-    constructor(grammar: CompiledGrammar, enableCache?: boolean);
-    parse(input: string, options?: ParseOptions): ParseResultWithMetrics<T> | ParseErrorWithMetrics;
-    private getCacheKey;
-    private updateMetrics;
-    getMetrics(): {
-        cacheHits: number;
-        cacheMisses: number;
-        totalParseTime: number;
-        averageParseTime: number;
-        parseCount: number;
-    };
-    clearCache(): void;
-    getCacheSize(): number;
-}
-interface StreamingOptions extends ParseOptions {
-    chunkSize?: number;
-    delimiter?: string;
-    bufferSize?: number;
-    onProgress?: (processed: number, total: number) => void;
-    onChunk?: (result: ParseResult<any> | ParseError, chunk: string) => void;
-}
-interface StreamingResult<T = any> {
-    results: Array<ParseResult<T> | ParseError>;
-    totalProcessed: number;
-    successCount: number;
-    errorCount: number;
-    duration: number;
-}
-/**
- * Streaming parser for large inputs with chunking support
- */
-declare class StreamingParser<T = any> {
+declare class StreamingParser {
     private grammar;
     private buffer;
-    private processed;
-    private results;
+    private options;
+    constructor(grammar: CompiledGrammar, options?: ParserOptions);
+    addChunk(chunk: string): Array<ParseResult | ParseError>;
+    flush(): ParseResult | ParseError | null;
+}
+declare class ParserUtils {
+    static formatError(error: ParseError): string;
+    static isParseError(result: ParseResult | ParseError): result is ParseError;
+    static extractValue<T>(result: ParseResult<T> | ParseError): T | null;
+}
+declare class PerformanceParser {
+    private grammar;
+    private metrics;
     constructor(grammar: CompiledGrammar);
-    parseStream(input: ReadableStream<string> | AsyncIterable<string>, options?: StreamingOptions): Promise<StreamingResult<T>>;
-    private processChunk;
-    private getReader;
-    private reset;
-    getProgress(): {
-        processed: number;
-        buffered: number;
-    };
+    parse<T = ASTNode>(input: string, options?: ParserOptions): ParseResult<T> | ParseError;
+    getMetrics(): Record<string, {
+        avg: number;
+        min: number;
+        max: number;
+        count: number;
+    }>;
 }
 
-export { type ASTNode, type CompiledGrammar, type ErrorFormatter, type LexerConfig, type Location, type ParseError, type ParseResult, PerformanceParser, StreamingParser, type Token, compileGrammar, createASTNode, createLexer, createParser, formatError, formatLocation, highlightSnippet, parseInput, parseMultiple, parseStream, parseWithAdvancedRecovery, parseWithTimeout, traverseAST, validateSyntax };
+export { type ASTNode$1 as ASTNode, ASTTransformer, ASTWalker, type CompiledGrammar, DiagnosticCollector, type ErrorFormatter, LanguageServer, type LexerConfig, type Location, ParserUtils, PerformanceParser, REPL, StreamingParser, SymbolTable, type Token, compileGrammar, createASTNode, createLexer, createParser, formatError, formatLocation, highlightSnippet, parseInput, parseMultiple, parseStream, parseWithAdvancedRecovery, parseWithSemanticAnalysis, parseWithTimeout, traverseAST, validateSyntax };

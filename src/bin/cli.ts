@@ -4,22 +4,25 @@ import { watchFile } from 'node:fs';
 import { argv } from 'node:process';
 
 import {
-  // compileGrammar, // Removed: 'compileGrammar' is defined but never used.
   compileGrammarFromFile,
   validateGrammar,
   analyzeGrammarAdvanced,
 } from '../grammar/index.js';
-// FIX: Change to default import as per your exports
-import Parser from '../parser/index.js'; // This 'Parser' object will contain parseInput, ParserUtils, etc.
-import { formatError, toParseError } from '../utils/index.js';
+
+import Parser from '../parser/index.js';
+
+// FIX: Ensure toParseError and formatCompilationError are imported
+// Adjust the import path if your utility file is named error-utils.js/ts
+import { formatError, formatCompilationError } from '../utils/index.js';
 
 // Define the valid format types with const assertion for type safety
 const VALID_FORMATS = ['bare', 'commonjs', 'es', 'globals', 'umd'] as const;
 type OutputFormat = typeof VALID_FORMATS[number];
 
-// Assuming ASTNode is defined somewhere (e.g., in types.ts)
-// For demonstration, defining a minimal placeholder if not globally available
-// type ASTNode = any; // You should replace this with your actual AST node type if it's imported
+// FIX: Remove unused imports for ASTNode and ParseError
+// import { ASTNode, } from '../utils/index';
+// import { ParseError } from '../parser/index.js';
+
 
 function printHelp() {
   console.log(`
@@ -151,7 +154,8 @@ async function main() {
       try {
         await compileAndWrite(grammarPath, outFile, format);
       } catch (err: unknown) { // Use 'unknown' for caught errors
-        console.error('❌ Error during rebuild:\n' + toParseError(err).error); // Convert to ParseError and access 'error'
+        // FIX: Use formatCompilationError to handle the error and provide the grammar text
+        console.error('❌ Error during rebuild:\n' + formatCompilationError(err, grammarText));
       }
     });
     return;
@@ -170,15 +174,14 @@ async function main() {
   const testIndex = args.indexOf('--test');
   if (testIndex !== -1 && args[testIndex + 1]) {
     const input = args[testIndex + 1];
-    // FIX: Access parseInput and ParserUtils.isSuccess from the default 'Parser' import
     const result = Parser.parseInput(parser, input);
 
-    if (Parser.ParserUtils.isSuccess(result)) { // FIX: Access isSuccess via Parser.ParserUtils
+    if (!Parser.ParserUtils.isParseError(result)) { // Type of 'result' is now ParseResult<ASTNode> in this block
       console.log('✅ Parse Success');
       if (args.includes('--ast')) {
         console.log(JSON.stringify(result.result, null, 2));
       }
-    } else {
+    } else { // Type of 'result' is now ParseError in this block
       console.error('❌ Parse Error:\n' + formatError(result));
       process.exit(1);
     }

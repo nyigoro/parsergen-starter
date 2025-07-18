@@ -1,5 +1,5 @@
 import type { Location } from './types';
-import type { ParseError } from '../parser/index';
+import type { ParseError } from '../parser/index'; // Consider if this should be from a dedicated types file like '../parser/types'
 import { highlightSnippet } from './highlight';
 import * as colors from 'colorette'; // Correctly imported colorette as 'colors'
 
@@ -148,7 +148,8 @@ export function formatError(error: ParseError): string {
 
     if (error.snippet || (error.input && error.location)) {
         try {
-            const snippet = error.snippet || highlightSnippet(error.input!, error.location!, true);
+            // FIX: Pass false for useColors to highlightSnippet in the non-colored formatError
+            const snippet = error.snippet || highlightSnippet(error.input!, error.location!, false);
             parts.push('\n--- Snippet ---\n' + snippet);
         } catch {
             parts.push('\n--- Snippet unavailable ---');

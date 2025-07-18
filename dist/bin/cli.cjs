@@ -6,6 +6,7 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
@@ -26,6 +27,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // node_modules/peggy/lib/grammar-location.js
 var require_grammar_location = __commonJS({
@@ -9522,7 +9524,7 @@ var import_node_fs = require("fs");
 var import_node_process = require("process");
 
 // src/utils/highlight.ts
-var import_chalk = __toESM(require("chalk"), 1);
+var colors = __toESM(require("colorette"), 1);
 function highlightSnippet(input, location, useColor = true) {
   const lines = input.split("\n");
   const lineNum = location.start.line;
@@ -9531,8 +9533,8 @@ function highlightSnippet(input, location, useColor = true) {
   const targetLine = lines[lineNum - 1];
   const prefix = `${lineNum}: `;
   const pointerLine = " ".repeat(prefix.length + colNum - 1) + "^";
-  const lineStr = useColor ? prefix + import_chalk.default.redBright(targetLine) : prefix + targetLine;
-  const pointerStr = useColor ? import_chalk.default.yellow(pointerLine) : pointerLine;
+  const lineStr = useColor ? prefix + colors.red(targetLine) : prefix + targetLine;
+  const pointerStr = useColor ? colors.yellow(pointerLine) : pointerLine;
   const resultLines = [];
   if (lineNum > 1) resultLines.push(`${lineNum - 1}: ${lines[lineNum - 2]}`);
   resultLines.push(lineStr);
@@ -9543,13 +9545,15 @@ function highlightSnippet(input, location, useColor = true) {
 __name(highlightSnippet, "highlightSnippet");
 
 // src/utils/format.ts
-var import_chalk2 = __toESM(require("chalk"), 1);
+var colors2 = __toESM(require("colorette"), 1);
 function isParseError(err) {
-  return err && typeof err === "object" && typeof err.error === "string";
+  return typeof err === "object" && err !== null && "error" in err && // Check if 'error' property exists
+  typeof err.error === "string" && // Now check its type
+  "success" in err && typeof err.success === "boolean";
 }
 __name(isParseError, "isParseError");
 function isPeggyError(err) {
-  return err && typeof err === "object" && typeof err.message === "string" && (err.location || err.expected || err.found !== void 0);
+  return typeof err === "object" && err !== null && "message" in err && typeof err.message === "string" && ("location" in err || "expected" in err || "found" in err);
 }
 __name(isPeggyError, "isPeggyError");
 function toParseError(err) {
@@ -9557,13 +9561,14 @@ function toParseError(err) {
     return err;
   }
   if (isPeggyError(err)) {
+    const peggyError = err;
     return {
-      error: err.message,
-      location: isValidLocation(err.location) ? err.location : void 0,
+      error: peggyError.message,
+      location: isValidLocation(peggyError.location) ? peggyError.location : void 0,
       success: false,
-      expected: Array.isArray(err.expected) ? err.expected : [],
-      found: typeof err.found === "string" ? err.found : void 0,
-      input: typeof err.input === "string" ? err.input : void 0,
+      expected: Array.isArray(peggyError.expected) ? peggyError.expected : void 0,
+      found: typeof peggyError.found === "string" ? peggyError.found : void 0,
+      input: typeof peggyError.input === "string" ? peggyError.input : void 0,
       snippet: void 0
     };
   }
@@ -9590,7 +9595,30 @@ function toParseError(err) {
 }
 __name(toParseError, "toParseError");
 function isValidLocation(loc) {
-  return loc && typeof loc === "object" && loc.start && loc.end && typeof loc.start.line === "number" && typeof loc.start.column === "number" && typeof loc.start.offset === "number" && typeof loc.end.line === "number" && typeof loc.end.column === "number" && typeof loc.end.offset === "number";
+  if (typeof loc !== "object" || loc === null) {
+    return false;
+  }
+  const locationObject = loc;
+  if (!("start" in locationObject) || !("end" in locationObject)) {
+    return false;
+  }
+  const start = locationObject.start;
+  const end = locationObject.end;
+  if (typeof start !== "object" || start === null) {
+    return false;
+  }
+  const startObject = start;
+  if (!("line" in startObject) || typeof startObject.line !== "number" || !("column" in startObject) || typeof startObject.column !== "number" || !("offset" in startObject) || typeof startObject.offset !== "number") {
+    return false;
+  }
+  if (typeof end !== "object" || end === null) {
+    return false;
+  }
+  const endObject = end;
+  if (!("line" in endObject) || typeof endObject.line !== "number" || !("column" in endObject) || typeof endObject.column !== "number" || !("offset" in endObject) || typeof endObject.offset !== "number") {
+    return false;
+  }
+  return true;
 }
 __name(isValidLocation, "isValidLocation");
 function formatLocation(location) {
@@ -9614,9 +9642,9 @@ function formatError(error) {
   }
   if (error.snippet || error.input && error.location) {
     try {
-      const snippet = error.snippet || highlightSnippet(error.input, error.location, true);
+      const snippet = error.snippet || highlightSnippet(error.input, error.location, false);
       parts.push("\n--- Snippet ---\n" + snippet);
-    } catch (snippetError) {
+    } catch {
       parts.push("\n--- Snippet unavailable ---");
     }
   }
@@ -9629,23 +9657,24 @@ function formatErrorWithColors(error, useColors = true) {
   }
   const errorMessage = error.error || "Unknown error";
   const parts = [
-    `${import_chalk2.default.red("\u274C Parse Error:")} ${errorMessage}`
+    `${colors2.red("\u274C Parse Error:")} ${errorMessage}`
+    // FIX: Use colors.red
   ];
   if (error.location) {
-    parts.push(`${import_chalk2.default.blue("\u21AA at")} ${formatLocation(error.location)}`);
+    parts.push(`${colors2.blue("\u21AA at")} ${formatLocation(error.location)}`);
   }
   if (error.expected && error.expected.length > 0) {
-    parts.push(`${import_chalk2.default.yellow("Expected:")} ${error.expected.join(", ")}`);
+    parts.push(`${colors2.yellow("Expected:")} ${error.expected.join(", ")}`);
   }
   if (error.found !== void 0) {
-    parts.push(`${import_chalk2.default.yellow("Found:")} "${error.found}"`);
+    parts.push(`${colors2.yellow("Found:")} "${error.found}"`);
   }
   if (error.snippet || error.input && error.location) {
     try {
       const snippet = error.snippet || highlightSnippet(error.input, error.location, useColors);
-      parts.push("\n" + import_chalk2.default.dim("--- Snippet ---") + "\n" + snippet);
-    } catch (snippetError) {
-      parts.push("\n" + import_chalk2.default.dim("--- Snippet unavailable ---"));
+      parts.push("\n" + colors2.dim("--- Snippet ---") + "\n" + snippet);
+    } catch {
+      parts.push("\n" + colors2.dim("--- Snippet unavailable ---"));
     }
   }
   return parts.join("\n");
@@ -9684,9 +9713,9 @@ function formatErrorWithSuggestions(error, useColors = true) {
   if (suggestions.length === 0) {
     return baseFormatted;
   }
-  const suggestionHeader = useColors ? import_chalk2.default.cyan("\n\u{1F4A1} Suggestions:") : "\n\u{1F4A1} Suggestions:";
+  const suggestionHeader = useColors ? colors2.cyan("\n\u{1F4A1} Suggestions:") : "\n\u{1F4A1} Suggestions:";
   const formattedSuggestions = suggestions.map((suggestion, index) => {
-    const bullet = useColors ? import_chalk2.default.dim(`  ${index + 1}.`) : `  ${index + 1}.`;
+    const bullet = useColors ? colors2.dim(`  ${index + 1}.`) : `  ${index + 1}.`;
     return `${bullet} ${suggestion}`;
   }).join("\n");
   return `${baseFormatted}${suggestionHeader}
@@ -9705,7 +9734,11 @@ __name(formatCompilationError, "formatCompilationError");
 // src/grammar/index.ts
 var import_peggy = __toESM(require_peg(), 1);
 var generate = import_peggy.default.generate;
-function compileGrammar(grammar, options2 = {}) {
+function isParseError2(error) {
+  return typeof error === "object" && error !== null && "message" in error && "location" in error;
+}
+__name(isParseError2, "isParseError");
+function compileGrammar(grammar, options2 = {}, analyzer) {
   try {
     const defaultOptions = {
       allowedStartRules: [
@@ -9722,25 +9755,27 @@ function compileGrammar(grammar, options2 = {}) {
     return {
       parse: parser.parse.bind(parser),
       source: grammar,
-      options: defaultOptions
+      options: defaultOptions,
+      analyze: analyzer
     };
   } catch (error) {
-    const formattedError = formatCompilationError ? formatCompilationError(error, grammar) : formatAnyError(error);
+    const formattedError = isParseError2(error) ? formatCompilationError(error, grammar) : formatAnyError(error);
     throw new Error(`Grammar compilation failed:
 ${formattedError}`);
   }
 }
 __name(compileGrammar, "compileGrammar");
-async function compileGrammarFromFile(filePath, options2 = {}) {
+async function compileGrammarFromFile(filePath, options2 = {}, analyzer) {
   try {
     const fs2 = await import("fs/promises");
     const grammar = await fs2.readFile(filePath, "utf-8");
     return compileGrammar(grammar, {
       ...options2,
       grammarSource: filePath
-    });
+    }, analyzer);
   } catch (error) {
-    throw new Error(`Failed to compile grammar from file ${filePath}: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to compile grammar from file ${filePath}: ${message}`);
   }
 }
 __name(compileGrammarFromFile, "compileGrammarFromFile");
@@ -9753,9 +9788,10 @@ function validateGrammar(grammar) {
       valid: true
     };
   } catch (error) {
+    const message = isParseError2(error) ? formatError(error) : formatAnyError(error);
     return {
       valid: false,
-      error: formatError(error)
+      error: String(message)
     };
   }
 }
@@ -9763,58 +9799,36 @@ __name(validateGrammar, "validateGrammar");
 function analyzeGrammarAdvanced(grammar) {
   const lines = grammar.split("\n");
   const rules = [];
-  const imports = [];
-  const exports2 = [];
   const dependencies = /* @__PURE__ */ new Map();
   const warnings = [];
-  let currentRule = null;
-  let inRule = false;
-  let braceCount = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    if (trimmed.startsWith("//") || trimmed.startsWith("/*") || !trimmed) {
-      continue;
-    }
-    const ruleMatch = trimmed.match(/^(\w+)\s*=/);
-    if (ruleMatch && !inRule) {
-      if (currentRule) {
-        rules.push(currentRule);
+  const ruleDefinitionRegex = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*(".*?")?\s*=/;
+  let currentRuleLines = [];
+  let currentRuleInfo = null;
+  lines.forEach((line, i) => {
+    const ruleMatch = line.match(ruleDefinitionRegex);
+    if (ruleMatch) {
+      if (currentRuleInfo && currentRuleLines.length > 0) {
+        rules.push(finalizeRule(currentRuleInfo, currentRuleLines, rules.length === 0));
       }
-      currentRule = {
+      currentRuleInfo = {
         name: ruleMatch[1],
         line: i + 1,
         column: line.indexOf(ruleMatch[1]) + 1,
-        expression: "",
-        references: [],
-        isStartRule: rules.length === 0,
-        isLeftRecursive: false
+        isStartRule: false
       };
-      inRule = true;
+      currentRuleLines = [
+        line
+      ];
+    } else if (currentRuleInfo) {
+      currentRuleLines.push(line);
     }
-    if (inRule && currentRule) {
-      currentRule.expression += line + "\n";
-      braceCount += (line.match(/{/g) || []).length;
-      braceCount -= (line.match(/}/g) || []).length;
-      if (i === lines.length - 1 || i < lines.length - 1 && lines[i + 1].trim().match(/^\w+\s*=/) && braceCount === 0) {
-        const references = extractReferences(currentRule.expression);
-        currentRule.references = references;
-        dependencies.set(currentRule.name, references);
-        currentRule.isLeftRecursive = checkLeftRecursion(currentRule.expression, currentRule.name);
-        rules.push(currentRule);
-        inRule = false;
-        braceCount = 0;
-      }
-    }
-    const importMatch = trimmed.match(/import\s+(\w+)/);
-    if (importMatch) {
-      imports.push(importMatch[1]);
-    }
-    const exportMatch = trimmed.match(/export\s+(\w+)/);
-    if (exportMatch) {
-      exports2.push(exportMatch[1]);
-    }
+  });
+  if (currentRuleInfo && currentRuleLines.length > 0) {
+    rules.push(finalizeRule(currentRuleInfo, currentRuleLines, rules.length === 0));
   }
+  rules.forEach((rule) => {
+    dependencies.set(rule.name, rule.references);
+  });
   const reachableRules = /* @__PURE__ */ new Set();
   const startRule = rules.find((r) => r.isStartRule);
   if (startRule) {
@@ -9823,16 +9837,14 @@ function analyzeGrammarAdvanced(grammar) {
   const unreachableRules = rules.filter((r) => !reachableRules.has(r.name)).map((r) => r.name);
   const leftRecursive = rules.filter((r) => r.isLeftRecursive).map((r) => r.name);
   if (unreachableRules.length > 0) {
-    warnings.push(`Unreachable rules: ${unreachableRules.join(", ")}`);
+    warnings.push(`Unreachable rules found: ${unreachableRules.join(", ")}`);
   }
   if (leftRecursive.length > 0) {
-    warnings.push(`Left-recursive rules: ${leftRecursive.join(", ")}`);
+    warnings.push(`Immediate left-recursive rules found: ${leftRecursive.join(", ")}. Peggy handles this, but it can signal complex logic.`);
   }
   return {
     rules,
     startRule: startRule?.name,
-    imports,
-    exports: exports2,
     dependencies,
     unreachableRules,
     leftRecursive,
@@ -9840,87 +9852,708 @@ function analyzeGrammarAdvanced(grammar) {
   };
 }
 __name(analyzeGrammarAdvanced, "analyzeGrammarAdvanced");
-function extractReferences(expression) {
-  const references = [];
-  const matches = expression.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-  if (matches) {
-    const keywords = /* @__PURE__ */ new Set([
-      "return",
-      "if",
-      "else",
-      "while",
-      "for",
-      "function",
-      "var",
-      "let",
-      "const"
-    ]);
-    const uniqueRefs = new Set(matches.filter((m) => !keywords.has(m)));
-    references.push(...uniqueRefs);
-  }
-  return references;
+function finalizeRule(info, lines, isStart) {
+  const expression = lines.join("\n");
+  const name = info.name;
+  return {
+    ...info,
+    expression,
+    references: extractReferences(expression, name),
+    isStartRule: isStart,
+    isLeftRecursive: checkImmediateLeftRecursion(expression, name)
+  };
+}
+__name(finalizeRule, "finalizeRule");
+function extractReferences(expression, ruleName) {
+  const grammarOnly = expression.replace(/{[^}]*}/g, " ").replace(/"[^"]*"/g, " ").replace(/'[^']*'/g, " ");
+  const matches = grammarOnly.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
+  const references = new Set(matches.filter((m) => m !== ruleName));
+  return Array.from(references);
 }
 __name(extractReferences, "extractReferences");
-function checkLeftRecursion(expression, ruleName) {
-  const firstAlternative = expression.split("|")[0];
-  const trimmed = firstAlternative.replace(/\s+/g, " ").trim();
-  return trimmed.startsWith(`${ruleName} `) || trimmed.startsWith(`${ruleName}/`);
+function checkImmediateLeftRecursion(expression, ruleName) {
+  const body = expression.substring(expression.indexOf("=") + 1);
+  const alternatives = body.split("/");
+  return alternatives.some((alt) => {
+    const trimmedAlt = alt.trim();
+    return trimmedAlt.startsWith(ruleName) && !trimmedAlt.startsWith(ruleName + "_");
+  });
 }
-__name(checkLeftRecursion, "checkLeftRecursion");
+__name(checkImmediateLeftRecursion, "checkImmediateLeftRecursion");
 function findReachableRules(ruleName, dependencies, reachable) {
-  if (reachable.has(ruleName)) {
-    return;
-  }
+  if (reachable.has(ruleName) || !dependencies.has(ruleName)) return;
   reachable.add(ruleName);
   const deps = dependencies.get(ruleName) || [];
   for (const dep of deps) {
-    if (dependencies.has(dep)) {
-      findReachableRules(dep, dependencies, reachable);
-    }
+    findReachableRules(dep, dependencies, reachable);
   }
 }
 __name(findReachableRules, "findReachableRules");
 
 // src/parser/index.ts
+var _SymbolTable = class _SymbolTable {
+  constructor() {
+    __publicField(this, "scopes", /* @__PURE__ */ new Map());
+    __publicField(this, "currentScope", "global");
+    __publicField(this, "scopeStack", [
+      "global"
+    ]);
+    this.scopes.set("global", /* @__PURE__ */ new Map());
+  }
+  enterScope(scopeName) {
+    this.currentScope = scopeName;
+    this.scopeStack.push(scopeName);
+    if (!this.scopes.has(scopeName)) {
+      this.scopes.set(scopeName, /* @__PURE__ */ new Map());
+    }
+  }
+  exitScope() {
+    this.scopeStack.pop();
+    this.currentScope = this.scopeStack[this.scopeStack.length - 1] || "global";
+  }
+  define(symbol) {
+    const scope = this.scopes.get(this.currentScope);
+    scope.set(symbol.name, symbol);
+  }
+  lookup(name) {
+    for (let i = this.scopeStack.length - 1; i >= 0; i--) {
+      const scopeName = this.scopeStack[i];
+      const scope = this.scopes.get(scopeName);
+      if (scope?.has(name)) {
+        return scope.get(name);
+      }
+    }
+    return void 0;
+  }
+  getAllSymbols() {
+    const symbols = [];
+    for (const scope of this.scopes.values()) {
+      symbols.push(...scope.values());
+    }
+    return symbols;
+  }
+  getSymbolsInScope(scopeName) {
+    return Array.from(this.scopes.get(scopeName)?.values() || []);
+  }
+  // New getter for currentScope to avoid 'any' type assertion
+  getCurrentScope() {
+    return this.currentScope;
+  }
+};
+__name(_SymbolTable, "SymbolTable");
+var SymbolTable = _SymbolTable;
+var _DiagnosticCollector = class _DiagnosticCollector {
+  constructor() {
+    __publicField(this, "diagnostics", []);
+  }
+  error(message, location, code) {
+    this.diagnostics.push({
+      severity: "error",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  warning(message, location, code) {
+    this.diagnostics.push({
+      severity: "warning",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  info(message, location, code) {
+    this.diagnostics.push({
+      severity: "info",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  hint(message, location, code) {
+    this.diagnostics.push({
+      severity: "hint",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  getDiagnostics() {
+    return [
+      ...this.diagnostics
+    ];
+  }
+  addDiagnostics(newDiagnostics) {
+    this.diagnostics.push(...newDiagnostics);
+  }
+  clear() {
+    this.diagnostics = [];
+  }
+  hasDiagnostics() {
+    return this.diagnostics.length > 0;
+  }
+  hasErrors() {
+    return this.diagnostics.some((d) => d.severity === "error");
+  }
+};
+__name(_DiagnosticCollector, "DiagnosticCollector");
+var DiagnosticCollector = _DiagnosticCollector;
+var _ASTWalker = class _ASTWalker {
+  static walk(node, visitor2, context) {
+    const result = visitor2.visit(node, context);
+    if (node.children && visitor2.visitChildren) {
+      const childResults = node.children.map((child) => _ASTWalker.walk(child, visitor2, context));
+      const newContext = typeof context === "object" && context !== null ? context : {};
+      const childrenVisitResult = visitor2.visitChildren(node, {
+        ...newContext,
+        childResults
+      });
+      return childrenVisitResult !== void 0 ? childrenVisitResult : result;
+    }
+    return result;
+  }
+  static walkPostOrder(node, visitor2, context) {
+    if (node.children && visitor2.visitChildren) {
+      const childResults = node.children.map((child) => _ASTWalker.walkPostOrder(child, visitor2, context));
+      const newContext = typeof context === "object" && context !== null ? context : {};
+      visitor2.visitChildren(node, {
+        ...newContext,
+        childResults
+      });
+    }
+    return visitor2.visit(node, context);
+  }
+};
+__name(_ASTWalker, "ASTWalker");
+var ASTWalker = _ASTWalker;
+var _ASTTransformer = class _ASTTransformer {
+  constructor() {
+    __publicField(this, "transforms", []);
+  }
+  addTransform(transform) {
+    this.transforms.push(transform);
+  }
+  transform(ast2) {
+    let result = ast2;
+    for (const transform of this.transforms) {
+      result = this.applyTransform(result, transform);
+    }
+    return result;
+  }
+  applyTransform(node, transform) {
+    if (transform.shouldTransform && !transform.shouldTransform(node)) {
+      return node;
+    }
+    const transformed = transform.transform(node);
+    if (transformed.children) {
+      transformed.children = transformed.children.map((child) => this.applyTransform(child, transform));
+    }
+    return transformed;
+  }
+};
+__name(_ASTTransformer, "ASTTransformer");
+var ASTTransformer = _ASTTransformer;
+var _SemanticAnalyzer = class _SemanticAnalyzer {
+  constructor(symbolTable, diagnostics) {
+    __publicField(this, "symbolTable");
+    __publicField(this, "diagnostics");
+    this.symbolTable = symbolTable;
+    this.diagnostics = diagnostics;
+  }
+  getSymbolTable() {
+    return this.symbolTable;
+  }
+  getDiagnostics() {
+    return this.diagnostics.getDiagnostics();
+  }
+  hasErrors() {
+    return this.diagnostics.hasErrors();
+  }
+};
+__name(_SemanticAnalyzer, "SemanticAnalyzer");
+var SemanticAnalyzer = _SemanticAnalyzer;
+function parseWithSemanticAnalysis(grammar, input, analyzerInstance, options2 = {}) {
+  const enhancedOptions = {
+    ...options2,
+    enableSymbolTable: true,
+    enableDiagnostics: true
+    // Ensure parser attempts to collect diagnostics if it supports it
+  };
+  const diagnosticsCollector = new DiagnosticCollector();
+  let symbolTable;
+  try {
+    const ast2 = grammar.parse(input, enhancedOptions);
+    if (analyzerInstance) {
+      analyzerInstance.analyze(ast2);
+      symbolTable = analyzerInstance.getSymbolTable();
+      diagnosticsCollector.addDiagnostics(analyzerInstance.getDiagnostics());
+      if (analyzerInstance.hasErrors()) {
+        return {
+          success: false,
+          error: "Semantic analysis failed",
+          diagnostics: diagnosticsCollector.getDiagnostics(),
+          input
+        };
+      }
+    } else {
+      if (enhancedOptions.enableSymbolTable) {
+        symbolTable = new SymbolTable();
+      }
+      if (enhancedOptions.enableDiagnostics) {
+      }
+    }
+    return {
+      result: ast2,
+      success: true,
+      ast: ast2,
+      symbols: symbolTable,
+      diagnostics: diagnosticsCollector.getDiagnostics()
+    };
+  } catch (error) {
+    const parseError = createParseError(error, input, options2);
+    if (parseError.diagnostics) {
+      diagnosticsCollector.addDiagnostics(parseError.diagnostics);
+    } else {
+      diagnosticsCollector.error(parseError.error, parseError.location || {
+        start: {
+          line: 1,
+          column: 1,
+          offset: 0
+        },
+        end: {
+          line: 1,
+          column: 1,
+          offset: 0
+        }
+      }, "parse-error");
+    }
+    return {
+      success: false,
+      error: parseError.error,
+      location: parseError.location,
+      expected: parseError.expected,
+      found: parseError.found,
+      stack: parseError.stack,
+      input: parseError.input,
+      snippet: parseError.snippet,
+      diagnostics: diagnosticsCollector.getDiagnostics()
+    };
+  }
+}
+__name(parseWithSemanticAnalysis, "parseWithSemanticAnalysis");
+var _LanguageServer = class _LanguageServer {
+  constructor(grammar, capabilities = {}) {
+    __publicField(this, "grammar");
+    __publicField(this, "symbolTable");
+    __publicField(this, "diagnosticCollector");
+    __publicField(this, "capabilities");
+    this.grammar = grammar;
+    this.symbolTable = new SymbolTable();
+    this.diagnosticCollector = new DiagnosticCollector();
+    this.capabilities = capabilities;
+  }
+  async completion(_input, _position) {
+    const symbols = this.symbolTable.getAllSymbols();
+    const completions = [];
+    for (const symbol of symbols) {
+      completions.push({
+        label: symbol.name,
+        kind: this.getCompletionKind(symbol.type),
+        detail: symbol.type,
+        documentation: symbol.metadata?.description
+      });
+    }
+    const keywords = [
+      "if",
+      "else",
+      "while",
+      "for",
+      "function",
+      "return",
+      "var",
+      "let",
+      "const"
+    ];
+    for (const keyword of keywords) {
+      completions.push({
+        label: keyword,
+        kind: "Keyword",
+        insertText: keyword
+      });
+    }
+    return completions;
+  }
+  async hover(input, position) {
+    const wordAtPosition = this.getWordAtPosition(input, position);
+    if (!wordAtPosition) return null;
+    const symbol = this.symbolTable.lookup(wordAtPosition);
+    if (!symbol) return null;
+    return `**${symbol.name}**: ${symbol.type}
+
+${symbol.metadata?.description || ""}`;
+  }
+  async getDiagnosticsForInput(input) {
+    var _a;
+    this.diagnosticCollector.clear();
+    this.symbolTable = new SymbolTable();
+    try {
+      let TempSemanticAnalyzer = (_a = class extends SemanticAnalyzer {
+        constructor(symbolTable, diagnostics) {
+          super(symbolTable, diagnostics);
+        }
+        analyze(ast2) {
+          var _a2;
+          let TempASTVisitor = (_a2 = class {
+            constructor(_symbolTableRef, _diagnosticsRef) {
+              __publicField(this, "_symbolTableRef");
+              __publicField(this, "_diagnosticsRef");
+              this._symbolTableRef = _symbolTableRef;
+              this._diagnosticsRef = _diagnosticsRef;
+            }
+            visit(node, _context) {
+              if (node.type === "Identifier" && typeof node.value === "string") {
+                const symbolName = node.value;
+                if (!this._symbolTableRef.lookup(symbolName)) {
+                  this._diagnosticsRef.warning(`Undefined identifier: '${symbolName}'`, node.location || {
+                    start: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    },
+                    end: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    }
+                  }, "undefined-var");
+                }
+              }
+              if (node.type === "VariableDeclaration" && node.children && node.children[0]?.type === "Identifier") {
+                const varName = node.children[0].value;
+                this._symbolTableRef.define({
+                  name: varName,
+                  type: "variable",
+                  // Accessing currentScope via the new public getter
+                  scope: this._symbolTableRef.getCurrentScope(),
+                  location: node.children[0].location || {
+                    start: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    },
+                    end: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    }
+                  },
+                  metadata: {
+                    description: `Declared variable '${varName}'`
+                  }
+                });
+              }
+            }
+            visitChildren(_node, _context) {
+            }
+          }, __name(_a2, "TempASTVisitor"), _a2);
+          const visitor2 = new TempASTVisitor(this.symbolTable, this.diagnostics);
+          ASTWalker.walk(ast2, visitor2);
+        }
+      }, __name(_a, "TempSemanticAnalyzer"), _a);
+      const tempAnalyzer = new TempSemanticAnalyzer(this.symbolTable, this.diagnosticCollector);
+      const parseResult = parseWithSemanticAnalysis(this.grammar, input, tempAnalyzer, {
+        enableDiagnostics: true,
+        enableSymbolTable: true
+      });
+      if (parseResult.success) {
+        if (parseResult.symbols) {
+          this.symbolTable = parseResult.symbols;
+        }
+        this.diagnosticCollector.addDiagnostics(parseResult.diagnostics || []);
+      } else {
+        this.diagnosticCollector.addDiagnostics(parseResult.diagnostics || []);
+        if (!parseResult.diagnostics || parseResult.diagnostics.length === 0) {
+          const errorLocation = parseResult.location || {
+            start: {
+              line: 1,
+              column: 1,
+              offset: 0
+            },
+            end: {
+              line: 1,
+              column: 1,
+              offset: 0
+            }
+          };
+          this.diagnosticCollector.error(parseResult.error, errorLocation, "parse-error");
+        }
+      }
+      return this.diagnosticCollector.getDiagnostics();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorLocation = error.location;
+      this.diagnosticCollector.error(errorMessage, errorLocation || {
+        start: {
+          line: 1,
+          column: 1,
+          offset: 0
+        },
+        end: {
+          line: 1,
+          column: 1,
+          offset: 0
+        }
+      }, "internal-error");
+      return this.diagnosticCollector.getDiagnostics();
+    }
+  }
+  getCompletionKind(type) {
+    switch (type.toLowerCase()) {
+      case "function":
+        return "Function";
+      case "variable":
+        return "Variable";
+      case "class":
+        return "Class";
+      case "interface":
+        return "Interface";
+      case "module":
+        return "Module";
+      case "property":
+        return "Property";
+      case "method":
+        return "Method";
+      default:
+        return "Text";
+    }
+  }
+  getWordAtPosition(input, position) {
+    const lines = input.split("\n");
+    if (position.line >= lines.length) return null;
+    const line = lines[position.line];
+    if (position.column >= line.length) return null;
+    const wordRegex = /\b\w+\b/g;
+    let match;
+    while ((match = wordRegex.exec(line)) !== null) {
+      if (match.index <= position.column && position.column < match.index + match[0].length) {
+        return match[0];
+      }
+    }
+    return null;
+  }
+};
+__name(_LanguageServer, "LanguageServer");
+var LanguageServer = _LanguageServer;
+var _REPL = class _REPL {
+  constructor(grammar, interpreter) {
+    __publicField(this, "grammar");
+    __publicField(this, "interpreter");
+    __publicField(this, "history", []);
+    __publicField(this, "variables", /* @__PURE__ */ new Map());
+    this.grammar = grammar;
+    this.interpreter = interpreter;
+  }
+  async evaluate(input) {
+    this.history.push(input);
+    try {
+      const parseResult = parseWithSemanticAnalysis(this.grammar, input, void 0, {
+        enableSymbolTable: true,
+        enableDiagnostics: true
+      });
+      if (!parseResult.success) {
+        return {
+          result: null,
+          output: "",
+          error: ParserUtils.formatError(parseResult)
+          // Use ParserUtils to format error
+        };
+      }
+      if (this.interpreter) {
+        const result = this.interpreter.interpret(parseResult.result);
+        return {
+          result,
+          output: this.formatOutput(result)
+        };
+      } else {
+        return {
+          result: parseResult.result,
+          output: this.formatAST(parseResult.result)
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        result: null,
+        output: "",
+        error: errorMessage
+      };
+    }
+  }
+  getHistory() {
+    return [
+      ...this.history
+    ];
+  }
+  clearHistory() {
+    this.history = [];
+  }
+  formatOutput(value) {
+    if (typeof value === "object") {
+      return JSON.stringify(value, null, 2);
+    }
+    return String(value);
+  }
+  formatAST(ast2) {
+    return JSON.stringify(ast2, null, 2);
+  }
+};
+__name(_REPL, "REPL");
+var REPL = _REPL;
 function parseInput(grammar, input, options2 = {}) {
   try {
     const result = grammar.parse(input, options2);
     return {
       result,
-      success: true
+      success: true,
+      ast: result,
+      symbols: options2.enableSymbolTable ? new SymbolTable() : void 0,
+      diagnostics: options2.enableDiagnostics ? [] : void 0
+      // Diagnostics are empty here, would be populated by analyzer or parser if it supports it
     };
   } catch (error) {
     return createParseError(error, input, options2);
   }
 }
 __name(parseInput, "parseInput");
-function createParseError(error, input, options2) {
+function createParser(grammar) {
+  return (input) => {
+    try {
+      const result = grammar.parse(input);
+      return result;
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        input,
+        stack: err instanceof Error ? err.stack : void 0
+      };
+    }
+  };
+}
+__name(createParser, "createParser");
+function parseWithAdvancedRecovery(grammar, input, _options = {}) {
+  const errors = [];
+  try {
+    const result = grammar.parse(input, _options);
+    return {
+      result,
+      errors,
+      recoveryStrategy: "original"
+    };
+  } catch (error) {
+    const parseError = createParseError(error, input, _options);
+    errors.push(parseError);
+    const lines = input.split("\n");
+    if (!parseError.location) {
+      return {
+        errors
+      };
+    }
+    const errorLine = parseError.location.start.line;
+    if (errorLine > 0 && errorLine <= lines.length) {
+      try {
+        const recoveredInput = [
+          ...lines.slice(0, errorLine - 1),
+          ...lines.slice(errorLine)
+        ].join("\n");
+        const result = grammar.parse(recoveredInput, _options);
+        return {
+          result,
+          errors,
+          recoveryStrategy: "removeErrorLine"
+        };
+      } catch (_recoveryError) {
+        errors.push(createParseError(_recoveryError, input, _options));
+      }
+    }
+    if (errorLine > 1) {
+      try {
+        const recoveredInput = lines.slice(0, errorLine - 1).join("\n");
+        if (recoveredInput.trim()) {
+          const result = grammar.parse(recoveredInput, _options);
+          return {
+            result,
+            errors,
+            recoveryStrategy: "removeFromError"
+          };
+        }
+      } catch (_recoveryError) {
+        errors.push(createParseError(_recoveryError, input, _options));
+      }
+    }
+    if (parseError.expected) {
+      const commonTokens = [
+        ";",
+        "}",
+        ")",
+        "]",
+        '"',
+        "'"
+      ];
+      for (const token of commonTokens) {
+        if (parseError.expected.includes(token)) {
+          try {
+            const errorPos = parseError.location.start.offset;
+            const recoveredInput = input.slice(0, errorPos) + token + input.slice(errorPos);
+            const result = grammar.parse(recoveredInput, _options);
+            return {
+              result,
+              errors,
+              recoveryStrategy: "insertMissing"
+            };
+          } catch (_recoveryError) {
+          }
+        }
+      }
+    }
+    return {
+      errors
+    };
+  }
+}
+__name(parseWithAdvancedRecovery, "parseWithAdvancedRecovery");
+function createParseError(error, input, _options) {
+  const errorObj = error;
   const parseError = {
     success: false,
-    error: error.message || "Parse error",
+    error: errorObj.message || "Parse error",
     input
   };
-  if (error.location) {
+  if (errorObj.location) {
     parseError.location = {
       start: {
-        line: error.location.start.line,
-        column: error.location.start.column,
-        offset: error.location.start.offset
+        line: errorObj.location.start.line,
+        column: errorObj.location.start.column,
+        offset: errorObj.location.start.offset
       },
       end: {
-        line: error.location.end.line,
-        column: error.location.end.column,
-        offset: error.location.end.offset
+        line: errorObj.location.end.line,
+        column: errorObj.location.end.column,
+        offset: errorObj.location.end.offset
       }
     };
   }
-  if (error.expected) {
-    parseError.expected = error.expected.map((exp) => exp.description || exp.text || exp.toString());
+  if (errorObj.expected) {
+    parseError.expected = errorObj.expected.map((exp) => exp.description || exp.text || exp.toString());
   }
-  if (error.found !== void 0) {
-    parseError.found = error.found.toString();
+  if (errorObj.found !== void 0 && errorObj.found !== null) {
+    parseError.found = errorObj.found.toString();
   }
-  parseError.stack = error.stack;
+  parseError.stack = errorObj.stack;
   if (parseError.location) {
     parseError.snippet = generateErrorSnippet(input, parseError.location);
   }
@@ -9947,25 +10580,165 @@ function generateErrorSnippet(input, location) {
   return contextLines.join("\n");
 }
 __name(generateErrorSnippet, "generateErrorSnippet");
-var _ParserUtils = class _ParserUtils {
-  static isSuccess(result) {
-    return result.success === true;
-  }
-  static isError(result) {
-    return result.success === false;
-  }
-  static unwrap(result) {
-    if (_ParserUtils.isError(result)) {
-      const error = result;
-      throw new Error(`[ParseError]: ${error.error}
-${error.snippet ?? ""}
-Expected: ${error.expected?.join(", ") ?? "unknown"}`);
+function parseMultiple(grammar, inputs, options2 = {}) {
+  return inputs.map((input) => parseInput(grammar, input, options2));
+}
+__name(parseMultiple, "parseMultiple");
+function parseStream(grammar, stream, options2 = {}) {
+  throw new Error("parseStream not implemented - requires actual stream processing logic");
+}
+__name(parseStream, "parseStream");
+function parseWithTimeout(grammar, input, timeoutMs, options2 = {}) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`Parse timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+    try {
+      const result = parseInput(grammar, input, options2);
+      clearTimeout(timeoutId);
+      resolve(result);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      reject(error);
     }
-    return result.result;
+  });
+}
+__name(parseWithTimeout, "parseWithTimeout");
+function validateSyntax(grammar, input, options2 = {}) {
+  const result = parseInput(grammar, input, options2);
+  if (result.success) {
+    return {
+      valid: true,
+      errors: []
+    };
+  } else {
+    const errors = result.diagnostics?.map((d) => d.message) || [
+      result.error
+    ];
+    return {
+      valid: false,
+      errors
+    };
+  }
+}
+__name(validateSyntax, "validateSyntax");
+var _StreamingParser = class _StreamingParser {
+  constructor(grammar, options2 = {}) {
+    __publicField(this, "grammar");
+    __publicField(this, "buffer", "");
+    __publicField(this, "options");
+    this.grammar = grammar;
+    this.options = options2;
+  }
+  addChunk(chunk) {
+    this.buffer += chunk;
+    const results = [];
+    const lines = this.buffer.split("\n");
+    this.buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.trim()) {
+        results.push(parseInput(this.grammar, line, this.options));
+      }
+    }
+    return results;
+  }
+  flush() {
+    if (this.buffer.trim()) {
+      const result = parseInput(this.grammar, this.buffer, this.options);
+      this.buffer = "";
+      return result;
+    }
+    return null;
+  }
+};
+__name(_StreamingParser, "StreamingParser");
+var StreamingParser = _StreamingParser;
+var _ParserUtils = class _ParserUtils {
+  static formatError(error) {
+    let formatted = `Parse Error: ${error.error}`;
+    if (error.location) {
+      formatted += ` at line ${error.location.start.line}, column ${error.location.start.column}`;
+    }
+    if (error.expected && error.expected.length > 0) {
+      formatted += `
+Expected: ${error.expected.join(", ")}`;
+    }
+    if (error.found) {
+      formatted += `
+Found: ${error.found}`;
+    }
+    if (error.snippet) {
+      formatted += `
+
+${error.snippet}`;
+    }
+    return formatted;
+  }
+  static isParseError(result) {
+    return !result.success;
+  }
+  static extractValue(result) {
+    return result.success ? result.result : null;
   }
 };
 __name(_ParserUtils, "ParserUtils");
 var ParserUtils = _ParserUtils;
+var _PerformanceParser = class _PerformanceParser {
+  constructor(grammar) {
+    __publicField(this, "grammar");
+    __publicField(this, "metrics", /* @__PURE__ */ new Map());
+    this.grammar = grammar;
+  }
+  parse(input, options2 = {}) {
+    const start = performance.now();
+    const result = parseInput(this.grammar, input, options2);
+    const end = performance.now();
+    const duration = end - start;
+    const inputSize = input.length;
+    const key = `${inputSize}`;
+    if (!this.metrics.has(key)) {
+      this.metrics.set(key, []);
+    }
+    this.metrics.get(key).push(duration);
+    return result;
+  }
+  getMetrics() {
+    const result = {};
+    for (const [key, times] of this.metrics) {
+      const avg = times.reduce((a, b) => a + b, 0) / times.length;
+      const min = Math.min(...times);
+      const max = Math.max(...times);
+      result[key] = {
+        avg,
+        min,
+        max,
+        count: times.length
+      };
+    }
+    return result;
+  }
+};
+__name(_PerformanceParser, "PerformanceParser");
+var PerformanceParser = _PerformanceParser;
+var parser_default = {
+  parseInput,
+  parseWithSemanticAnalysis,
+  parseMultiple,
+  parseStream,
+  parseWithTimeout,
+  validateSyntax,
+  parseWithAdvancedRecovery,
+  createParser,
+  ASTWalker,
+  ASTTransformer,
+  SymbolTable,
+  DiagnosticCollector,
+  LanguageServer,
+  REPL,
+  StreamingParser,
+  ParserUtils,
+  PerformanceParser
+};
 
 // src/bin/cli.ts
 var VALID_FORMATS = [
@@ -9980,14 +10753,14 @@ function printHelp() {
 Usage: parsergen <grammar.peg> [options]
 
 Options:
-  --test <input>         Test grammar by parsing input string
-  --validate             Only validate grammar (no parsing)
-  --analyze              Show grammar metadata
-  --out <file>           Output compiled parser as JS
-  --format <target>      Format for output: ${VALID_FORMATS.join(" | ")} (default: es)
-  --ast                  Print parse AST
-  --watch                Watch grammar file and auto-recompile
-  --help, -h             Show help
+  --test <input>          Test grammar by parsing input string
+  --validate              Only validate grammar (no parsing)
+  --analyze               Show grammar metadata
+  --out <file>            Output compiled parser as JS
+  --format <target>       Format for output: ${VALID_FORMATS.join(" | ")} (default: es)
+  --ast                   Print parse AST
+  --watch                 Watch grammar file and auto-recompile
+  --help, -h              Show help
 `);
 }
 __name(printHelp, "printHelp");
@@ -10058,7 +10831,11 @@ async function main() {
   const grammarText = await import_promises.default.readFile(grammarPath, "utf-8");
   if (args.includes("--validate")) {
     const result = validateGrammar(grammarText);
-    result.valid ? console.log("\u2705 Grammar is valid.") : console.error("\u274C Grammar is invalid:\n" + result.error);
+    if (result.valid) {
+      console.log("\u2705 Grammar is valid.");
+    } else {
+      console.error("\u274C Grammar is invalid:\n" + result.error);
+    }
     process.exit(result.valid ? 0 : 1);
   }
   if (args.includes("--analyze")) {
@@ -10083,7 +10860,7 @@ async function main() {
       try {
         await compileAndWrite(grammarPath, outFile, format);
       } catch (err) {
-        console.error("\u274C Error during rebuild:\n" + err.message);
+        console.error("\u274C Error during rebuild:\n" + formatCompilationError(err, grammarText));
       }
     });
     return;
@@ -10097,8 +10874,8 @@ async function main() {
   const testIndex = args.indexOf("--test");
   if (testIndex !== -1 && args[testIndex + 1]) {
     const input = args[testIndex + 1];
-    const result = parseInput(parser, input);
-    if (ParserUtils.isSuccess(result)) {
+    const result = parser_default.parseInput(parser, input);
+    if (!parser_default.ParserUtils.isParseError(result)) {
       console.log("\u2705 Parse Success");
       if (args.includes("--ast")) {
         console.log(JSON.stringify(result.result, null, 2));

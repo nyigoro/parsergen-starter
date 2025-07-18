@@ -9525,8 +9525,15 @@ var require_peg = __commonJS({
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  ASTTransformer: () => ASTTransformer,
+  ASTWalker: () => ASTWalker,
+  DiagnosticCollector: () => DiagnosticCollector,
+  LanguageServer: () => LanguageServer,
+  ParserUtils: () => ParserUtils,
   PerformanceParser: () => PerformanceParser,
+  REPL: () => REPL,
   StreamingParser: () => StreamingParser,
+  SymbolTable: () => SymbolTable,
   compileGrammar: () => compileGrammar,
   createASTNode: () => createASTNode,
   createLexer: () => createLexer,
@@ -9538,6 +9545,7 @@ __export(index_exports, {
   parseMultiple: () => parseMultiple,
   parseStream: () => parseStream,
   parseWithAdvancedRecovery: () => parseWithAdvancedRecovery,
+  parseWithSemanticAnalysis: () => parseWithSemanticAnalysis,
   parseWithTimeout: () => parseWithTimeout,
   traverseAST: () => traverseAST,
   validateSyntax: () => validateSyntax
@@ -9545,7 +9553,7 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 
 // src/utils/highlight.ts
-var import_chalk = __toESM(require("chalk"), 1);
+var colors = __toESM(require("colorette"), 1);
 function highlightSnippet(input, location, useColor = true) {
   const lines = input.split("\n");
   const lineNum = location.start.line;
@@ -9554,8 +9562,8 @@ function highlightSnippet(input, location, useColor = true) {
   const targetLine = lines[lineNum - 1];
   const prefix = `${lineNum}: `;
   const pointerLine = " ".repeat(prefix.length + colNum - 1) + "^";
-  const lineStr = useColor ? prefix + import_chalk.default.redBright(targetLine) : prefix + targetLine;
-  const pointerStr = useColor ? import_chalk.default.yellow(pointerLine) : pointerLine;
+  const lineStr = useColor ? prefix + colors.red(targetLine) : prefix + targetLine;
+  const pointerStr = useColor ? colors.yellow(pointerLine) : pointerLine;
   const resultLines = [];
   if (lineNum > 1) resultLines.push(`${lineNum - 1}: ${lines[lineNum - 2]}`);
   resultLines.push(lineStr);
@@ -9566,13 +9574,15 @@ function highlightSnippet(input, location, useColor = true) {
 __name(highlightSnippet, "highlightSnippet");
 
 // src/utils/format.ts
-var import_chalk2 = __toESM(require("chalk"), 1);
+var colors2 = __toESM(require("colorette"), 1);
 function isParseError(err) {
-  return err && typeof err === "object" && typeof err.error === "string";
+  return typeof err === "object" && err !== null && "error" in err && // Check if 'error' property exists
+  typeof err.error === "string" && // Now check its type
+  "success" in err && typeof err.success === "boolean";
 }
 __name(isParseError, "isParseError");
 function isPeggyError(err) {
-  return err && typeof err === "object" && typeof err.message === "string" && (err.location || err.expected || err.found !== void 0);
+  return typeof err === "object" && err !== null && "message" in err && typeof err.message === "string" && ("location" in err || "expected" in err || "found" in err);
 }
 __name(isPeggyError, "isPeggyError");
 function toParseError(err) {
@@ -9580,13 +9590,14 @@ function toParseError(err) {
     return err;
   }
   if (isPeggyError(err)) {
+    const peggyError = err;
     return {
-      error: err.message,
-      location: isValidLocation(err.location) ? err.location : void 0,
+      error: peggyError.message,
+      location: isValidLocation(peggyError.location) ? peggyError.location : void 0,
       success: false,
-      expected: Array.isArray(err.expected) ? err.expected : [],
-      found: typeof err.found === "string" ? err.found : void 0,
-      input: typeof err.input === "string" ? err.input : void 0,
+      expected: Array.isArray(peggyError.expected) ? peggyError.expected : void 0,
+      found: typeof peggyError.found === "string" ? peggyError.found : void 0,
+      input: typeof peggyError.input === "string" ? peggyError.input : void 0,
       snippet: void 0
     };
   }
@@ -9613,7 +9624,30 @@ function toParseError(err) {
 }
 __name(toParseError, "toParseError");
 function isValidLocation(loc) {
-  return loc && typeof loc === "object" && loc.start && loc.end && typeof loc.start.line === "number" && typeof loc.start.column === "number" && typeof loc.start.offset === "number" && typeof loc.end.line === "number" && typeof loc.end.column === "number" && typeof loc.end.offset === "number";
+  if (typeof loc !== "object" || loc === null) {
+    return false;
+  }
+  const locationObject = loc;
+  if (!("start" in locationObject) || !("end" in locationObject)) {
+    return false;
+  }
+  const start = locationObject.start;
+  const end = locationObject.end;
+  if (typeof start !== "object" || start === null) {
+    return false;
+  }
+  const startObject = start;
+  if (!("line" in startObject) || typeof startObject.line !== "number" || !("column" in startObject) || typeof startObject.column !== "number" || !("offset" in startObject) || typeof startObject.offset !== "number") {
+    return false;
+  }
+  if (typeof end !== "object" || end === null) {
+    return false;
+  }
+  const endObject = end;
+  if (!("line" in endObject) || typeof endObject.line !== "number" || !("column" in endObject) || typeof endObject.column !== "number" || !("offset" in endObject) || typeof endObject.offset !== "number") {
+    return false;
+  }
+  return true;
 }
 __name(isValidLocation, "isValidLocation");
 function formatLocation(location) {
@@ -9637,9 +9671,9 @@ function formatError(error) {
   }
   if (error.snippet || error.input && error.location) {
     try {
-      const snippet = error.snippet || highlightSnippet(error.input, error.location, true);
+      const snippet = error.snippet || highlightSnippet(error.input, error.location, false);
       parts.push("\n--- Snippet ---\n" + snippet);
-    } catch (snippetError) {
+    } catch {
       parts.push("\n--- Snippet unavailable ---");
     }
   }
@@ -9652,23 +9686,24 @@ function formatErrorWithColors(error, useColors = true) {
   }
   const errorMessage = error.error || "Unknown error";
   const parts = [
-    `${import_chalk2.default.red("\u274C Parse Error:")} ${errorMessage}`
+    `${colors2.red("\u274C Parse Error:")} ${errorMessage}`
+    // FIX: Use colors.red
   ];
   if (error.location) {
-    parts.push(`${import_chalk2.default.blue("\u21AA at")} ${formatLocation(error.location)}`);
+    parts.push(`${colors2.blue("\u21AA at")} ${formatLocation(error.location)}`);
   }
   if (error.expected && error.expected.length > 0) {
-    parts.push(`${import_chalk2.default.yellow("Expected:")} ${error.expected.join(", ")}`);
+    parts.push(`${colors2.yellow("Expected:")} ${error.expected.join(", ")}`);
   }
   if (error.found !== void 0) {
-    parts.push(`${import_chalk2.default.yellow("Found:")} "${error.found}"`);
+    parts.push(`${colors2.yellow("Found:")} "${error.found}"`);
   }
   if (error.snippet || error.input && error.location) {
     try {
       const snippet = error.snippet || highlightSnippet(error.input, error.location, useColors);
-      parts.push("\n" + import_chalk2.default.dim("--- Snippet ---") + "\n" + snippet);
-    } catch (snippetError) {
-      parts.push("\n" + import_chalk2.default.dim("--- Snippet unavailable ---"));
+      parts.push("\n" + colors2.dim("--- Snippet ---") + "\n" + snippet);
+    } catch {
+      parts.push("\n" + colors2.dim("--- Snippet unavailable ---"));
     }
   }
   return parts.join("\n");
@@ -9707,9 +9742,9 @@ function formatErrorWithSuggestions(error, useColors = true) {
   if (suggestions.length === 0) {
     return baseFormatted;
   }
-  const suggestionHeader = useColors ? import_chalk2.default.cyan("\n\u{1F4A1} Suggestions:") : "\n\u{1F4A1} Suggestions:";
+  const suggestionHeader = useColors ? colors2.cyan("\n\u{1F4A1} Suggestions:") : "\n\u{1F4A1} Suggestions:";
   const formattedSuggestions = suggestions.map((suggestion, index) => {
-    const bullet = useColors ? import_chalk2.default.dim(`  ${index + 1}.`) : `  ${index + 1}.`;
+    const bullet = useColors ? colors2.dim(`  ${index + 1}.`) : `  ${index + 1}.`;
     return `${bullet} ${suggestion}`;
   }).join("\n");
   return `${baseFormatted}${suggestionHeader}
@@ -9751,7 +9786,11 @@ __name(traverseAST, "traverseAST");
 // src/grammar/index.ts
 var import_peggy = __toESM(require_peg(), 1);
 var generate = import_peggy.default.generate;
-function compileGrammar(grammar, options2 = {}) {
+function isParseError2(error) {
+  return typeof error === "object" && error !== null && "message" in error && "location" in error;
+}
+__name(isParseError2, "isParseError");
+function compileGrammar(grammar, options2 = {}, analyzer) {
   try {
     const defaultOptions = {
       allowedStartRules: [
@@ -9768,10 +9807,11 @@ function compileGrammar(grammar, options2 = {}) {
     return {
       parse: parser.parse.bind(parser),
       source: grammar,
-      options: defaultOptions
+      options: defaultOptions,
+      analyze: analyzer
     };
   } catch (error) {
-    const formattedError = formatCompilationError ? formatCompilationError(error, grammar) : formatAnyError(error);
+    const formattedError = isParseError2(error) ? formatCompilationError(error, grammar) : formatAnyError(error);
     throw new Error(`Grammar compilation failed:
 ${formattedError}`);
   }
@@ -9784,18 +9824,547 @@ function createLexer(config) {
   try {
     return import_moo.default.compile(config);
   } catch (error) {
-    throw new Error(`Lexer compilation failed: ${error.message}`);
+    if (error instanceof Error) {
+      throw new Error(`Lexer compilation failed: ${error.message}`);
+    }
+    throw new Error(`Lexer compilation failed: ${String(error)}`);
   }
 }
 __name(createLexer, "createLexer");
 
 // src/parser/index.ts
+var _SymbolTable = class _SymbolTable {
+  constructor() {
+    __publicField(this, "scopes", /* @__PURE__ */ new Map());
+    __publicField(this, "currentScope", "global");
+    __publicField(this, "scopeStack", [
+      "global"
+    ]);
+    this.scopes.set("global", /* @__PURE__ */ new Map());
+  }
+  enterScope(scopeName) {
+    this.currentScope = scopeName;
+    this.scopeStack.push(scopeName);
+    if (!this.scopes.has(scopeName)) {
+      this.scopes.set(scopeName, /* @__PURE__ */ new Map());
+    }
+  }
+  exitScope() {
+    this.scopeStack.pop();
+    this.currentScope = this.scopeStack[this.scopeStack.length - 1] || "global";
+  }
+  define(symbol) {
+    const scope = this.scopes.get(this.currentScope);
+    scope.set(symbol.name, symbol);
+  }
+  lookup(name) {
+    for (let i = this.scopeStack.length - 1; i >= 0; i--) {
+      const scopeName = this.scopeStack[i];
+      const scope = this.scopes.get(scopeName);
+      if (scope?.has(name)) {
+        return scope.get(name);
+      }
+    }
+    return void 0;
+  }
+  getAllSymbols() {
+    const symbols = [];
+    for (const scope of this.scopes.values()) {
+      symbols.push(...scope.values());
+    }
+    return symbols;
+  }
+  getSymbolsInScope(scopeName) {
+    return Array.from(this.scopes.get(scopeName)?.values() || []);
+  }
+  // New getter for currentScope to avoid 'any' type assertion
+  getCurrentScope() {
+    return this.currentScope;
+  }
+};
+__name(_SymbolTable, "SymbolTable");
+var SymbolTable = _SymbolTable;
+var _DiagnosticCollector = class _DiagnosticCollector {
+  constructor() {
+    __publicField(this, "diagnostics", []);
+  }
+  error(message, location, code) {
+    this.diagnostics.push({
+      severity: "error",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  warning(message, location, code) {
+    this.diagnostics.push({
+      severity: "warning",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  info(message, location, code) {
+    this.diagnostics.push({
+      severity: "info",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  hint(message, location, code) {
+    this.diagnostics.push({
+      severity: "hint",
+      message,
+      location,
+      code,
+      source: "parser"
+    });
+  }
+  getDiagnostics() {
+    return [
+      ...this.diagnostics
+    ];
+  }
+  addDiagnostics(newDiagnostics) {
+    this.diagnostics.push(...newDiagnostics);
+  }
+  clear() {
+    this.diagnostics = [];
+  }
+  hasDiagnostics() {
+    return this.diagnostics.length > 0;
+  }
+  hasErrors() {
+    return this.diagnostics.some((d) => d.severity === "error");
+  }
+};
+__name(_DiagnosticCollector, "DiagnosticCollector");
+var DiagnosticCollector = _DiagnosticCollector;
+var _ASTWalker = class _ASTWalker {
+  static walk(node, visitor2, context) {
+    const result = visitor2.visit(node, context);
+    if (node.children && visitor2.visitChildren) {
+      const childResults = node.children.map((child) => _ASTWalker.walk(child, visitor2, context));
+      const newContext = typeof context === "object" && context !== null ? context : {};
+      const childrenVisitResult = visitor2.visitChildren(node, {
+        ...newContext,
+        childResults
+      });
+      return childrenVisitResult !== void 0 ? childrenVisitResult : result;
+    }
+    return result;
+  }
+  static walkPostOrder(node, visitor2, context) {
+    if (node.children && visitor2.visitChildren) {
+      const childResults = node.children.map((child) => _ASTWalker.walkPostOrder(child, visitor2, context));
+      const newContext = typeof context === "object" && context !== null ? context : {};
+      visitor2.visitChildren(node, {
+        ...newContext,
+        childResults
+      });
+    }
+    return visitor2.visit(node, context);
+  }
+};
+__name(_ASTWalker, "ASTWalker");
+var ASTWalker = _ASTWalker;
+var _ASTTransformer = class _ASTTransformer {
+  constructor() {
+    __publicField(this, "transforms", []);
+  }
+  addTransform(transform) {
+    this.transforms.push(transform);
+  }
+  transform(ast2) {
+    let result = ast2;
+    for (const transform of this.transforms) {
+      result = this.applyTransform(result, transform);
+    }
+    return result;
+  }
+  applyTransform(node, transform) {
+    if (transform.shouldTransform && !transform.shouldTransform(node)) {
+      return node;
+    }
+    const transformed = transform.transform(node);
+    if (transformed.children) {
+      transformed.children = transformed.children.map((child) => this.applyTransform(child, transform));
+    }
+    return transformed;
+  }
+};
+__name(_ASTTransformer, "ASTTransformer");
+var ASTTransformer = _ASTTransformer;
+var _SemanticAnalyzer = class _SemanticAnalyzer {
+  constructor(symbolTable, diagnostics) {
+    __publicField(this, "symbolTable");
+    __publicField(this, "diagnostics");
+    this.symbolTable = symbolTable;
+    this.diagnostics = diagnostics;
+  }
+  getSymbolTable() {
+    return this.symbolTable;
+  }
+  getDiagnostics() {
+    return this.diagnostics.getDiagnostics();
+  }
+  hasErrors() {
+    return this.diagnostics.hasErrors();
+  }
+};
+__name(_SemanticAnalyzer, "SemanticAnalyzer");
+var SemanticAnalyzer = _SemanticAnalyzer;
+function parseWithSemanticAnalysis(grammar, input, analyzerInstance, options2 = {}) {
+  const enhancedOptions = {
+    ...options2,
+    enableSymbolTable: true,
+    enableDiagnostics: true
+    // Ensure parser attempts to collect diagnostics if it supports it
+  };
+  const diagnosticsCollector = new DiagnosticCollector();
+  let symbolTable;
+  try {
+    const ast2 = grammar.parse(input, enhancedOptions);
+    if (analyzerInstance) {
+      analyzerInstance.analyze(ast2);
+      symbolTable = analyzerInstance.getSymbolTable();
+      diagnosticsCollector.addDiagnostics(analyzerInstance.getDiagnostics());
+      if (analyzerInstance.hasErrors()) {
+        return {
+          success: false,
+          error: "Semantic analysis failed",
+          diagnostics: diagnosticsCollector.getDiagnostics(),
+          input
+        };
+      }
+    } else {
+      if (enhancedOptions.enableSymbolTable) {
+        symbolTable = new SymbolTable();
+      }
+      if (enhancedOptions.enableDiagnostics) {
+      }
+    }
+    return {
+      result: ast2,
+      success: true,
+      ast: ast2,
+      symbols: symbolTable,
+      diagnostics: diagnosticsCollector.getDiagnostics()
+    };
+  } catch (error) {
+    const parseError = createParseError(error, input, options2);
+    if (parseError.diagnostics) {
+      diagnosticsCollector.addDiagnostics(parseError.diagnostics);
+    } else {
+      diagnosticsCollector.error(parseError.error, parseError.location || {
+        start: {
+          line: 1,
+          column: 1,
+          offset: 0
+        },
+        end: {
+          line: 1,
+          column: 1,
+          offset: 0
+        }
+      }, "parse-error");
+    }
+    return {
+      success: false,
+      error: parseError.error,
+      location: parseError.location,
+      expected: parseError.expected,
+      found: parseError.found,
+      stack: parseError.stack,
+      input: parseError.input,
+      snippet: parseError.snippet,
+      diagnostics: diagnosticsCollector.getDiagnostics()
+    };
+  }
+}
+__name(parseWithSemanticAnalysis, "parseWithSemanticAnalysis");
+var _LanguageServer = class _LanguageServer {
+  constructor(grammar, capabilities = {}) {
+    __publicField(this, "grammar");
+    __publicField(this, "symbolTable");
+    __publicField(this, "diagnosticCollector");
+    __publicField(this, "capabilities");
+    this.grammar = grammar;
+    this.symbolTable = new SymbolTable();
+    this.diagnosticCollector = new DiagnosticCollector();
+    this.capabilities = capabilities;
+  }
+  async completion(_input, _position) {
+    const symbols = this.symbolTable.getAllSymbols();
+    const completions = [];
+    for (const symbol of symbols) {
+      completions.push({
+        label: symbol.name,
+        kind: this.getCompletionKind(symbol.type),
+        detail: symbol.type,
+        documentation: symbol.metadata?.description
+      });
+    }
+    const keywords = [
+      "if",
+      "else",
+      "while",
+      "for",
+      "function",
+      "return",
+      "var",
+      "let",
+      "const"
+    ];
+    for (const keyword of keywords) {
+      completions.push({
+        label: keyword,
+        kind: "Keyword",
+        insertText: keyword
+      });
+    }
+    return completions;
+  }
+  async hover(input, position) {
+    const wordAtPosition = this.getWordAtPosition(input, position);
+    if (!wordAtPosition) return null;
+    const symbol = this.symbolTable.lookup(wordAtPosition);
+    if (!symbol) return null;
+    return `**${symbol.name}**: ${symbol.type}
+
+${symbol.metadata?.description || ""}`;
+  }
+  async getDiagnosticsForInput(input) {
+    var _a;
+    this.diagnosticCollector.clear();
+    this.symbolTable = new SymbolTable();
+    try {
+      let TempSemanticAnalyzer = (_a = class extends SemanticAnalyzer {
+        constructor(symbolTable, diagnostics) {
+          super(symbolTable, diagnostics);
+        }
+        analyze(ast2) {
+          var _a2;
+          let TempASTVisitor = (_a2 = class {
+            constructor(_symbolTableRef, _diagnosticsRef) {
+              __publicField(this, "_symbolTableRef");
+              __publicField(this, "_diagnosticsRef");
+              this._symbolTableRef = _symbolTableRef;
+              this._diagnosticsRef = _diagnosticsRef;
+            }
+            visit(node, _context) {
+              if (node.type === "Identifier" && typeof node.value === "string") {
+                const symbolName = node.value;
+                if (!this._symbolTableRef.lookup(symbolName)) {
+                  this._diagnosticsRef.warning(`Undefined identifier: '${symbolName}'`, node.location || {
+                    start: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    },
+                    end: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    }
+                  }, "undefined-var");
+                }
+              }
+              if (node.type === "VariableDeclaration" && node.children && node.children[0]?.type === "Identifier") {
+                const varName = node.children[0].value;
+                this._symbolTableRef.define({
+                  name: varName,
+                  type: "variable",
+                  // Accessing currentScope via the new public getter
+                  scope: this._symbolTableRef.getCurrentScope(),
+                  location: node.children[0].location || {
+                    start: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    },
+                    end: {
+                      line: 1,
+                      column: 1,
+                      offset: 0
+                    }
+                  },
+                  metadata: {
+                    description: `Declared variable '${varName}'`
+                  }
+                });
+              }
+            }
+            visitChildren(_node, _context) {
+            }
+          }, __name(_a2, "TempASTVisitor"), _a2);
+          const visitor2 = new TempASTVisitor(this.symbolTable, this.diagnostics);
+          ASTWalker.walk(ast2, visitor2);
+        }
+      }, __name(_a, "TempSemanticAnalyzer"), _a);
+      const tempAnalyzer = new TempSemanticAnalyzer(this.symbolTable, this.diagnosticCollector);
+      const parseResult = parseWithSemanticAnalysis(this.grammar, input, tempAnalyzer, {
+        enableDiagnostics: true,
+        enableSymbolTable: true
+      });
+      if (parseResult.success) {
+        if (parseResult.symbols) {
+          this.symbolTable = parseResult.symbols;
+        }
+        this.diagnosticCollector.addDiagnostics(parseResult.diagnostics || []);
+      } else {
+        this.diagnosticCollector.addDiagnostics(parseResult.diagnostics || []);
+        if (!parseResult.diagnostics || parseResult.diagnostics.length === 0) {
+          const errorLocation = parseResult.location || {
+            start: {
+              line: 1,
+              column: 1,
+              offset: 0
+            },
+            end: {
+              line: 1,
+              column: 1,
+              offset: 0
+            }
+          };
+          this.diagnosticCollector.error(parseResult.error, errorLocation, "parse-error");
+        }
+      }
+      return this.diagnosticCollector.getDiagnostics();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorLocation = error.location;
+      this.diagnosticCollector.error(errorMessage, errorLocation || {
+        start: {
+          line: 1,
+          column: 1,
+          offset: 0
+        },
+        end: {
+          line: 1,
+          column: 1,
+          offset: 0
+        }
+      }, "internal-error");
+      return this.diagnosticCollector.getDiagnostics();
+    }
+  }
+  getCompletionKind(type) {
+    switch (type.toLowerCase()) {
+      case "function":
+        return "Function";
+      case "variable":
+        return "Variable";
+      case "class":
+        return "Class";
+      case "interface":
+        return "Interface";
+      case "module":
+        return "Module";
+      case "property":
+        return "Property";
+      case "method":
+        return "Method";
+      default:
+        return "Text";
+    }
+  }
+  getWordAtPosition(input, position) {
+    const lines = input.split("\n");
+    if (position.line >= lines.length) return null;
+    const line = lines[position.line];
+    if (position.column >= line.length) return null;
+    const wordRegex = /\b\w+\b/g;
+    let match;
+    while ((match = wordRegex.exec(line)) !== null) {
+      if (match.index <= position.column && position.column < match.index + match[0].length) {
+        return match[0];
+      }
+    }
+    return null;
+  }
+};
+__name(_LanguageServer, "LanguageServer");
+var LanguageServer = _LanguageServer;
+var _REPL = class _REPL {
+  constructor(grammar, interpreter) {
+    __publicField(this, "grammar");
+    __publicField(this, "interpreter");
+    __publicField(this, "history", []);
+    __publicField(this, "variables", /* @__PURE__ */ new Map());
+    this.grammar = grammar;
+    this.interpreter = interpreter;
+  }
+  async evaluate(input) {
+    this.history.push(input);
+    try {
+      const parseResult = parseWithSemanticAnalysis(this.grammar, input, void 0, {
+        enableSymbolTable: true,
+        enableDiagnostics: true
+      });
+      if (!parseResult.success) {
+        return {
+          result: null,
+          output: "",
+          error: ParserUtils.formatError(parseResult)
+          // Use ParserUtils to format error
+        };
+      }
+      if (this.interpreter) {
+        const result = this.interpreter.interpret(parseResult.result);
+        return {
+          result,
+          output: this.formatOutput(result)
+        };
+      } else {
+        return {
+          result: parseResult.result,
+          output: this.formatAST(parseResult.result)
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        result: null,
+        output: "",
+        error: errorMessage
+      };
+    }
+  }
+  getHistory() {
+    return [
+      ...this.history
+    ];
+  }
+  clearHistory() {
+    this.history = [];
+  }
+  formatOutput(value) {
+    if (typeof value === "object") {
+      return JSON.stringify(value, null, 2);
+    }
+    return String(value);
+  }
+  formatAST(ast2) {
+    return JSON.stringify(ast2, null, 2);
+  }
+};
+__name(_REPL, "REPL");
+var REPL = _REPL;
 function parseInput(grammar, input, options2 = {}) {
   try {
     const result = grammar.parse(input, options2);
     return {
       result,
-      success: true
+      success: true,
+      ast: result,
+      symbols: options2.enableSymbolTable ? new SymbolTable() : void 0,
+      diagnostics: options2.enableDiagnostics ? [] : void 0
+      // Diagnostics are empty here, would be populated by analyzer or parser if it supports it
     };
   } catch (error) {
     return createParseError(error, input, options2);
@@ -9818,24 +10387,17 @@ function createParser(grammar) {
   };
 }
 __name(createParser, "createParser");
-function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
+function parseWithAdvancedRecovery(grammar, input, _options = {}) {
   const errors = [];
-  const recoveryStrategies = [
-    "original",
-    "removeErrorLine",
-    "removeFromError",
-    "skipToNextStatement",
-    "insertMissing"
-  ];
   try {
-    const result = grammar.parse(input, options2);
+    const result = grammar.parse(input, _options);
     return {
       result,
       errors,
       recoveryStrategy: "original"
     };
   } catch (error) {
-    const parseError = createParseError(error, input, options2);
+    const parseError = createParseError(error, input, _options);
     errors.push(parseError);
     const lines = input.split("\n");
     if (!parseError.location) {
@@ -9850,29 +10412,29 @@ function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
           ...lines.slice(0, errorLine - 1),
           ...lines.slice(errorLine)
         ].join("\n");
-        const result = grammar.parse(recoveredInput, options2);
+        const result = grammar.parse(recoveredInput, _options);
         return {
           result,
           errors,
           recoveryStrategy: "removeErrorLine"
         };
-      } catch (recoveryError) {
-        errors.push(createParseError(recoveryError, input, options2));
+      } catch (_recoveryError) {
+        errors.push(createParseError(_recoveryError, input, _options));
       }
     }
     if (errorLine > 1) {
       try {
         const recoveredInput = lines.slice(0, errorLine - 1).join("\n");
         if (recoveredInput.trim()) {
-          const result = grammar.parse(recoveredInput, options2);
+          const result = grammar.parse(recoveredInput, _options);
           return {
             result,
             errors,
             recoveryStrategy: "removeFromError"
           };
         }
-      } catch (recoveryError) {
-        errors.push(createParseError(recoveryError, input, options2));
+      } catch (_recoveryError) {
+        errors.push(createParseError(_recoveryError, input, _options));
       }
     }
     if (parseError.expected) {
@@ -9889,13 +10451,13 @@ function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
           try {
             const errorPos = parseError.location.start.offset;
             const recoveredInput = input.slice(0, errorPos) + token + input.slice(errorPos);
-            const result = grammar.parse(recoveredInput, options2);
+            const result = grammar.parse(recoveredInput, _options);
             return {
               result,
               errors,
               recoveryStrategy: "insertMissing"
             };
-          } catch (recoveryError) {
+          } catch (_recoveryError) {
           }
         }
       }
@@ -9906,33 +10468,34 @@ function parseWithAdvancedRecovery(grammar, input, options2 = {}) {
   }
 }
 __name(parseWithAdvancedRecovery, "parseWithAdvancedRecovery");
-function createParseError(error, input, options2) {
+function createParseError(error, input, _options) {
+  const errorObj = error;
   const parseError = {
     success: false,
-    error: error.message || "Parse error",
+    error: errorObj.message || "Parse error",
     input
   };
-  if (error.location) {
+  if (errorObj.location) {
     parseError.location = {
       start: {
-        line: error.location.start.line,
-        column: error.location.start.column,
-        offset: error.location.start.offset
+        line: errorObj.location.start.line,
+        column: errorObj.location.start.column,
+        offset: errorObj.location.start.offset
       },
       end: {
-        line: error.location.end.line,
-        column: error.location.end.column,
-        offset: error.location.end.offset
+        line: errorObj.location.end.line,
+        column: errorObj.location.end.column,
+        offset: errorObj.location.end.offset
       }
     };
   }
-  if (error.expected) {
-    parseError.expected = error.expected.map((exp) => exp.description || exp.text || exp.toString());
+  if (errorObj.expected) {
+    parseError.expected = errorObj.expected.map((exp) => exp.description || exp.text || exp.toString());
   }
-  if (error.found !== void 0) {
-    parseError.found = error.found.toString();
+  if (errorObj.found !== void 0 && errorObj.found !== null) {
+    parseError.found = errorObj.found.toString();
   }
-  parseError.stack = error.stack;
+  parseError.stack = errorObj.stack;
   if (parseError.location) {
     parseError.snippet = generateErrorSnippet(input, parseError.location);
   }
@@ -9963,227 +10526,153 @@ function parseMultiple(grammar, inputs, options2 = {}) {
   return inputs.map((input) => parseInput(grammar, input, options2));
 }
 __name(parseMultiple, "parseMultiple");
-async function parseStream(grammar, inputs, options2 = {}) {
-  const results = [];
-  for await (const input of inputs) {
-    const result = parseInput(grammar, input, options2);
-    results.push(result);
-  }
-  return results;
+function parseStream(grammar, stream, options2 = {}) {
+  throw new Error("parseStream not implemented - requires actual stream processing logic");
 }
 __name(parseStream, "parseStream");
 function parseWithTimeout(grammar, input, timeoutMs, options2 = {}) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       reject(new Error(`Parse timeout after ${timeoutMs}ms`));
     }, timeoutMs);
     try {
       const result = parseInput(grammar, input, options2);
-      clearTimeout(timer);
+      clearTimeout(timeoutId);
       resolve(result);
     } catch (error) {
-      clearTimeout(timer);
+      clearTimeout(timeoutId);
       reject(error);
     }
   });
 }
 __name(parseWithTimeout, "parseWithTimeout");
 function validateSyntax(grammar, input, options2 = {}) {
-  try {
-    grammar.parse(input, options2);
+  const result = parseInput(grammar, input, options2);
+  if (result.success) {
     return {
-      valid: true
+      valid: true,
+      errors: []
     };
-  } catch (error) {
+  } else {
+    const errors = result.diagnostics?.map((d) => d.message) || [
+      result.error
+    ];
     return {
       valid: false,
-      error: createParseError(error, input, options2)
+      errors
     };
   }
 }
 __name(validateSyntax, "validateSyntax");
-var _PerformanceParser = class _PerformanceParser {
-  constructor(grammar, enableCache = true) {
-    __publicField(this, "enableCache");
-    __publicField(this, "grammar");
-    __publicField(this, "cache", /* @__PURE__ */ new Map());
-    __publicField(this, "metrics", {
-      cacheHits: 0,
-      cacheMisses: 0,
-      totalParseTime: 0,
-      averageParseTime: 0,
-      parseCount: 0
-    });
-    this.enableCache = enableCache;
-    this.grammar = grammar;
-  }
-  parse(input, options2 = {}) {
-    const startTime = performance.now();
-    const cacheKey = this.enableCache ? this.getCacheKey(input, options2) : null;
-    if (cacheKey && this.cache.has(cacheKey)) {
-      this.metrics.cacheHits++;
-      const cached = this.cache.get(cacheKey);
-      return {
-        ...cached,
-        metrics: {
-          duration: performance.now() - startTime,
-          inputLength: input.length,
-          cacheHits: this.metrics.cacheHits,
-          cacheMisses: this.metrics.cacheMisses
-        }
-      };
-    }
-    this.metrics.cacheMisses++;
-    try {
-      const result = this.grammar.parse(input, options2);
-      const duration = performance.now() - startTime;
-      const parseResult = {
-        result,
-        success: true
-      };
-      if (cacheKey) {
-        this.cache.set(cacheKey, parseResult);
-      }
-      this.updateMetrics(duration);
-      return {
-        ...parseResult,
-        metrics: {
-          duration,
-          inputLength: input.length,
-          cacheHits: this.metrics.cacheHits,
-          cacheMisses: this.metrics.cacheMisses
-        }
-      };
-    } catch (error) {
-      const duration = performance.now() - startTime;
-      this.updateMetrics(duration);
-      const parseError = createParseError(error, input, options2);
-      return {
-        ...parseError,
-        metrics: {
-          duration,
-          inputLength: input.length,
-          cacheHits: this.metrics.cacheHits,
-          cacheMisses: this.metrics.cacheMisses
-        }
-      };
-    }
-  }
-  getCacheKey(input, options2) {
-    return `${input}:${JSON.stringify(options2)}`;
-  }
-  updateMetrics(duration) {
-    this.metrics.parseCount++;
-    this.metrics.totalParseTime += duration;
-    this.metrics.averageParseTime = this.metrics.totalParseTime / this.metrics.parseCount;
-  }
-  getMetrics() {
-    return {
-      ...this.metrics
-    };
-  }
-  clearCache() {
-    this.cache.clear();
-  }
-  getCacheSize() {
-    return this.cache.size;
-  }
-};
-__name(_PerformanceParser, "PerformanceParser");
-var PerformanceParser = _PerformanceParser;
 var _StreamingParser = class _StreamingParser {
-  constructor(grammar) {
+  constructor(grammar, options2 = {}) {
     __publicField(this, "grammar");
     __publicField(this, "buffer", "");
-    __publicField(this, "processed", 0);
-    __publicField(this, "results", []);
+    __publicField(this, "options");
     this.grammar = grammar;
+    this.options = options2;
   }
-  async parseStream(input, options2 = {}) {
-    const startTime = performance.now();
-    const { chunkSize = 1024, delimiter = "\n", bufferSize = 1e4, onProgress, onChunk } = options2;
-    this.reset();
-    try {
-      const reader = this.getReader(input);
-      for await (const chunk of reader) {
-        this.buffer += chunk;
-        while (this.buffer.length > 0) {
-          const delimiterIndex = this.buffer.indexOf(delimiter);
-          if (delimiterIndex === -1) {
-            if (this.buffer.length > bufferSize) {
-              await this.processChunk(this.buffer, options2);
-              this.buffer = "";
-            }
-            break;
-          }
-          const completeChunk = this.buffer.slice(0, delimiterIndex);
-          this.buffer = this.buffer.slice(delimiterIndex + delimiter.length);
-          await this.processChunk(completeChunk, options2);
-          if (onProgress) {
-            onProgress(this.processed, this.processed + this.buffer.length);
-          }
-        }
+  addChunk(chunk) {
+    this.buffer += chunk;
+    const results = [];
+    const lines = this.buffer.split("\n");
+    this.buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.trim()) {
+        results.push(parseInput(this.grammar, line, this.options));
       }
-      if (this.buffer.trim()) {
-        await this.processChunk(this.buffer, options2);
-      }
-    } catch (error) {
-      console.error("Streaming parse error:", error);
     }
-    const duration = performance.now() - startTime;
-    const successCount = this.results.filter((r) => r.success).length;
-    const errorCount = this.results.length - successCount;
-    return {
-      results: this.results,
-      totalProcessed: this.processed,
-      successCount,
-      errorCount,
-      duration
-    };
+    return results;
   }
-  async processChunk(chunk, options2) {
-    if (!chunk.trim()) return;
-    const result = parseInput(this.grammar, chunk, options2);
-    this.results.push(result);
-    this.processed++;
-    if (options2.onChunk) {
-      options2.onChunk(result, chunk);
+  flush() {
+    if (this.buffer.trim()) {
+      const result = parseInput(this.grammar, this.buffer, this.options);
+      this.buffer = "";
+      return result;
     }
-  }
-  async *getReader(input) {
-    if ("getReader" in input) {
-      const reader = input.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          yield value;
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } else {
-      yield* input;
-    }
-  }
-  reset() {
-    this.buffer = "";
-    this.processed = 0;
-    this.results = [];
-  }
-  getProgress() {
-    return {
-      processed: this.processed,
-      buffered: this.buffer.length
-    };
+    return null;
   }
 };
 __name(_StreamingParser, "StreamingParser");
 var StreamingParser = _StreamingParser;
+var _ParserUtils = class _ParserUtils {
+  static formatError(error) {
+    let formatted = `Parse Error: ${error.error}`;
+    if (error.location) {
+      formatted += ` at line ${error.location.start.line}, column ${error.location.start.column}`;
+    }
+    if (error.expected && error.expected.length > 0) {
+      formatted += `
+Expected: ${error.expected.join(", ")}`;
+    }
+    if (error.found) {
+      formatted += `
+Found: ${error.found}`;
+    }
+    if (error.snippet) {
+      formatted += `
+
+${error.snippet}`;
+    }
+    return formatted;
+  }
+  static isParseError(result) {
+    return !result.success;
+  }
+  static extractValue(result) {
+    return result.success ? result.result : null;
+  }
+};
+__name(_ParserUtils, "ParserUtils");
+var ParserUtils = _ParserUtils;
+var _PerformanceParser = class _PerformanceParser {
+  constructor(grammar) {
+    __publicField(this, "grammar");
+    __publicField(this, "metrics", /* @__PURE__ */ new Map());
+    this.grammar = grammar;
+  }
+  parse(input, options2 = {}) {
+    const start = performance.now();
+    const result = parseInput(this.grammar, input, options2);
+    const end = performance.now();
+    const duration = end - start;
+    const inputSize = input.length;
+    const key = `${inputSize}`;
+    if (!this.metrics.has(key)) {
+      this.metrics.set(key, []);
+    }
+    this.metrics.get(key).push(duration);
+    return result;
+  }
+  getMetrics() {
+    const result = {};
+    for (const [key, times] of this.metrics) {
+      const avg = times.reduce((a, b) => a + b, 0) / times.length;
+      const min = Math.min(...times);
+      const max = Math.max(...times);
+      result[key] = {
+        avg,
+        min,
+        max,
+        count: times.length
+      };
+    }
+    return result;
+  }
+};
+__name(_PerformanceParser, "PerformanceParser");
+var PerformanceParser = _PerformanceParser;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  ASTTransformer,
+  ASTWalker,
+  DiagnosticCollector,
+  LanguageServer,
+  ParserUtils,
   PerformanceParser,
+  REPL,
   StreamingParser,
+  SymbolTable,
   compileGrammar,
   createASTNode,
   createLexer,
@@ -10195,6 +10684,7 @@ var StreamingParser = _StreamingParser;
   parseMultiple,
   parseStream,
   parseWithAdvancedRecovery,
+  parseWithSemanticAnalysis,
   parseWithTimeout,
   traverseAST,
   validateSyntax
