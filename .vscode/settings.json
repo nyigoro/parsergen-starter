@@ -4,7 +4,7 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
   },
-  "eslint.validate": ["typescript"],
+  "eslint.validate": ["typescript", "javascript", "json"],
   "files.eol": "\n",
   "typescript.preferences.importModuleSpecifier": "relative",
   "typescript.preferences.includePackageJsonAutoImports": "auto",
