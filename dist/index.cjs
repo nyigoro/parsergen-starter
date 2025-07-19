@@ -9525,18 +9525,29 @@ var require_peg = __commonJS({
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  ASTNodeFactory: () => ASTNodeFactory,
   ASTTransformer: () => ASTTransformer,
   ASTWalker: () => ASTWalker,
   DiagnosticCollector: () => DiagnosticCollector,
+  ErrorRecoveryStrategy: () => ErrorRecoveryStrategy,
+  IndentationPlugin: () => IndentationPlugin,
+  LanguageDetector: () => LanguageDetector,
+  LanguageRegistry: () => LanguageRegistry,
   LanguageServer: () => LanguageServer,
+  LanguageSpecBuilder: () => LanguageSpecBuilder,
+  LexerError: () => LexerError,
+  LexerProfiler: () => LexerProfiler,
   ParserUtils: () => ParserUtils,
   PerformanceParser: () => PerformanceParser,
   REPL: () => REPL,
   StreamingParser: () => StreamingParser,
   SymbolTable: () => SymbolTable,
+  TokenAnalyzer: () => TokenAnalyzer,
+  TokenStream: () => TokenStream,
+  TokenTree: () => TokenTree,
+  UniversalLexer: () => UniversalLexer,
   compileGrammar: () => compileGrammar,
   createASTNode: () => createASTNode,
-  createLexer: () => createLexer,
   createParser: () => createParser,
   formatError: () => formatError,
   formatLocation: () => formatLocation,
@@ -9820,17 +9831,637 @@ __name(compileGrammar, "compileGrammar");
 
 // src/lexer/index.ts
 var import_moo = __toESM(require("moo"), 1);
-function createLexer(config) {
-  try {
-    return import_moo.default.compile(config);
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Lexer compilation failed: ${error.message}`);
-    }
-    throw new Error(`Lexer compilation failed: ${String(error)}`);
+var _LexerError = class _LexerError extends Error {
+  constructor(message, loc, contextLine, suggestion) {
+    super(message);
+    __publicField(this, "line");
+    __publicField(this, "col");
+    __publicField(this, "offset");
+    __publicField(this, "sourceFile");
+    __publicField(this, "contextLine");
+    __publicField(this, "suggestion");
+    this.name = "LexerError";
+    this.line = loc.line;
+    this.col = loc.col;
+    this.offset = loc.offset;
+    this.sourceFile = loc.sourceFile;
+    this.contextLine = contextLine;
+    this.suggestion = suggestion;
   }
-}
-__name(createLexer, "createLexer");
+  toString() {
+    const location = this.sourceFile ? `${this.sourceFile}:${this.line}:${this.col}` : `${this.line}:${this.col}`;
+    let output = `${this.name} at ${location}: ${this.message}`;
+    if (this.contextLine) {
+      output += `
+
+  ${this.line} | ${this.contextLine}
+`;
+      output += `    | ${" ".repeat(this.col - 1)}^`;
+    }
+    if (this.suggestion) {
+      output += `
+
+  Suggestion: ${this.suggestion}`;
+    }
+    return output;
+  }
+};
+__name(_LexerError, "LexerError");
+var LexerError = _LexerError;
+var _ErrorRecoveryStrategy = class _ErrorRecoveryStrategy {
+  static skipToNext(tokenStream, expectedTypes) {
+    let attempts = 0;
+    const maxAttempts = 10;
+    while (attempts < maxAttempts && tokenStream.hasNext()) {
+      const token = tokenStream.peek();
+      if (token && expectedTypes.includes(token.type)) {
+        return tokenStream.next();
+      }
+      tokenStream.next();
+      attempts++;
+    }
+    return null;
+  }
+  static insertMissing(tokenType, position) {
+    return {
+      type: tokenType,
+      value: "",
+      text: "",
+      offset: position.offset,
+      lineBreaks: 0,
+      line: position.line,
+      col: position.col,
+      endOffset: position.endOffset,
+      endLine: position.endLine,
+      endCol: position.endCol,
+      metadata: {
+        synthetic: true,
+        reason: "error_recovery"
+      }
+    };
+  }
+};
+__name(_ErrorRecoveryStrategy, "ErrorRecoveryStrategy");
+var ErrorRecoveryStrategy = _ErrorRecoveryStrategy;
+var _LexerProfiler = class _LexerProfiler {
+  constructor() {
+    __publicField(this, "startTime", 0);
+    __publicField(this, "tokenCount", 0);
+    __publicField(this, "errorCount", 0);
+  }
+  startProfiling() {
+    this.startTime = performance.now();
+    this.tokenCount = 0;
+    this.errorCount = 0;
+  }
+  recordToken() {
+    this.tokenCount++;
+  }
+  recordError() {
+    this.errorCount++;
+  }
+  getReport() {
+    const duration = performance.now() - this.startTime;
+    return {
+      duration,
+      tokenCount: this.tokenCount,
+      tokensPerSecond: this.tokenCount / (duration / 1e3),
+      errorCount: this.errorCount,
+      errorRate: this.tokenCount > 0 ? this.errorCount / this.tokenCount : 0
+    };
+  }
+};
+__name(_LexerProfiler, "LexerProfiler");
+var LexerProfiler = _LexerProfiler;
+var _TokenStream = class _TokenStream {
+  constructor(tokens, sourceFile, ignoredTypes = [], profiler) {
+    __publicField(this, "tokens");
+    __publicField(this, "position", 0);
+    __publicField(this, "sourceFile");
+    __publicField(this, "ignoredTypes");
+    __publicField(this, "bookmarks", /* @__PURE__ */ new Map());
+    __publicField(this, "profiler");
+    this.tokens = tokens;
+    this.sourceFile = sourceFile;
+    this.ignoredTypes = new Set(ignoredTypes);
+    this.profiler = profiler;
+  }
+  // Navigation methods
+  peek(offset = 0) {
+    let index = this.position;
+    let actualOffset = 0;
+    while (index < this.tokens.length) {
+      const token = this.tokens[index];
+      if (!this.ignoredTypes.has(token.type)) {
+        if (actualOffset === offset) return token;
+        actualOffset++;
+      }
+      index++;
+    }
+    return null;
+  }
+  next() {
+    while (this.position < this.tokens.length) {
+      const token = this.tokens[this.position++];
+      if (!this.ignoredTypes.has(token.type)) {
+        this.profiler?.recordToken();
+        return token;
+      }
+    }
+    return null;
+  }
+  previous() {
+    let pos = this.position;
+    while (pos > 0) {
+      pos--;
+      const token = this.tokens[pos];
+      if (!this.ignoredTypes.has(token.type)) {
+        this.position = pos;
+        return token;
+      }
+    }
+    return null;
+  }
+  hasNext() {
+    let pos = this.position;
+    while (pos < this.tokens.length) {
+      if (!this.ignoredTypes.has(this.tokens[pos].type)) {
+        return true;
+      }
+      pos++;
+    }
+    return false;
+  }
+  // Advanced bookmarking
+  bookmark(name) {
+    this.bookmarks.set(name, this.position);
+  }
+  restoreBookmark(name) {
+    const position = this.bookmarks.get(name);
+    if (position !== void 0) {
+      this.position = position;
+      return true;
+    }
+    return false;
+  }
+  clearBookmark(name) {
+    this.bookmarks.delete(name);
+  }
+  // Advanced pattern matching with backtracking
+  matchPattern(pattern) {
+    const startPos = this.position;
+    const matches = [];
+    for (const rule of pattern.rules) {
+      const result = this.matchRule(rule);
+      if (!result) {
+        this.position = startPos;
+        return null;
+      }
+      matches.push(...result);
+    }
+    return {
+      tokens: matches,
+      startPosition: startPos,
+      endPosition: this.position
+    };
+  }
+  matchRule(rule) {
+    switch (rule.type) {
+      case "exact": {
+        const token = this.consumeType(rule.tokenType);
+        return token ? [
+          token
+        ] : null;
+      }
+      case "optional": {
+        const optToken = this.consumeType(rule.tokenType);
+        return optToken ? [
+          optToken
+        ] : [];
+      }
+      case "oneOrMore": {
+        const matches = [];
+        let t;
+        while (t = this.consumeType(rule.tokenType)) {
+          matches.push(t);
+        }
+        return matches.length > 0 ? matches : null;
+      }
+      case "zeroOrMore": {
+        const matches = [];
+        let t;
+        while (t = this.consumeType(rule.tokenType)) {
+          matches.push(t);
+        }
+        return matches;
+      }
+      case "choice": {
+        if (rule.choices) {
+          for (const choice of rule.choices) {
+            const result = this.matchRule(choice);
+            if (result) return result;
+          }
+        }
+        return null;
+      }
+    }
+  }
+  // Generic pattern matching
+  matchTypes(...types) {
+    for (let i = 0; i < types.length; i++) {
+      const token = this.peek(i);
+      if (!token || token.type !== types[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  consumeType(type) {
+    if (this.peek()?.type === type) {
+      return this.next();
+    }
+    return null;
+  }
+  expectType(type) {
+    const token = this.next();
+    if (!token || token.type !== type) {
+      this.profiler?.recordError();
+      const loc = token ?? this.tokens[this.tokens.length - 1];
+      const sourceLoc = {
+        line: loc?.line || 0,
+        col: loc?.col || 0,
+        offset: loc?.offset || 0,
+        endLine: loc?.endLine || 0,
+        endCol: loc?.endCol || 0,
+        endOffset: loc?.endOffset || 0,
+        sourceFile: this.sourceFile
+      };
+      throw new LexerError(`Expected token of type '${type}', got '${token?.type || "EOF"}'`, sourceLoc);
+    }
+    return token;
+  }
+  // Enhanced error recovery
+  recover(expectedTypes) {
+    return ErrorRecoveryStrategy.skipToNext(this, expectedTypes);
+  }
+  // Generic utility methods
+  getAllTokens() {
+    return [
+      ...this.tokens
+    ];
+  }
+  getVisibleTokens() {
+    return this.tokens.filter((token) => !this.ignoredTypes.has(token.type));
+  }
+  reset() {
+    this.position = 0;
+    this.bookmarks.clear();
+  }
+  getPosition() {
+    return this.position;
+  }
+  setPosition(pos) {
+    this.position = Math.max(0, Math.min(pos, this.tokens.length));
+  }
+  slice(start, end) {
+    return this.tokens.slice(start, end);
+  }
+  // Serialization methods
+  toJSON() {
+    return JSON.stringify({
+      tokens: this.tokens,
+      sourceFile: this.sourceFile,
+      ignoredTypes: Array.from(this.ignoredTypes)
+    });
+  }
+  static fromJSON(jsonString) {
+    const data = JSON.parse(jsonString);
+    if (!data.tokens || !data.ignoredTypes) {
+      throw new Error("Invalid JSON for TokenStream reconstruction.");
+    }
+    return new _TokenStream(data.tokens, data.sourceFile, data.ignoredTypes);
+  }
+};
+__name(_TokenStream, "TokenStream");
+var TokenStream = _TokenStream;
+var _LanguageDetector = class _LanguageDetector {
+};
+__name(_LanguageDetector, "LanguageDetector");
+var LanguageDetector = _LanguageDetector;
+var _TokenTree = class _TokenTree {
+  constructor(token, parent) {
+    __publicField(this, "token");
+    __publicField(this, "children", []);
+    __publicField(this, "parent");
+    this.token = token;
+    this.parent = parent;
+  }
+  addChild(child) {
+    child.parent = this;
+    this.children.push(child);
+  }
+  findByType(type) {
+    const results = [];
+    if (this.token.type === type) {
+      results.push(this);
+    }
+    for (const child of this.children) {
+      results.push(...child.findByType(type));
+    }
+    return results;
+  }
+  getDepth() {
+    let depth = 0;
+    let current = this.parent;
+    while (current) {
+      depth++;
+      current = current.parent;
+    }
+    return depth;
+  }
+  toJSON() {
+    return {
+      token: this.token,
+      children: this.children.map((child) => child.toJSON()),
+      depth: this.getDepth()
+    };
+  }
+};
+__name(_TokenTree, "TokenTree");
+var TokenTree = _TokenTree;
+var _UniversalLexer = class _UniversalLexer {
+  constructor(spec, sourceFile) {
+    __publicField(this, "lexer");
+    __publicField(this, "spec");
+    __publicField(this, "sourceFile");
+    __publicField(this, "profiler");
+    __publicField(this, "plugins");
+    __publicField(this, "preprocessors");
+    this.spec = spec;
+    this.sourceFile = sourceFile;
+    this.profiler = new LexerProfiler();
+    this.plugins = spec.plugins || [];
+    this.preprocessors = spec.preprocessors || [];
+    for (const plugin of this.plugins) {
+      if (plugin.validateSpec && !plugin.validateSpec(spec)) {
+        const loc = {
+          line: 0,
+          col: 0,
+          offset: 0,
+          endLine: 0,
+          endCol: 0,
+          endOffset: 0,
+          sourceFile
+        };
+        throw new LexerError(`Plugin ${plugin.name} validation failed`, loc);
+      }
+    }
+    try {
+      if (spec.states) {
+        const stateRules = this.convertStates(spec.states);
+        this.lexer = import_moo.default.states(stateRules);
+      } else if (spec.config) {
+        const configRules = this.convertConfig(spec.config);
+        this.lexer = import_moo.default.compile(configRules);
+      } else {
+        throw new Error("Language specification must include either states or config");
+      }
+    } catch (error) {
+      const loc = {
+        line: 0,
+        col: 0,
+        offset: 0,
+        endLine: 0,
+        endCol: 0,
+        endOffset: 0,
+        sourceFile
+      };
+      throw new LexerError(`Lexer compilation failed: ${error instanceof Error ? error.message : String(error)}`, loc);
+    }
+  }
+  convertConfig(config) {
+    const rules = {};
+    for (const [tokenType, rule] of Object.entries(config)) {
+      if (typeof rule === "string" || rule instanceof RegExp) {
+        rules[tokenType] = this.spec.caseSensitive === false && rule instanceof RegExp ? new RegExp(rule.source, rule.flags + (rule.flags.includes("i") ? "" : "i")) : rule;
+      } else {
+        const mooRule = {
+          match: rule.pattern
+        };
+        if (rule.keywords) mooRule.type = import_moo.default.keywords(rule.keywords);
+        if (rule.lineBreaks) mooRule.lineBreaks = true;
+        if (rule.push) mooRule.push = rule.push;
+        if (rule.pop) mooRule.pop = rule.pop;
+        if (rule.value) mooRule.value = rule.value;
+        rules[tokenType] = mooRule;
+      }
+    }
+    return rules;
+  }
+  convertStates(states) {
+    const convertedStates = {};
+    for (const [stateName, config] of Object.entries(states)) {
+      convertedStates[stateName] = this.convertConfig(config);
+    }
+    return convertedStates;
+  }
+  tokenize(input) {
+    this.profiler.startProfiling();
+    let processedInput = input;
+    const preprocessorContext = {
+      sourceFile: this.sourceFile
+    };
+    for (const preprocessor of this.preprocessors) {
+      processedInput = preprocessor.process(processedInput, preprocessorContext);
+    }
+    for (const plugin of this.plugins) {
+      processedInput = plugin.beforeTokenize?.(processedInput) ?? processedInput;
+    }
+    let tokens = this.performTokenization(processedInput);
+    if (this.spec.tokenPrecedence) {
+      tokens = this.applyTokenPrecedence(tokens);
+    }
+    if (this.spec.contextRules) {
+      tokens = this.applyContextRules(tokens);
+    }
+    for (const plugin of this.plugins) {
+      tokens = plugin.afterTokenize?.(tokens) ?? tokens;
+    }
+    return new TokenStream(tokens, this.sourceFile, this.spec.ignoreTokens, this.profiler);
+  }
+  async tokenizeAsync(stream) {
+    let input = "";
+    for await (const chunk of stream) {
+      input += chunk;
+    }
+    return this.tokenize(input);
+  }
+  performTokenization(input) {
+    const tokens = [];
+    this.lexer.reset(input);
+    let mooToken;
+    try {
+      while ((mooToken = this.lexer.next()) !== void 0) {
+        let enhancedToken = this.enhanceToken(mooToken);
+        for (const plugin of this.plugins) {
+          if (plugin.transformToken) {
+            enhancedToken = plugin.transformToken(enhancedToken, {
+              previousTokens: tokens,
+              nextTokens: [],
+              currentIndex: tokens.length,
+              sourceFile: this.sourceFile
+            });
+          }
+        }
+        const rule = this.findRule(enhancedToken.type);
+        if (rule && typeof rule === "object" && !(rule instanceof RegExp) && rule.transform) {
+          enhancedToken = rule.transform(enhancedToken);
+        }
+        tokens.push(enhancedToken);
+      }
+    } catch (err) {
+      this.profiler.recordError();
+      const error = err;
+      const contextLine = input.split("\n")[error.line - 1];
+      const loc = {
+        line: error.line,
+        col: error.col,
+        offset: error.offset,
+        endLine: error.line,
+        endCol: error.col,
+        endOffset: error.offset,
+        sourceFile: this.sourceFile
+      };
+      throw new LexerError(`Invalid token: ${error.text}`, loc, contextLine, "Check the tokenization rules for this pattern.");
+    }
+    return tokens;
+  }
+  isLexerRule(rule) {
+    return typeof rule === "object" && rule !== null && !(rule instanceof RegExp) && "pattern" in rule;
+  }
+  findRule(tokenType) {
+    if (this.spec.config && this.spec.config[tokenType]) {
+      return this.spec.config[tokenType];
+    }
+    if (this.spec.states) {
+      for (const state of Object.values(this.spec.states)) {
+        if (state[tokenType]) {
+          return state[tokenType];
+        }
+      }
+    }
+    return void 0;
+  }
+  enhanceToken(token) {
+    return {
+      type: token.type || "unknown",
+      value: token.value,
+      text: token.text,
+      offset: token.offset,
+      lineBreaks: token.lineBreaks || 0,
+      line: token.line,
+      col: token.col,
+      endOffset: token.offset + token.text.length,
+      endLine: token.line + (token.lineBreaks || 0),
+      endCol: token.lineBreaks ? token.text.length - token.text.lastIndexOf("\n") - 1 : token.col + token.text.length - 1,
+      sourceFile: this.sourceFile,
+      metadata: {}
+    };
+  }
+  applyContextRules(tokens) {
+    if (!this.spec.contextRules) return tokens;
+    const processed = [];
+    for (let i = 0; i < tokens.length; i++) {
+      let token = tokens[i];
+      let skip = false;
+      for (const rule of this.spec.contextRules) {
+        if (rule.condition(tokens, i)) {
+          if (rule.action === "transform" && rule.transform) {
+            token = rule.transform(token);
+          } else if (rule.action === "filter") {
+            skip = true;
+            break;
+          } else if (rule.action === "merge") {
+            if (rule.mergeWith === "next" && i + 1 < tokens.length) {
+              token = this.mergeTokens(token, tokens[i + 1]);
+              i++;
+            } else if (rule.mergeWith === "previous" && processed.length > 0) {
+              const prevToken = processed.pop();
+              token = this.mergeTokens(prevToken, token);
+            }
+          }
+        }
+      }
+      if (!skip) {
+        processed.push(token);
+      }
+    }
+    return processed;
+  }
+  mergeTokens(first, second) {
+    return {
+      ...first,
+      text: first.text + second.text,
+      value: first.value + second.value,
+      endOffset: second.endOffset,
+      endLine: second.endLine,
+      endCol: second.endCol,
+      lineBreaks: first.lineBreaks + second.lineBreaks
+    };
+  }
+  applyTokenPrecedence(tokens) {
+    if (!this.spec.tokenPrecedence) return tokens;
+    return tokens.sort((a, b) => {
+      if (a.offset !== b.offset) return 0;
+      const aIndex = this.spec.tokenPrecedence.indexOf(a.type);
+      const bIndex = this.spec.tokenPrecedence.indexOf(b.type);
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  }
+  getProfileReport() {
+    return this.profiler.getReport();
+  }
+};
+__name(_UniversalLexer, "UniversalLexer");
+var UniversalLexer = _UniversalLexer;
+var _LanguageSpecBuilder = class _LanguageSpecBuilder {
+};
+__name(_LanguageSpecBuilder, "LanguageSpecBuilder");
+var LanguageSpecBuilder = _LanguageSpecBuilder;
+var _LanguageRegistry = class _LanguageRegistry {
+};
+__name(_LanguageRegistry, "LanguageRegistry");
+var LanguageRegistry = _LanguageRegistry;
+var _TokenAnalyzer = class _TokenAnalyzer {
+  // Omitted for brevity - implementation from your original code
+  static buildTokenTree(_tokens, _openTypes = [
+    "{",
+    "(",
+    "["
+  ], _closeTypes = [
+    "}",
+    ")",
+    "]"
+  ]) {
+    return null;
+  }
+};
+__name(_TokenAnalyzer, "TokenAnalyzer");
+var TokenAnalyzer = _TokenAnalyzer;
+var _IndentationPlugin = class _IndentationPlugin {
+  constructor() {
+    __publicField(this, "name", "IndentationHandler");
+    __publicField(this, "version", "1.0.0");
+  }
+  afterTokenize(tokens) {
+    return tokens;
+  }
+};
+__name(_IndentationPlugin, "IndentationPlugin");
+var IndentationPlugin = _IndentationPlugin;
 
 // src/parser/index.ts
 var _SymbolTable = class _SymbolTable {
@@ -10000,17 +10631,25 @@ var _ASTTransformer = class _ASTTransformer {
 __name(_ASTTransformer, "ASTTransformer");
 var ASTTransformer = _ASTTransformer;
 var _SemanticAnalyzer = class _SemanticAnalyzer {
-  constructor(symbolTable, diagnostics) {
+  constructor(symbolTable, diagnostics, typeChecker) {
     __publicField(this, "symbolTable");
     __publicField(this, "diagnostics");
+    __publicField(this, "typeChecker");
     this.symbolTable = symbolTable;
     this.diagnostics = diagnostics;
+    this.typeChecker = typeChecker;
+  }
+  // Method to perform type checking if a typeChecker is provided
+  performTypeChecking(ast2) {
+    if (this.typeChecker) {
+      this.typeChecker.check(ast2, this.symbolTable, this.diagnostics);
+    }
   }
   getSymbolTable() {
     return this.symbolTable;
   }
   getDiagnostics() {
-    return this.diagnostics.getDiagnostics();
+    return this.diagnostics;
   }
   hasErrors() {
     return this.diagnostics.hasErrors();
@@ -10018,6 +10657,47 @@ var _SemanticAnalyzer = class _SemanticAnalyzer {
 };
 __name(_SemanticAnalyzer, "SemanticAnalyzer");
 var SemanticAnalyzer = _SemanticAnalyzer;
+var _ASTNodeFactory = class _ASTNodeFactory {
+  static createNode(type, location, children, value, metadata) {
+    const node = {
+      type,
+      id: `node_${_ASTNodeFactory.nextId++}`,
+      location,
+      children,
+      value,
+      metadata
+    };
+    if (children) {
+      children.forEach((child) => {
+        child.parent = node;
+      });
+    }
+    return node;
+  }
+  static createIdentifier(name, location) {
+    return _ASTNodeFactory.createNode("Identifier", location, void 0, name);
+  }
+  static createLiteral(value, type, location) {
+    return _ASTNodeFactory.createNode("Literal", location, void 0, value, {
+      literalType: type
+    });
+  }
+  static createBinaryExpression(operator, left, right, location) {
+    return _ASTNodeFactory.createNode("BinaryExpression", location, [
+      left,
+      right
+    ], operator);
+  }
+  static createFunctionCall(callee, args, location) {
+    return _ASTNodeFactory.createNode("FunctionCall", location, [
+      callee,
+      ...args
+    ]);
+  }
+};
+__name(_ASTNodeFactory, "ASTNodeFactory");
+__publicField(_ASTNodeFactory, "nextId", 0);
+var ASTNodeFactory = _ASTNodeFactory;
 function parseWithSemanticAnalysis(grammar, input, analyzerInstance, options2 = {}) {
   const enhancedOptions = {
     ...options2,
@@ -10029,10 +10709,20 @@ function parseWithSemanticAnalysis(grammar, input, analyzerInstance, options2 = 
   let symbolTable;
   try {
     const ast2 = grammar.parse(input, enhancedOptions);
+    ASTWalker.walk(ast2, {
+      visit: /* @__PURE__ */ __name((node, _context) => {
+        if (node.children) {
+          node.children.forEach((child) => {
+            child.parent = node;
+          });
+        }
+        return node;
+      }, "visit")
+    });
     if (analyzerInstance) {
       analyzerInstance.analyze(ast2);
       symbolTable = analyzerInstance.getSymbolTable();
-      diagnosticsCollector.addDiagnostics(analyzerInstance.getDiagnostics());
+      diagnosticsCollector.addDiagnostics(analyzerInstance.getDiagnostics().getDiagnostics());
       if (analyzerInstance.hasErrors()) {
         return {
           success: false,
@@ -10252,6 +10942,10 @@ ${symbol.metadata?.description || ""}`;
       }, "internal-error");
       return this.diagnosticCollector.getDiagnostics();
     }
+  }
+  // New: Go-to-Definition stub
+  async goToDefinition(_input, _position) {
+    return null;
   }
   getCompletionKind(type) {
     switch (type.toLowerCase()) {
@@ -10494,6 +11188,8 @@ function createParseError(error, input, _options) {
   }
   if (errorObj.found !== void 0 && errorObj.found !== null) {
     parseError.found = errorObj.found.toString();
+  } else {
+    parseError.found = null;
   }
   parseError.stack = errorObj.stack;
   if (parseError.location) {
@@ -10605,7 +11301,7 @@ var _ParserUtils = class _ParserUtils {
       formatted += `
 Expected: ${error.expected.join(", ")}`;
     }
-    if (error.found) {
+    if (error.found !== null && error.found !== void 0) {
       formatted += `
 Found: ${error.found}`;
     }
@@ -10664,18 +11360,29 @@ __name(_PerformanceParser, "PerformanceParser");
 var PerformanceParser = _PerformanceParser;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  ASTNodeFactory,
   ASTTransformer,
   ASTWalker,
   DiagnosticCollector,
+  ErrorRecoveryStrategy,
+  IndentationPlugin,
+  LanguageDetector,
+  LanguageRegistry,
   LanguageServer,
+  LanguageSpecBuilder,
+  LexerError,
+  LexerProfiler,
   ParserUtils,
   PerformanceParser,
   REPL,
   StreamingParser,
   SymbolTable,
+  TokenAnalyzer,
+  TokenStream,
+  TokenTree,
+  UniversalLexer,
   compileGrammar,
   createASTNode,
-  createLexer,
   createParser,
   formatError,
   formatLocation,

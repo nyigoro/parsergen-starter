@@ -9521,6 +9521,7 @@ var require_peg = __commonJS({
 // src/bin/cli.ts
 var import_promises = __toESM(require("fs/promises"), 1);
 var import_node_fs = require("fs");
+var import_node_fs2 = require("fs");
 var import_node_process = require("process");
 
 // src/utils/highlight.ts
@@ -9942,477 +9943,6 @@ var _SymbolTable = class _SymbolTable {
 };
 __name(_SymbolTable, "SymbolTable");
 var SymbolTable = _SymbolTable;
-var _DiagnosticCollector = class _DiagnosticCollector {
-  constructor() {
-    __publicField(this, "diagnostics", []);
-  }
-  error(message, location, code) {
-    this.diagnostics.push({
-      severity: "error",
-      message,
-      location,
-      code,
-      source: "parser"
-    });
-  }
-  warning(message, location, code) {
-    this.diagnostics.push({
-      severity: "warning",
-      message,
-      location,
-      code,
-      source: "parser"
-    });
-  }
-  info(message, location, code) {
-    this.diagnostics.push({
-      severity: "info",
-      message,
-      location,
-      code,
-      source: "parser"
-    });
-  }
-  hint(message, location, code) {
-    this.diagnostics.push({
-      severity: "hint",
-      message,
-      location,
-      code,
-      source: "parser"
-    });
-  }
-  getDiagnostics() {
-    return [
-      ...this.diagnostics
-    ];
-  }
-  addDiagnostics(newDiagnostics) {
-    this.diagnostics.push(...newDiagnostics);
-  }
-  clear() {
-    this.diagnostics = [];
-  }
-  hasDiagnostics() {
-    return this.diagnostics.length > 0;
-  }
-  hasErrors() {
-    return this.diagnostics.some((d) => d.severity === "error");
-  }
-};
-__name(_DiagnosticCollector, "DiagnosticCollector");
-var DiagnosticCollector = _DiagnosticCollector;
-var _ASTWalker = class _ASTWalker {
-  static walk(node, visitor2, context) {
-    const result = visitor2.visit(node, context);
-    if (node.children && visitor2.visitChildren) {
-      const childResults = node.children.map((child) => _ASTWalker.walk(child, visitor2, context));
-      const newContext = typeof context === "object" && context !== null ? context : {};
-      const childrenVisitResult = visitor2.visitChildren(node, {
-        ...newContext,
-        childResults
-      });
-      return childrenVisitResult !== void 0 ? childrenVisitResult : result;
-    }
-    return result;
-  }
-  static walkPostOrder(node, visitor2, context) {
-    if (node.children && visitor2.visitChildren) {
-      const childResults = node.children.map((child) => _ASTWalker.walkPostOrder(child, visitor2, context));
-      const newContext = typeof context === "object" && context !== null ? context : {};
-      visitor2.visitChildren(node, {
-        ...newContext,
-        childResults
-      });
-    }
-    return visitor2.visit(node, context);
-  }
-};
-__name(_ASTWalker, "ASTWalker");
-var ASTWalker = _ASTWalker;
-var _ASTTransformer = class _ASTTransformer {
-  constructor() {
-    __publicField(this, "transforms", []);
-  }
-  addTransform(transform) {
-    this.transforms.push(transform);
-  }
-  transform(ast2) {
-    let result = ast2;
-    for (const transform of this.transforms) {
-      result = this.applyTransform(result, transform);
-    }
-    return result;
-  }
-  applyTransform(node, transform) {
-    if (transform.shouldTransform && !transform.shouldTransform(node)) {
-      return node;
-    }
-    const transformed = transform.transform(node);
-    if (transformed.children) {
-      transformed.children = transformed.children.map((child) => this.applyTransform(child, transform));
-    }
-    return transformed;
-  }
-};
-__name(_ASTTransformer, "ASTTransformer");
-var ASTTransformer = _ASTTransformer;
-var _SemanticAnalyzer = class _SemanticAnalyzer {
-  constructor(symbolTable, diagnostics) {
-    __publicField(this, "symbolTable");
-    __publicField(this, "diagnostics");
-    this.symbolTable = symbolTable;
-    this.diagnostics = diagnostics;
-  }
-  getSymbolTable() {
-    return this.symbolTable;
-  }
-  getDiagnostics() {
-    return this.diagnostics.getDiagnostics();
-  }
-  hasErrors() {
-    return this.diagnostics.hasErrors();
-  }
-};
-__name(_SemanticAnalyzer, "SemanticAnalyzer");
-var SemanticAnalyzer = _SemanticAnalyzer;
-function parseWithSemanticAnalysis(grammar, input, analyzerInstance, options2 = {}) {
-  const enhancedOptions = {
-    ...options2,
-    enableSymbolTable: true,
-    enableDiagnostics: true
-    // Ensure parser attempts to collect diagnostics if it supports it
-  };
-  const diagnosticsCollector = new DiagnosticCollector();
-  let symbolTable;
-  try {
-    const ast2 = grammar.parse(input, enhancedOptions);
-    if (analyzerInstance) {
-      analyzerInstance.analyze(ast2);
-      symbolTable = analyzerInstance.getSymbolTable();
-      diagnosticsCollector.addDiagnostics(analyzerInstance.getDiagnostics());
-      if (analyzerInstance.hasErrors()) {
-        return {
-          success: false,
-          error: "Semantic analysis failed",
-          diagnostics: diagnosticsCollector.getDiagnostics(),
-          input
-        };
-      }
-    } else {
-      if (enhancedOptions.enableSymbolTable) {
-        symbolTable = new SymbolTable();
-      }
-      if (enhancedOptions.enableDiagnostics) {
-      }
-    }
-    return {
-      result: ast2,
-      success: true,
-      ast: ast2,
-      symbols: symbolTable,
-      diagnostics: diagnosticsCollector.getDiagnostics()
-    };
-  } catch (error) {
-    const parseError = createParseError(error, input, options2);
-    if (parseError.diagnostics) {
-      diagnosticsCollector.addDiagnostics(parseError.diagnostics);
-    } else {
-      diagnosticsCollector.error(parseError.error, parseError.location || {
-        start: {
-          line: 1,
-          column: 1,
-          offset: 0
-        },
-        end: {
-          line: 1,
-          column: 1,
-          offset: 0
-        }
-      }, "parse-error");
-    }
-    return {
-      success: false,
-      error: parseError.error,
-      location: parseError.location,
-      expected: parseError.expected,
-      found: parseError.found,
-      stack: parseError.stack,
-      input: parseError.input,
-      snippet: parseError.snippet,
-      diagnostics: diagnosticsCollector.getDiagnostics()
-    };
-  }
-}
-__name(parseWithSemanticAnalysis, "parseWithSemanticAnalysis");
-var _LanguageServer = class _LanguageServer {
-  constructor(grammar, capabilities = {}) {
-    __publicField(this, "grammar");
-    __publicField(this, "symbolTable");
-    __publicField(this, "diagnosticCollector");
-    __publicField(this, "capabilities");
-    this.grammar = grammar;
-    this.symbolTable = new SymbolTable();
-    this.diagnosticCollector = new DiagnosticCollector();
-    this.capabilities = capabilities;
-  }
-  async completion(_input, _position) {
-    const symbols = this.symbolTable.getAllSymbols();
-    const completions = [];
-    for (const symbol of symbols) {
-      completions.push({
-        label: symbol.name,
-        kind: this.getCompletionKind(symbol.type),
-        detail: symbol.type,
-        documentation: symbol.metadata?.description
-      });
-    }
-    const keywords = [
-      "if",
-      "else",
-      "while",
-      "for",
-      "function",
-      "return",
-      "var",
-      "let",
-      "const"
-    ];
-    for (const keyword of keywords) {
-      completions.push({
-        label: keyword,
-        kind: "Keyword",
-        insertText: keyword
-      });
-    }
-    return completions;
-  }
-  async hover(input, position) {
-    const wordAtPosition = this.getWordAtPosition(input, position);
-    if (!wordAtPosition) return null;
-    const symbol = this.symbolTable.lookup(wordAtPosition);
-    if (!symbol) return null;
-    return `**${symbol.name}**: ${symbol.type}
-
-${symbol.metadata?.description || ""}`;
-  }
-  async getDiagnosticsForInput(input) {
-    var _a;
-    this.diagnosticCollector.clear();
-    this.symbolTable = new SymbolTable();
-    try {
-      let TempSemanticAnalyzer = (_a = class extends SemanticAnalyzer {
-        constructor(symbolTable, diagnostics) {
-          super(symbolTable, diagnostics);
-        }
-        analyze(ast2) {
-          var _a2;
-          let TempASTVisitor = (_a2 = class {
-            constructor(_symbolTableRef, _diagnosticsRef) {
-              __publicField(this, "_symbolTableRef");
-              __publicField(this, "_diagnosticsRef");
-              this._symbolTableRef = _symbolTableRef;
-              this._diagnosticsRef = _diagnosticsRef;
-            }
-            visit(node, _context) {
-              if (node.type === "Identifier" && typeof node.value === "string") {
-                const symbolName = node.value;
-                if (!this._symbolTableRef.lookup(symbolName)) {
-                  this._diagnosticsRef.warning(`Undefined identifier: '${symbolName}'`, node.location || {
-                    start: {
-                      line: 1,
-                      column: 1,
-                      offset: 0
-                    },
-                    end: {
-                      line: 1,
-                      column: 1,
-                      offset: 0
-                    }
-                  }, "undefined-var");
-                }
-              }
-              if (node.type === "VariableDeclaration" && node.children && node.children[0]?.type === "Identifier") {
-                const varName = node.children[0].value;
-                this._symbolTableRef.define({
-                  name: varName,
-                  type: "variable",
-                  // Accessing currentScope via the new public getter
-                  scope: this._symbolTableRef.getCurrentScope(),
-                  location: node.children[0].location || {
-                    start: {
-                      line: 1,
-                      column: 1,
-                      offset: 0
-                    },
-                    end: {
-                      line: 1,
-                      column: 1,
-                      offset: 0
-                    }
-                  },
-                  metadata: {
-                    description: `Declared variable '${varName}'`
-                  }
-                });
-              }
-            }
-            visitChildren(_node, _context) {
-            }
-          }, __name(_a2, "TempASTVisitor"), _a2);
-          const visitor2 = new TempASTVisitor(this.symbolTable, this.diagnostics);
-          ASTWalker.walk(ast2, visitor2);
-        }
-      }, __name(_a, "TempSemanticAnalyzer"), _a);
-      const tempAnalyzer = new TempSemanticAnalyzer(this.symbolTable, this.diagnosticCollector);
-      const parseResult = parseWithSemanticAnalysis(this.grammar, input, tempAnalyzer, {
-        enableDiagnostics: true,
-        enableSymbolTable: true
-      });
-      if (parseResult.success) {
-        if (parseResult.symbols) {
-          this.symbolTable = parseResult.symbols;
-        }
-        this.diagnosticCollector.addDiagnostics(parseResult.diagnostics || []);
-      } else {
-        this.diagnosticCollector.addDiagnostics(parseResult.diagnostics || []);
-        if (!parseResult.diagnostics || parseResult.diagnostics.length === 0) {
-          const errorLocation = parseResult.location || {
-            start: {
-              line: 1,
-              column: 1,
-              offset: 0
-            },
-            end: {
-              line: 1,
-              column: 1,
-              offset: 0
-            }
-          };
-          this.diagnosticCollector.error(parseResult.error, errorLocation, "parse-error");
-        }
-      }
-      return this.diagnosticCollector.getDiagnostics();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      const errorLocation = error.location;
-      this.diagnosticCollector.error(errorMessage, errorLocation || {
-        start: {
-          line: 1,
-          column: 1,
-          offset: 0
-        },
-        end: {
-          line: 1,
-          column: 1,
-          offset: 0
-        }
-      }, "internal-error");
-      return this.diagnosticCollector.getDiagnostics();
-    }
-  }
-  getCompletionKind(type) {
-    switch (type.toLowerCase()) {
-      case "function":
-        return "Function";
-      case "variable":
-        return "Variable";
-      case "class":
-        return "Class";
-      case "interface":
-        return "Interface";
-      case "module":
-        return "Module";
-      case "property":
-        return "Property";
-      case "method":
-        return "Method";
-      default:
-        return "Text";
-    }
-  }
-  getWordAtPosition(input, position) {
-    const lines = input.split("\n");
-    if (position.line >= lines.length) return null;
-    const line = lines[position.line];
-    if (position.column >= line.length) return null;
-    const wordRegex = /\b\w+\b/g;
-    let match;
-    while ((match = wordRegex.exec(line)) !== null) {
-      if (match.index <= position.column && position.column < match.index + match[0].length) {
-        return match[0];
-      }
-    }
-    return null;
-  }
-};
-__name(_LanguageServer, "LanguageServer");
-var LanguageServer = _LanguageServer;
-var _REPL = class _REPL {
-  constructor(grammar, interpreter) {
-    __publicField(this, "grammar");
-    __publicField(this, "interpreter");
-    __publicField(this, "history", []);
-    __publicField(this, "variables", /* @__PURE__ */ new Map());
-    this.grammar = grammar;
-    this.interpreter = interpreter;
-  }
-  async evaluate(input) {
-    this.history.push(input);
-    try {
-      const parseResult = parseWithSemanticAnalysis(this.grammar, input, void 0, {
-        enableSymbolTable: true,
-        enableDiagnostics: true
-      });
-      if (!parseResult.success) {
-        return {
-          result: null,
-          output: "",
-          error: ParserUtils.formatError(parseResult)
-          // Use ParserUtils to format error
-        };
-      }
-      if (this.interpreter) {
-        const result = this.interpreter.interpret(parseResult.result);
-        return {
-          result,
-          output: this.formatOutput(result)
-        };
-      } else {
-        return {
-          result: parseResult.result,
-          output: this.formatAST(parseResult.result)
-        };
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      return {
-        result: null,
-        output: "",
-        error: errorMessage
-      };
-    }
-  }
-  getHistory() {
-    return [
-      ...this.history
-    ];
-  }
-  clearHistory() {
-    this.history = [];
-  }
-  formatOutput(value) {
-    if (typeof value === "object") {
-      return JSON.stringify(value, null, 2);
-    }
-    return String(value);
-  }
-  formatAST(ast2) {
-    return JSON.stringify(ast2, null, 2);
-  }
-};
-__name(_REPL, "REPL");
-var REPL = _REPL;
 function parseInput(grammar, input, options2 = {}) {
   try {
     const result = grammar.parse(input, options2);
@@ -10429,103 +9959,6 @@ function parseInput(grammar, input, options2 = {}) {
   }
 }
 __name(parseInput, "parseInput");
-function createParser(grammar) {
-  return (input) => {
-    try {
-      const result = grammar.parse(input);
-      return result;
-    } catch (err) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-        input,
-        stack: err instanceof Error ? err.stack : void 0
-      };
-    }
-  };
-}
-__name(createParser, "createParser");
-function parseWithAdvancedRecovery(grammar, input, _options = {}) {
-  const errors = [];
-  try {
-    const result = grammar.parse(input, _options);
-    return {
-      result,
-      errors,
-      recoveryStrategy: "original"
-    };
-  } catch (error) {
-    const parseError = createParseError(error, input, _options);
-    errors.push(parseError);
-    const lines = input.split("\n");
-    if (!parseError.location) {
-      return {
-        errors
-      };
-    }
-    const errorLine = parseError.location.start.line;
-    if (errorLine > 0 && errorLine <= lines.length) {
-      try {
-        const recoveredInput = [
-          ...lines.slice(0, errorLine - 1),
-          ...lines.slice(errorLine)
-        ].join("\n");
-        const result = grammar.parse(recoveredInput, _options);
-        return {
-          result,
-          errors,
-          recoveryStrategy: "removeErrorLine"
-        };
-      } catch (_recoveryError) {
-        errors.push(createParseError(_recoveryError, input, _options));
-      }
-    }
-    if (errorLine > 1) {
-      try {
-        const recoveredInput = lines.slice(0, errorLine - 1).join("\n");
-        if (recoveredInput.trim()) {
-          const result = grammar.parse(recoveredInput, _options);
-          return {
-            result,
-            errors,
-            recoveryStrategy: "removeFromError"
-          };
-        }
-      } catch (_recoveryError) {
-        errors.push(createParseError(_recoveryError, input, _options));
-      }
-    }
-    if (parseError.expected) {
-      const commonTokens = [
-        ";",
-        "}",
-        ")",
-        "]",
-        '"',
-        "'"
-      ];
-      for (const token of commonTokens) {
-        if (parseError.expected.includes(token)) {
-          try {
-            const errorPos = parseError.location.start.offset;
-            const recoveredInput = input.slice(0, errorPos) + token + input.slice(errorPos);
-            const result = grammar.parse(recoveredInput, _options);
-            return {
-              result,
-              errors,
-              recoveryStrategy: "insertMissing"
-            };
-          } catch (_recoveryError) {
-          }
-        }
-      }
-    }
-    return {
-      errors
-    };
-  }
-}
-__name(parseWithAdvancedRecovery, "parseWithAdvancedRecovery");
 function createParseError(error, input, _options) {
   const errorObj = error;
   const parseError = {
@@ -10552,6 +9985,8 @@ function createParseError(error, input, _options) {
   }
   if (errorObj.found !== void 0 && errorObj.found !== null) {
     parseError.found = errorObj.found.toString();
+  } else {
+    parseError.found = null;
   }
   parseError.stack = errorObj.stack;
   if (parseError.location) {
@@ -10580,79 +10015,6 @@ function generateErrorSnippet(input, location) {
   return contextLines.join("\n");
 }
 __name(generateErrorSnippet, "generateErrorSnippet");
-function parseMultiple(grammar, inputs, options2 = {}) {
-  return inputs.map((input) => parseInput(grammar, input, options2));
-}
-__name(parseMultiple, "parseMultiple");
-function parseStream(grammar, stream, options2 = {}) {
-  throw new Error("parseStream not implemented - requires actual stream processing logic");
-}
-__name(parseStream, "parseStream");
-function parseWithTimeout(grammar, input, timeoutMs, options2 = {}) {
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      reject(new Error(`Parse timeout after ${timeoutMs}ms`));
-    }, timeoutMs);
-    try {
-      const result = parseInput(grammar, input, options2);
-      clearTimeout(timeoutId);
-      resolve(result);
-    } catch (error) {
-      clearTimeout(timeoutId);
-      reject(error);
-    }
-  });
-}
-__name(parseWithTimeout, "parseWithTimeout");
-function validateSyntax(grammar, input, options2 = {}) {
-  const result = parseInput(grammar, input, options2);
-  if (result.success) {
-    return {
-      valid: true,
-      errors: []
-    };
-  } else {
-    const errors = result.diagnostics?.map((d) => d.message) || [
-      result.error
-    ];
-    return {
-      valid: false,
-      errors
-    };
-  }
-}
-__name(validateSyntax, "validateSyntax");
-var _StreamingParser = class _StreamingParser {
-  constructor(grammar, options2 = {}) {
-    __publicField(this, "grammar");
-    __publicField(this, "buffer", "");
-    __publicField(this, "options");
-    this.grammar = grammar;
-    this.options = options2;
-  }
-  addChunk(chunk) {
-    this.buffer += chunk;
-    const results = [];
-    const lines = this.buffer.split("\n");
-    this.buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (line.trim()) {
-        results.push(parseInput(this.grammar, line, this.options));
-      }
-    }
-    return results;
-  }
-  flush() {
-    if (this.buffer.trim()) {
-      const result = parseInput(this.grammar, this.buffer, this.options);
-      this.buffer = "";
-      return result;
-    }
-    return null;
-  }
-};
-__name(_StreamingParser, "StreamingParser");
-var StreamingParser = _StreamingParser;
 var _ParserUtils = class _ParserUtils {
   static formatError(error) {
     let formatted = `Parse Error: ${error.error}`;
@@ -10663,7 +10025,7 @@ var _ParserUtils = class _ParserUtils {
       formatted += `
 Expected: ${error.expected.join(", ")}`;
     }
-    if (error.found) {
+    if (error.found !== null && error.found !== void 0) {
       formatted += `
 Found: ${error.found}`;
     }
@@ -10683,62 +10045,6 @@ ${error.snippet}`;
 };
 __name(_ParserUtils, "ParserUtils");
 var ParserUtils = _ParserUtils;
-var _PerformanceParser = class _PerformanceParser {
-  constructor(grammar) {
-    __publicField(this, "grammar");
-    __publicField(this, "metrics", /* @__PURE__ */ new Map());
-    this.grammar = grammar;
-  }
-  parse(input, options2 = {}) {
-    const start = performance.now();
-    const result = parseInput(this.grammar, input, options2);
-    const end = performance.now();
-    const duration = end - start;
-    const inputSize = input.length;
-    const key = `${inputSize}`;
-    if (!this.metrics.has(key)) {
-      this.metrics.set(key, []);
-    }
-    this.metrics.get(key).push(duration);
-    return result;
-  }
-  getMetrics() {
-    const result = {};
-    for (const [key, times] of this.metrics) {
-      const avg = times.reduce((a, b) => a + b, 0) / times.length;
-      const min = Math.min(...times);
-      const max = Math.max(...times);
-      result[key] = {
-        avg,
-        min,
-        max,
-        count: times.length
-      };
-    }
-    return result;
-  }
-};
-__name(_PerformanceParser, "PerformanceParser");
-var PerformanceParser = _PerformanceParser;
-var parser_default = {
-  parseInput,
-  parseWithSemanticAnalysis,
-  parseMultiple,
-  parseStream,
-  parseWithTimeout,
-  validateSyntax,
-  parseWithAdvancedRecovery,
-  createParser,
-  ASTWalker,
-  ASTTransformer,
-  SymbolTable,
-  DiagnosticCollector,
-  LanguageServer,
-  REPL,
-  StreamingParser,
-  ParserUtils,
-  PerformanceParser
-};
 
 // src/bin/cli.ts
 var VALID_FORMATS = [
@@ -10748,146 +10054,407 @@ var VALID_FORMATS = [
   "globals",
   "umd"
 ];
+var supportsColor = process.stdout.isTTY && process.env.NO_COLOR !== "1";
+var colors3 = {
+  red: supportsColor ? "\x1B[31m" : "",
+  green: supportsColor ? "\x1B[32m" : "",
+  yellow: supportsColor ? "\x1B[33m" : "",
+  blue: supportsColor ? "\x1B[34m" : "",
+  magenta: supportsColor ? "\x1B[35m" : "",
+  cyan: supportsColor ? "\x1B[36m" : "",
+  reset: supportsColor ? "\x1B[0m" : "",
+  bold: supportsColor ? "\x1B[1m" : "",
+  dim: supportsColor ? "\x1B[2m" : ""
+};
+var log = {
+  info: /* @__PURE__ */ __name((msg) => console.log(`${colors3.blue}\u2139\uFE0F${colors3.reset}  ${msg}`), "info"),
+  success: /* @__PURE__ */ __name((msg) => console.log(`${colors3.green}\u2705${colors3.reset} ${msg}`), "success"),
+  error: /* @__PURE__ */ __name((msg) => console.error(`${colors3.red}\u274C${colors3.reset} ${msg}`), "error"),
+  warn: /* @__PURE__ */ __name((msg) => console.warn(`${colors3.yellow}\u26A0\uFE0F${colors3.reset}  ${msg}`), "warn"),
+  debug: /* @__PURE__ */ __name((msg) => console.log(`${colors3.dim}\u{1F41B} ${msg}${colors3.reset}`), "debug"),
+  watch: /* @__PURE__ */ __name((msg) => console.log(`${colors3.cyan}\u{1F440}${colors3.reset} ${msg}`), "watch"),
+  build: /* @__PURE__ */ __name((msg) => console.log(`${colors3.magenta}\u{1F527}${colors3.reset} ${msg}`), "build"),
+  analyze: /* @__PURE__ */ __name((msg) => console.log(`${colors3.yellow}\u{1F4CA}${colors3.reset} ${msg}`), "analyze")
+};
 function printHelp() {
   console.log(`
-Usage: parsergen <grammar.peg> [options]
+${colors3.bold}parsergen${colors3.reset} - Advanced PEG Grammar Parser Generator
 
-Options:
-  --test <input>          Test grammar by parsing input string
-  --validate              Only validate grammar (no parsing)
-  --analyze               Show grammar metadata
-  --out <file>            Output compiled parser as JS
-  --format <target>       Format for output: ${VALID_FORMATS.join(" | ")} (default: es)
-  --ast                   Print parse AST
-  --watch                 Watch grammar file and auto-recompile
-  --help, -h              Show help
+${colors3.bold}USAGE:${colors3.reset}
+  parsergen <grammar.peg> [options]
+
+${colors3.bold}OPTIONS:${colors3.reset}
+  ${colors3.green}--test <input>${colors3.reset}          Test grammar by parsing input string
+  ${colors3.green}--test-file <file>${colors3.reset}      Test grammar by parsing file content
+  ${colors3.green}--validate${colors3.reset}              Only validate grammar (no parsing)
+  ${colors3.green}--analyze${colors3.reset}               Show detailed grammar metadata
+  ${colors3.green}--out <file>${colors3.reset}            Output compiled parser as JS
+  ${colors3.green}--format <target>${colors3.reset}       Format: ${VALID_FORMATS.join(" | ")} (default: es)
+  ${colors3.green}--ast${colors3.reset}                   Print parse AST in JSON format
+  ${colors3.green}--watch${colors3.reset}                 Watch grammar file and auto-recompile
+  ${colors3.green}--verbose, -v${colors3.reset}           Enable verbose output
+  ${colors3.green}--interactive, -i${colors3.reset}       Interactive mode for testing
+  ${colors3.green}--benchmark${colors3.reset}             Benchmark parsing performance
+  ${colors3.green}--no-color${colors3.reset}              Disable colored output
+  ${colors3.green}--help, -h${colors3.reset}              Show this help
+
+${colors3.bold}EXAMPLES:${colors3.reset}
+  parsergen grammar.peg --test "hello world"
+  parsergen grammar.peg --out parser.js --format commonjs --watch
+  parsergen grammar.peg --analyze --verbose
+  parsergen grammar.peg --interactive
+  parsergen grammar.peg --benchmark --test-file input.txt
+
+${colors3.bold}FORMATS:${colors3.reset}
+  ${colors3.cyan}bare${colors3.reset}    - Bare parser function
+  ${colors3.cyan}commonjs${colors3.reset}  - CommonJS module
+  ${colors3.cyan}es${colors3.reset}        - ES6 module (default)
+  ${colors3.cyan}globals${colors3.reset}   - Global variable
+  ${colors3.cyan}umd${colors3.reset}       - Universal Module Definition
 `);
 }
 __name(printHelp, "printHelp");
+function parseArgs(args) {
+  const config = {
+    grammarPath: args[0] || "",
+    format: "es",
+    validate: false,
+    analyze: false,
+    ast: false,
+    watch: false,
+    verbose: false,
+    interactive: false,
+    benchmark: false,
+    help: false
+  };
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i];
+    const nextArg = args[i + 1];
+    switch (arg) {
+      case "--test":
+        if (nextArg) {
+          config.testInput = nextArg;
+          i++;
+        }
+        break;
+      case "--test-file":
+        if (nextArg) {
+          try {
+            config.testInput = (0, import_node_fs.readFileSync)(nextArg, "utf-8");
+            i++;
+          } catch {
+            log.error(`Could not read test file: ${nextArg}`);
+            process.exit(1);
+          }
+        }
+        break;
+      case "--out":
+        if (nextArg) {
+          config.outFile = nextArg;
+          i++;
+        }
+        break;
+      case "--format":
+        if (nextArg && isValidFormat(nextArg)) {
+          config.format = nextArg;
+          i++;
+        } else {
+          log.error(`Invalid format: ${nextArg}. Valid formats: ${VALID_FORMATS.join(", ")}`);
+          process.exit(1);
+        }
+        break;
+      case "--validate":
+        config.validate = true;
+        break;
+      case "--analyze":
+        config.analyze = true;
+        break;
+      case "--ast":
+        config.ast = true;
+        break;
+      case "--watch":
+        config.watch = true;
+        break;
+      case "--verbose":
+      case "-v":
+        config.verbose = true;
+        break;
+      case "--interactive":
+      case "-i":
+        config.interactive = true;
+        break;
+      case "--benchmark":
+        config.benchmark = true;
+        break;
+      case "--help":
+      case "-h":
+        config.help = true;
+        break;
+    }
+  }
+  return config;
+}
+__name(parseArgs, "parseArgs");
 function isValidFormat(format) {
   return VALID_FORMATS.includes(format);
 }
 __name(isValidFormat, "isValidFormat");
-async function compileAndWrite(grammarPath, outFile, format) {
-  const grammarText = await import_promises.default.readFile(grammarPath, "utf-8");
-  const PEG2 = await Promise.resolve().then(() => __toESM(require_peg(), 1));
-  const baseOptions = {
-    allowedStartRules: [
-      "*"
-    ],
-    cache: false,
-    optimize: "speed",
-    output: "source",
-    trace: false
-  };
-  let compiledSource;
-  switch (format) {
-    case "bare":
-      compiledSource = PEG2.generate(grammarText, {
-        ...baseOptions,
-        format: "bare"
-      });
-      break;
-    case "commonjs":
-      compiledSource = PEG2.generate(grammarText, {
-        ...baseOptions,
-        format: "commonjs"
-      });
-      break;
-    case "es":
-      compiledSource = PEG2.generate(grammarText, {
-        ...baseOptions,
-        format: "es"
-      });
-      break;
-    case "globals":
-      compiledSource = PEG2.generate(grammarText, {
-        ...baseOptions,
-        format: "globals",
-        exportVar: "Parser"
-      });
-      break;
-    case "umd":
-      compiledSource = PEG2.generate(grammarText, {
-        ...baseOptions,
-        format: "umd",
-        exportVar: "Parser"
-      });
-      break;
-    default:
-      throw new Error(`Unsupported format: ${format}`);
+async function benchmarkParsing(parser, input, iterations = 1e3) {
+  log.build(`Running benchmark with ${iterations} iterations...`);
+  const start = performance.now();
+  let successCount = 0;
+  let errorCount = 0;
+  for (let i = 0; i < iterations; i++) {
+    try {
+      const result = parseInput(parser, input);
+      if (!ParserUtils.isParseError(result)) {
+        successCount++;
+      } else {
+        errorCount++;
+      }
+    } catch {
+      errorCount++;
+    }
   }
-  await import_promises.default.writeFile(outFile, compiledSource, "utf-8");
-  console.log(`\u2705 Rebuilt parser: ${outFile}`);
+  const end = performance.now();
+  const totalTime = end - start;
+  const avgTime = totalTime / iterations;
+  console.log(`
+${colors3.bold}BENCHMARK RESULTS:${colors3.reset}
+  Total time: ${totalTime.toFixed(2)}ms
+  Average per parse: ${avgTime.toFixed(4)}ms
+  Successful parses: ${colors3.green}${successCount}${colors3.reset}
+  Failed parses: ${colors3.red}${errorCount}${colors3.reset}
+  Throughput: ${(iterations / totalTime * 1e3).toFixed(2)} parses/second
+`);
+}
+__name(benchmarkParsing, "benchmarkParsing");
+async function interactiveMode(parser, verbose) {
+  log.info('Entering interactive mode. Type "exit" to quit, "help" for commands.');
+  const readline = await import("readline");
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  const askQuestion = /* @__PURE__ */ __name((prompt) => {
+    return new Promise((resolve) => {
+      rl.question(prompt, resolve);
+    });
+  }, "askQuestion");
+  while (true) {
+    try {
+      const input = await askQuestion(`${colors3.cyan}parser>${colors3.reset} `);
+      if (input.toLowerCase() === "exit") {
+        break;
+      }
+      if (input.toLowerCase() === "help") {
+        console.log(`
+Interactive Commands:
+  exit          - Exit interactive mode
+  help          - Show this help
+  benchmark <n> - Run benchmark with n iterations
+  ast on/off    - Toggle AST output
+  <input>       - Parse the input string
+`);
+        continue;
+      }
+      if (input.startsWith("benchmark ")) {
+        const iterations = parseInt(input.split(" ")[1]) || 1e3;
+        await benchmarkParsing(parser, "test", iterations);
+        continue;
+      }
+      const result = parseInput(parser, input);
+      if (!ParserUtils.isParseError(result)) {
+        log.success("Parse successful");
+        if (verbose) {
+          console.log(JSON.stringify(result.result, null, 2));
+        }
+      } else {
+        log.error("Parse failed");
+        console.error(formatError(result));
+      }
+    } catch {
+      log.error(`Unexpected error occurred`);
+    }
+  }
+  rl.close();
+}
+__name(interactiveMode, "interactiveMode");
+async function compileAndWrite(grammarPath, outFile, format, verbose = false) {
+  try {
+    const grammarText = await import_promises.default.readFile(grammarPath, "utf-8");
+    if (verbose) {
+      log.debug(`Reading grammar from: ${grammarPath}`);
+      log.debug(`Output format: ${format}`);
+    }
+    const PEG2 = await Promise.resolve().then(() => __toESM(require_peg(), 1));
+    const baseOptions = {
+      allowedStartRules: [
+        "*"
+      ],
+      cache: false,
+      optimize: "speed",
+      output: "source",
+      trace: verbose
+    };
+    let compiledSource;
+    switch (format) {
+      case "bare":
+        compiledSource = PEG2.generate(grammarText, {
+          ...baseOptions,
+          format: "bare"
+        });
+        break;
+      case "commonjs":
+        compiledSource = PEG2.generate(grammarText, {
+          ...baseOptions,
+          format: "commonjs"
+        });
+        break;
+      case "es":
+        compiledSource = PEG2.generate(grammarText, {
+          ...baseOptions,
+          format: "es"
+        });
+        break;
+      case "globals":
+        compiledSource = PEG2.generate(grammarText, {
+          ...baseOptions,
+          format: "globals",
+          exportVar: "Parser"
+        });
+        break;
+      case "umd":
+        compiledSource = PEG2.generate(grammarText, {
+          ...baseOptions,
+          format: "umd",
+          exportVar: "Parser"
+        });
+        break;
+      default:
+        throw new Error(`Unsupported format: ${format}`);
+    }
+    await import_promises.default.writeFile(outFile, compiledSource, "utf-8");
+    log.success(`Parser compiled: ${outFile}`);
+    if (verbose) {
+      const stats = await import_promises.default.stat(outFile);
+      log.debug(`Output file size: ${stats.size} bytes`);
+    }
+  } catch (error) {
+    log.error("Compilation failed");
+    if (verbose) {
+      console.error(error);
+    }
+    throw new Error("Compilation failed");
+  }
 }
 __name(compileAndWrite, "compileAndWrite");
 async function main() {
-  const args = import_node_process.argv.slice(2);
-  const grammarPath = args[0];
-  if (!grammarPath || args.includes("--help") || args.includes("-h")) {
+  const config = parseArgs(import_node_process.argv.slice(2));
+  if (!config.grammarPath || config.help) {
     printHelp();
     return;
   }
-  const grammarText = await import_promises.default.readFile(grammarPath, "utf-8");
-  if (args.includes("--validate")) {
-    const result = validateGrammar(grammarText);
-    if (result.valid) {
-      console.log("\u2705 Grammar is valid.");
-    } else {
-      console.error("\u274C Grammar is invalid:\n" + result.error);
-    }
-    process.exit(result.valid ? 0 : 1);
-  }
-  if (args.includes("--analyze")) {
-    console.log("\u{1F4CA} Metadata:", analyzeGrammarAdvanced(grammarText));
-    return;
-  }
-  const outIndex = args.indexOf("--out");
-  const outFile = outIndex !== -1 ? args[outIndex + 1] : null;
-  const formatIndex = args.indexOf("--format");
-  const formatArg = formatIndex !== -1 ? args[formatIndex + 1] : "es";
-  if (!isValidFormat(formatArg)) {
-    console.error(`\u274C Invalid format: ${formatArg}. Valid formats: ${VALID_FORMATS.join(", ")}`);
+  try {
+    await import_promises.default.access(config.grammarPath);
+  } catch {
+    log.error(`Grammar file not found: ${config.grammarPath}`);
     process.exit(1);
   }
-  const format = formatArg;
-  if (args.includes("--watch") && outFile) {
-    console.log(`\u{1F440} Watching ${grammarPath}...`);
-    await compileAndWrite(grammarPath, outFile, format);
-    (0, import_node_fs.watchFile)(grammarPath, {
-      interval: 300
-    }, async () => {
-      try {
-        await compileAndWrite(grammarPath, outFile, format);
-      } catch (err) {
-        console.error("\u274C Error during rebuild:\n" + formatCompilationError(err, grammarText));
+  if (config.verbose) {
+    log.debug(`Using grammar file: ${config.grammarPath}`);
+  }
+  try {
+    const grammarText = await import_promises.default.readFile(config.grammarPath, "utf-8");
+    if (config.validate) {
+      const result = validateGrammar(grammarText);
+      if (result.valid) {
+        log.success("Grammar is valid");
+      } else {
+        log.error(`Grammar validation failed:
+${result.error}`);
+        process.exit(1);
       }
-    });
-    return;
-  }
-  if (outFile) {
-    await compileAndWrite(grammarPath, outFile, format);
-    return;
-  }
-  const parser = await compileGrammarFromFile(grammarPath);
-  console.log(`\u2705 Grammar compiled: ${grammarPath}`);
-  const testIndex = args.indexOf("--test");
-  if (testIndex !== -1 && args[testIndex + 1]) {
-    const input = args[testIndex + 1];
-    const result = parser_default.parseInput(parser, input);
-    if (!parser_default.ParserUtils.isParseError(result)) {
-      console.log("\u2705 Parse Success");
-      if (args.includes("--ast")) {
-        console.log(JSON.stringify(result.result, null, 2));
+      return;
+    }
+    if (config.analyze) {
+      const metadata = analyzeGrammarAdvanced(grammarText);
+      log.analyze("Grammar Analysis:");
+      console.log(JSON.stringify(metadata, null, 2));
+      return;
+    }
+    if (config.watch && config.outFile) {
+      log.watch(`Watching ${config.grammarPath} for changes...`);
+      await compileAndWrite(config.grammarPath, config.outFile, config.format, config.verbose);
+      (0, import_node_fs2.watchFile)(config.grammarPath, {
+        interval: 300
+      }, async () => {
+        try {
+          log.build("Detected change, recompiling...");
+          await compileAndWrite(config.grammarPath, config.outFile, config.format, config.verbose);
+        } catch (err) {
+          log.error("Rebuild failed");
+          if (config.verbose) {
+            console.error(formatCompilationError(err, grammarText));
+          }
+        }
+      });
+      process.on("SIGINT", () => {
+        log.info("Stopping watch mode...");
+        process.exit(0);
+      });
+      return;
+    }
+    if (config.outFile) {
+      await compileAndWrite(config.grammarPath, config.outFile, config.format, config.verbose);
+      return;
+    }
+    const parser = await compileGrammarFromFile(config.grammarPath);
+    log.success(`Grammar compiled: ${config.grammarPath}`);
+    if (config.interactive) {
+      await interactiveMode(parser, config.ast || config.verbose);
+      return;
+    }
+    if (config.testInput) {
+      if (config.benchmark) {
+        await benchmarkParsing(parser, config.testInput);
+        return;
+      }
+      const result = parseInput(parser, config.testInput);
+      if (!ParserUtils.isParseError(result)) {
+        log.success("Parse successful");
+        if (config.ast) {
+          console.log(JSON.stringify(result.result, null, 2));
+        }
+      } else {
+        log.error("Parse failed");
+        console.error(formatError(result));
+        process.exit(1);
       }
     } else {
-      console.error("\u274C Parse Error:\n" + formatError(result));
-      process.exit(1);
+      log.info("No test input provided. Grammar compiled successfully.");
+      if (config.verbose) {
+        log.info("Use --test <input> to test parsing or --interactive for interactive mode.");
+      }
     }
-  } else {
-    console.log("\u2139\uFE0F  No --test provided. Grammar OK.");
+  } catch (err) {
+    log.error("An error occurred");
+    if (config.verbose) {
+      console.error(err);
+    } else {
+      console.error(formatCompilationError(err, ""));
+    }
+    process.exit(1);
   }
 }
 __name(main, "main");
+process.on("uncaughtException", (err) => {
+  log.error(`Uncaught exception: ${err.message}`);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  log.error(`Unhandled rejection: ${reason}`);
+  process.exit(1);
+});
 main();
 //# sourceMappingURL=cli.cjs.map

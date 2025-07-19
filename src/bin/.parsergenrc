@@ -1,0 +1,348 @@
+#!/usr/bin/env node
+import { config } from '@swc/core/spack'; // This import seems unused, consider removing if not needed.
+import fs from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { argv } from 'node:process';
+
+// Configuration interface
+interface ParserGenConfig {
+  // Core settings
+  grammarFile?: string;
+  outputFile?: string;
+  format?: 'bare' | 'commonjs' | 'es' | 'globals' | 'umd';
+
+  // Compilation options
+  optimize?: 'speed' | 'size';
+  trace?: boolean;
+  cache?: boolean;
+  allowedStartRules?: string[];
+
+  // Development options
+  watch?: boolean;
+  verbose?: boolean;
+  interactive?: boolean;
+
+  // Testing options
+  testFiles?: readonly string[]; // Changed to readonly string[]
+  testInputs?: string[];
+  benchmark?: {
+    enabled?: boolean;
+    iterations?: number;
+  };
+
+  // Output options
+  ast?: boolean;
+  colors?: boolean;
+
+  // Advanced options
+  plugins?: string[];
+  customFormatters?: Record<string, string>;
+
+  // Project metadata
+  name?: string;
+  version?: string;
+  description?: string;
+  author?: string;
+}
+
+const DEFAULT_CONFIG: ParserGenConfig = {
+  format: 'es',
+  optimize: 'speed',
+  trace: false,
+  cache: false,
+  allowedStartRules: ['*'],
+  watch: false,
+  verbose: false,
+  interactive: false,
+  testFiles: [], // Still a mutable array here, but compatible with readonly in spread
+  testInputs: [],
+  benchmark: {
+    enabled: false,
+    iterations: 1000,
+  },
+  ast: false,
+  colors: true,
+  plugins: [],
+  customFormatters: {},
+};
+
+const CONFIG_TEMPLATES = {
+  basic: {
+    ...DEFAULT_CONFIG,
+    name: 'my-parser',
+    description: 'A PEG parser project',
+    grammarFile: 'grammar.peg',
+    outputFile: 'parser.js',
+  },
+
+  development: {
+    ...DEFAULT_CONFIG,
+    name: 'dev-parser',
+    description: 'Development parser with testing',
+    grammarFile: 'src/grammar.peg',
+    outputFile: 'dist/parser.js',
+    verbose: true,
+    watch: true,
+    testFiles: ['test/inputs/*.txt'] as const, // Explicitly cast to readonly here for consistency
+    benchmark: {
+      enabled: true,
+      iterations: 5000,
+    },
+  },
+
+  library: {
+    ...DEFAULT_CONFIG,
+    name: 'parser-lib',
+    description: 'Parser library for distribution',
+    grammarFile: 'src/grammar.peg',
+    outputFile: 'lib/parser.js',
+    format: 'umd',
+    optimize: 'size',
+    cache: true,
+    testFiles: ['test/**/*.test.txt'] as const, // Explicitly cast to readonly here for consistency
+  },
+
+  minimal: {
+    grammarFile: 'grammar.peg',
+    outputFile: 'parser.js',
+    format: 'es',
+  },
+} as const;
+
+function printHelp() {
+  console.log(`
+parsergen-init - Generate .parsergenrc configuration files
+
+USAGE:
+  parsergen-init [template] [options]
+
+TEMPLATES:
+  basic       - Basic configuration (default)
+  development - Development setup with testing and watch mode
+  library     - Library distribution setup
+  minimal     - Minimal configuration
+
+OPTIONS:
+  --name <name>         Project name
+  --grammar <file>      Grammar file path
+  --output <file>       Output file path
+  --format <format>     Output format (bare|commonjs|es|globals|umd)
+  --interactive         Generate config interactively
+  --force               Overwrite existing .parsergenrc
+  --help, -h            Show this help
+
+EXAMPLES:
+  parsergen-init                # Generate basic config
+  parsergen-init development --name myparser
+  parsergen-init --interactive  # Interactive setup
+  parsergen-init minimal --force # Overwrite with minimal config
+`);
+}
+
+async function promptUser(question: string, defaultValue?: string): Promise<string> {
+  const readline = await import('node:readline');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    const prompt = defaultValue
+      ? `${question} (${defaultValue}): `
+      : `${question}: `;
+
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer.trim() || defaultValue || '');
+    });
+  });
+}
+
+async function interactiveConfig(): Promise<ParserGenConfig> {
+  console.log('🚀 Interactive ParserGen Configuration Setup\n');
+
+  const config: ParserGenConfig = {};
+
+  // Project metadata
+  config.name = await promptUser('Project name', 'my-parser');
+  config.description = await promptUser('Project description', 'A PEG parser project');
+  config.author = await promptUser('Author');
+
+  // Core files
+  config.grammarFile = await promptUser('Grammar file path', 'grammar.peg');
+  config.outputFile = await promptUser('Output file path', 'parser.js');
+
+  // Format selection
+  console.log('\nAvailable formats: bare, commonjs, es, globals, umd');
+  config.format = await promptUser('Output format', 'es') as any;
+
+  // Development options
+  const watchMode = await promptUser('Enable watch mode? (y/n)', 'n');
+  config.watch = watchMode.toLowerCase().startsWith('y');
+
+  const verbose = await promptUser('Enable verbose output? (y/n)', 'n');
+  config.verbose = verbose.toLowerCase().startsWith('y');
+
+  // Testing options
+  const testFiles = await promptUser('Test files pattern (optional)', '');
+  if (testFiles) {
+    config.testFiles = [testFiles]; // This will be a mutable string[], which is assignable to readonly string[]
+  }
+
+  const benchmark = await promptUser('Enable benchmarking? (y/n)', 'n');
+  if (benchmark.toLowerCase().startsWith('y')) {
+    const iterations = await promptUser('Benchmark iterations', '1000');
+    config.benchmark = {
+      enabled: true,
+      iterations: parseInt(iterations) || 1000,
+    };
+  }
+
+  return config;
+}
+
+function validateConfig(config: ParserGenConfig): string[] {
+  const errors: string[] = [];
+
+  if (config.format && !['bare', 'commonjs', 'es', 'globals', 'umd'].includes(config.format)) {
+    errors.push(`Invalid format: ${config.format}`);
+  }
+
+  if (config.optimize && !['speed', 'size'].includes(config.optimize)) {
+    errors.push(`Invalid optimize setting: ${config.optimize}`);
+  }
+
+  if (config.benchmark?.iterations && config.benchmark.iterations < 1) {
+    errors.push('Benchmark iterations must be greater than 0');
+  }
+
+  return errors;
+}
+
+function generateConfigComment(): string {
+  return `// ParserGen Configuration File
+// This file configures the parsergen CLI tool for your project
+//
+// Usage: parsergen [options]
+// The CLI will automatically load settings from this file
+//
+// For more information, visit: https://github.com/your-org/parsergen
+
+`;
+}
+
+async function generateConfig(templateName: string = 'basic', overrides: Partial<ParserGenConfig> = {}, interactive: boolean = false) {
+  let config: ParserGenConfig;
+
+  if (interactive) {
+    config = await interactiveConfig();
+  } else {
+    const template = CONFIG_TEMPLATES[templateName as keyof typeof CONFIG_TEMPLATES];
+    if (!template) {
+      console.error(`❌ Unknown template: ${templateName}`);
+      console.error(`Available templates: ${Object.keys(CONFIG_TEMPLATES).join(', ')}`);
+      process.exit(1);
+    }
+
+    // Spreading a readonly array into a type that expects a readonly array is fine.
+    // The `testFiles` property in DEFAULT_CONFIG is a mutable array, but when spread
+    // into a type expecting `readonly string[]`, it's compatible.
+    config = { ...template, ...overrides };
+  }
+
+  // Validate configuration
+  const errors = validateConfig(config);
+  if (errors.length > 0) {
+    console.error('❌ Configuration validation failed:');
+    errors.forEach(error => console.error(`   ${error}`));
+    process.exit(1);
+  }
+
+  // Generate the config file content
+  const comment = generateConfigComment();
+  const configJson = JSON.stringify(config, null, 2);
+  const content = comment + configJson + '\n';
+
+  return { config, content };
+}
+
+async function main() {
+  const args = argv.slice(2);
+
+  if (args.includes('--help') || args.includes('-h')) {
+    printHelp();
+    return;
+  }
+
+  const templateName = args[0] && !args[0].startsWith('--') ? args[0] : 'basic';
+  const interactive = args.includes('--interactive');
+  const force = args.includes('--force');
+
+  // Parse overrides from command line
+  const overrides: Partial<ParserGenConfig> = {};
+
+  const nameIndex = args.indexOf('--name');
+  if (nameIndex !== -1 && args[nameIndex + 1]) {
+    overrides.name = args[nameIndex + 1];
+  }
+
+  const grammarIndex = args.indexOf('--grammar');
+  if (grammarIndex !== -1 && args[grammarIndex + 1]) {
+    overrides.grammarFile = args[grammarIndex + 1];
+  }
+
+  const outputIndex = args.indexOf('--output');
+  if (outputIndex !== -1 && args[outputIndex + 1]) {
+    overrides.outputFile = args[outputIndex + 1];
+  }
+
+  const formatIndex = args.indexOf('--format');
+  if (formatIndex !== -1 && args[formatIndex + 1]) {
+    overrides.format = args[formatIndex + 1] as any;
+  }
+
+  // Check if .parsergenrc already exists
+  const configPath = resolve(process.cwd(), '.parsergenrc');
+  const exists = await fs.access(configPath).then(() => true).catch(() => false);
+
+  if (exists && !force) {
+    console.error('❌ .parsergenrc already exists. Use --force to overwrite.');
+    process.exit(1);
+  }
+
+  try {
+    const { config, content } = await generateConfig(templateName, overrides, interactive);
+
+    await fs.writeFile(configPath, content, 'utf-8');
+
+    console.log('✅ Generated .parsergenrc configuration file');
+    console.log(`📁 Template: ${interactive ? 'interactive' : templateName}`);
+    console.log(`📄 Location: ${configPath}`);
+
+    if (config.name) {
+      console.log(`🏷️  Project: ${config.name}`);
+    }
+
+    if (config.grammarFile) {
+      console.log(`📝 Grammar: ${config.grammarFile}`);
+    }
+
+    if (config.outputFile) {
+      console.log(`📤 Output: ${config.outputFile}`);
+    }
+
+    console.log('\n🚀 Next steps:');
+    console.log('   1. Edit .parsergenrc to customize your configuration');
+    console.log('   2. Create your grammar file');
+    console.log('   3. Run: parsergen');
+
+  } catch (error) {
+    console.error('❌ Failed to generate configuration file');
+    if (error instanceof Error) {
+      console.error(`   ${error.message}`);
+    }
+    process.exit(1);
+  }
+}
+
+main();
