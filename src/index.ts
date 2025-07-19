@@ -11,8 +11,33 @@ export {
 
 // 🔤 Lexer and Tokenization
 export {
+  type LexerRule,
+  type LexerState,
+  type Preprocessor,
+  type PreprocessorContext,
+  type LanguageSpec,
+  type ContextRule,
+  type LexerPlugin,
+  type TokenContext,
+  type ErrorRecoveryConfig,
+  type SourceLocation,
+  LexerError,
+  type ProfileReport,
+  type TokenPattern,
+  type PatternRule,
+  type PatternMatch,
   type LexerConfig,
   type Token,
+  TokenStream,
+  LanguageDetector,
+  TokenTree,
+  UniversalLexer,
+  LanguageSpecBuilder,
+  LanguageRegistry,
+  TokenAnalyzer,
+  IndentationPlugin,
+  ErrorRecoveryStrategy,
+  LexerProfiler,
 } from './lexer/index';
 
 // 📥 Parsing and Input Handling
