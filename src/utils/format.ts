@@ -322,7 +322,7 @@ export function getErrorContext(error: ParseError): {
     line?: number;
     column?: number;
     expected?: string[];
-    found?: string;
+    found?: string | null;
 } {
     return {
         message: error.error || 'Unknown error',

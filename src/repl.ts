@@ -1,4 +1,4 @@
-import { compileGrammar } from './grammar/index.js';
+import { compileGrammar, CompiledGrammar } from './grammar/index.js';
 import { ParseError, parseInput } from './parser/index.js';
 import { formatError } from './utils/index.js';
 
@@ -14,7 +14,8 @@ export function runREPL() {
   console.log('📘 ParserGen REPL');
   console.log('Commands:\n  .grammar <PEG grammar>\n  .test <input>\n  .exit\n');
 
-  let currentParser: any = null;
+  // Use a more specific type for the parser variable.
+  let currentParser: CompiledGrammar<unknown> | null = null;
 
   rl.prompt();
 
@@ -40,6 +41,7 @@ export function runREPL() {
         console.error('✗ No grammar loaded. Use .grammar <grammar> first');
       } else {
         try {
+          // The 'as unknown' cast is no longer needed due to the correct type.
           const result = parseInput(currentParser, input);
           console.log('✓ Parse result:\n' + JSON.stringify(result, null, 2));
         } catch (error) {

@@ -8,23 +8,17 @@ const generate = PEG.generate;
 
 /**
  * Represents the structure of an error expected by the formatting utilities.
- * This aligns with the user's 'ParseError' type by including `success` and `error`.
+ * The 'expected' property is now aligned with the consumer's type.
  */
 export interface ParseError extends Error {
   message: string;
   location: LocationRange;
-  expected?: string[];
-  found?: string;
-  // Properties required by the consuming formatError functions
+  expected?: string[]; // Corrected: Aligned to string as expected by the parser module.
+  found?: string | null;
   success: false;
   error: string;
 }
 
-/**
- * Type guard to check if an error has the shape of a Peggy-generated error.
- * @param error The error object to check.
- * @returns True if the object has the core Peggy error properties.
- */
 function isParseError(error: unknown): error is ParseError {
   return (
     typeof error === 'object' &&
@@ -36,15 +30,8 @@ function isParseError(error: unknown): error is ParseError {
 
 // --- Interfaces ---
 
-export interface Plugin {
-  use: (config: { rules: unknown[] }, options: Record<string, unknown>) => void;
-  [key: string]: unknown;
-}
-
-export interface AnalysisResult {
-  errors: string[];
-  warnings: string[];
-}
+export interface Plugin { use: (config: { rules: unknown[] }, options: Record<string, unknown>) => void; [key: string]: unknown; }
+export interface AnalysisResult { errors: string[]; warnings: string[]; }
 
 export interface CompiledGrammar<ASTNode = unknown> {
   parse: (input: string, options?: ParserBuildOptions) => ASTNode;
@@ -65,6 +52,95 @@ export interface CompileOptions {
   output?: 'parser' | 'source';
   plugins?: Plugin[];
   trace?: boolean;
+}
+
+// --- Symbol Table for Scope Management ---
+
+/**
+ * Manages scopes and symbols for interpreters and compilers.
+ * @template T The type of data associated with each symbol.
+ */
+export class SymbolTable<T> {
+  private scopes: Map<string, T>[] = [new Map()];
+
+  enterScope(): void {
+    this.scopes.push(new Map());
+  }
+
+  exitScope(): void {
+    if (this.scopes.length > 1) {
+      this.scopes.pop();
+    }
+  }
+
+  define(name: string, value: T): void {
+    const currentScope = this.scopes[this.scopes.length - 1];
+    if (currentScope.has(name)) {
+      throw new Error(`SemanticError: Identifier '${name}' has already been declared in this scope.`);
+    }
+    currentScope.set(name, value);
+  }
+
+  lookup(name: string): T | undefined {
+    for (let i = this.scopes.length - 1; i >= 0; i--) {
+      if (this.scopes[i].has(name)) {
+        return this.scopes[i].get(name);
+      }
+    }
+    return undefined;
+  }
+}
+
+// --- AST Visitor for Tree Traversal ---
+
+export interface ASTNode {
+  type: string;
+  location: LocationRange;
+  [key: string]: unknown;
+}
+
+// A specific type for visitor methods to avoid using the generic 'Function' type.
+type VisitorMethod = (node: ASTNode, ...args: unknown[]) => unknown;
+
+/**
+ * Implements the Visitor pattern for traversing the AST.
+ */
+export class ASTVisitor {
+  /**
+   * Dispatches to the appropriate visitor method based on node type.
+   */
+  visit(node: ASTNode, ...args: unknown[]): unknown {
+    const visitorMethod = `visit${node.type}`;
+    
+    // Corrected: Use a two-step cast via 'unknown' for safer dynamic dispatch.
+    const visitor = ((this as unknown) as Record<string, VisitorMethod>)[visitorMethod];
+
+    if (typeof visitor === 'function') {
+      return visitor.call(this, node, ...args);
+    } else {
+      return this.visitChildren(node, ...args);
+    }
+  }
+
+  /**
+   * Default visitor behavior: iterates over node properties
+   * and calls `visit` on any that are valid AST nodes or arrays of nodes.
+   */
+  protected visitChildren(node: ASTNode, ...args: unknown[]): unknown {
+    for (const key of Object.keys(node)) {
+      const child = node[key];
+      if (Array.isArray(child)) {
+        child.forEach(subChild => {
+          if (subChild && typeof subChild.type === 'string') {
+            this.visit(subChild, ...args);
+          }
+        });
+      } else if (child && typeof (child as ASTNode).type === 'string') {
+        this.visit(child as ASTNode, ...args);
+      }
+    }
+    return;
+  }
 }
 
 // --- Core Functions ---
@@ -93,8 +169,6 @@ export function compileGrammar<ASTNode = unknown>(
       analyze: analyzer,
     };
   } catch (error: unknown) {
-    // Corrected logic: No longer checks for `formatCompilationError` as it's always defined.
-    // The type guard now narrows to the `ParseError` interface expected by the formatters.
     const formattedError = isParseError(error)
       ? formatCompilationError(error, grammar)
       : formatAnyError(error);
@@ -112,10 +186,7 @@ export async function compileGrammarFromFile<ASTNode = unknown>(
     const grammar = await fs.readFile(filePath, 'utf-8');
     return compileGrammar<ASTNode>(
       grammar,
-      {
-        ...options,
-        grammarSource: filePath,
-      },
+      { ...options, grammarSource: filePath },
       analyzer
     );
   } catch (error: unknown) {
@@ -129,16 +200,12 @@ export function validateGrammar(grammar: string): { valid: boolean; error?: stri
     generate(grammar, { output: 'source' });
     return { valid: true };
   } catch (error: unknown) {
-    // Use the type guard to safely format the error.
     const message = isParseError(error) ? formatError(error) : formatAnyError(error);
-    return {
-      valid: false,
-      error: String(message),
-    };
+    return { valid: false, error: String(message) };
   }
 }
 
-// --- Analysis Functions (unchanged) ---
+// --- Analysis Functions ---
 
 export interface GrammarAnalysis {
   rules: RuleInfo[];
@@ -148,7 +215,6 @@ export interface GrammarAnalysis {
   leftRecursive: string[];
   warnings: string[];
 }
-
 export interface RuleInfo {
   name: string;
   line: number;
@@ -158,130 +224,77 @@ export interface RuleInfo {
   isStartRule: boolean;
   isLeftRecursive: boolean;
 }
-
 export function analyzeGrammarAdvanced(grammar: string): GrammarAnalysis {
   const lines = grammar.split('\n');
   const rules: RuleInfo[] = [];
   const dependencies = new Map<string, string[]>();
   const warnings: string[] = [];
-
   const ruleDefinitionRegex = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*(".*?")?\s*=/;
   let currentRuleLines: string[] = [];
   let currentRuleInfo: Omit<RuleInfo, 'expression' | 'references' | 'isLeftRecursive'> | null = null;
-
   lines.forEach((line, i) => {
     const ruleMatch = line.match(ruleDefinitionRegex);
     if (ruleMatch) {
       if (currentRuleInfo && currentRuleLines.length > 0) {
         rules.push(finalizeRule(currentRuleInfo, currentRuleLines, rules.length === 0));
       }
-      currentRuleInfo = {
-        name: ruleMatch[1],
-        line: i + 1,
-        column: line.indexOf(ruleMatch[1]) + 1,
-        isStartRule: false,
-      };
+      currentRuleInfo = { name: ruleMatch[1], line: i + 1, column: line.indexOf(ruleMatch[1]) + 1, isStartRule: false };
       currentRuleLines = [line];
     } else if (currentRuleInfo) {
       currentRuleLines.push(line);
     }
   });
-
   if (currentRuleInfo && currentRuleLines.length > 0) {
     rules.push(finalizeRule(currentRuleInfo, currentRuleLines, rules.length === 0));
   }
-
-  rules.forEach(rule => {
-    dependencies.set(rule.name, rule.references);
-  });
-
+  rules.forEach(rule => { dependencies.set(rule.name, rule.references); });
   const reachableRules = new Set<string>();
   const startRule = rules.find(r => r.isStartRule);
-  if (startRule) {
-    findReachableRules(startRule.name, dependencies, reachableRules);
-  }
+  if (startRule) { findReachableRules(startRule.name, dependencies, reachableRules); }
   const unreachableRules = rules.filter(r => !reachableRules.has(r.name)).map(r => r.name);
   const leftRecursive = rules.filter(r => r.isLeftRecursive).map(r => r.name);
-
-  if (unreachableRules.length > 0) {
-    warnings.push(`Unreachable rules found: ${unreachableRules.join(', ')}`);
-  }
-  if (leftRecursive.length > 0) {
-    warnings.push(`Immediate left-recursive rules found: ${leftRecursive.join(', ')}. Peggy handles this, but it can signal complex logic.`);
-  }
-
+  if (unreachableRules.length > 0) { warnings.push(`Unreachable rules found: ${unreachableRules.join(', ')}`); }
+  if (leftRecursive.length > 0) { warnings.push(`Immediate left-recursive rules found: ${leftRecursive.join(', ')}. Peggy handles this, but it can signal complex logic.`); }
   return { rules, startRule: startRule?.name, dependencies, unreachableRules, leftRecursive, warnings };
 }
-
 function finalizeRule(info: Omit<RuleInfo, 'expression' | 'references' | 'isLeftRecursive'>, lines: string[], isStart: boolean): RuleInfo {
   const expression = lines.join('\n');
   const name = info.name;
   return { ...info, expression, references: extractReferences(expression, name), isStartRule: isStart, isLeftRecursive: checkImmediateLeftRecursion(expression, name) };
 }
-
 function extractReferences(expression: string, ruleName: string): string[] {
   const grammarOnly = expression.replace(/{[^}]*}/g, ' ').replace(/"[^"]*"/g, ' ').replace(/'[^']*'/g, ' ');
   const matches = grammarOnly.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
   const references = new Set(matches.filter(m => m !== ruleName));
   return Array.from(references);
 }
-
 function checkImmediateLeftRecursion(expression: string, ruleName: string): boolean {
   const body = expression.substring(expression.indexOf('=') + 1);
   const alternatives = body.split('/');
-  return alternatives.some(alt => {
-    const trimmedAlt = alt.trim();
-    return trimmedAlt.startsWith(ruleName) && !trimmedAlt.startsWith(ruleName + '_');
-  });
+  return alternatives.some(alt => { const trimmedAlt = alt.trim(); return trimmedAlt.startsWith(ruleName) && !trimmedAlt.startsWith(ruleName + '_'); });
 }
-
 function findReachableRules(ruleName: string, dependencies: Map<string, string[]>, reachable: Set<string>): void {
   if (reachable.has(ruleName) || !dependencies.has(ruleName)) return;
   reachable.add(ruleName);
   const deps = dependencies.get(ruleName) || [];
-  for (const dep of deps) {
-    findReachableRules(dep, dependencies, reachable);
-  }
+  for (const dep of deps) { findReachableRules(dep, dependencies, reachable); }
 }
 
-// --- Grammar Builder Class (unchanged) ---
+// --- Grammar Builder Class ---
 
 export class GrammarBuilder<ASTNode = unknown> {
   private rules: string[] = [];
   private headers: string[] = [];
   private options: CompileOptions = {};
   private semanticAnalyzer?: (ast: ASTNode) => AnalysisResult;
-
-  rule(name: string, expression: string): this {
-    this.rules.push(`${name} = ${expression}`);
-    return this;
-  }
-
-  header(code: string): this {
-    this.headers.push(code);
-    return this;
-  }
-
-  option<K extends keyof CompileOptions>(key: K, value: CompileOptions[K]): this {
-    this.options[key] = value;
-    return this;
-  }
-
-  analyzer(analyzer: (ast: ASTNode) => AnalysisResult): this {
-    this.semanticAnalyzer = analyzer;
-    return this;
-  }
-
-  build(): CompiledGrammar<ASTNode> {
-    return compileGrammar<ASTNode>(this.toString(), this.options, this.semanticAnalyzer);
-  }
-
+  rule(name: string, expression: string): this { this.rules.push(`${name} = ${expression}`); return this; }
+  header(code: string): this { this.headers.push(code); return this; }
+  option<K extends keyof CompileOptions>(key: K, value: CompileOptions[K]): this { this.options[key] = value; return this; }
+  analyzer(analyzer: (ast: ASTNode) => AnalysisResult): this { this.semanticAnalyzer = analyzer; return this; }
+  build(): CompiledGrammar<ASTNode> { return compileGrammar<ASTNode>(this.toString(), this.options, this.semanticAnalyzer); }
   toString(): string {
     const headerBlock = this.headers.length > 0 ? `{ ${this.headers.join('\n')} }\n\n` : '';
     return headerBlock + this.rules.join('\n\n');
   }
 }
-
-export function createGrammarBuilder<ASTNode = unknown>(): GrammarBuilder<ASTNode> {
-  return new GrammarBuilder<ASTNode>();
-}
+export function createGrammarBuilder<ASTNode = unknown>(): GrammarBuilder<ASTNode> { return new GrammarBuilder<ASTNode>(); }

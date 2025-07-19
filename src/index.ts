@@ -35,6 +35,8 @@ export {
   StreamingParser,
   ParserUtils,
   PerformanceParser,
+  ASTNodeFactory,
+  type ParseError,
 } from './parser/index';
 
 // 🧾 Utilities and AST Helpers

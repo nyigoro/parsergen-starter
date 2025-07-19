@@ -17,13 +17,15 @@ export interface ParserOptions {
   [key: string]: unknown; // Allow other arbitrary options
 }
 
-// Enhanced AST Node interfaces
+// Enhanced AST Node interfaces - Added 'id' and 'parent'
 export interface ASTNode {
   type: string;
+  id?: string; // Unique identifier for the node
   location?: Location;
   children?: ASTNode[];
   value?: unknown;
   metadata?: Record<string, unknown>;
+  parent?: ASTNode; // Reference to the parent node for easier traversal
 }
 
 export interface ParseResult<T = ASTNode> { // Default T to ASTNode
@@ -39,7 +41,7 @@ export interface ParseError {
   error: string;
   location?: Location;
   expected?: string[];
-  found?: string;
+  found?: string | null; // Changed to allow null
   stack?: string;
   input?: string;
   snippet?: string;
@@ -117,20 +119,6 @@ export interface Symbol {
 }
 
 // Diagnostic system for better error reporting
-export interface Diagnostic {
-  severity: 'error' | 'warning' | 'info' | 'hint';
-  message: string;
-  location: Location;
-  code?: string;
-  source?: string;
-  relatedInformation?: DiagnosticRelatedInformation[];
-}
-
-export interface DiagnosticRelatedInformation {
-  location: Location;
-  message: string;
-}
-
 export class DiagnosticCollector {
   private diagnostics: Diagnostic[] = [];
 
@@ -193,6 +181,20 @@ export class DiagnosticCollector {
   hasErrors(): boolean {
     return this.diagnostics.some(d => d.severity === 'error');
   }
+}
+
+export interface Diagnostic {
+  severity: 'error' | 'warning' | 'info' | 'hint';
+  message: string;
+  location: Location;
+  code?: string;
+  source?: string;
+  relatedInformation?: DiagnosticRelatedInformation[];
+}
+
+export interface DiagnosticRelatedInformation {
+  location: Location;
+  message: string;
 }
 
 // AST Visitor pattern for tree traversal
@@ -277,13 +279,22 @@ export class ASTTransformer {
 export abstract class SemanticAnalyzer {
   protected symbolTable: SymbolTable;
   protected diagnostics: DiagnosticCollector;
+  protected typeChecker?: TypeChecker; // Optional TypeChecker
 
-  constructor(symbolTable: SymbolTable, diagnostics: DiagnosticCollector) { // Added parameters for injection
+  constructor(symbolTable: SymbolTable, diagnostics: DiagnosticCollector, typeChecker?: TypeChecker) { // Added parameters for injection
     this.symbolTable = symbolTable;
     this.diagnostics = diagnostics;
+    this.typeChecker = typeChecker;
   }
 
   abstract analyze(ast: ASTNode): void;
+
+  // Method to perform type checking if a typeChecker is provided
+  protected performTypeChecking(ast: ASTNode): void {
+    if (this.typeChecker) {
+      this.typeChecker.check(ast, this.symbolTable, this.diagnostics);
+    }
+  }
 
   getSymbolTable(): SymbolTable {
     return this.symbolTable;
@@ -297,6 +308,45 @@ export abstract class SemanticAnalyzer {
     return this.diagnostics.hasErrors();
   }
 }
+
+// New: Type System Interfaces
+export interface Type {
+  name: string;
+  isCompatibleWith(other: Type): boolean;
+  toString(): string;
+}
+
+export interface TypeChecker {
+  check(ast: ASTNode, symbolTable: SymbolTable, diagnostics: DiagnosticCollector): void;
+  getType(node: ASTNode): Type | undefined;
+}
+
+// New: Code Formatter Base Class
+export abstract class CodeFormatter {
+  protected indentLevel = 0;
+  protected indentString = '  ';
+
+  abstract format(ast: ASTNode): string;
+
+  protected indent(): void {
+    this.indentLevel++;
+  }
+
+  protected dedent(): void {
+    this.indentLevel = Math.max(0, this.indentLevel - 1);
+  }
+
+  protected getIndentation(): string {
+    return this.indentString.repeat(this.indentLevel);
+  }
+}
+
+// New: Source Map Generator Interface
+export interface SourceMapGenerator {
+  generateSourceMap(originalCode: string, generatedCode: string, ast: ASTNode): string;
+  addMapping(generatedLine: number, generatedColumn: number, originalLine: number, originalColumn: number, sourceFile: string): void;
+}
+
 
 // Code Generation base class
 export abstract class CodeGenerator { // Removed <T = string> and made it explicit
@@ -365,6 +415,40 @@ export abstract class Interpreter<T = unknown> {
   }
 }
 
+// New: AST Node Factory - Updated to include id and parent
+export class ASTNodeFactory {
+  private static nextId = 0;
+
+  static createNode(type: string, location?: Location, children?: ASTNode[], value?: unknown, metadata?: Record<string, unknown>): ASTNode {
+    const node: ASTNode = { type, id: `node_${ASTNodeFactory.nextId++}`, location, children, value, metadata };
+    if (children) {
+      children.forEach(child => {
+        child.parent = node; // Set parent reference
+      });
+    }
+    return node;
+  }
+
+  static createIdentifier(name: string, location?: Location): ASTNode {
+    return ASTNodeFactory.createNode('Identifier', location, undefined, name);
+  }
+
+  static createLiteral(value: unknown, type: string, location?: Location): ASTNode {
+    return ASTNodeFactory.createNode('Literal', location, undefined, value, { literalType: type });
+  }
+
+  static createBinaryExpression(operator: string, left: ASTNode, right: ASTNode, location?: Location): ASTNode {
+    return ASTNodeFactory.createNode('BinaryExpression', location, [left, right], operator);
+  }
+
+  static createFunctionCall(callee: ASTNode, args: ASTNode[], location?: Location): ASTNode {
+    return ASTNodeFactory.createNode('FunctionCall', location, [callee, ...args]);
+  }
+
+  // Add more factory methods for common AST node types in your language
+}
+
+
 // Enhanced parser with compiler features
 export function parseWithSemanticAnalysis<T extends ASTNode>( // T extends ASTNode
   grammar: CompiledGrammar,
@@ -384,6 +468,19 @@ export function parseWithSemanticAnalysis<T extends ASTNode>( // T extends ASTNo
   try {
     // Attempt to parse the input. The result is expected to be the AST.
     const ast: T = grammar.parse(input, enhancedOptions) as T; // Explicitly cast to T
+
+    // Set parent pointers after initial AST creation
+    ASTWalker.walk(ast, {
+      visit: (node: ASTNode, _context?: unknown) => {
+        if (node.children) {
+          node.children.forEach(child => {
+            child.parent = node;
+          });
+        }
+        return node;
+      }
+    });
+
 
     // If a semantic analyzer is provided, run it
     if (analyzerInstance) {
@@ -598,6 +695,15 @@ export class LanguageServer {
       this.diagnosticCollector.error(errorMessage, errorLocation || { start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 1, offset: 0 } }, 'internal-error');
       return this.diagnosticCollector.getDiagnostics();
     }
+  }
+
+  // New: Go-to-Definition stub
+  async goToDefinition(_input: string, _position: { line: number; column: number }): Promise<Location | null> {
+    // This method would typically parse the input, find the AST node at the given position,
+    // resolve the symbol, and return the location of its definition from the symbol table.
+    // For now, it's a stub.
+    // Removed console.log to address ESLint warning
+    return null;
   }
 
   private getCompletionKind(type: string): CompletionItem['kind'] {
@@ -867,6 +973,8 @@ function createParseError(
 
   if (errorObj.found !== undefined && errorObj.found !== null) { // Added null check
     parseError.found = errorObj.found.toString();
+  } else {
+    parseError.found = null; // Explicitly set to null if undefined or null
   }
 
   parseError.stack = errorObj.stack;
@@ -1013,7 +1121,7 @@ export class ParserUtils {
       formatted += `\nExpected: ${error.expected.join(', ')}`;
     }
 
-    if (error.found) {
+    if (error.found !== null && error.found !== undefined) { // Check for null explicitly
       formatted += `\nFound: ${error.found}`;
     }
 
@@ -1060,19 +1168,91 @@ export class PerformanceParser {
   }
 
   getMetrics(): Record<string, { avg: number; min: number; max: number; count: number }> {
-    const result: Record<string, { avg: number; min: number; max: number; count: number }> = {}; // Corrected 'number' to 'count'
+    const result: Record<string, { avg: number; min: number; max: number; count: number }> = {};
 
     for (const [key, times] of this.metrics) {
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
       const min = Math.min(...times);
       const max = Math.max(...times);
 
-      result[key] = { avg, min, max, count: times.length }; // Corrected 'number' to 'count'
+      result[key] = { avg, min, max, count: times.length };
     }
 
     return result;
   }
 }
+
+// New: Compiler Class
+export class Compiler {
+  private grammar: CompiledGrammar;
+  private semanticAnalyzer: SemanticAnalyzer;
+  private codeGenerator: CodeGenerator;
+  private typeChecker?: TypeChecker; // Optional type checker
+
+  constructor(
+    grammar: CompiledGrammar,
+    // semanticAnalyzer: SemanticAnalyzer, // Original parameter
+    // codeGenerator: CodeGenerator, // Original parameter
+    // typeChecker?: TypeChecker // Original parameter
+    // Accept instances for initialization
+    initialSymbolTable: SymbolTable,
+    initialDiagnosticCollector: DiagnosticCollector,
+    initialCodeGenerator: CodeGenerator,
+    initialTypeChecker?: TypeChecker
+  ) {
+    this.grammar = grammar;
+    this.typeChecker = initialTypeChecker;
+    // Instantiate SemanticAnalyzer with provided instances
+    this.semanticAnalyzer = new (SemanticAnalyzer as new (s: SymbolTable, d: DiagnosticCollector, t?: TypeChecker) => SemanticAnalyzer)(
+      initialSymbolTable,
+      initialDiagnosticCollector,
+      initialTypeChecker
+    );
+    this.codeGenerator = initialCodeGenerator;
+  }
+
+  compile(input: string, options: ParserOptions = {}): { compiledCode?: string; diagnostics: Diagnostic[]; errors: string[] } {
+    // Clear analyzer's diagnostics and symbol table for a fresh compilation run
+    this.semanticAnalyzer.getDiagnostics().length = 0; // Clear existing diagnostics
+    // Re-initialize symbol table if needed, or pass a new one to analyzer's constructor
+    // For simplicity, we'll assume the analyzer manages its own state or gets a fresh one.
+    // If the analyzer needs to be completely reset, it might need a reset method or be re-instantiated.
+
+    const parseResult = parseWithSemanticAnalysis(this.grammar, input, this.semanticAnalyzer, options);
+    const diagnostics: Diagnostic[] = [];
+    const errors: string[] = [];
+
+    if (!parseResult.success) {
+      errors.push(parseResult.error);
+      if (parseResult.diagnostics) {
+        diagnostics.push(...parseResult.diagnostics);
+      }
+      return { diagnostics, errors };
+    }
+
+    const ast = parseResult.result;
+
+    // Perform semantic analysis (including type checking if configured)
+    this.semanticAnalyzer.analyze(ast);
+    diagnostics.push(...this.semanticAnalyzer.getDiagnostics());
+
+    if (this.semanticAnalyzer.hasErrors()) {
+      errors.push('Semantic analysis failed.');
+      return { diagnostics, errors };
+    }
+
+    // Generate code
+    try {
+      const compiledCode = this.codeGenerator.generate(ast);
+      return { compiledCode, diagnostics, errors };
+    } catch (codeGenError: unknown) {
+      const errorMessage = codeGenError instanceof Error ? codeGenError.message : 'Unknown code generation error';
+      errors.push(`Code generation failed: ${errorMessage}`);
+      return { diagnostics, errors };
+    }
+  }
+}
+
 
 export async function parseTextFile(
   grammar: CompiledGrammar,
@@ -1101,5 +1281,9 @@ export default {
   REPL,
   StreamingParser,
   ParserUtils,
-  PerformanceParser
+  PerformanceParser,
+  ASTNodeFactory, // Export the new factory
+  CodeFormatter, // Export the new base class
+  SourceMapGenerator, // Export the new interface (as a type, not value)
+  Compiler // Export the new Compiler class
 };
