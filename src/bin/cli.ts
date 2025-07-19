@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { watchFile } from 'node:fs';
 import { argv } from 'node:process';
+import { resolve } from 'node:path';
 
 import {
   compileGrammarFromFile,
@@ -11,13 +12,15 @@ import {
   CompiledGrammar,
 } from '../grammar/index.js';
 
-// Corrected import: Assuming parseInput, ParserUtils, and CompiledGrammar are named exports.
-import { parseInput, ParserUtils, } from '../parser/index.js';
+import { parseInput, ParserUtils } from '../parser/index.js';
 import { formatError, formatCompilationError } from '../utils/index.js';
 
 // Define the valid format types with const assertion for type safety
 const VALID_FORMATS = ['bare', 'commonjs', 'es', 'globals', 'umd'] as const;
 type OutputFormat = typeof VALID_FORMATS[number];
+
+// Tool version (can be dynamically loaded from package.json in a real app)
+const TOOL_VERSION = '0.1.0';
 
 // Color support detection
 const supportsColor = process.stdout.isTTY && process.env.NO_COLOR !== '1';
@@ -47,7 +50,7 @@ const log = {
 
 // Configuration interface
 interface CLIConfig {
-  grammarPath: string;
+  grammarPath?: string; // Made optional as init/version don't require it
   testInput?: string;
   outFile?: string;
   format: OutputFormat;
@@ -59,6 +62,10 @@ interface CLIConfig {
   interactive: boolean;
   benchmark: boolean;
   help: boolean;
+  initProject: boolean;
+  version: boolean;
+  transformScript?: string; // New: Path to AST transformation script
+  codegenScript?: string;   // New: Path to code generation script
 }
 
 function printHelp() {
@@ -67,6 +74,12 @@ ${colors.bold}parsergen${colors.reset} - Advanced PEG Grammar Parser Generator
 
 ${colors.bold}USAGE:${colors.reset}
   parsergen <grammar.peg> [options]
+  parsergen --init [options]
+  parsergen --version
+
+${colors.bold}COMMANDS:${colors.reset}
+  ${colors.green}--init${colors.reset}                  Initialize a new parser project with default files.
+  ${colors.green}--version${colors.reset}               Display the current version of parsergen.
 
 ${colors.bold}OPTIONS:${colors.reset}
   ${colors.green}--test <input>${colors.reset}          Test grammar by parsing input string
@@ -76,6 +89,8 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.green}--out <file>${colors.reset}            Output compiled parser as JS
   ${colors.green}--format <target>${colors.reset}       Format: ${VALID_FORMATS.join(' | ')} (default: es)
   ${colors.green}--ast${colors.reset}                   Print parse AST in JSON format
+  ${colors.green}--transform <script.js>${colors.reset} Apply a JS transformation script to the AST.
+  ${colors.green}--codegen <script.js>${colors.reset}   Apply a JS code generation script to the AST.
   ${colors.green}--watch${colors.reset}                 Watch grammar file and auto-recompile
   ${colors.green}--verbose, -v${colors.reset}           Enable verbose output
   ${colors.green}--interactive, -i${colors.reset}       Interactive mode for testing
@@ -88,7 +103,9 @@ ${colors.bold}EXAMPLES:${colors.reset}
   parsergen grammar.peg --out parser.js --format commonjs --watch
   parsergen grammar.peg --analyze --verbose
   parsergen grammar.peg --interactive
-  parsergen grammar.peg --benchmark --test-file input.txt
+  parsergen mylang.peg --test "input" --transform ast-transform.js --codegen generate-js.js
+  parsergen --init
+  parsergen --version
 
 ${colors.bold}FORMATS:${colors.reset}
   ${colors.cyan}bare${colors.reset}    - Bare parser function
@@ -101,7 +118,7 @@ ${colors.bold}FORMATS:${colors.reset}
 
 function parseArgs(args: string[]): CLIConfig {
   const config: CLIConfig = {
-    grammarPath: args[0] || '',
+    grammarPath: args[0] && !args[0].startsWith('--') ? args[0] : undefined,
     format: 'es',
     validate: false,
     analyze: false,
@@ -111,9 +128,23 @@ function parseArgs(args: string[]): CLIConfig {
     interactive: false,
     benchmark: false,
     help: false,
+    initProject: false,
+    version: false,
   };
 
-  for (let i = 1; i < args.length; i++) {
+  // Check for commands that don't require a grammar file first
+  if (args.includes('--help') || args.includes('-h')) {
+    config.help = true;
+  }
+  if (args.includes('--version')) {
+    config.version = true;
+  }
+  if (args.includes('--init')) {
+    config.initProject = true;
+  }
+
+  // Parse other options
+  for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     const nextArg = args[i + 1];
 
@@ -150,6 +181,18 @@ function parseArgs(args: string[]): CLIConfig {
           process.exit(1);
         }
         break;
+      case '--transform': // New option parsing
+        if (nextArg) {
+          config.transformScript = nextArg;
+          i++;
+        }
+        break;
+      case '--codegen': // New option parsing
+        if (nextArg) {
+          config.codegenScript = nextArg;
+          i++;
+        }
+        break;
       case '--validate':
         config.validate = true;
         break;
@@ -173,11 +216,13 @@ function parseArgs(args: string[]): CLIConfig {
       case '--benchmark':
         config.benchmark = true;
         break;
-      case '--help':
-      case '-h':
-        config.help = true;
-        break;
+      // --help, --version, --init are handled above
     }
+  }
+
+  // If a grammar path was provided as the first argument, ensure it's captured
+  if (args.length > 0 && !args[0].startsWith('--') && !config.grammarPath) {
+    config.grammarPath = args[0];
   }
 
   return config;
@@ -353,37 +398,131 @@ async function compileAndWrite(grammarPath: string, outFile: string, format: Out
       const stats = await fs.stat(outFile);
       log.debug(`Output file size: ${stats.size} bytes`);
     }
-  } catch (error: unknown) { // Catch as 'any' or 'unknown' and then assert if needed
+  } catch (error: unknown) {
     log.error('Compilation failed');
     if (verbose) {
-      console.error(error); // Log the actual error for verbose mode
+      console.error(error);
     }
     throw new Error('Compilation failed');
   }
 }
 
+async function initializeProject() {
+  log.info('Initializing new parser project...');
+  const grammarFileName = 'grammar.peg';
+  const configFileName = '.parsergenrc';
+  const transformFileName = 'transform.js';
+  const codegenFileName = 'codegen.js';
+
+  const dummyGrammarContent = `// My PEG Grammar
+start = "Hello" _ "World" { return { type: "Greeting", value: "Hello World" }; }
+_ = [ \\t]+
+`;
+
+  const dummyConfigContent = JSON.stringify({
+    grammarFile: grammarFileName,
+    outputFile: 'parser.js',
+    format: 'es',
+    verbose: true,
+    transformScript: transformFileName,
+    codegenScript: codegenFileName,
+  }, null, 2);
+
+  const dummyTransformContent = `
+/**
+ * Transforms the parsed AST.
+ * @param {any} ast - The Abstract Syntax Tree parsed by the grammar.
+ * @returns {any} The transformed AST.
+ */
+export default function transform(ast) {
+  console.log('Applying AST transformation...');
+  // Example: Modify the AST
+  if (ast && ast.type === 'Greeting') {
+    return { ...ast, transformed: true, message: 'AST transformed successfully!' };
+  }
+  return ast;
+}
+`;
+
+  const dummyCodegenContent = `
+/**
+ * Generates code from the (potentially transformed) AST.
+ * @param {any} ast - The Abstract Syntax Tree (or transformed AST).
+ * @returns {string} The generated code.
+ */
+export default function codegen(ast) {
+  console.log('Generating code from AST...');
+  if (ast && ast.type === 'Greeting' && ast.transformed) {
+    return \`console.log("Transformed greeting: \${ast.value} - \${ast.message}");\`;
+  } else if (ast && ast.type === 'Greeting') {
+    return \`console.log("Original greeting: \${ast.value}");\`;
+  }
+  return \`console.log("Could not generate code for unknown AST type.");\`;
+}
+`;
+
+  try {
+    await fs.writeFile(grammarFileName, dummyGrammarContent, 'utf-8');
+    log.success(`Created ${grammarFileName}`);
+    await fs.writeFile(configFileName, dummyConfigContent, 'utf-8');
+    log.success(`Created ${configFileName}`);
+    await fs.writeFile(transformFileName, dummyTransformContent, 'utf-8');
+    log.success(`Created ${transformFileName}`);
+    await fs.writeFile(codegenFileName, dummyCodegenContent, 'utf-8');
+    log.success(`Created ${codegenFileName}`);
+
+    log.info('Project initialized successfully!');
+    log.info(`You can now edit '${grammarFileName}', '${transformFileName}', '${codegenFileName}'`);
+    log.info(`Try: 'parsergen ${grammarFileName} --test "Hello World" --transform ${transformFileName} --codegen ${codegenFileName}'`);
+  } catch (error) {
+    log.error(`Failed to initialize project: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+}
+
+
 async function main() {
   const config = parseArgs(argv.slice(2));
 
-  if (!config.grammarPath || config.help) {
+  if (config.help) {
     printHelp();
     return;
   }
 
+  if (config.version) {
+    log.info(`parsergen version: ${TOOL_VERSION}`);
+    return;
+  }
+
+  if (config.initProject) {
+    await initializeProject();
+    return;
+  }
+
+  // If no grammarPath is provided and it's not an init/version/help command, show help
+  if (!config.grammarPath) {
+    log.error('No grammar file specified.');
+    printHelp();
+    process.exit(1);
+  }
+
+  // Assert grammarPath is a string after the check, ensuring TypeScript knows its type
+  const grammarFilePath: string = config.grammarPath;
+
   try {
     // Check if grammar file exists
-    await fs.access(config.grammarPath);
+    await fs.access(grammarFilePath);
   } catch {
-    log.error(`Grammar file not found: ${config.grammarPath}`);
+    log.error(`Grammar file not found: ${grammarFilePath}`);
     process.exit(1);
   }
 
   if (config.verbose) {
-    log.debug(`Using grammar file: ${config.grammarPath}`);
+    log.debug(`Using grammar file: ${grammarFilePath}`);
   }
 
   try {
-    const grammarText = await fs.readFile(config.grammarPath, 'utf-8');
+    const grammarText = await fs.readFile(grammarFilePath, 'utf-8');
 
     // Validate grammar
     if (config.validate) {
@@ -407,13 +546,13 @@ async function main() {
 
     // Watch mode
     if (config.watch && config.outFile) {
-      log.watch(`Watching ${config.grammarPath} for changes...`);
-      await compileAndWrite(config.grammarPath, config.outFile, config.format, config.verbose);
+      log.watch(`Watching ${grammarFilePath} for changes...`);
+      await compileAndWrite(grammarFilePath, config.outFile, config.format, config.verbose);
 
-      watchFile(config.grammarPath, { interval: 300 }, async () => {
+      watchFile(grammarFilePath, { interval: 300 }, async () => {
         try {
           log.build('Detected change, recompiling...');
-          await compileAndWrite(config.grammarPath, config.outFile!, config.format, config.verbose);
+          await compileAndWrite(grammarFilePath, config.outFile!, config.format, config.verbose);
         } catch (err: unknown) {
           log.error('Rebuild failed');
           if (config.verbose) {
@@ -432,13 +571,13 @@ async function main() {
 
     // Compile to file
     if (config.outFile) {
-      await compileAndWrite(config.grammarPath, config.outFile, config.format, config.verbose);
+      await compileAndWrite(grammarFilePath, config.outFile, config.format, config.verbose);
       return;
     }
 
     // Default: compile grammar in memory
-    const parser = await compileGrammarFromFile(config.grammarPath);
-    log.success(`Grammar compiled: ${config.grammarPath}`);
+    const parser = await compileGrammarFromFile(grammarFilePath);
+    log.success(`Grammar compiled: ${grammarFilePath}`);
 
     // Interactive mode
     if (config.interactive) {
@@ -453,14 +592,55 @@ async function main() {
         return;
       }
 
-      // Use the directly imported parseInput and ParserUtils
       const result = parseInput(parser, config.testInput);
 
       if (!ParserUtils.isParseError(result)) {
         log.success('Parse successful');
-        if (config.ast) {
-          console.log(JSON.stringify(result.result, null, 2));
+        let ast = result.result;
+
+        // Apply AST transformation if script is provided
+        if (config.transformScript) {
+          try {
+            const transformPath = resolve(process.cwd(), config.transformScript);
+            log.info(`Loading AST transformation script: ${transformPath}`);
+            const { default: transformFn } = await import(transformPath);
+            if (typeof transformFn === 'function') {
+              ast = transformFn(ast);
+              log.success('AST transformed.');
+            } else {
+              log.warn(`Transformation script '${config.transformScript}' does not export a default function.`);
+            }
+          } catch (transformErr) {
+            log.error(`Failed to apply AST transformation: ${transformErr instanceof Error ? transformErr.message : String(transformErr)}`);
+            process.exit(1);
+          }
         }
+
+        // Print AST if requested (after transformation)
+        if (config.ast) {
+          log.info('Parsed AST (after transformation if applied):');
+          console.log(JSON.stringify(ast, null, 2));
+        }
+
+        // Apply code generation if script is provided
+        if (config.codegenScript) {
+          try {
+            const codegenPath = resolve(process.cwd(), config.codegenScript);
+            log.info(`Loading code generation script: ${codegenPath}`);
+            const { default: codegenFn } = await import(codegenPath);
+            if (typeof codegenFn === 'function') {
+              const generatedCode = codegenFn(ast);
+              log.success('Code generated.');
+              console.log(`${colors.bold}GENERATED CODE:${colors.reset}\n${generatedCode}`);
+            } else {
+              log.warn(`Code generation script '${config.codegenScript}' does not export a default function.`);
+            }
+          } catch (codegenErr) {
+            log.error(`Failed to generate code: ${codegenErr instanceof Error ? codegenErr.message : String(codegenErr)}`);
+            process.exit(1);
+          }
+        }
+
       } else {
         log.error('Parse failed');
         console.error(formatError(result));
