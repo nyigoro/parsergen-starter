@@ -300,8 +300,8 @@ export abstract class SemanticAnalyzer {
     return this.symbolTable;
   }
 
-  getDiagnostics(): Diagnostic[] {
-    return this.diagnostics.getDiagnostics();
+  getDiagnostics(): DiagnosticCollector { // Changed return type to DiagnosticCollector
+    return this.diagnostics;
   }
 
   hasErrors(): boolean {
@@ -345,16 +345,118 @@ export abstract class CodeFormatter {
 export interface SourceMapGenerator {
   generateSourceMap(originalCode: string, generatedCode: string, ast: ASTNode): string;
   addMapping(generatedLine: number, generatedColumn: number, originalLine: number, originalColumn: number, sourceFile: string): void;
+  clearMappings(): void; // Added to interface
+}
+
+// New: Basic Source Map Generator Implementation
+export class BasicSourceMapGenerator implements SourceMapGenerator {
+  private mappings: Array<{
+    generated: { line: number; column: number };
+    original: { line: number; column: number };
+    source: string;
+  }> = [];
+  private sourceFile: string = 'input.lang'; // Default source file name
+
+  constructor(sourceFile?: string) {
+    if (sourceFile) {
+      this.sourceFile = sourceFile;
+    }
+  }
+
+  addMapping(generatedLine: number, generatedColumn: number, originalLine: number, originalColumn: number, sourceFile: string): void {
+    this.mappings.push({
+      generated: { line: generatedLine, column: generatedColumn },
+      original: { line: originalLine, column: originalColumn },
+      source: sourceFile
+    });
+  }
+
+  // A very basic representation for demonstration. Real source maps are complex.
+  generateSourceMap(_originalCode: string, _generatedCode: string, _ast: ASTNode): string { // Prefixed unused parameters
+    // In a real scenario, this would use a source-map library (e.g., 'source-map' npm package)
+    // and would involve more sophisticated logic to encode mappings efficiently.
+    // For this example, we'll just return a JSON string of the mappings.
+    return JSON.stringify({
+      version: 3,
+      file: 'generated.js', // Or whatever the output file is
+      sourceRoot: '',
+      sources: [this.sourceFile],
+      names: [],
+      mappings: this.mappings.map(m =>
+        `${m.generated.line},${m.generated.column},${m.original.line},${m.original.column}`
+      ).join(';')
+    }, null, 2);
+  }
+
+  clearMappings(): void {
+    this.mappings = [];
+  }
+}
+
+// New: Intermediate Representation (IR) Interfaces
+export interface IRNode {
+  kind: string;
+  id?: string;
+  operands?: IRNode[];
+  value?: unknown;
+  type?: Type; // Type information can be attached to IR nodes
+  debugInfo?: {
+    originalLocation: Location;
+    sourceFile: string;
+  };
+}
+
+export interface IntermediateRepresentation {
+  nodes: IRNode[];
+  entryPoint?: IRNode;
+  // Potentially other IR-specific properties like control flow graph
+}
+
+// New: IR Generator Base Class
+export abstract class IRGenerator {
+  protected diagnostics: DiagnosticCollector;
+  protected symbolTable: SymbolTable;
+  protected typeChecker?: TypeChecker;
+
+  constructor(diagnostics: DiagnosticCollector, symbolTable: SymbolTable, typeChecker?: TypeChecker) {
+    this.diagnostics = diagnostics;
+    this.symbolTable = symbolTable;
+    this.typeChecker = typeChecker;
+  }
+
+  abstract generate(ast: ASTNode): IntermediateRepresentation;
+
+  // Public getters for protected properties
+  public getDiagnostics(): DiagnosticCollector {
+    return this.diagnostics;
+  }
+
+  public hasErrors(): boolean {
+    return this.diagnostics.hasErrors();
+  }
+}
+
+// New: Optimization Pass Base Class
+export abstract class OptimizationPass {
+  abstract run(ir: IntermediateRepresentation, diagnostics: DiagnosticCollector): IntermediateRepresentation;
+  abstract getName(): string;
 }
 
 
-// Code Generation base class
-export abstract class CodeGenerator { // Removed <T = string> and made it explicit
-  protected output: string[] = []; // Changed to string[]
+// Code Generation base class - Updated to include SourceMapGenerator
+export abstract class CodeGenerator {
+  protected output: string[] = [];
   protected indentLevel = 0;
   protected indentString = '  ';
+  protected sourceMapGenerator?: SourceMapGenerator;
+  protected currentLine = 1;
+  protected currentColumn = 1;
 
-  abstract generate(ast: ASTNode): string; // Changed to string
+  constructor(sourceMapGenerator?: SourceMapGenerator) {
+    this.sourceMapGenerator = sourceMapGenerator;
+  }
+
+  abstract generate(ast: ASTNode | IntermediateRepresentation): string; // Can now generate from AST or IR
 
   protected indent(): void {
     this.indentLevel++;
@@ -364,22 +466,43 @@ export abstract class CodeGenerator { // Removed <T = string> and made it explic
     this.indentLevel = Math.max(0, this.indentLevel - 1);
   }
 
-  protected emit(code: string): void { // Changed to string
+  protected emit(code: string, originalLocation?: Location, sourceFile?: string): void {
     this.output.push(code);
+    // Update current line/column for source map generation
+    const lines = code.split('\n');
+    if (lines.length > 1) {
+      this.currentLine += lines.length - 1;
+      this.currentColumn = lines[lines.length - 1].length + 1; // Column starts from 1
+    } else {
+      this.currentColumn += code.length;
+    }
+
+    if (this.sourceMapGenerator && originalLocation && sourceFile) {
+      this.sourceMapGenerator.addMapping(
+        this.currentLine,
+        this.currentColumn,
+        originalLocation.start.line,
+        originalLocation.start.column,
+        sourceFile
+      );
+    }
   }
 
-  protected emitIndented(code: string): void {
-    // No need for type assertion anymore as emit expects string
-    this.emit(this.indentString.repeat(this.indentLevel) + code);
+  protected emitIndented(code: string, originalLocation?: Location, sourceFile?: string): void {
+    const indentedCode = this.indentString.repeat(this.indentLevel) + code;
+    this.emit(indentedCode, originalLocation, sourceFile);
   }
 
-  protected getOutput(): string[] { // Changed to string[]
+  protected getOutput(): string[] {
     return [...this.output];
   }
 
   protected clear(): void {
     this.output = [];
     this.indentLevel = 0;
+    this.currentLine = 1;
+    this.currentColumn = 1;
+    this.sourceMapGenerator?.clearMappings(); // Clear source map mappings as well
   }
 }
 
@@ -487,8 +610,7 @@ export function parseWithSemanticAnalysis<T extends ASTNode>( // T extends ASTNo
       // The analyzer will populate its own symbol table and diagnostics
       analyzerInstance.analyze(ast);
       symbolTable = analyzerInstance.getSymbolTable();
-      diagnosticsCollector.addDiagnostics(analyzerInstance.getDiagnostics());
-
+      diagnosticsCollector.addDiagnostics(analyzerInstance.getDiagnostics().getDiagnostics()); // Get diagnostics array
       if (analyzerInstance.hasErrors()) {
         return {
           success: false,
@@ -702,7 +824,6 @@ export class LanguageServer {
     // This method would typically parse the input, find the AST node at the given position,
     // resolve the symbol, and return the location of its definition from the symbol table.
     // For now, it's a stub.
-    // Removed console.log to address ESLint warning
     return null;
   }
 
@@ -1067,7 +1188,7 @@ export function validateSyntax(
     return { valid: true, errors: [] };
   } else {
     // Collect errors from diagnostics if available, otherwise use the main error
-    const errors = result.diagnostics?.map(d => d.message) || [result.error];
+    const errors = result.diagnostics?.map((d: Diagnostic) => d.message) || [result.error]; // Explicitly type 'd'
     return { valid: false, errors: errors };
   }
 }
@@ -1187,40 +1308,40 @@ export class Compiler {
   private grammar: CompiledGrammar;
   private semanticAnalyzer: SemanticAnalyzer;
   private codeGenerator: CodeGenerator;
+  private irGenerator?: IRGenerator; // Optional IR generator
+  private optimizationPasses: OptimizationPass[]; // Array of optimization passes
   private typeChecker?: TypeChecker; // Optional type checker
 
   constructor(
     grammar: CompiledGrammar,
-    // semanticAnalyzer: SemanticAnalyzer, // Original parameter
-    // codeGenerator: CodeGenerator, // Original parameter
-    // typeChecker?: TypeChecker // Original parameter
-    // Accept instances for initialization
     initialSymbolTable: SymbolTable,
     initialDiagnosticCollector: DiagnosticCollector,
     initialCodeGenerator: CodeGenerator,
-    initialTypeChecker?: TypeChecker
+    initialTypeChecker?: TypeChecker,
+    irGenerator?: IRGenerator, // New parameter
+    optimizationPasses: OptimizationPass[] = [] // New parameter
   ) {
     this.grammar = grammar;
     this.typeChecker = initialTypeChecker;
-    // Instantiate SemanticAnalyzer with provided instances
     this.semanticAnalyzer = new (SemanticAnalyzer as new (s: SymbolTable, d: DiagnosticCollector, t?: TypeChecker) => SemanticAnalyzer)(
       initialSymbolTable,
       initialDiagnosticCollector,
       initialTypeChecker
     );
     this.codeGenerator = initialCodeGenerator;
+    this.irGenerator = irGenerator;
+    this.optimizationPasses = optimizationPasses;
   }
 
-  compile(input: string, options: ParserOptions = {}): { compiledCode?: string; diagnostics: Diagnostic[]; errors: string[] } {
-    // Clear analyzer's diagnostics and symbol table for a fresh compilation run
-    this.semanticAnalyzer.getDiagnostics().length = 0; // Clear existing diagnostics
-    // Re-initialize symbol table if needed, or pass a new one to analyzer's constructor
-    // For simplicity, we'll assume the analyzer manages its own state or gets a fresh one.
-    // If the analyzer needs to be completely reset, it might need a reset method or be re-instantiated.
+  compile(input: string, options: ParserOptions = {}): { compiledCode?: string; diagnostics: Diagnostic[]; errors: string[]; sourceMap?: string } {
+    this.semanticAnalyzer.getDiagnostics().clear(); // Corrected: Call clear() on the DiagnosticCollector instance
+    // Note: SymbolTable is typically managed by the SemanticAnalyzer itself, or a new one
+    // is passed for each compilation run if isolation is required.
 
     const parseResult = parseWithSemanticAnalysis(this.grammar, input, this.semanticAnalyzer, options);
     const diagnostics: Diagnostic[] = [];
     const errors: string[] = [];
+    let sourceMap: string | undefined;
 
     if (!parseResult.success) {
       errors.push(parseResult.error);
@@ -1230,21 +1351,67 @@ export class Compiler {
       return { diagnostics, errors };
     }
 
-    const ast = parseResult.result;
+    let ast: ASTNode = parseResult.result;
 
     // Perform semantic analysis (including type checking if configured)
     this.semanticAnalyzer.analyze(ast);
-    diagnostics.push(...this.semanticAnalyzer.getDiagnostics());
+    diagnostics.push(...this.semanticAnalyzer.getDiagnostics().getDiagnostics()); // Get diagnostics array
 
     if (this.semanticAnalyzer.hasErrors()) {
       errors.push('Semantic analysis failed.');
       return { diagnostics, errors };
     }
 
+    let intermediateRepresentation: IntermediateRepresentation | undefined;
+
+    // Generate Intermediate Representation if an IRGenerator is provided
+    if (this.irGenerator) {
+      try {
+        intermediateRepresentation = this.irGenerator.generate(ast);
+        // Access diagnostics via public getter
+        diagnostics.push(...this.irGenerator.getDiagnostics().getDiagnostics()); // Add IR generator diagnostics
+        if (this.irGenerator.hasErrors()) { // Access errors via public getter
+          errors.push('IR generation failed.');
+          return { diagnostics, errors };
+        }
+      } catch (irGenError: unknown) {
+        const errorMessage = irGenError instanceof Error ? irGenError.message : 'Unknown IR generation error';
+        errors.push(`IR generation failed: ${errorMessage}`);
+        return { diagnostics, errors };
+      }
+    }
+
+    // Apply optimization passes if IR is generated
+    let optimizedIR = intermediateRepresentation;
+    if (optimizedIR) {
+      for (const pass of this.optimizationPasses) {
+        try {
+          optimizedIR = pass.run(optimizedIR, this.semanticAnalyzer.getDiagnostics()); // Pass diagnostics collector
+          diagnostics.push(...this.semanticAnalyzer.getDiagnostics().getDiagnostics()); // Add optimization pass diagnostics
+          if (this.semanticAnalyzer.hasErrors()) {
+            errors.push(`Optimization pass '${pass.getName()}' failed.`);
+            return { diagnostics, errors };
+          }
+        } catch (optError: unknown) {
+          const errorMessage = optError instanceof Error ? optError.message : 'Unknown optimization error';
+          errors.push(`Optimization pass '${pass.getName()}' failed: ${errorMessage}`);
+          return { diagnostics, errors };
+        }
+      }
+    }
+
     // Generate code
     try {
-      const compiledCode = this.codeGenerator.generate(ast);
-      return { compiledCode, diagnostics, errors };
+      // Code generation can now take either AST or IR
+      const codeGenInput = optimizedIR || ast;
+      const compiledCode = this.codeGenerator.generate(codeGenInput);
+
+      // If source map generator was provided to CodeGenerator, get the source map
+      if (this.codeGenerator instanceof CodeGenerator && this.codeGenerator['sourceMapGenerator']) {
+        sourceMap = this.codeGenerator['sourceMapGenerator'].generateSourceMap(input, compiledCode, ast);
+      }
+
+      return { compiledCode, diagnostics, errors, sourceMap };
     } catch (codeGenError: unknown) {
       const errorMessage = codeGenError instanceof Error ? codeGenError.message : 'Unknown code generation error';
       errors.push(`Code generation failed: ${errorMessage}`);
@@ -1271,7 +1438,6 @@ export default {
   parseStream,
   parseWithTimeout,
   validateSyntax,
-  parseWithAdvancedRecovery,
   createParser,
   ASTWalker,
   ASTTransformer,
@@ -1284,6 +1450,8 @@ export default {
   PerformanceParser,
   ASTNodeFactory, // Export the new factory
   CodeFormatter, // Export the new base class
-  SourceMapGenerator, // Export the new interface (as a type, not value)
+  BasicSourceMapGenerator, // Export the concrete implementation
+  IRGenerator, // Export the new base class
+  OptimizationPass, // Export the new base class
   Compiler // Export the new Compiler class
 };

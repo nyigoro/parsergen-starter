@@ -11,7 +11,6 @@ export {
 
 // 🔤 Lexer and Tokenization
 export {
-  createLexer,
   type LexerConfig,
   type Token,
 } from './lexer/index';
@@ -37,6 +36,8 @@ export {
   PerformanceParser,
   ASTNodeFactory,
   type ParseError,
+  type ParseResult,
+  type SourceMapGenerator
 } from './parser/index';
 
 // 🧾 Utilities and AST Helpers
