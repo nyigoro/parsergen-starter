@@ -91,3 +91,4 @@ export { lowerLumina } from './lumina/lower';
 export { generateJS } from './lumina/codegen';
 export type { IRNode } from './lumina/ir';
 export { optimizeIR } from './lumina/optimize';
+export { irToDot } from './lumina/ir-dot';

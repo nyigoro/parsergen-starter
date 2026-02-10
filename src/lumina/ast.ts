@@ -11,12 +11,15 @@ export interface LuminaProgram {
 export type LuminaStatement =
   | LuminaImport
   | LuminaTypeDecl
+  | LuminaStructDecl
+  | LuminaEnumDecl
   | LuminaFnDecl
   | LuminaLet
   | LuminaReturn
   | LuminaIf
   | LuminaWhile
   | LuminaAssign
+  | LuminaMatchStmt
   | LuminaExprStmt
   | LuminaBlock;
 
@@ -31,6 +34,34 @@ export interface LuminaTypeDecl {
   type: 'TypeDecl';
   name: string;
   body: LuminaTypeField[];
+  visibility?: 'public' | 'private';
+  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  extern?: boolean;
+  externModule?: string;
+  location?: Location;
+}
+
+export interface LuminaStructDecl {
+  type: 'StructDecl';
+  name: string;
+  body: LuminaTypeField[];
+  visibility?: 'public' | 'private';
+  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  location?: Location;
+}
+
+export interface LuminaEnumDecl {
+  type: 'EnumDecl';
+  name: string;
+  variants: LuminaEnumVariant[];
+  visibility?: 'public' | 'private';
+  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  location?: Location;
+}
+
+export interface LuminaEnumVariant {
+  name: string;
+  params: LuminaType[];
   location?: Location;
 }
 
@@ -46,6 +77,10 @@ export interface LuminaFnDecl {
   params: LuminaParam[];
   returnType: LuminaType | null;
   body: LuminaBlock;
+  visibility?: 'public' | 'private';
+  extern?: boolean;
+  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  externModule?: string;
   location?: Location;
 }
 
@@ -103,13 +138,55 @@ export interface LuminaExprStmt {
   location?: Location;
 }
 
+export interface LuminaMatchStmt {
+  type: 'MatchStmt';
+  value: LuminaExpr;
+  arms: LuminaMatchArmStmt[];
+  location?: Location;
+}
+
+export type LuminaMatchPattern = LuminaEnumPattern | LuminaWildcardPattern;
+
+export interface LuminaEnumPattern {
+  type: 'EnumPattern';
+  variant: string;
+  bindings: string[];
+  location?: Location;
+}
+
+export interface LuminaWildcardPattern {
+  type: 'WildcardPattern';
+  location?: Location;
+}
+
+export interface LuminaMatchArmStmt {
+  pattern: LuminaMatchPattern;
+  body: LuminaBlock;
+  location?: Location;
+}
+
+export interface LuminaMatchExpr {
+  type: 'MatchExpr';
+  value: LuminaExpr;
+  arms: LuminaMatchArmExpr[];
+  location?: Location;
+}
+
+export interface LuminaMatchArmExpr {
+  pattern: LuminaMatchPattern;
+  body: LuminaExpr;
+  location?: Location;
+}
+
 export type LuminaExpr =
   | LuminaBinary
+  | LuminaMember
   | LuminaCall
   | LuminaNumber
   | LuminaString
   | LuminaBoolean
-  | LuminaIdentifier;
+  | LuminaIdentifier
+  | LuminaMatchExpr;
 
 export interface LuminaBinary {
   type: 'Binary';
@@ -143,9 +220,17 @@ export interface LuminaIdentifier {
   location?: Location;
 }
 
+export interface LuminaMember {
+  type: 'Member';
+  object: LuminaExpr;
+  property: string;
+  location?: Location;
+}
+
 export interface LuminaCall {
   type: 'Call';
   callee: LuminaIdentifier;
   args: LuminaExpr[];
+  typeArgs?: string[];
   location?: Location;
 }

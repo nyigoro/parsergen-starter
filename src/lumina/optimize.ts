@@ -1,8 +1,11 @@
-import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign } from './ir.js';
+import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr } from './ir.js';
 
 export function optimizeIR(node: IRNode): IRNode | null {
   const constants = new Map<string, IRNode>();
-  const optimized = optimizeWithConstants(node, constants);
+  let optimized = optimizeWithConstants(node, constants);
+  if (optimized && optimized.kind === 'Program') {
+    optimized = removeUnusedFunctions(optimized);
+  }
   if (optimized) validateIR(optimized);
   return optimized;
 }
@@ -19,7 +22,7 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
         }
       }
       const program: IRProgram = { kind: 'Program', body, location: node.location };
-      return removeDeadStores(program);
+      return removeDeadStores(program, true);
     }
     case 'Function': {
       const body: IRNode[] = [];
@@ -32,7 +35,7 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
         }
       }
       const fn: IRFunction = { ...node, body, location: node.location };
-      const cleaned = removeDeadStores({ kind: 'Program', body: fn.body, location: fn.location });
+      const cleaned = removeDeadStores({ kind: 'Program', body: fn.body, location: fn.location }, false);
       return { ...fn, body: cleaned.body };
     }
     case 'ExprStmt': {
@@ -78,6 +81,30 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
       const args = node.args.map((arg) => optimizeWithConstants(arg, constants) ?? arg);
       const call: IRCall = { kind: 'Call', callee: node.callee, args, location: node.location };
       return call;
+    }
+    case 'Member': {
+      const object = optimizeWithConstants(node.object, constants) ?? node.object;
+      const member: IRMember = { kind: 'Member', object, property: node.property, location: node.location };
+      return member;
+    }
+    case 'Index': {
+      const target = optimizeWithConstants(node.target, constants) ?? node.target;
+      const idx: IRIndex = { kind: 'Index', target, index: node.index, location: node.location };
+      return idx;
+    }
+    case 'Enum': {
+      const values = node.values.map((v) => optimizeWithConstants(v, constants) ?? v);
+      const enumNode: IREnumConstruct = { kind: 'Enum', tag: node.tag, values, location: node.location };
+      return enumNode;
+    }
+    case 'MatchExpr': {
+      const value = optimizeWithConstants(node.value, constants) ?? node.value;
+      const arms = node.arms.map((arm) => ({
+        ...arm,
+        body: optimizeWithConstants(arm.body, new Map(constants)) ?? arm.body,
+      }));
+      const matchNode: IRMatchExpr = { kind: 'MatchExpr', value, arms, location: node.location };
+      return matchNode;
     }
     case 'If': {
       const condition = optimizeWithConstants(node.condition, constants) ?? node.condition;
@@ -245,6 +272,22 @@ function validateIR(node: IRNode) {
         if (!n.callee) throw new Error('IR validation: Call callee missing');
         n.args.forEach(visit);
         return;
+      case 'Member':
+        if (!n.property) throw new Error('IR validation: Member property missing');
+        visit(n.object);
+        return;
+      case 'Index':
+        if (n.index === undefined) throw new Error('IR validation: Index missing');
+        visit(n.target);
+        return;
+      case 'Enum':
+        if (!n.tag) throw new Error('IR validation: Enum tag missing');
+        n.values.forEach(visit);
+        return;
+      case 'MatchExpr':
+        visit(n.value);
+        n.arms.forEach((arm) => visit(arm.body));
+        return;
       case 'Identifier':
         if (!n.name) throw new Error('IR validation: Identifier name missing');
         return;
@@ -263,7 +306,7 @@ function validateIR(node: IRNode) {
   visit(node);
 }
 
-function removeDeadStores(program: IRProgram): IRProgram {
+function removeDeadStores(program: IRProgram, preserveTopLevelLets: boolean): IRProgram {
   const used = new Set<string>();
   const body = [...program.body].reverse();
   const kept: IRNode[] = [];
@@ -279,6 +322,19 @@ function removeDeadStores(program: IRProgram): IRProgram {
         return;
       case 'Call':
         expr.args.forEach(markExpr);
+        return;
+      case 'Member':
+        markExpr(expr.object);
+        return;
+      case 'Index':
+        markExpr(expr.target);
+        return;
+      case 'Enum':
+        expr.values.forEach(markExpr);
+        return;
+      case 'MatchExpr':
+        markExpr(expr.value);
+        expr.arms.forEach((arm) => markExpr(arm.body));
         return;
       case 'If':
         markExpr(expr.condition);
@@ -341,6 +397,11 @@ function removeDeadStores(program: IRProgram): IRProgram {
 
   for (const stmt of body) {
     if (stmt.kind === 'Let') {
+      if (preserveTopLevelLets) {
+        kept.push(stmt);
+        markExpr(stmt.value);
+        continue;
+      }
       if (used.has(stmt.name)) {
         kept.push(stmt);
         markExpr(stmt.value);
@@ -367,4 +428,100 @@ function removeDeadStores(program: IRProgram): IRProgram {
 
   kept.reverse();
   return { ...program, body: kept };
+}
+
+function removeUnusedFunctions(program: IRProgram): IRProgram {
+  const functions = new Map<string, IRFunction>();
+  const nonFunctions: IRNode[] = [];
+  for (const node of program.body) {
+    if (node.kind === 'Function') {
+      functions.set(node.name, node);
+    } else {
+      nonFunctions.push(node);
+    }
+  }
+  if (functions.size === 0) return program;
+
+  const used = new Set<string>();
+  const worklist: string[] = [];
+  const enqueue = (name: string) => {
+    if (!functions.has(name)) return;
+    if (used.has(name)) return;
+    used.add(name);
+    worklist.push(name);
+  };
+
+  const scanNode = (node: IRNode) => {
+    switch (node.kind) {
+      case 'Call':
+        enqueue(node.callee);
+        node.args.forEach(scanNode);
+        return;
+      case 'Binary':
+        scanNode(node.left);
+        scanNode(node.right);
+        return;
+      case 'Member':
+        scanNode(node.object);
+        return;
+      case 'Index':
+        scanNode(node.target);
+        return;
+      case 'Enum':
+        node.values.forEach(scanNode);
+        return;
+      case 'MatchExpr':
+        scanNode(node.value);
+        node.arms.forEach((arm) => scanNode(arm.body));
+        return;
+      case 'If':
+        scanNode(node.condition);
+        node.thenBody.forEach(scanNode);
+        node.elseBody?.forEach(scanNode);
+        return;
+      case 'While':
+        scanNode(node.condition);
+        node.body.forEach(scanNode);
+        return;
+      case 'Assign':
+        scanNode(node.value);
+        return;
+      case 'Let':
+        scanNode(node.value);
+        return;
+      case 'Return':
+        scanNode(node.value);
+        return;
+      case 'ExprStmt':
+        scanNode(node.expr);
+        return;
+      case 'Program':
+        node.body.forEach(scanNode);
+        return;
+      default:
+        return;
+    }
+  };
+
+  for (const node of nonFunctions) {
+    scanNode(node);
+  }
+  enqueue('main');
+
+  while (worklist.length > 0) {
+    const next = worklist.pop();
+    if (!next) break;
+    const fn = functions.get(next);
+    if (!fn) continue;
+    fn.body.forEach(scanNode);
+  }
+
+  if (used.size === 0) return program;
+
+  const body = program.body.filter((node) => {
+    if (node.kind !== 'Function') return true;
+    return used.has(node.name);
+  });
+
+  return { ...program, body };
 }

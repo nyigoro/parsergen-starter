@@ -54,4 +54,104 @@ describe('ProjectContext', () => {
     const diagnostics = project.getDiagnostics(badUri);
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  test('enforces visibility across files', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const root = path.resolve(__dirname, '../fixtures');
+    const aUri = path.join(root, 'a.lm');
+    const bUri = path.join(root, 'b.lm');
+
+    const aText = `
+      fn hidden() { return 1; }
+      pub fn exposed() { return 2; }
+    `.trim() + '\n';
+
+    const bText = `
+      import { hidden, exposed } from "./a.lm";
+      fn main() {
+        let x: int = hidden();
+        let y: int = exposed();
+        return x + y;
+      }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(aUri, aText);
+    project.addOrUpdateDocument(bUri, bText);
+
+    const diagnostics = project.getDiagnostics(bUri);
+    const messages = diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/private/);
+  });
+
+  test('requires imports for public symbols', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const root = path.resolve(__dirname, '../fixtures');
+    const aUri = path.join(root, 'pub-a.lm');
+    const bUri = path.join(root, 'pub-b.lm');
+
+    const aText = `
+      pub fn exposed() { return 2; }
+    `.trim() + '\n';
+
+    const bText = `
+      fn main() {
+        return exposed();
+      }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(aUri, aText);
+    project.addOrUpdateDocument(bUri, bText);
+
+    const diagnostics = project.getDiagnostics(bUri);
+    const messages = diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Unknown function 'exposed'/);
+  });
+
+  test('does not reparse dependents when signature unchanged', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const root = path.resolve(__dirname, '../fixtures');
+    const aUri = path.join(root, 'sig-a.lm');
+    const bUri = path.join(root, 'sig-b.lm');
+
+    const aText = `
+      pub fn exposed() { return 1; }
+    `.trim() + '\n';
+
+    const bText = `
+      import { exposed } from "./sig-a.lm";
+      fn main() { return exposed(); }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(aUri, aText);
+    project.addOrUpdateDocument(bUri, bText);
+
+    const first = project.addOrUpdateDocument(aUri, aText.replace('return 1', 'return 2'));
+    expect(first.signatureChanged).toBe(false);
+  });
+
+  test('reports changed symbols when signature changes', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const root = path.resolve(__dirname, '../fixtures');
+    const aUri = path.join(root, 'sig-c.lm');
+
+    const aText = `
+      pub fn exposed() { return 1; }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(aUri, aText);
+    const updated = project.addOrUpdateDocument(aUri, `
+      pub fn exposed(x: int) { return x; }
+    `.trim() + '\n');
+
+    expect(updated.signatureChanged).toBe(true);
+    expect(updated.changedSymbols).toContain('exposed');
+  });
 });

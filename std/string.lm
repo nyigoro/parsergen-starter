@@ -1,0 +1,2 @@
+extern fn len(value: string) -> int from "string";
+extern fn upper(value: string) -> string from "string";

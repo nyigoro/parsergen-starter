@@ -7,7 +7,7 @@ import { parseWithPanicRecovery, type PanicRecoveryOptions } from './panic.js';
 import { type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
-import { analyzeLumina, type SymbolTable as LuminaSymbolTable } from '../lumina/semantic.js';
+import { analyzeLumina, type SymbolTable as LuminaSymbolTable, type SymbolInfo } from '../lumina/semantic.js';
 
 export interface SourceDocument {
   uri: string;
@@ -20,6 +20,12 @@ export interface SourceDocument {
   ast?: unknown;
   references?: Map<string, Location[]>;
   importedNames?: Set<string>;
+  signatures?: Map<string, string>;
+}
+
+export interface SignatureChange {
+  signatureChanged: boolean;
+  changedSymbols: string[];
 }
 
 export class DependencyGraph {
@@ -54,6 +60,22 @@ export class ProjectContext {
     this.parser = parser ?? null;
     this.recoveryOptions = {
       syncTokenTypes: luminaSyncTokenTypes,
+      syncKeywordValues: [
+        'import',
+        'type',
+        'struct',
+        'enum',
+        'fn',
+        'let',
+        'return',
+        'if',
+        'else',
+        'for',
+        'while',
+        'match',
+        'extern',
+        'pub',
+      ],
       lexer: (input: string) => {
         const lexer = this.luminaLexer.reset(input);
         return {
@@ -72,25 +94,27 @@ export class ProjectContext {
     this.parser = parser;
   }
 
-  addOrUpdateDocument(uri: string, text: string, version: number = 1) {
+  addOrUpdateDocument(uri: string, text: string, version: number = 1): SignatureChange {
     const fsPath = this.toFsPath(uri);
     const normalizedUri = this.toUri(fsPath);
     const imports = extractImports(text);
-    const existing = this.documents.get(normalizedUri);
-    const doc: SourceDocument = {
-      uri: normalizedUri,
-      fsPath,
-      text,
-      version: existing ? existing.version + 1 : version,
-      imports,
-      diagnostics: [],
-    };
+      const existing = this.documents.get(normalizedUri);
+      const doc: SourceDocument = {
+        uri: normalizedUri,
+        fsPath,
+        text,
+        version: existing ? existing.version + 1 : version,
+        imports,
+        diagnostics: [],
+        signatures: existing?.signatures,
+      };
     this.documents.set(normalizedUri, doc);
     this.graph.set(normalizedUri, imports.map((imp) => this.resolveImport(fsPath, imp)));
     for (const dep of this.graph.get(normalizedUri)) {
       this.ensureDocumentLoaded(dep);
     }
-    this.parseDocument(normalizedUri);
+    const { signatureChanged, changedSymbols } = this.parseDocument(normalizedUri);
+    return { signatureChanged, changedSymbols };
   }
 
   removeDocument(uri: string) {
@@ -99,27 +123,43 @@ export class ProjectContext {
     this.graph.set(normalized, []);
   }
 
-  parseDocument(uri: string) {
+  parseDocument(uri: string): SignatureChange {
     const normalized = this.toUri(this.toFsPath(uri));
     const doc = this.documents.get(normalized);
-    if (!doc || !this.parser) return;
+    if (!doc || !this.parser) return { signatureChanged: false, changedSymbols: [] };
     const result = parseWithPanicRecovery(this.parser, doc.text, this.recoveryOptions);
     doc.diagnostics = result.diagnostics;
     doc.ast = undefined;
     doc.references = undefined;
     doc.importedNames = undefined;
+    const prevSignatures = doc.signatures ?? new Map<string, string>();
+    let signatureChanged = false;
+    let changedSymbols: string[] = [];
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
       const payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
         doc.ast = payload;
-        const analysis = analyzeLumina(payload as never);
+        const nextSignatures = collectSignatures(payload as never);
+        changedSymbols = diffSignatureNames(prevSignatures, nextSignatures);
+        signatureChanged = changedSymbols.length > 0;
+        doc.signatures = nextSignatures;
+        doc.importedNames = collectImportNames(payload as never);
+        const analysis = analyzeLumina(payload as never, {
+          currentUri: normalized,
+          externSymbols: (name: string) => {
+            if (!doc.importedNames || !doc.importedNames.has(name)) return undefined;
+            return this.getExternalSymbol(name);
+          },
+          externalSymbols: this.getExternalSymbols(doc.importedNames ?? new Set<string>(), normalized),
+          importedNames: doc.importedNames,
+        });
         doc.symbols = analysis.symbols;
         doc.diagnostics.push(...analysis.diagnostics);
         doc.references = collectReferences(payload as never);
-        doc.importedNames = collectImportNames(payload as never);
       }
     }
     doc.diagnostics.push(...lintMissingSemicolons(doc.text));
+    return { signatureChanged, changedSymbols };
   }
 
   parseAll() {
@@ -150,9 +190,28 @@ export class ProjectContext {
     return this.documents.get(normalized)?.symbols;
   }
 
+  getDocumentAst(uri: string): unknown | undefined {
+    const normalized = this.toUri(this.toFsPath(uri));
+    return this.documents.get(normalized)?.ast;
+  }
+
   getDependents(uri: string): string[] {
     const normalized = this.toUri(this.toFsPath(uri));
     return this.graph.getDependents(normalized);
+  }
+
+  getDependentsForSymbols(uri: string, symbols: string[]): string[] {
+    const normalized = this.toUri(this.toFsPath(uri));
+    const dependents = this.graph.getDependents(normalized);
+    if (symbols.length === 0) return dependents;
+    return dependents.filter((dep) => {
+      const doc = this.documents.get(dep);
+      if (!doc || !doc.importedNames) return true;
+      for (const name of symbols) {
+        if (doc.importedNames.has(name)) return true;
+      }
+      return false;
+    });
   }
 
   listDocuments(): SourceDocument[] {
@@ -306,6 +365,29 @@ export class ProjectContext {
     return imp;
   }
 
+  private getExternalSymbol(name: string): import('../lumina/semantic.js').SymbolInfo | undefined {
+    for (const doc of this.documents.values()) {
+      const sym = doc.symbols?.get(name);
+      if (sym) return sym as import('../lumina/semantic.js').SymbolInfo;
+    }
+    return undefined;
+  }
+
+  private getExternalSymbols(names: Set<string>, currentUri: string): SymbolInfo[] {
+    const results: SymbolInfo[] = [];
+    for (const name of names) {
+      for (const doc of this.documents.values()) {
+        if (doc.uri === currentUri) continue;
+        const sym = doc.symbols?.get(name);
+        if (sym) {
+          results.push(sym as SymbolInfo);
+          break;
+        }
+      }
+    }
+    return results;
+  }
+
   private ensureExtension(resolved: string): string {
     if (path.extname(resolved)) return resolved;
     const candidates = ['.lum', '.lumina'].map((ext) => resolved + ext);
@@ -453,6 +535,82 @@ function collectImportNames(program: { type: string; body?: unknown[] }): Set<st
     }
   }
   return names;
+}
+
+function collectSignatures(program: { type: string; body?: unknown[] }): Map<string, string> {
+  const signatures = new Map<string, string>();
+  if (!program || !Array.isArray(program.body)) return signatures;
+  for (const stmt of program.body) {
+    const node = stmt as {
+      type?: string;
+      name?: string;
+      params?: Array<{ name: string; typeName: string }>;
+      returnType?: string | null;
+      visibility?: string;
+      extern?: boolean;
+      externModule?: string | null;
+      body?: Array<{ name: string; typeName: string }>;
+      typeParams?: Array<{ name: string; bound?: string[] }>;
+      variants?: Array<{ name: string; params?: string[] }>;
+    };
+    if (node.type === 'FnDecl' && node.name) {
+      const sig = JSON.stringify({
+        params: node.params?.map((p) => ({ name: p.name, type: p.typeName })) ?? [],
+        returnType: node.returnType ?? null,
+        visibility: node.visibility ?? 'private',
+        extern: node.extern ?? false,
+        externModule: node.externModule ?? null,
+        typeParams: node.typeParams ?? [],
+      });
+      signatures.set(`fn:${node.name}`, sig);
+    }
+    if (node.type === 'TypeDecl' && node.name) {
+      const sig = JSON.stringify({
+        fields: Array.isArray(node.body)
+          ? node.body.map((f) => ({ name: f.name, type: f.typeName }))
+          : [],
+        visibility: node.visibility ?? 'private',
+        extern: node.extern ?? false,
+        externModule: node.externModule ?? null,
+        typeParams: node.typeParams ?? [],
+      });
+      signatures.set(`type:${node.name}`, sig);
+    }
+    if (node.type === 'StructDecl' && node.name) {
+      const sig = JSON.stringify({
+        fields: Array.isArray(node.body)
+          ? node.body.map((f) => ({ name: f.name, type: f.typeName }))
+          : [],
+        visibility: node.visibility ?? 'private',
+        typeParams: node.typeParams ?? [],
+      });
+      signatures.set(`struct:${node.name}`, sig);
+    }
+    if (node.type === 'EnumDecl' && node.name) {
+      const sig = JSON.stringify({
+        variants: Array.isArray(node.variants)
+          ? node.variants.map((v) => ({ name: v.name, params: v.params ?? [] }))
+          : [],
+        visibility: node.visibility ?? 'private',
+        typeParams: node.typeParams ?? [],
+      });
+      signatures.set(`enum:${node.name}`, sig);
+    }
+  }
+  return signatures;
+}
+
+function diffSignatureNames(a: Map<string, string>, b: Map<string, string>): string[] {
+  const changed = new Set<string>();
+  const keys = new Set<string>([...a.keys(), ...b.keys()]);
+  for (const key of keys) {
+    if (a.get(key) !== b.get(key)) {
+      const idx = key.indexOf(':');
+      const name = idx >= 0 ? key.slice(idx + 1) : key;
+      changed.add(name);
+    }
+  }
+  return Array.from(changed);
 }
 
 function lintMissingSemicolons(source: string): Diagnostic[] {

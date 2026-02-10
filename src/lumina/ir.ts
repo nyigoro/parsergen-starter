@@ -5,7 +5,11 @@ export type IRNode =
   | IRReturn
   | IRExprStmt
   | IRBinary
+  | IRMember
+  | IRIndex
   | IRCall
+  | IREnumConstruct
+  | IRMatchExpr
   | IRIf
   | IRAssign
   | IRWhile
@@ -56,10 +60,42 @@ export interface IRBinary {
   location?: import('../utils/index.js').Location;
 }
 
+export interface IRMember {
+  kind: 'Member';
+  object: IRNode;
+  property: string;
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRIndex {
+  kind: 'Index';
+  target: IRNode;
+  index: number;
+  location?: import('../utils/index.js').Location;
+}
+
 export interface IRCall {
   kind: 'Call';
   callee: string;
   args: IRNode[];
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IREnumConstruct {
+  kind: 'Enum';
+  tag: string;
+  values: IRNode[];
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRMatchExpr {
+  kind: 'MatchExpr';
+  value: IRNode;
+  arms: Array<{
+    variant: string | null;
+    bindings: string[];
+    body: IRNode;
+  }>;
   location?: import('../utils/index.js').Location;
 }
 

@@ -107,6 +107,10 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
     case 'String':
     case 'Identifier':
     case 'Call':
+    case 'Member':
+    case 'Index':
+    case 'Enum':
+    case 'MatchExpr':
       out.push(
         `${pad}${emitExpr(node)};`,
         node.kind,
@@ -128,6 +132,35 @@ function emitExpr(node: IRNode): string {
       return `(${emitExpr(node.left)} ${node.op} ${emitExpr(node.right)})`;
     case 'Call':
       return `${node.callee}(${node.args.map(emitExpr).join(', ')})`;
+    case 'Member':
+      return `${emitExpr(node.object)}.${node.property}`;
+    case 'Index':
+      return `${emitExpr(node.target)}[${node.index}]`;
+    case 'Enum':
+      return `{ tag: ${JSON.stringify(node.tag)}, values: [${node.values.map(emitExpr).join(', ')}] }`;
+    case 'MatchExpr': {
+      const tempName = `__match_expr_${Math.random().toString(36).slice(2, 8)}`;
+      let body = `const ${tempName} = ${emitExpr(node.value)};\n`;
+      const emitBindings = (bindings: string[]) => {
+        return bindings
+          .map((name, idx) => `const ${name} = ${tempName}.values[${idx}];`)
+          .join('\n');
+      };
+      const arms = node.arms.map((arm) => {
+        if (arm.variant === null) {
+          const binds = arm.bindings.length > 0 ? emitBindings(arm.bindings) + '\n' : '';
+          return `{\n${binds}return ${emitExpr(arm.body)};\n}`;
+        }
+        const binds = arm.bindings.length > 0 ? emitBindings(arm.bindings) + '\n' : '';
+        return `if (${tempName}.tag === ${JSON.stringify(arm.variant)}) {\n${binds}return ${emitExpr(arm.body)};\n}`;
+      });
+      let chain = '';
+      for (let i = 0; i < arms.length; i++) {
+        if (i === 0) chain += arms[i];
+        else chain += ` else ${arms[i]}`;
+      }
+      return `(() => {\n${body}${chain}\n})()`;
+    }
     case 'Number':
       return String(node.value);
     case 'Boolean':

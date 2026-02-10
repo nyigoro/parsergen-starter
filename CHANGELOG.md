@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- **Breaking:** Removed the `parsergen` binary. Use `lumina grammar` for parser generator tooling.
+
 - Lumina language pipeline (lexer, parser, semantic checks, IR, codegen).
 - Multi-file project context with panic recovery and dependency graph.
 - Lumina LSP server (diagnostics, completion, symbols, rename, references, semantic tokens).

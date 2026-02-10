@@ -6,8 +6,6 @@ import {
   ProposedFeatures,
   InitializeParams,
   TextDocumentSyncKind,
-  CompletionItem,
-  CompletionItemKind,
   DiagnosticSeverity,
   DocumentSymbol,
   SymbolKind,
@@ -37,6 +35,7 @@ import { compileGrammar } from '../grammar/index.js';
 import { ProjectContext } from '../project/context.js';
 import { defaultSettings, type LuminaLspSettings } from './config.js';
 import { createLuminaLexer } from '../lumina/lexer.js';
+import { buildCompletionItems } from './completion.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -45,16 +44,8 @@ let workspaceRoot: string | null = null;
 let workspaceRoots: string[] = [];
 let settings: LuminaLspSettings = { ...defaultSettings };
 let project: ProjectContext | null = null;
-
-const keywordCompletions: CompletionItem[] = [
-  'import', 'from', 'type', 'fn', 'let', 'return', 'if', 'else', 'for', 'while',
-  'true', 'false',
-].map((label) => ({ label, kind: CompletionItemKind.Keyword }));
-
-const typeCompletions: CompletionItem[] = ['int', 'string', 'bool', 'void'].map((label) => ({
-  label,
-  kind: CompletionItemKind.TypeParameter,
-}));
+const diagnosticsDebounce = new Map<string, NodeJS.Timeout>();
+const debounceMs = 120;
 
 const semanticTokenTypes = [
   'keyword',
@@ -69,8 +60,8 @@ const semanticTokenTypes = [
 ] as const;
 
 const reservedKeywords = new Set([
-  'import', 'from', 'type', 'fn', 'let', 'return', 'if', 'else', 'for', 'while',
-  'true', 'false',
+  'import', 'from', 'type', 'struct', 'enum', 'fn', 'let', 'return', 'if', 'else', 'for', 'while',
+  'match', 'true', 'false', 'pub', 'extern',
 ]);
 const builtinTypes = new Set(['int', 'string', 'bool', 'void']);
 
@@ -165,13 +156,24 @@ function publishDiagnostics(uri: string) {
       start: { line: d.location.start.line - 1, character: d.location.start.column - 1 },
       end: { line: d.location.end.line - 1, character: d.location.end.column - 1 },
     },
+    relatedInformation: d.relatedInformation?.map((info) => ({
+      location: {
+        uri,
+        range: {
+          start: { line: info.location.start.line - 1, character: info.location.start.column - 1 },
+          end: { line: info.location.end.line - 1, character: info.location.end.column - 1 },
+        },
+      },
+      message: info.message,
+    })),
   }));
   connection.sendDiagnostics({ uri, diagnostics: lspDiagnostics });
 }
 
-function refreshDependents(uri: string) {
+function refreshDependents(uri: string, changedSymbols: string[] = []) {
   if (!project) return;
-  for (const dep of project.getDependents(uri)) {
+  const dependents = project.getDependentsForSymbols(uri, changedSymbols);
+  for (const dep of dependents) {
     project.parseDocument(dep);
     publishDiagnostics(dep);
   }
@@ -182,9 +184,11 @@ function refreshFromDisk(uri: string) {
   const fsPath = uriToFsPath(uri);
   if (!fs.existsSync(fsPath)) return;
   const text = fs.readFileSync(fsPath, 'utf-8');
-  project.addOrUpdateDocument(uri, text, 1);
+  const result = project.addOrUpdateDocument(uri, text, 1);
   publishDiagnostics(uri);
-  refreshDependents(uri);
+  if (result.signatureChanged) {
+    refreshDependents(uri, result.changedSymbols);
+  }
 }
 
 function scanWorkspace(root: string, extensions: string[], maxFiles: number): string[] {
@@ -283,16 +287,28 @@ connection.onDidChangeConfiguration((change) => {
   indexWorkspaceFiles();
 });
 
+function scheduleDiagnostics(uri: string, text: string, version: number) {
+  const existing = diagnosticsDebounce.get(uri);
+  if (existing) clearTimeout(existing);
+  diagnosticsDebounce.set(
+    uri,
+    setTimeout(() => {
+      diagnosticsDebounce.delete(uri);
+      const result = project?.addOrUpdateDocument(uri, text, version);
+      publishDiagnostics(uri);
+      if (result?.signatureChanged) {
+        refreshDependents(uri, result.changedSymbols);
+      }
+    }, debounceMs)
+  );
+}
+
 documents.onDidOpen((e) => {
-  project?.addOrUpdateDocument(e.document.uri, e.document.getText(), e.document.version);
-  publishDiagnostics(e.document.uri);
-  refreshDependents(e.document.uri);
+  scheduleDiagnostics(e.document.uri, e.document.getText(), e.document.version);
 });
 
 documents.onDidChangeContent((e) => {
-  project?.addOrUpdateDocument(e.document.uri, e.document.getText(), e.document.version);
-  publishDiagnostics(e.document.uri);
-  refreshDependents(e.document.uri);
+  scheduleDiagnostics(e.document.uri, e.document.getText(), e.document.version);
 });
 
 documents.onDidClose((e) => {
@@ -301,15 +317,14 @@ documents.onDidClose((e) => {
 });
 
 connection.onCompletion((params) => {
-  const items: CompletionItem[] = [...keywordCompletions, ...typeCompletions];
-  const symbols = project?.getSymbols(params.textDocument.uri)?.list() ?? [];
-  for (const sym of symbols) {
-    let kind: CompletionItemKind = CompletionItemKind.Variable;
-    if (sym.kind === 'function') kind = CompletionItemKind.Function;
-    if (sym.kind === 'type') kind = CompletionItemKind.Class;
-    items.push({ label: sym.name, kind });
-  }
-  return items;
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) return [];
+  return buildCompletionItems({
+    doc,
+    position: params.position,
+    symbols: project?.getSymbols(params.textDocument.uri),
+    ast: project?.getDocumentAst(params.textDocument.uri),
+  });
 });
 
 connection.onDefinition((params: DefinitionParams): Location[] => {
@@ -468,6 +483,24 @@ connection.onCodeAction((params): CodeAction[] => {
         diagnostics: [diag],
         edit,
       });
+      const suggestion = diag.relatedInformation?.find((info) => info.message.startsWith('Did you mean'));
+      if (suggestion) {
+        const match = /'([^']+)'/.exec(suggestion.message);
+        const replacement = match?.[1];
+        if (replacement) {
+          const replaceEdit: WorkspaceEdit = {
+            changes: {
+              [params.textDocument.uri]: [TextEdit.replace(diag.range, replacement)],
+            },
+          };
+          actions.push({
+            title: `Replace with '${replacement}'`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diag],
+            edit: replaceEdit,
+          });
+        }
+      }
       continue;
     }
 
@@ -487,6 +520,47 @@ connection.onCodeAction((params): CodeAction[] => {
         diagnostics: [diag],
         edit,
       });
+      const suggestion = diag.relatedInformation?.find((info) => info.message.startsWith('Did you mean'));
+      if (suggestion) {
+        const match = /'([^']+)'/.exec(suggestion.message);
+        const replacement = match?.[1];
+        if (replacement) {
+          const replaceEdit: WorkspaceEdit = {
+            changes: {
+              [params.textDocument.uri]: [TextEdit.replace(diag.range, replacement)],
+            },
+          };
+          actions.push({
+            title: `Replace with '${replacement}'`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diag],
+            edit: replaceEdit,
+          });
+        }
+      }
+      continue;
+    }
+
+    const unknownFuncMatch = /Unknown function '([^']+)'/.exec(diag.message);
+    if (unknownFuncMatch) {
+      const suggestion = diag.relatedInformation?.find((info) => info.message.startsWith('Did you mean'));
+      if (suggestion) {
+        const match = /'([^']+)'/.exec(suggestion.message);
+        const replacement = match?.[1];
+        if (replacement) {
+          const replaceEdit: WorkspaceEdit = {
+            changes: {
+              [params.textDocument.uri]: [TextEdit.replace(diag.range, replacement)],
+            },
+          };
+          actions.push({
+            title: `Replace with '${replacement}'`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diag],
+            edit: replaceEdit,
+          });
+        }
+      }
       continue;
     }
 

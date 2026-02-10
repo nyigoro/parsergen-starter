@@ -2,18 +2,23 @@ Start
   = _ statements:StatementList _ { return { type: "Program", body: statements, location: location() }; }
 
 StatementList
-  = head:Statement tail:(__ Statement)* { return [head].concat(tail.map(t => t[1])); }
+  = head:Statement tail:(_ Statement)* { return [head].concat(tail.map(t => t[1])); }
   / "" { return []; }
 
 Statement
   = Import
+  / StructDecl
+  / EnumDecl
   / TypeDecl
+  / ExternTypeDecl
   / FnDecl
+  / ExternFnDecl
   / LetStmt
   / AssignStmt
   / IfStmt
   / WhileStmt
   / ReturnStmt
+  / MatchStmt
   / ExprStmt
   / Block
 
@@ -30,8 +35,23 @@ ImportList
   = head:Identifier tail:(_ "," _ Identifier)* { return [head].concat(tail.map(t => t[3])); }
 
 TypeDecl
-  = "type" _ node:IdName _ "=" _ body:TypeBody _ ";"? {
-      return { type: "TypeDecl", name: node.name, body, location: node.location };
+  = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {
+      return { type: "TypeDecl", name: node.name, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location };
+    }
+
+StructDecl
+  = visibility:Visibility? _ "struct" _ node:IdName _ tparams:TypeParams? _ "{" _ fields:TypeFieldList? _ "}" _ ";"? {
+      return { type: "StructDecl", name: node.name, body: fields || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location };
+    }
+
+EnumDecl
+  = visibility:Visibility? _ "enum" _ node:IdName _ tparams:TypeParams? _ "{" _ variants:EnumVariantList? _ "}" _ ";"? {
+      return { type: "EnumDecl", name: node.name, variants: variants || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location };
+    }
+
+ExternTypeDecl
+  = visibility:Visibility? _ "extern" _ "type" _ node:IdName _ tparams:TypeParams? _ source:FromClause? _ ";"? {
+      return { type: "TypeDecl", name: node.name, body: [], typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location };
     }
 
 TypeBody
@@ -44,15 +64,47 @@ TypeField
   = node:IdName _ ":" _ typeName:TypeName { return { name: node.name, typeName, location: node.location }; }
 
 TypeName
-  = node:IdName { return node.name; }
+  = base:IdName _ args:TypeArgs? {
+      return args ? `${base.name}<${args.join(",")}>` : base.name;
+    }
 
 FnDecl
-  = "fn" _ node:IdName _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
-      return { type: "FnDecl", name: node.name, params: params || [], returnType: ret || null, body, location: node.location };
+  = visibility:Visibility? _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
+      return { type: "FnDecl", name: node.name, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location };
     }
+
+ExternFnDecl
+  = visibility:Visibility? _ "extern" _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ source:FromClause? _ ";"? {
+      return { type: "FnDecl", name: node.name, params: params || [], returnType: ret || "any", body: { type: "Block", body: [] }, typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location };
+    }
+
+FromClause
+  = _ "from" _ source:String { return source.value; }
 
 ReturnType
   = "->" _ type:TypeName { return type; }
+
+TypeArgs
+  = "<" _ head:TypeName tail:(_ "," _ TypeName)* _ ">" { return [head].concat(tail.map(t => t[3])); }
+
+TypeParams
+  = "<" _ head:TypeParam tail:(_ "," _ TypeParam)* _ ">" { return [head].concat(tail.map(t => t[3])); }
+
+TypeParam
+  = name:IdName _ ":" _ bound:TypeBounds { return { name: name.name, bound }; }
+  / name:IdName { return { name: name.name }; }
+
+TypeBounds
+  = head:TypeName tail:(_ "&" _ TypeName)* { return [head].concat(tail.map(t => t[3])); }
+
+EnumVariantList
+  = head:EnumVariant tail:(_ "," _ EnumVariant)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+EnumVariant
+  = node:IdName _ params:EnumVariantParams? { return { name: node.name, params: params || [], location: node.location }; }
+
+EnumVariantParams
+  = "(" _ head:TypeName tail:(_ "," _ TypeName)* _ ")" { return [head].concat(tail.map(t => t[3])); }
 
 ParamList
   = head:Param tail:(_ "," _ Param)* { return [head].concat(tail.map(t => t[3])); }
@@ -70,6 +122,11 @@ LetStmt
 
 ReturnStmt
   = "return" _ value:Expr _ ";"? { return { type: "Return", value, location: location() }; }
+
+MatchStmt
+  = "match" _ value:Expr _ "{" _ arms:MatchArmList? _ "}" {
+      return { type: "MatchStmt", value, arms: arms || [], location: location() };
+    }
 
 WhileStmt
   = "while" _ "(" _ condition:Expr _ ")" _ body:Block {
@@ -123,7 +180,9 @@ Mul
     }
 
 Primary
-  = Call
+  = MatchExpr
+  / Call
+  / Member
   / Number
   / String
   / Boolean
@@ -137,7 +196,18 @@ Identifier
   = node:IdName { return { type: "Identifier", name: node.name, location: node.location }; }
 
 Number
-  = digits:$([0-9]+) { return { type: "Number", value: parseInt(digits, 10), location: location() }; }
+  = "0x" digits:$([0-9a-fA-F] [0-9a-fA-F_]*) {
+      const cleaned = digits.replace(/_/g, "");
+      return { type: "Number", value: parseInt(cleaned, 16), location: location() };
+    }
+  / "0b" digits:$([01] [01_]*) {
+      const cleaned = digits.replace(/_/g, "");
+      return { type: "Number", value: parseInt(cleaned, 2), location: location() };
+    }
+  / digits:$([0-9] [0-9_]*) {
+      const cleaned = digits.replace(/_/g, "");
+      return { type: "Number", value: parseInt(cleaned, 10), location: location() };
+    }
 
 Boolean
   = "true" { return { type: "Boolean", value: true, location: location() }; }
@@ -154,8 +224,46 @@ _ = (WS / Comment)*
 __ = (WS / Comment)+
 WS = [ \t\r\n]+
 Comment = "//" [^\n]* "\n"?
+  / "/*" (!"*/" .)* "*/"
+
+MatchArmList
+  = head:MatchArm tail:(_ "," _ MatchArm)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+MatchArm
+  = pattern:MatchPattern _ "=>" _ body:Block { return { pattern, body, location: location() }; }
+
+MatchPattern
+  = "_" { return { type: "WildcardPattern", location: location() }; }
+  / node:IdName _ binds:MatchBindingList? { return { type: "EnumPattern", variant: node.name, bindings: binds || [], location: node.location }; }
+
+MatchBindingList
+  = "(" _ head:MatchBinding tail:(_ "," _ MatchBinding)* _ ")" { return [head].concat(tail.map(t => t[3])); }
+
+MatchBinding
+  = name:IdName { return name.name; }
+  / "_" { return "_"; }
+
+MatchExpr
+  = "match" _ value:Expr _ "{" _ arms:MatchExprArmList? _ "}" {
+      return { type: "MatchExpr", value, arms: arms || [], location: location() };
+    }
+
+MatchExprArmList
+  = head:MatchExprArm tail:(_ "," _ MatchExprArm)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+MatchExprArm
+  = pattern:MatchPattern _ "=>" _ body:Expr { return { pattern, body, location: location() }; }
+
+Member
+  = base:Identifier tail:(_ "." _ IdName)+ {
+      return tail.reduce((acc, t) => ({ type: "Member", object: acc, property: t[3].name, location: location() }), base);
+    }
 Call
-  = callee:Identifier _ "(" _ args:ArgList? _ ")" { return { type: "Call", callee, args: args || [], location: location() }; }
+  = callee:IdName _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" {
+      return { type: "Call", callee: { type: "Identifier", name: callee.name, location: callee.location }, args: args || [], typeArgs: targs || [], location: location() };
+    }
 
 ArgList
   = head:Expr tail:(_ "," _ Expr)* { return [head].concat(tail.map(t => t[3])); }
+Visibility
+  = "pub" { return "public"; }

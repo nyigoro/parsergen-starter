@@ -5,6 +5,7 @@ import { type LuminaToken } from '../lumina/lexer.js';
 
 export interface PanicRecoveryOptions {
   syncTokenTypes?: string[];
+  syncKeywordValues?: string[];
   maxErrors?: number;
   lexer?: (input: string) => Iterable<LuminaToken>;
 }
@@ -29,9 +30,18 @@ function replaceRangePreserveNewlines(input: string, start: number, end: number)
   return input.slice(0, start) + replacement + input.slice(end);
 }
 
-function findSyncOffsetWithLexer(tokens: Iterable<LuminaToken>, startOffset: number, syncTypes: string[]): number | null {
+function findSyncOffsetWithLexer(
+  tokens: Iterable<LuminaToken>,
+  startOffset: number,
+  syncTypes: string[],
+  syncKeywordValues: string[]
+): number | null {
   for (const token of tokens) {
-    if (token.offset >= startOffset && syncTypes.includes(token.type)) {
+    if (token.offset < startOffset) continue;
+    if (syncTypes.includes(token.type)) {
+      return token.offset + token.value.length;
+    }
+    if (token.type === 'keyword' && syncKeywordValues.includes(token.value)) {
       return token.offset + token.value.length;
     }
   }
@@ -55,6 +65,7 @@ export function parseWithPanicRecovery<T = unknown>(
   const diagnostics: Diagnostic[] = [];
   const maxErrors = options.maxErrors ?? 25;
   const syncTokenTypes = options.syncTokenTypes ?? ['semicolon', 'rbrace'];
+  const syncKeywordValues = options.syncKeywordValues ?? [];
   const syncChars = [';', '}'];
   let working = input;
 
@@ -65,7 +76,7 @@ export function parseWithPanicRecovery<T = unknown>(
       const offset = result.location?.start.offset ?? 0;
       let nextOffset: number | null = null;
       if (options.lexer) {
-        nextOffset = findSyncOffsetWithLexer(options.lexer(working), offset, syncTokenTypes);
+        nextOffset = findSyncOffsetWithLexer(options.lexer(working), offset, syncTokenTypes, syncKeywordValues);
       }
       if (nextOffset === null) {
         nextOffset = findSyncOffsetByScan(working, offset, syncChars);

@@ -1,0 +1,3 @@
+extern fn abs(value: int) -> int from "math";
+extern fn max(a: int, b: int) -> int from "math";
+extern fn min(a: int, b: int) -> int from "math";

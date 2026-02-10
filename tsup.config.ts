@@ -4,7 +4,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm', 'cjs'],      // Output formats
-  dts: true,                   // Emit .d.ts type declarations
+  dts: false,                  // Emit .d.ts type declarations (handled by build:dts)
   sourcemap: true,
   clean: true,                 // Clean output dir before build
   minify: false,

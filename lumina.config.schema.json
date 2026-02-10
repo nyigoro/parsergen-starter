@@ -30,6 +30,21 @@
         { "type": "array", "items": { "type": "string" } }
       ],
       "description": "Default files to watch."
+    },
+    "fileExtensions": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "File extensions to discover when entries/watch are empty."
+    },
+    "stdPath": {
+      "type": "string",
+      "description": "Path to the Lumina standard library root."
+    },
+    "cacheDir": {
+      "type": "string",
+      "description": "Directory for persistent build cache."
     }
   }
 }

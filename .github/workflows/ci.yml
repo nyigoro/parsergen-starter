@@ -25,5 +25,7 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Verify Build Outputs
+        run: npm run build:verify
       - name: Package Check
         run: npm run pack:check

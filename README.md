@@ -17,6 +17,9 @@ A modern TypeScript starter for building parsers, REPLs, and language tooling. I
 - Project context for multi-file parsing + panic mode recovery
 - Lumina LSP server with diagnostics, completion, symbols, rename, references, semantic tokens
 - CLI tools for parsing and Lumina workflows
+  - Structs/enums with match + member access
+  - Hex/binary/underscored numeric literals
+  - IR visualization via `--debug-ir`
 
 ## 📦 Installation
 
@@ -26,43 +29,9 @@ npm install -g parsergen-starter
 pnpm add -D parsergen-starter
 ```
 
-## ✅ Library Usage
+## 🚀 Getting Started (Lumina)
 
-```ts
-import { compileGrammar, parseInput } from 'parsergen-starter';
-
-const grammar = `
-Start = "hello" _ "world" { return { type: "Greeting", value: "hello world" }; }
-_ = [ \\t]+
-`;
-
-const parser = compileGrammar(grammar);
-const result = parseInput(parser, 'hello world');
-console.log(result);
-```
-
-## 🌊 Streaming Parse
-
-`parseStream` processes a `ReadableStream<string | Uint8Array>` and yields results per record.
-
-Options:
-- `streamDelimiter` (string): record delimiter (default `\n`)
-- `streamEncoding` (string): text encoding (default `utf-8`)
-- `streamMaxRecordBytes` (number): max bytes per record
-- `streamSkipEmpty` (boolean): skip empty records (default `true`)
-- `streamTrim` (boolean): trim records before parsing (default `false`)
-- `streamTimeoutMs` (number): timeout for entire stream
-- `streamAbortSignal` (AbortSignal): external cancellation
-- `streamFilter` (function): filter records before parsing
-
-```ts
-import { parseStream } from 'parsergen-starter';
-
-const options = { streamDelimiter: '\n\n', streamEncoding: 'utf-8' };
-for await (const result of parseStream(parser, stream, options)) {
-  console.log(result);
-}
-```
+Lumina is a full toolchain: multi-file parsing, semantic checks, IR optimization, and codegen.
 
 ## 🧪 Tests
 
@@ -72,17 +41,9 @@ npm test
 
 ## 🧰 CLI
 
-The package installs three binaries:
-- `parsergen` for generic parsing utilities
-- `lumina` for the Lumina toolchain
+The package installs two binaries:
+- `lumina` for the Lumina toolchain (including grammar tooling)
 - `lumina-lsp` for editor integration
-
-### `parsergen`
-
-```bash
-parsergen --init
-parsergen --lumina-build src/main.lm --lumina-out dist/main.js --lumina-target cjs
-```
 
 ### `lumina`
 
@@ -90,11 +51,19 @@ parsergen --lumina-build src/main.lm --lumina-out dist/main.js --lumina-target c
 lumina repl
 lumina compile examples/hello.lm --out dist/hello.js --target esm
 lumina compile examples/hello.lm --sourcemap
+lumina compile examples/hello.lm --debug-ir
+lumina compile examples/hello.lm --profile-cache
 lumina check examples/hello.lm
 lumina watch examples
 lumina compile examples/hello.lm --dry-run
 lumina compile --list-config
 lumina watch "examples/**/*.lm"
+lumina init
+lumina grammar mylang.peg --test "hello world"
+
+Parser generator tooling now lives under `lumina grammar`.
+
+`--profile-cache` also prints dependency graph stats.
 ```
 
 ### `lumina.config.json`
@@ -107,7 +76,9 @@ You can configure defaults for the Lumina CLI:
   "outDir": "dist",
   "target": "esm",
   "entries": ["examples/hello.lm"],
-  "watch": ["examples/hello.lm"]
+  "watch": ["examples/hello.lm"],
+  "fileExtensions": [".lm", ".lumina"],
+  "cacheDir": ".lumina-cache"
 }
 ```
 
@@ -143,10 +114,6 @@ If built locally:
 node dist/bin/lumina-lsp.js
 ```
 
-### Packaging Notes
-
-This package publishes only the `dist/` output and core docs via the `files` whitelist in `package.json`.
-
 ### LSP Settings
 
 - `lumina.grammarPath`: path to the grammar (default `src/grammar/lumina.peg`)
@@ -155,6 +122,7 @@ This package publishes only the `dist/` output and core docs via the `files` whi
 - `lumina.maxIndexFiles`: max files indexed per workspace (default `2000`)
 - `lumina.renameConflictMode`: conflict checks (`"all"` or `"exports"`, default `"all"`)
 - `lumina.renamePreviewMode`: rename preview output (`"popup"`, `"log"`, `"off"`, default `"popup"`)
+- Go-to-Definition, Find References, Rename, and Semantic Tokens
 
 Example (VS Code settings):
 
@@ -165,49 +133,46 @@ Example (VS Code settings):
 }
 ```
 
-## 🚀 Lumina In 3 Minutes
+## 🧭 Lumina By Example
 
-1. Create a file `examples/hello.lm`:
+Create two files:
 
-```lumina
-fn main() {
-  let x: int = 5 + 2;
-  return x;
-}
-```
-
-2. Compile it:
-
-```bash
-lumina compile examples/hello.lm --out dist/hello.js --target esm
-```
-
-3. Run the output:
-
-```bash
-node dist/hello.js
-```
-
-## 📦 Imports and Types Example
-
-Create `examples/types.lm`:
+`examples/types.lm`:
 
 ```lumina
 import { io } from "@std";
 
-type User = { id: int, name: string };
+struct User { id: int, name: string }
+enum Result { Ok(int), Err(string) }
 
 fn main() {
-  let name: string = "Ada";
-  return name;
+  let user: User = match Ok(1) {
+    Ok(value) => User,
+    Err(msg) => User,
+  };
+  return user.id;
 }
 ```
 
-Compile:
+`examples/main.lm`:
+
+```lumina
+import { main } from "./types.lm";
+
+fn entry() {
+  return main();
+}
+```
+
+Compile the project:
 
 ```bash
-lumina compile examples/types.lm --out dist/types.js --target esm
+lumina compile examples/main.lm --out dist/main.js --target esm
 ```
+
+### Dependency Graph + Resilient Parsing
+
+Lumina maintains a dependency graph for multi-file projects and uses panic-mode recovery so a single syntax error does not stop the entire analysis pass.
 
 ## 🧪 REPL With Custom Grammar
 
@@ -225,13 +190,6 @@ Inside the REPL:
 fn main() { return 1; }
 .end
 ```
-
-## 🛟 Troubleshooting
-
-- **`jest` not found**: run `npm install` to ensure dev dependencies are installed.
-- **LSP not starting**: verify `lumina-lsp` is on PATH or run `npx lumina-lsp`.
-- **No diagnostics**: ensure your workspace contains `.lum`/`.lumina` files and that `lumina.fileExtensions` matches.
-- **Grammar not found**: set `lumina.grammarPath` or place the grammar at `src/grammar/lumina.peg`.
 
 ## 🤝 Contributing / Development
 
