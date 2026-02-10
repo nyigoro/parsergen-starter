@@ -1,6 +1,6 @@
 {
   "name": "parsergen-starter",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "description": "A complete parser generator starter with PEG.js, optional Moo lexer, and VS Code integration",
   "main": "dist/index.js",
