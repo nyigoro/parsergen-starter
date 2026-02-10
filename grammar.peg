@@ -1,0 +1,3 @@
+// My PEG Grammar
+start = "Hello" _ "World" { return { type: "Greeting", value: "Hello World" }; }
+_ = [ \t]+

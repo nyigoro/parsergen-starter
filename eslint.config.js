@@ -166,6 +166,10 @@ export default [
       '.DS_Store',
       'Thumbs.db',
       'src/grammar/calculator.js',
+      'codegen.js',
+      'transform.js',
+      'grammar.peg',
+      '.parsergenrc',
     ],
   },
 ];

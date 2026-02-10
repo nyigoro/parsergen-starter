@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef, FC } from 'react';
 import { createRoot } from 'react-dom/client';
+import CodeMirror from '@uiw/react-codemirror';
+import { javascript } from '@codemirror/lang-javascript';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { StreamLanguage } from '@codemirror/language';
 import { ChevronDown, ChevronRight, Play, Download, Upload, Info, Code, Zap, FileText, TreePine, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import { compileGrammar, parseInput, formatError, ParseError, ParseResult } from '../src/index';
 
@@ -36,6 +40,19 @@ const presets = [
   { name: 'JSON Parser', grammar: 'Object\n  = "{" pairs:Pair* "}" { return Object.fromEntries(pairs); }\n\nPair\n  = key:String ":" value:Value { return [key, value]; }' },
   { name: 'Simple Language', grammar: 'Program\n  = Statement*\n\nStatement\n  = Assignment / Expression' },
 ];
+
+const pegLanguage = StreamLanguage.define({
+  token(stream) {
+    if (stream.match(/\/\/.*/)) return 'comment';
+    if (stream.match(/"(?:\\.|[^"])*"/)) return 'string';
+    if (stream.match(/'(?:\\.|[^'])*'/)) return 'string';
+    if (stream.match(/\[[^\]]*\]/)) return 'string';
+    if (stream.match(/[_a-zA-Z][_a-zA-Z0-9]*/)) return 'variableName';
+    if (stream.match(/[:=(){}/*+?]|\/+/)) return 'operator';
+    stream.next();
+    return null;
+  }
+});
 
 interface TreeNode {
   name: string;
@@ -156,6 +173,31 @@ interface SessionData {
   timestamp?: string;
 }
 
+const PerformanceSparkline: FC<{ data: number[] }> = ({ data }) => {
+  if (data.length < 2) return <div className="text-xs text-gray-400">No history</div>;
+  const width = 120;
+  const height = 24;
+  const max = Math.max(...data, 1);
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * width;
+      const y = height - (v / max) * height;
+      return `${x},${y}`;
+    })
+    .join(' ');
+
+  return (
+    <svg width={width} height={height} className="block">
+      <polyline
+        fill="none"
+        stroke="#60A5FA"
+        strokeWidth="2"
+        points={points}
+      />
+    </svg>
+  );
+};
+
 function App() {
   const [code, setCode] = useState('3 + 4 * (2 - 1)');
   const [grammar, setGrammar] = useState(defaultGrammar);
@@ -164,15 +206,18 @@ function App() {
   const [activeTab, setActiveTab] = useState('output');
   const [sidebarTab, setSidebarTab] = useState('examples');
   const [parseStatus, setParseStatus] = useState('idle');
+  const [grammarError, setGrammarError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<{ node: TreeNode; path: string } | null>(null);
   const [autoparse, setAutoparse] = useState(false);
   const [showGrammar, setShowGrammar] = useState(false);
   const [performance, setPerformance] = useState<ParsePerformance | null>(null);
+  const [parseHistory, setParseHistory] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleParse = () => {
     const startTime = window.performance.now();
     setParseStatus('parsing');
+    setGrammarError(null);
     
     try {
       const parser = compileGrammar(grammar);
@@ -185,22 +230,29 @@ function App() {
         const tree = transformToTree(result.result);
         setAst(tree);
         setParseStatus('success');
-        setPerformance({ time: endTime - startTime, nodes: countNodes(result.result) });
+        const elapsed = endTime - startTime;
+        setPerformance({ time: elapsed, nodes: countNodes(result.result) });
+        setParseHistory(prev => [...prev, elapsed].slice(-30));
       } else {
         setOutput(formatError(result));
         setAst(null);
         setParseStatus('error');
-        setPerformance({ time: endTime - startTime, nodes: 0 });
+        const elapsed = endTime - startTime;
+        setPerformance({ time: elapsed, nodes: 0 });
+        setParseHistory(prev => [...prev, elapsed].slice(-30));
       }
     } catch (error) {
       if (error instanceof Error) {
         setOutput(`Error: ${error.message}`);
+        setGrammarError(error.message);
       } else {
         setOutput('Unknown error occurred');
       }
       setAst(null);
       setParseStatus('error');
-      setPerformance({ time: window.performance.now() - startTime, nodes: 0 });
+      const elapsed = window.performance.now() - startTime;
+      setPerformance({ time: elapsed, nodes: 0 });
+      setParseHistory(prev => [...prev, elapsed].slice(-30));
     }
   };
 
@@ -366,6 +418,11 @@ function App() {
                 </span>
               )}
             </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">History</span>
+              <PerformanceSparkline data={parseHistory} />
+            </div>
           </div>
           
           <button 
@@ -380,12 +437,20 @@ function App() {
         {/* Grammar Editor */}
         {showGrammar && (
           <div className="bg-gray-800 border-b border-gray-700 p-4">
-            <textarea
+            <CodeMirror
               value={grammar}
-              onChange={(e) => setGrammar(e.target.value)}
-              className="w-full h-32 bg-gray-700 text-white p-3 rounded font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your PEG grammar here..."
+              height="8rem"
+              theme={oneDark}
+              extensions={[pegLanguage]}
+              onChange={(value) => setGrammar(value)}
+              basicSetup={{ lineNumbers: true, foldGutter: false }}
+              className="rounded overflow-hidden"
             />
+            {grammarError && (
+              <div className="mt-3 text-sm text-red-300 bg-red-900/30 border border-red-700 rounded p-2">
+                Grammar error: {grammarError}
+              </div>
+            )}
           </div>
         )}
 
@@ -394,13 +459,15 @@ function App() {
           <div className="flex-1 flex flex-col">
             {/* Input */}
             <div className="bg-gray-800 p-4">
-              <textarea
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                rows={6}
-                className="w-full bg-gray-700 text-white p-3 rounded font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter code to parse..."
-              />
+            <CodeMirror
+              value={code}
+              height="10rem"
+              theme={oneDark}
+              extensions={[javascript()]}
+              onChange={(value) => setCode(value)}
+              basicSetup={{ lineNumbers: true, foldGutter: false }}
+              className="rounded overflow-hidden"
+            />
             </div>
 
             {/* Output Tabs */}

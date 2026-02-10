@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { watchFile } from 'node:fs';
 import { argv } from 'node:process';
 import { resolve } from 'node:path';
+import { Readable } from 'node:stream';
 
 import {
   compileGrammarFromFile,
@@ -12,7 +13,8 @@ import {
   CompiledGrammar,
 } from '../grammar/index.js';
 
-import { parseInput, ParserUtils } from '../parser/index.js';
+import { parseInput, parseStream, ParserUtils } from '../parser/index.js';
+import { runREPLWithParser } from '../repl.js';
 import { formatError, formatCompilationError } from '../utils/index.js';
 
 // Define the valid format types with const assertion for type safety
@@ -66,6 +68,9 @@ interface CLIConfig {
   version: boolean;
   transformScript?: string; // New: Path to AST transformation script
   codegenScript?: string;   // New: Path to code generation script
+  delimiter?: string;
+  encoding?: string;
+  stdin: boolean;
 }
 
 function printHelp() {
@@ -95,6 +100,9 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.green}--verbose, -v${colors.reset}           Enable verbose output
   ${colors.green}--interactive, -i${colors.reset}       Interactive mode for testing
   ${colors.green}--benchmark${colors.reset}             Benchmark parsing performance
+  ${colors.green}--stdin${colors.reset}                 Read input records from stdin
+  ${colors.green}--delimiter <str>${colors.reset}       Record delimiter for stdin (default: \\n)
+  ${colors.green}--encoding <enc>${colors.reset}        Text encoding for stdin (default: utf-8)
   ${colors.green}--no-color${colors.reset}              Disable colored output
   ${colors.green}--help, -h${colors.reset}              Show this help
 
@@ -130,6 +138,7 @@ function parseArgs(args: string[]): CLIConfig {
     help: false,
     initProject: false,
     version: false,
+    stdin: false,
   };
 
   // Check for commands that don't require a grammar file first
@@ -192,6 +201,21 @@ function parseArgs(args: string[]): CLIConfig {
           config.codegenScript = nextArg;
           i++;
         }
+        break;
+      case '--delimiter':
+        if (nextArg) {
+          config.delimiter = nextArg;
+          i++;
+        }
+        break;
+      case '--encoding':
+        if (nextArg) {
+          config.encoding = nextArg;
+          i++;
+        }
+        break;
+      case '--stdin':
+        config.stdin = true;
         break;
       case '--validate':
         config.validate = true;
@@ -266,68 +290,6 @@ ${colors.bold}BENCHMARK RESULTS:${colors.reset}
   Failed parses: ${colors.red}${errorCount}${colors.reset}
   Throughput: ${((iterations / totalTime) * 1000).toFixed(2)} parses/second
 `);
-}
-
-// Use the directly imported CompiledGrammar type
-async function interactiveMode(parser: CompiledGrammar<unknown>, verbose: boolean) {
-  log.info('Entering interactive mode. Type "exit" to quit, "help" for commands.');
-
-  const readline = await import('node:readline');
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  const askQuestion = (prompt: string): Promise<string> => {
-    return new Promise((resolve) => {
-      rl.question(prompt, resolve);
-    });
-  };
-
-  while (true) {
-    try {
-      const input = await askQuestion(`${colors.cyan}parser>${colors.reset} `);
-
-      if (input.toLowerCase() === 'exit') {
-        break;
-      }
-
-      if (input.toLowerCase() === 'help') {
-        console.log(`
-Interactive Commands:
-  exit          - Exit interactive mode
-  help          - Show this help
-  benchmark <n> - Run benchmark with n iterations
-  ast on/off    - Toggle AST output
-  <input>       - Parse the input string
-`);
-        continue;
-      }
-
-      if (input.startsWith('benchmark ')) {
-        const iterations = parseInt(input.split(' ')[1]) || 1000;
-        await benchmarkParsing(parser, 'test', iterations);
-        continue;
-      }
-
-      // Use the directly imported parseInput and ParserUtils
-      const result = parseInput(parser, input);
-
-      if (!ParserUtils.isParseError(result)) {
-        log.success('Parse successful');
-        if (verbose) {
-          console.log(JSON.stringify(result.result, null, 2));
-        }
-      } else {
-        log.error('Parse failed');
-        console.error(formatError(result));
-      }
-    } catch {
-      log.error(`Unexpected error occurred`);
-    }
-  }
-
-  rl.close();
 }
 
 async function compileAndWrite(grammarPath: string, outFile: string, format: OutputFormat, verbose: boolean = false) {
@@ -581,11 +543,70 @@ async function main() {
 
     // Interactive mode
     if (config.interactive) {
-      await interactiveMode(parser, config.ast || config.verbose);
+      runREPLWithParser(parser, grammarText);
       return;
     }
 
     // Test parsing
+    if (config.stdin) {
+      const webStream = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
+      let recordIndex = 0;
+      for await (const result of parseStream(parser, webStream, {
+        streamDelimiter: config.delimiter ?? '\n',
+        streamEncoding: config.encoding ?? 'utf-8',
+      })) {
+        recordIndex++;
+        if (!ParserUtils.isParseError(result)) {
+          log.success(`Record ${recordIndex} parsed`);
+          let ast = result.result;
+
+          if (config.transformScript) {
+            try {
+              const transformPath = resolve(process.cwd(), config.transformScript);
+              log.info(`Loading AST transformation script: ${transformPath}`);
+              const { default: transformFn } = await import(transformPath);
+              if (typeof transformFn === 'function') {
+                ast = transformFn(ast);
+                log.success('AST transformed.');
+              } else {
+                log.warn(`Transformation script '${config.transformScript}' does not export a default function.`);
+              }
+            } catch (transformErr) {
+              log.error(`Failed to apply AST transformation: ${transformErr instanceof Error ? transformErr.message : String(transformErr)}`);
+              process.exit(1);
+            }
+          }
+
+          if (config.ast) {
+            log.info('Parsed AST (after transformation if applied):');
+            console.log(JSON.stringify(ast, null, 2));
+          }
+
+          if (config.codegenScript) {
+            try {
+              const codegenPath = resolve(process.cwd(), config.codegenScript);
+              log.info(`Loading code generation script: ${codegenPath}`);
+              const { default: codegenFn } = await import(codegenPath);
+              if (typeof codegenFn === 'function') {
+                const generatedCode = codegenFn(ast);
+                log.success('Code generated.');
+                console.log(`${colors.bold}GENERATED CODE:${colors.reset}\n${generatedCode}`);
+              } else {
+                log.warn(`Code generation script '${config.codegenScript}' does not export a default function.`);
+              }
+            } catch (codegenErr) {
+              log.error(`Failed to generate code: ${codegenErr instanceof Error ? codegenErr.message : String(codegenErr)}`);
+              process.exit(1);
+            }
+          }
+        } else {
+          log.error(`Record ${recordIndex} parse failed`);
+          console.error(formatError(result));
+        }
+      }
+      return;
+    }
+
     if (config.testInput) {
       if (config.benchmark) {
         await benchmarkParsing(parser, config.testInput);

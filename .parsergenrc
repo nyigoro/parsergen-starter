@@ -1,0 +1,8 @@
+{
+  "grammarFile": "grammar.peg",
+  "outputFile": "parser.js",
+  "format": "es",
+  "verbose": true,
+  "transformScript": "transform.js",
+  "codegenScript": "codegen.js"
+}

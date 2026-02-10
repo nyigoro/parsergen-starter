@@ -14,6 +14,14 @@ export interface ParserOptions {
   enableDiagnostics?: boolean;
   enableOptimization?: boolean;
   peg$library?: boolean; // This is a common PEG.js option
+  streamDelimiter?: string; // parseStream delimiter (default: "\n")
+  streamEncoding?: string; // parseStream text encoding (default: "utf-8")
+  streamMaxRecordBytes?: number; // parseStream max bytes per record
+  streamSkipEmpty?: boolean; // parseStream skip empty records (default: true)
+  streamTrim?: boolean; // parseStream trim records (default: false)
+  streamTimeoutMs?: number; // parseStream timeout for entire stream
+  streamAbortSignal?: AbortSignal; // parseStream abort signal
+  streamFilter?: (record: string) => boolean; // parseStream record filter
   [key: string]: unknown; // Allow other arbitrary options
 }
 
@@ -1038,7 +1046,7 @@ export function parseWithAdvancedRecovery<T = ASTNode>( // Default T to ASTNode
 
             const result: T = grammar.parse(recoveredInput, _options) as T; // Explicitly cast to T
             return { result, errors, recoveryStrategy: 'insertMissing' };
-          } catch (_recoveryError: unknown) { // _recoveryError marked as unused
+          } catch { // intentionally ignored
             // Continue to next token
           }
         }
@@ -1149,11 +1157,126 @@ export function parseMultiple<T = ASTNode>( // Default T to ASTNode
 
 export function parseStream<T = ASTNode>( // Default T to ASTNode
   grammar: CompiledGrammar,
-  stream: ReadableStream<string>,
-  options: ParserOptions = {}
+  stream: ReadableStream<string | Uint8Array>,
+  _options: ParserOptions = {}
 ): AsyncGenerator<ParseResult<T> | ParseError> {
-  // This would need to be implemented based on your streaming requirements
-  throw new Error('parseStream not implemented - requires actual stream processing logic');
+  const delimiter = typeof _options.streamDelimiter === 'string' ? _options.streamDelimiter : '\n';
+  const encoding = typeof _options.streamEncoding === 'string' ? _options.streamEncoding : 'utf-8';
+  const maxRecordBytes = typeof _options.streamMaxRecordBytes === 'number' ? _options.streamMaxRecordBytes : undefined;
+  const skipEmpty = _options.streamSkipEmpty !== false;
+  const shouldTrim = _options.streamTrim === true;
+  const streamFilter = typeof _options.streamFilter === 'function' ? _options.streamFilter : undefined;
+  const timeoutMs = typeof _options.streamTimeoutMs === 'number' ? _options.streamTimeoutMs : undefined;
+  const abortSignal = _options.streamAbortSignal;
+  const decoder = new TextDecoder(encoding);
+  const encoder = new TextEncoder();
+  const delimiterBytes = encoder.encode(delimiter);
+  const deadline = typeof timeoutMs === 'number' ? Date.now() + timeoutMs : undefined;
+
+  const parseChunk = (chunk: string): Array<ParseResult<T> | ParseError> => {
+    const results: Array<ParseResult<T> | ParseError> = [];
+    const trimmed = chunk.trim();
+    if (skipEmpty && trimmed.length === 0) {
+      return results;
+    }
+    const record = shouldTrim ? trimmed : chunk;
+    if (streamFilter && !streamFilter(record)) {
+      return results;
+    }
+    results.push(parseInput<T>(grammar, record, _options));
+    return results;
+  };
+
+  const indexOfBytes = (buffer: Uint8Array, needle: Uint8Array): number => {
+    if (needle.length === 0) return 0;
+    if (needle.length > buffer.length) return -1;
+    for (let i = 0; i <= buffer.length - needle.length; i++) {
+      let matched = true;
+      for (let j = 0; j < needle.length; j++) {
+        if (buffer[i + j] !== needle[j]) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) return i;
+    }
+    return -1;
+  };
+
+  const concatBytes = (a: Uint8Array, b: Uint8Array): Uint8Array => {
+    if (a.length === 0) return b;
+    if (b.length === 0) return a;
+    const out = new Uint8Array(a.length + b.length);
+    out.set(a, 0);
+    out.set(b, a.length);
+    return out;
+  };
+
+  const ensureNotAborted = () => {
+    if (abortSignal?.aborted) {
+      const reason = abortSignal.reason instanceof Error ? abortSignal.reason : new Error('Stream aborted');
+      throw reason;
+    }
+  };
+
+  const ensureNotTimedOut = () => {
+    if (deadline && Date.now() > deadline) {
+      throw new Error(`Stream parse timeout after ${timeoutMs}ms`);
+    }
+  };
+
+  return (async function* () {
+    const reader = stream.getReader();
+    let buffer = new Uint8Array(0);
+
+    try {
+      while (true) {
+        ensureNotAborted();
+        ensureNotTimedOut();
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunkBytes =
+          typeof value === 'string'
+            ? encoder.encode(value)
+            : value instanceof Uint8Array
+              ? value
+              : encoder.encode(String(value));
+
+        buffer = concatBytes(buffer, chunkBytes);
+        if (maxRecordBytes && buffer.length > maxRecordBytes) {
+          const index = indexOfBytes(buffer, delimiterBytes);
+          if (index === -1 || index > maxRecordBytes) {
+            throw new Error(`Stream record exceeds max of ${maxRecordBytes} bytes`);
+          }
+        }
+        let index = indexOfBytes(buffer, delimiterBytes);
+        while (index !== -1) {
+          const recordBytes = buffer.slice(0, index);
+          if (maxRecordBytes && recordBytes.length > maxRecordBytes) {
+            throw new Error(`Stream record exceeds max of ${maxRecordBytes} bytes`);
+          }
+          buffer = buffer.slice(index + delimiterBytes.length);
+          const record = decoder.decode(recordBytes, { stream: false });
+          for (const result of parseChunk(record)) {
+            yield result;
+          }
+          index = indexOfBytes(buffer, delimiterBytes);
+        }
+      }
+
+      if (buffer.length > 0) {
+        if (maxRecordBytes && buffer.length > maxRecordBytes) {
+          throw new Error(`Stream record exceeds max of ${maxRecordBytes} bytes`);
+        }
+        const remainder = decoder.decode(buffer, { stream: false });
+        for (const result of parseChunk(remainder)) {
+          yield result;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  })();
 }
 
 export function parseWithTimeout<T = ASTNode>( // Default T to ASTNode
