@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { compileGrammar, ProjectContext } from '../src/index';
 
 const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
@@ -32,7 +33,8 @@ describe('ProjectContext', () => {
     project.addOrUpdateDocument(mainUri, mainText);
 
     const deps = project.getDependencies(mainUri);
-    expect(deps).toContain(path.resolve(path.dirname(mainUri), './other.lm'));
+    const expected = pathToFileURL(path.resolve(path.dirname(mainUri), './other.lm')).toString();
+    expect(deps).toContain(expected);
     expect(project.getDiagnostics(mainUri).length).toBe(0);
   });
 

@@ -1,5 +1,5 @@
 Start
-  = _ statements:StatementList _ { return { type: "Program", body: statements }; }
+  = _ statements:StatementList _ { return { type: "Program", body: statements, location: location() }; }
 
 StatementList
   = head:Statement tail:(__ Statement)* { return [head].concat(tail.map(t => t[1])); }
@@ -15,7 +15,7 @@ Statement
 
 Import
   = "import" _ spec:ImportSpec _ "from" _ source:String _ ";"? {
-      return { type: "Import", spec, source };
+      return { type: "Import", spec, source, location: location() };
     }
 
 ImportSpec
@@ -26,8 +26,8 @@ ImportList
   = head:Identifier tail:(_ "," _ Identifier)* { return [head].concat(tail.map(t => t[3])); }
 
 TypeDecl
-  = "type" _ name:IdName _ "=" _ body:TypeBody _ ";"? {
-      return { type: "TypeDecl", name, body };
+  = "type" _ node:IdName _ "=" _ body:TypeBody _ ";"? {
+      return { type: "TypeDecl", name: node.name, body, location: node.location };
     }
 
 TypeBody
@@ -37,14 +37,14 @@ TypeFieldList
   = head:TypeField tail:(_ "," _ TypeField)* { return [head].concat(tail.map(t => t[3])); }
 
 TypeField
-  = name:IdName _ ":" _ typeName:TypeName { return { name, typeName }; }
+  = node:IdName _ ":" _ typeName:TypeName { return { name: node.name, typeName, location: node.location }; }
 
 TypeName
-  = IdName
+  = node:IdName { return node.name; }
 
 FnDecl
-  = "fn" _ name:IdName _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
-      return { type: "FnDecl", name, params: params || [], returnType: ret || null, body };
+  = "fn" _ node:IdName _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
+      return { type: "FnDecl", name: node.name, params: params || [], returnType: ret || null, body, location: node.location };
     }
 
 ReturnType
@@ -54,33 +54,35 @@ ParamList
   = head:Param tail:(_ "," _ Param)* { return [head].concat(tail.map(t => t[3])); }
 
 Param
-  = name:IdName _ ":" _ typeName:TypeName { return { name, typeName }; }
+  = node:IdName _ ":" _ typeName:TypeName { return { name: node.name, typeName, location: node.location }; }
 
 Block
-  = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements }; }
+  = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements, location: location() }; }
 
 LetStmt
-  = "let" _ name:IdName _ ":" _ typeName:TypeName _ "=" _ value:Expr _ ";"? {
-      return { type: "Let", name, typeName, value };
+  = "let" _ node:IdName _ ":" _ typeName:TypeName _ "=" _ value:Expr _ ";"? {
+      return { type: "Let", name: node.name, typeName, value, location: node.location };
     }
 
 ReturnStmt
-  = "return" _ value:Expr _ ";"? { return { type: "Return", value }; }
+  = "return" _ value:Expr _ ";"? { return { type: "Return", value, location: location() }; }
 
 ExprStmt
-  = expr:Expr _ ";"? { return { type: "ExprStmt", expr }; }
+  = expr:Expr _ ";"? { return { type: "ExprStmt", expr, location: location() }; }
 
 Expr
   = Add
 
 Add
   = head:Mul tail:(_ ("+" / "-") _ Mul)* {
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3] }), head);
+      const loc = location();
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: loc }), head);
     }
 
 Mul
   = head:Primary tail:(_ ("*" / "/") _ Primary)* {
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3] }), head);
+      const loc = location();
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: loc }), head);
     }
 
 Primary
@@ -90,16 +92,16 @@ Primary
   / "(" _ Expr _ ")"
 
 IdName
-  = $([a-zA-Z_][a-zA-Z0-9_]*)
+  = name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }
 
 Identifier
-  = name:IdName { return { type: "Identifier", name }; }
+  = node:IdName { return { type: "Identifier", name: node.name, location: node.location }; }
 
 Number
-  = digits:$([0-9]+) { return { type: "Number", value: parseInt(digits, 10) }; }
+  = digits:$([0-9]+) { return { type: "Number", value: parseInt(digits, 10), location: location() }; }
 
 String
-  = "\"" chars:Char* "\"" { return { type: "String", value: chars.join("") }; }
+  = "\"" chars:Char* "\"" { return { type: "String", value: chars.join(""), location: location() }; }
 
 Char
   = "\\\\" c:. { return c; }
