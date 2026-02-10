@@ -50,7 +50,7 @@ export default [
     },
   },
 
-  // JavaScript config
+  // JavaScript config (ESM)
   {
     files: ['**/*.js', '**/*.jsx'],
     languageOptions: {
@@ -63,6 +63,27 @@ export default [
       'no-control-regex': 'warn',
       'no-useless-escape': 'warn',
       'no-empty': 'warn',
+    },
+  },
+
+  // CommonJS scripts
+  {
+    files: ['**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 2021,
+      sourceType: 'script',
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        require: 'readonly',
+        module: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+      'no-undef': 'off',
     },
   },
 
