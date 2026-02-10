@@ -6,7 +6,7 @@ import { extractImports } from './imports.js';
 import { parseWithPanicRecovery, type PanicRecoveryOptions } from './panic.js';
 import { type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
-import { createLuminaLexer, luminaSyncTokenTypes } from '../lumina/lexer.js';
+import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { analyzeLumina, type SymbolTable as LuminaSymbolTable } from '../lumina/semantic.js';
 
 export interface SourceDocument {
@@ -54,7 +54,16 @@ export class ProjectContext {
     this.parser = parser ?? null;
     this.recoveryOptions = {
       syncTokenTypes: luminaSyncTokenTypes,
-      lexer: (input: string) => this.luminaLexer.reset(input),
+      lexer: (input: string) => {
+        const lexer = this.luminaLexer.reset(input);
+        return {
+          [Symbol.iterator]: function* () {
+            for (const token of lexer as Iterable<LuminaToken>) {
+              yield token;
+            }
+          },
+        };
+      },
       ...recoveryOptions,
     };
   }
