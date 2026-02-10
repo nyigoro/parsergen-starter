@@ -1,0 +1,111 @@
+Start
+  = _ statements:StatementList _ { return { type: "Program", body: statements }; }
+
+StatementList
+  = head:Statement tail:(__ Statement)* { return [head].concat(tail.map(t => t[1])); }
+  / "" { return []; }
+
+Statement
+  = Import
+  / TypeDecl
+  / FnDecl
+  / LetStmt
+  / ReturnStmt
+  / ExprStmt
+
+Import
+  = "import" _ spec:ImportSpec _ "from" _ source:String _ ";"? {
+      return { type: "Import", spec, source };
+    }
+
+ImportSpec
+  = "{" _ list:ImportList _ "}" { return list; }
+  / Identifier
+
+ImportList
+  = head:Identifier tail:(_ "," _ Identifier)* { return [head].concat(tail.map(t => t[3])); }
+
+TypeDecl
+  = "type" _ name:IdName _ "=" _ body:TypeBody _ ";"? {
+      return { type: "TypeDecl", name, body };
+    }
+
+TypeBody
+  = "{" _ fields:TypeFieldList? _ "}" { return fields || []; }
+
+TypeFieldList
+  = head:TypeField tail:(_ "," _ TypeField)* { return [head].concat(tail.map(t => t[3])); }
+
+TypeField
+  = name:IdName _ ":" _ typeName:TypeName { return { name, typeName }; }
+
+TypeName
+  = IdName
+
+FnDecl
+  = "fn" _ name:IdName _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
+      return { type: "FnDecl", name, params: params || [], returnType: ret || null, body };
+    }
+
+ReturnType
+  = "->" _ type:TypeName { return type; }
+
+ParamList
+  = head:Param tail:(_ "," _ Param)* { return [head].concat(tail.map(t => t[3])); }
+
+Param
+  = name:IdName _ ":" _ typeName:TypeName { return { name, typeName }; }
+
+Block
+  = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements }; }
+
+LetStmt
+  = "let" _ name:IdName _ ":" _ typeName:TypeName _ "=" _ value:Expr _ ";"? {
+      return { type: "Let", name, typeName, value };
+    }
+
+ReturnStmt
+  = "return" _ value:Expr _ ";"? { return { type: "Return", value }; }
+
+ExprStmt
+  = expr:Expr _ ";"? { return { type: "ExprStmt", expr }; }
+
+Expr
+  = Add
+
+Add
+  = head:Mul tail:(_ ("+" / "-") _ Mul)* {
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3] }), head);
+    }
+
+Mul
+  = head:Primary tail:(_ ("*" / "/") _ Primary)* {
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3] }), head);
+    }
+
+Primary
+  = Number
+  / String
+  / Identifier
+  / "(" _ Expr _ ")"
+
+IdName
+  = $([a-zA-Z_][a-zA-Z0-9_]*)
+
+Identifier
+  = name:IdName { return { type: "Identifier", name }; }
+
+Number
+  = digits:$([0-9]+) { return { type: "Number", value: parseInt(digits, 10) }; }
+
+String
+  = "\"" chars:Char* "\"" { return { type: "String", value: chars.join("") }; }
+
+Char
+  = "\\\\" c:. { return c; }
+  / !'"' .
+
+_ = (WS / Comment)*
+__ = (WS / Comment)+
+WS = [ \t\r\n]+
+Comment = "//" [^\n]* "\n"?

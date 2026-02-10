@@ -13,12 +13,124 @@ export function runREPL() {
   runREPLWithParser(null);
 }
 
+type ReadlineWithHistory = readline.Interface & { history: string[] };
+
 export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, grammar?: string) {
+  const commandList = [
+    '.help',
+    '.exit',
+    '.clear',
+    '.grammar',
+    '.test',
+    '.paste',
+    '.load',
+    '.save',
+    '.ast',
+    '.stats',
+    '.last',
+    '.history',
+    '.debounce',
+    '.copy',
+    '.run',
+    '.profile',
+    '.watch',
+    '.explain',
+    '.trace',
+    '.session',
+  ];
+
+  let currentParser: CompiledGrammar<unknown> | null = parser;
+  let currentGrammar: string | null = grammar ?? null;
+  let currentGrammarPath: string | null = null;
+
+  const historyFile = path.join(os.homedir(), '.parsergen_history');
+  const sessionDir = path.join(os.homedir(), '.parsergen_sessions');
+  const loadHistory = (): string[] => {
+    try {
+      if (fs.existsSync(historyFile)) {
+        const data = fs.readFileSync(historyFile, 'utf-8');
+        return data.split('\n').filter(Boolean);
+      }
+    } catch {
+      // ignore history load errors
+    }
+    return [];
+  };
+
+  const history = loadHistory();
+  let traceMode = false;
+  let watchHandle: fs.FSWatcher | null = null;
+  let watchTimer: NodeJS.Timeout | null = null;
+  let astFormat: 'json' | 'tree' | 'off' = 'json';
+  let lastInput: string | null = null;
+  let lastAst: unknown | null = null;
+  let lastError: ParseError | null = null;
+  let lastStats: { ms: number; nodes: number } | null = null;
+  let lastAstText: string | null = null;
+  let lastErrorText: string | null = null;
+  let debounceMs = 200;
+  let multilineMode: 'grammar' | 'test' | null = null;
+  let bufferLines: string[] = [];
+  let pasteBuffer: string[] = [];
+  let pasteTimer: NodeJS.Timeout | null = null;
+  let pasteNoParse = false;
+
+  const ensureSessionDir = () => {
+    try {
+      fs.mkdirSync(sessionDir, { recursive: true });
+    } catch {
+      // ignore
+    }
+  };
+
+  const explainError = (err: ParseError | null) => {
+    if (!err) {
+      console.log('No error available');
+      return;
+    }
+    const loc = err.location;
+    const found = err.found ?? 'EOF';
+    const expected = (err.expected || []).map((e) => {
+      if (typeof e === 'string') return e;
+      if (e && typeof e === 'object' && 'description' in e) return String((e as { description?: string }).description);
+      return String(e);
+    });
+    const expectedText = expected.length > 0 ? expected.join(', ') : 'unknown';
+    if (loc) {
+      console.log(`✗ Error at line ${loc.start.line}, col ${loc.start.column}. Found '${found}'. Expected one of: [${expectedText}]`);
+    } else {
+      console.log(`✗ Error. Found '${found}'. Expected one of: [${expectedText}]`);
+    }
+  };
+
+  const getExpectedCompletions = (line: string): string[] => {
+    if (!lastError || !lastError.expected) return [];
+    const expected = lastError.expected.map((e) => {
+      if (typeof e === 'string') return e;
+      if (e && typeof e === 'object' && 'description' in e) return String((e as { description?: string }).description);
+      return String(e);
+    });
+    return expected.filter((e) => e.toLowerCase().startsWith(line.toLowerCase()));
+  };
+
+  const completer = (line: string) => {
+    if (line.startsWith('.')) {
+      const hits = commandList.filter((c) => c.startsWith(line));
+      return [hits.length ? hits : commandList, line] as [string[], string];
+    }
+    const hits = getExpectedCompletions(line);
+    return [hits, line] as [string[], string];
+  };
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt: 'parsergen> ',
+    completer,
   });
+
+  const historyRef = rl as ReadlineWithHistory;
+  historyRef.history = history.reverse();
 
   console.log('📘 ParserGen REPL');
   console.log('Commands:');
@@ -38,41 +150,11 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
   console.log('  .copy ast|error|input');
   console.log('  .run [@file]');
   console.log('  .profile [n]');
+  console.log('  .watch [@file|off]');
+  console.log('  .explain');
+  console.log('  .trace on|off');
+  console.log('  .session save|load <name>');
   console.log('  Multiline: end a line with \\ to continue, or use .grammar/.test with no args and finish with .end');
-
-  let currentParser: CompiledGrammar<unknown> | null = parser;
-  let currentGrammar: string | null = grammar ?? null;
-
-  const historyFile = path.join(os.homedir(), '.parsergen_history');
-  const loadHistory = (): string[] => {
-    try {
-      if (fs.existsSync(historyFile)) {
-        const data = fs.readFileSync(historyFile, 'utf-8');
-        return data.split('\n').filter(Boolean);
-      }
-    } catch {
-      // ignore history load errors
-    }
-    return [];
-  };
-
-  const history = loadHistory();
-  rl.history = history.reverse();
-
-  let astFormat: 'json' | 'tree' | 'off' = 'json';
-  let lastInput: string | null = null;
-  let lastAst: unknown | null = null;
-  let lastError: ParseError | null = null;
-  let lastStats: { ms: number; nodes: number } | null = null;
-  let lastAstText: string | null = null;
-  let lastErrorText: string | null = null;
-  let debounceMs = 200;
-
-  let multilineMode: 'grammar' | 'test' | null = null;
-  let bufferLines: string[] = [];
-  let pasteBuffer: string[] = [];
-  let pasteTimer: NodeJS.Timeout | null = null;
-  let pasteNoParse = false;
 
   const saveHistoryLine = (line: string) => {
     try {
@@ -94,7 +176,7 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
     if (Array.isArray(node)) return node.reduce((sum, item) => sum + countNodes(item), 0);
     if (typeof node === 'object') {
       const obj = node as Record<string, unknown>;
-      return 1 + Object.values(obj).reduce((sum, value) => sum + countNodes(value), 0);
+      return 1 + Object.values(obj).reduce((sum: number, value: unknown) => sum + countNodes(value), 0);
     }
     return 1;
   };
@@ -126,7 +208,26 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
     lastInput = input;
     const start = performance.now();
     try {
-      const result = parseInput(currentParser, input);
+      let traceDepth = 0;
+      const tracer = {
+        trace: (event: { type: string; rule: string }) => {
+          if (!traceMode) return;
+          const indent = '  '.repeat(Math.max(0, traceDepth));
+          if (event.type === 'rule.enter') {
+            console.log(`${indent}→ Entering Rule: ${event.rule}`);
+            traceDepth += 1;
+          } else if (event.type === 'rule.match') {
+            console.log(`${indent}✓ Matched: ${event.rule}`);
+          } else if (event.type === 'rule.fail') {
+            console.log(`${indent}✗ Failed: ${event.rule}`);
+          } else if (event.type === 'rule.exit') {
+            traceDepth = Math.max(0, traceDepth - 1);
+            console.log(`${indent}← Exiting Rule: ${event.rule}`);
+          }
+        },
+      };
+
+      const result = parseInput(currentParser, input, traceMode ? { tracer } : undefined);
       const ms = performance.now() - start;
       if (result && typeof result === 'object' && 'success' in (result as object) && (result as { success: boolean }).success === false) {
         lastError = result as ParseError;
@@ -167,8 +268,6 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
     return xsel.status === 0;
   };
 
-  rl.prompt();
-
   rl.on('line', (line: string) => {
     const trimmed = line.trim();
     if (trimmed) saveHistoryLine(line);
@@ -196,6 +295,10 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
       console.log('  .copy ast|error|input');
       console.log('  .run [@file]');
       console.log('  .profile [n]');
+      console.log('  .watch [@file|off]');
+      console.log('  .explain');
+      console.log('  .trace on|off');
+      console.log('  .session save|load <name>');
       console.log('  Multiline: end a line with \\ to continue, or use .grammar/.test with no args and finish with .end');
       rl.prompt();
       return;
@@ -244,8 +347,8 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
     if (trimmed.startsWith('.history')) {
       const arg = trimmed.split(/\s+/)[1];
       const count = arg ? Math.max(1, Number(arg)) : 20;
-      const entries = rl.history.slice(0, count).reverse();
-      entries.forEach((entry, idx) => {
+      const entries = historyRef.history.slice(0, count).reverse();
+      entries.forEach((entry: string, idx: number) => {
         console.log(`${idx + 1}: ${entry}`);
       });
       rl.prompt();
@@ -277,6 +380,104 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
         console.log('✓ Copied to clipboard');
       } else {
         console.log('✗ Clipboard tool not available');
+      }
+      rl.prompt();
+      return;
+    }
+
+    if (trimmed === '.explain') {
+      explainError(lastError);
+      rl.prompt();
+      return;
+    }
+
+    if (trimmed.startsWith('.trace')) {
+      const arg = trimmed.split(/\s+/)[1];
+      if (arg === 'on') traceMode = true;
+      if (arg === 'off') traceMode = false;
+      console.log(`Trace mode: ${traceMode ? 'on' : 'off'}`);
+      rl.prompt();
+      return;
+    }
+
+    if (trimmed.startsWith('.watch')) {
+      const arg = trimmed.split(/\s+/)[1];
+      if (arg === 'off') {
+        if (watchHandle) {
+          watchHandle.close();
+          watchHandle = null;
+          console.log('Watch stopped');
+        }
+        rl.prompt();
+        return;
+      }
+      if (arg && arg.startsWith('@')) {
+        currentGrammarPath = arg.slice(1);
+      }
+      if (!currentGrammarPath) {
+        console.error('✗ No grammar file set. Use .grammar @file or .watch @file');
+        rl.prompt();
+        return;
+      }
+      if (watchHandle) {
+        watchHandle.close();
+        watchHandle = null;
+      }
+      watchHandle = fs.watch(currentGrammarPath, () => {
+        if (watchTimer) clearTimeout(watchTimer);
+        watchTimer = setTimeout(() => {
+          try {
+            const grammarText = fs.readFileSync(currentGrammarPath!, 'utf-8');
+            currentParser = compileGrammar(grammarText);
+            currentGrammar = grammarText;
+            console.clear();
+            console.log(`✓ Grammar recompiled: ${currentGrammarPath}`);
+            if (lastInput) parseAndReport(lastInput);
+          } catch (error) {
+            console.error('✗ Grammar error:\n' + formatErrorWithColors(error as ParseError, true));
+          }
+        }, 100);
+      });
+      console.log(`Watching ${currentGrammarPath}`);
+      rl.prompt();
+      return;
+    }
+
+    if (trimmed.startsWith('.session ')) {
+      const parts = trimmed.split(/\s+/);
+      const action = parts[1];
+      const name = parts[2];
+      if (!action || !name) {
+        console.error('✗ Usage: .session save|load <name>');
+        rl.prompt();
+        return;
+      }
+      ensureSessionDir();
+      const filePath = path.join(sessionDir, `${name}.json`);
+      if (action === 'save') {
+        const payload = {
+          grammar: currentGrammar,
+          lastInput,
+          astFormat,
+          timestamp: new Date().toISOString(),
+        };
+        fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+        console.log(`✓ Session saved: ${filePath}`);
+      } else if (action === 'load') {
+        try {
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as { grammar?: string; lastInput?: string; astFormat?: 'json' | 'tree' | 'off' };
+          if (data.grammar) {
+            currentParser = compileGrammar(data.grammar);
+            currentGrammar = data.grammar;
+          }
+          if (data.astFormat) astFormat = data.astFormat;
+          if (data.lastInput) lastInput = data.lastInput;
+          console.log(`✓ Session loaded: ${filePath}`);
+        } catch (error) {
+          console.error(`✗ Failed to load session: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      } else {
+        console.error('✗ Usage: .session save|load <name>');
       }
       rl.prompt();
       return;
@@ -339,6 +540,7 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
           const grammarText = fs.readFileSync(filePath, 'utf-8');
           currentParser = compileGrammar(grammarText);
           currentGrammar = grammarText;
+          currentGrammarPath = filePath;
           console.log('✓ Grammar compiled successfully');
         } catch (error) {
           console.error('✗ Grammar error:\n' + formatErrorWithColors(error as ParseError, true));
@@ -505,8 +707,47 @@ export function runREPLWithParser(parser: CompiledGrammar<unknown> | null, gramm
     rl.prompt();
   });
 
+  rl.prompt();
+
   rl.on('close', () => {
+    if (watchHandle) {
+      watchHandle.close();
+      watchHandle = null;
+    }
     console.log('Goodbye!');
     process.exit(0);
   });
+}
+
+// If this file is run directly
+if (process.argv[1]?.endsWith('repl.ts')) {
+  const args = process.argv.slice(2);
+  const getArg = (flag: string) => {
+    const idx = args.indexOf(flag);
+    if (idx >= 0 && idx + 1 < args.length) return args[idx + 1];
+    return undefined;
+  };
+  const grammarPath = getArg('--grammar');
+  const inputPath = getArg('--input');
+
+  if (grammarPath && (!process.stdin.isTTY || inputPath)) {
+    try {
+      const grammarText = fs.readFileSync(grammarPath, 'utf-8');
+      const parser = compileGrammar(grammarText);
+      const input = inputPath ? fs.readFileSync(inputPath, 'utf-8') : fs.readFileSync(0, 'utf-8');
+      const result = parseInput(parser, input);
+      if (result && typeof result === 'object' && 'success' in (result as object) && (result as { success: boolean }).success === false) {
+        console.error(formatErrorWithColors(result as ParseError, true));
+        process.exit(1);
+      } else {
+        const payload = (result as { result: unknown }).result ?? result;
+        console.log(JSON.stringify(payload, null, 2));
+      }
+    } catch (error) {
+      console.error(`✗ Failed: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+  } else {
+    runREPL();
+  }
 }

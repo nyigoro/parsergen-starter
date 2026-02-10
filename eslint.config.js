@@ -166,6 +166,7 @@ export default [
       '.DS_Store',
       'Thumbs.db',
       'src/grammar/calculator.js',
+      'scripts/repl-smoke.cjs',
       'codegen.js',
       'transform.js',
       'grammar.peg',

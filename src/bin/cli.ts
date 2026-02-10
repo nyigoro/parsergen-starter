@@ -13,6 +13,8 @@ import {
   CompiledGrammar,
 } from '../grammar/index.js';
 
+import { compileGrammar, analyzeLumina, lowerLumina, optimizeIR, generateJS } from '../index.js';
+
 import { parseInput, parseStream, ParserUtils } from '../parser/index.js';
 import { runREPLWithParser } from '../repl.js';
 import { formatError, formatCompilationError } from '../utils/index.js';
@@ -71,6 +73,9 @@ interface CLIConfig {
   delimiter?: string;
   encoding?: string;
   stdin: boolean;
+  luminaBuild?: string;
+  luminaOut?: string;
+  luminaTarget?: 'cjs' | 'esm';
 }
 
 function printHelp() {
@@ -103,6 +108,9 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.green}--stdin${colors.reset}                 Read input records from stdin
   ${colors.green}--delimiter <str>${colors.reset}       Record delimiter for stdin (default: \\n)
   ${colors.green}--encoding <enc>${colors.reset}        Text encoding for stdin (default: utf-8)
+  ${colors.green}--lumina-build <file>${colors.reset}   Compile Lumina source file to JS
+  ${colors.green}--lumina-out <file>${colors.reset}     Output JS file (default: lumina.out.js)
+  ${colors.green}--lumina-target <cjs|esm>${colors.reset} Target module format (default: esm)
   ${colors.green}--no-color${colors.reset}              Disable colored output
   ${colors.green}--help, -h${colors.reset}              Show this help
 
@@ -112,6 +120,7 @@ ${colors.bold}EXAMPLES:${colors.reset}
   parsergen grammar.peg --analyze --verbose
   parsergen grammar.peg --interactive
   parsergen mylang.peg --test "input" --transform ast-transform.js --codegen generate-js.js
+  parsergen --lumina-build main.lm --lumina-out dist/main.js --lumina-target cjs
   parsergen --init
   parsergen --version
 
@@ -216,6 +225,24 @@ function parseArgs(args: string[]): CLIConfig {
         break;
       case '--stdin':
         config.stdin = true;
+        break;
+      case '--lumina-build':
+        if (nextArg) {
+          config.luminaBuild = nextArg;
+          i++;
+        }
+        break;
+      case '--lumina-out':
+        if (nextArg) {
+          config.luminaOut = nextArg;
+          i++;
+        }
+        break;
+      case '--lumina-target':
+        if (nextArg === 'cjs' || nextArg === 'esm') {
+          config.luminaTarget = nextArg;
+          i++;
+        }
         break;
       case '--validate':
         config.validate = true;
@@ -376,21 +403,31 @@ async function initializeProject() {
   const transformFileName = 'transform.js';
   const codegenFileName = 'codegen.js';
 
-  const dummyGrammarContent = `// My PEG Grammar
+  const templateDir = resolve(process.cwd(), 'examples', 'template');
+  const readTemplate = async (fileName: string, fallback: string): Promise<string> => {
+    const filePath = resolve(templateDir, fileName);
+    try {
+      return await fs.readFile(filePath, 'utf-8');
+    } catch {
+      return fallback;
+    }
+  };
+
+  const dummyGrammarContent = await readTemplate('grammar.peg', `// My PEG Grammar
 start = "Hello" _ "World" { return { type: "Greeting", value: "Hello World" }; }
 _ = [ \\t]+
-`;
+`);
 
-  const dummyConfigContent = JSON.stringify({
+  const dummyConfigContent = await readTemplate('.parsergenrc', JSON.stringify({
     grammarFile: grammarFileName,
     outputFile: 'parser.js',
     format: 'es',
     verbose: true,
     transformScript: transformFileName,
     codegenScript: codegenFileName,
-  }, null, 2);
+  }, null, 2));
 
-  const dummyTransformContent = `
+  const dummyTransformContent = await readTemplate('transform.js', `
 /**
  * Transforms the parsed AST.
  * @param {any} ast - The Abstract Syntax Tree parsed by the grammar.
@@ -404,9 +441,9 @@ export default function transform(ast) {
   }
   return ast;
 }
-`;
+`);
 
-  const dummyCodegenContent = `
+  const dummyCodegenContent = await readTemplate('codegen.js', `
 /**
  * Generates code from the (potentially transformed) AST.
  * @param {any} ast - The Abstract Syntax Tree (or transformed AST).
@@ -421,7 +458,7 @@ export default function codegen(ast) {
   }
   return \`console.log("Could not generate code for unknown AST type.");\`;
 }
-`;
+`);
 
   try {
     await fs.writeFile(grammarFileName, dummyGrammarContent, 'utf-8');
@@ -535,6 +572,39 @@ async function main() {
     if (config.outFile) {
       await compileAndWrite(grammarFilePath, config.outFile, config.format, config.verbose);
       return;
+    }
+
+    // Lumina pipeline (parse -> analyze -> lower -> optimize -> codegen)
+    if (config.luminaBuild) {
+      try {
+        const luminaParser = compileGrammar(grammarText);
+        const source = await fs.readFile(config.luminaBuild, 'utf-8');
+        const parsed = parseInput(luminaParser, source);
+        if (ParserUtils.isParseError(parsed)) {
+          console.error(formatError(parsed));
+          process.exit(1);
+        }
+        const ast = (parsed as { result: unknown }).result;
+        const analysis = analyzeLumina(ast as never);
+        if (analysis.diagnostics.length > 0) {
+          analysis.diagnostics.forEach(d => {
+            log.error(`[${d.code ?? 'DIAG'}] ${d.message}`);
+          });
+        }
+        const lowered = lowerLumina(ast as never);
+        const optimized = optimizeIR(lowered) ?? lowered;
+        const out = generateJS(optimized, {
+          target: config.luminaTarget ?? 'esm',
+          sourceMap: false,
+        }).code;
+        const outPath = config.luminaOut ?? 'lumina.out.js';
+        await fs.writeFile(outPath, out, 'utf-8');
+        log.success(`Lumina compiled: ${outPath}`);
+        return;
+      } catch (err) {
+        log.error(`Lumina build failed: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+      }
     }
 
     // Default: compile grammar in memory

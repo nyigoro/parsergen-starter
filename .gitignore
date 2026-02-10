@@ -9,3 +9,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .vscode
+/grammar.peg
+/transform.js
+/codegen.js
+/.parsergenrc

@@ -6,9 +6,10 @@ module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/tests/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json', 'node'],
-  moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, {
-    prefix: '<rootDir>/',
-  }),
+  moduleNameMapper: {
+    ...pathsToModuleNameMapper(compilerOptions.paths, { prefix: '<rootDir>/' }),
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+  },
   // Force Jest to transform ES modules
   transformIgnorePatterns: [
     'node_modules/(?!(chalk|ansi-styles|supports-color|has-flag|color-convert|color-name)/)'

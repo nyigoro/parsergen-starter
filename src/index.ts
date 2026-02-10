@@ -76,3 +76,18 @@ export {
   type Location,
   type ErrorFormatter,
 } from './utils/index';
+
+// Project / Lumina tooling
+export {
+  ProjectContext,
+  DependencyGraph,
+  type SourceDocument,
+} from './project/context';
+export { extractImports } from './project/imports';
+export { parseWithPanicRecovery, type PanicRecoveryOptions } from './project/panic';
+export { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from './lumina/lexer';
+export { analyzeLumina, SymbolTable as LuminaSymbolTable } from './lumina/semantic';
+export { lowerLumina } from './lumina/lower';
+export { generateJS } from './lumina/codegen';
+export type { IRNode } from './lumina/ir';
+export { optimizeIR } from './lumina/optimize';
