@@ -354,17 +354,24 @@ function collectReferences(program: { type: string; body?: unknown[] }): Map<str
 
   const walkExpr = (expr: unknown) => {
     if (!expr || typeof expr !== 'object') return;
-    const node = expr as { type?: string; name?: string; left?: unknown; right?: unknown; value?: unknown; location?: Location };
+    const node = expr as { type?: string; name?: string; left?: unknown; right?: unknown; value?: unknown; location?: Location; callee?: unknown; args?: unknown[] };
     switch (node.type) {
       case 'Identifier':
         if (node.name) add(node.name, node.location);
         return;
+      case 'Call': {
+        const callee = node.callee as { name?: string; location?: Location } | undefined;
+        if (callee?.name) add(callee.name, callee.location ?? node.location);
+        if (Array.isArray(node.args)) node.args.forEach(walkExpr);
+        return;
+      }
       case 'Binary':
         walkExpr(node.left);
         walkExpr(node.right);
         return;
       case 'Number':
       case 'String':
+      case 'Boolean':
         return;
       default:
         return;
@@ -378,6 +385,25 @@ function collectReferences(program: { type: string; body?: unknown[] }): Map<str
       case 'FnDecl': {
         const bodyNode = (stmt as { body?: { body?: unknown[] } }).body;
         if (bodyNode?.body) bodyNode.body.forEach(walkStmt);
+        return;
+      }
+      case 'If': {
+        const ifNode = stmt as { condition?: unknown; thenBlock?: { body?: unknown[] }; elseBlock?: { body?: unknown[] } };
+        if (ifNode.condition) walkExpr(ifNode.condition);
+        if (ifNode.thenBlock?.body) ifNode.thenBlock.body.forEach(walkStmt);
+        if (ifNode.elseBlock?.body) ifNode.elseBlock.body.forEach(walkStmt);
+        return;
+      }
+      case 'While': {
+        const whileNode = stmt as { condition?: unknown; body?: { body?: unknown[] } };
+        if (whileNode.condition) walkExpr(whileNode.condition);
+        if (whileNode.body?.body) whileNode.body.body.forEach(walkStmt);
+        return;
+      }
+      case 'Assign': {
+        const assignNode = stmt as { target?: { name?: string; location?: Location }; value?: unknown };
+        if (assignNode.target?.name) add(assignNode.target.name, assignNode.target.location);
+        if (assignNode.value) walkExpr(assignNode.value);
         return;
       }
       case 'Let':

@@ -110,6 +110,39 @@ function typeCheckStatement(
       scope?.define(stmt.name, stmt.location);
       return;
     }
+    case 'If': {
+      const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope);
+      if (condType && condType !== 'bool') {
+        diagnostics.push(diagAt(`If condition must be 'bool'`, stmt.location));
+      }
+      typeCheckStatement(stmt.thenBlock, symbols, diagnostics, currentReturnType, scope);
+      if (stmt.elseBlock) {
+        typeCheckStatement(stmt.elseBlock, symbols, diagnostics, currentReturnType, scope);
+      }
+      return;
+    }
+    case 'While': {
+      const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope);
+      if (condType && condType !== 'bool') {
+        diagnostics.push(diagAt(`While condition must be 'bool'`, stmt.location));
+      }
+      typeCheckStatement(stmt.body, symbols, diagnostics, currentReturnType, scope);
+      return;
+    }
+    case 'Assign': {
+      const target = stmt.target.name;
+      const sym = symbols.get(target);
+      if (!sym) {
+        diagnostics.push(diagAt(`Unknown identifier '${target}'`, stmt.location));
+        return;
+      }
+      scope?.use(target);
+      const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope);
+      if (valueType && sym.type && valueType !== sym.type) {
+        diagnostics.push(diagAt(`Type mismatch: '${target}' is '${sym.type}' but value is '${valueType}'`, stmt.location));
+      }
+      return;
+    }
     case 'Return': {
       const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope);
       if (currentReturnType && valueType && valueType !== currentReturnType) {
@@ -135,12 +168,34 @@ function typeCheckStatement(
 
 function typeCheckExpr(expr: LuminaExpr, symbols: SymbolTable, diagnostics: Diagnostic[], scope?: Scope): LuminaType | null {
   if (expr.type === 'Number') return 'int';
+  if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'String') return 'string';
   if (expr.type === 'Binary') {
     const left = typeCheckExpr(expr.left, symbols, diagnostics, scope);
     const right = typeCheckExpr(expr.right, symbols, diagnostics, scope);
     if (!left || !right) return null;
     if (expr.op === '+' && left === 'string' && right === 'string') return 'string';
+    if (expr.op === '&&' || expr.op === '||') {
+      if (left !== 'bool' || right !== 'bool') {
+        diagnostics.push(diagAt(`Operator '${expr.op}' requires bool operands`, expr.location));
+        return null;
+      }
+      return 'bool';
+    }
+    if (expr.op === '==' || expr.op === '!=') {
+      if (left !== right) {
+        diagnostics.push(diagAt(`Operator '${expr.op}' requires matching operand types`, expr.location));
+        return null;
+      }
+      return 'bool';
+    }
+    if (expr.op === '<' || expr.op === '>' || expr.op === '<=' || expr.op === '>=') {
+      if (left !== 'int' || right !== 'int') {
+        diagnostics.push(diagAt(`Operator '${expr.op}' requires int operands`, expr.location));
+        return null;
+      }
+      return 'bool';
+    }
     if (left !== 'int' || right !== 'int') {
       diagnostics.push(diagAt(`Operator '${expr.op}' requires int operands`, expr.location));
       return null;
@@ -154,6 +209,19 @@ function typeCheckExpr(expr: LuminaExpr, symbols: SymbolTable, diagnostics: Diag
     if (!sym) {
       diagnostics.push(diagAt(`Unknown identifier '${name}'`, expr.location));
       return null;
+    }
+    return sym.type ?? null;
+  }
+  if (expr.type === 'Call') {
+    const callee = expr.callee.name;
+    scope?.use(callee);
+    const sym = symbols.get(callee);
+    if (!sym || sym.kind !== 'function') {
+      diagnostics.push(diagAt(`Unknown function '${callee}'`, expr.location));
+      return null;
+    }
+    for (const arg of expr.args) {
+      typeCheckExpr(arg, symbols, diagnostics, scope);
     }
     return sym.type ?? null;
   }

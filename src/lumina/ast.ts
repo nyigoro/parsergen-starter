@@ -14,6 +14,9 @@ export type LuminaStatement =
   | LuminaFnDecl
   | LuminaLet
   | LuminaReturn
+  | LuminaIf
+  | LuminaWhile
+  | LuminaAssign
   | LuminaExprStmt
   | LuminaBlock;
 
@@ -72,6 +75,28 @@ export interface LuminaReturn {
   location?: Location;
 }
 
+export interface LuminaWhile {
+  type: 'While';
+  condition: LuminaExpr;
+  body: LuminaBlock;
+  location?: Location;
+}
+
+export interface LuminaAssign {
+  type: 'Assign';
+  target: LuminaIdentifier;
+  value: LuminaExpr;
+  location?: Location;
+}
+
+export interface LuminaIf {
+  type: 'If';
+  condition: LuminaExpr;
+  thenBlock: LuminaBlock;
+  elseBlock?: LuminaBlock | null;
+  location?: Location;
+}
+
 export interface LuminaExprStmt {
   type: 'ExprStmt';
   expr: LuminaExpr;
@@ -80,8 +105,10 @@ export interface LuminaExprStmt {
 
 export type LuminaExpr =
   | LuminaBinary
+  | LuminaCall
   | LuminaNumber
   | LuminaString
+  | LuminaBoolean
   | LuminaIdentifier;
 
 export interface LuminaBinary {
@@ -98,6 +125,12 @@ export interface LuminaNumber {
   location?: Location;
 }
 
+export interface LuminaBoolean {
+  type: 'Boolean';
+  value: boolean;
+  location?: Location;
+}
+
 export interface LuminaString {
   type: 'String';
   value: string;
@@ -107,5 +140,12 @@ export interface LuminaString {
 export interface LuminaIdentifier {
   type: 'Identifier';
   name: string;
+  location?: Location;
+}
+
+export interface LuminaCall {
+  type: 'Call';
+  callee: LuminaIdentifier;
+  args: LuminaExpr[];
   location?: Location;
 }

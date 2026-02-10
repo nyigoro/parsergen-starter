@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lumina CLI Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "grammarPath": {
+      "type": "string",
+      "description": "Path to the Lumina grammar file."
+    },
+    "outDir": {
+      "type": "string",
+      "description": "Output directory for compiled JS."
+    },
+    "target": {
+      "type": "string",
+      "enum": ["cjs", "esm"],
+      "description": "Output module format."
+    },
+    "entries": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "Default entry files to compile/check."
+    },
+    "watch": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "Default files to watch."
+    }
+  }
+}

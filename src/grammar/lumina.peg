@@ -10,8 +10,12 @@ Statement
   / TypeDecl
   / FnDecl
   / LetStmt
+  / AssignStmt
+  / IfStmt
+  / WhileStmt
   / ReturnStmt
   / ExprStmt
+  / Block
 
 Import
   = "import" _ spec:ImportSpec _ "from" _ source:String _ ";"? {
@@ -67,11 +71,44 @@ LetStmt
 ReturnStmt
   = "return" _ value:Expr _ ";"? { return { type: "Return", value, location: location() }; }
 
+WhileStmt
+  = "while" _ "(" _ condition:Expr _ ")" _ body:Block {
+      return { type: "While", condition, body, location: location() };
+    }
+
+AssignStmt
+  = target:Identifier _ "=" _ value:Expr _ ";"? { return { type: "Assign", target, value, location: location() }; }
+
+IfStmt
+  = "if" _ "(" _ condition:Expr _ ")" _ thenBlock:Block _ elsePart:(_ "else" _ elseBlock:Block)? {
+      return { type: "If", condition, thenBlock, elseBlock: elsePart ? elsePart[3] : null, location: location() };
+    }
+
 ExprStmt
   = expr:Expr _ ";"? { return { type: "ExprStmt", expr, location: location() }; }
 
 Expr
-  = Add
+  = LogicOr
+
+LogicOr
+  = head:LogicAnd tail:(_ "||" _ LogicAnd)* {
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+    }
+
+LogicAnd
+  = head:Equality tail:(_ "&&" _ Equality)* {
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+    }
+
+Equality
+  = head:Relational tail:(_ ("==" / "!=") _ Relational)* {
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+    }
+
+Relational
+  = head:Add tail:(_ ("<=" / ">=" / "<" / ">") _ Add)* {
+      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+    }
 
 Add
   = head:Mul tail:(_ ("+" / "-") _ Mul)* {
@@ -86,10 +123,12 @@ Mul
     }
 
 Primary
-  = Number
+  = Call
+  / Number
   / String
+  / Boolean
   / Identifier
-  / "(" _ Expr _ ")"
+  / "(" _ expr:Expr _ ")" { return expr; }
 
 IdName
   = name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }
@@ -99,6 +138,10 @@ Identifier
 
 Number
   = digits:$([0-9]+) { return { type: "Number", value: parseInt(digits, 10), location: location() }; }
+
+Boolean
+  = "true" { return { type: "Boolean", value: true, location: location() }; }
+  / "false" { return { type: "Boolean", value: false, location: location() }; }
 
 String
   = "\"" chars:Char* "\"" { return { type: "String", value: chars.join(""), location: location() }; }
@@ -111,3 +154,8 @@ _ = (WS / Comment)*
 __ = (WS / Comment)+
 WS = [ \t\r\n]+
 Comment = "//" [^\n]* "\n"?
+Call
+  = callee:Identifier _ "(" _ args:ArgList? _ ")" { return { type: "Call", callee, args: args || [], location: location() }; }
+
+ArgList
+  = head:Expr tail:(_ "," _ Expr)* { return [head].concat(tail.map(t => t[3])); }

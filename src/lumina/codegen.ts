@@ -40,25 +40,78 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
       return;
     case 'Function': {
       const params = node.params.join(', ');
-      out.push(`${pad}function ${node.name}(${params}) {`, node.kind);
+      out.push(
+        `${pad}function ${node.name}(${params}) {`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
       node.body.forEach(n => emit(n, indent + 1, out));
-      out.push(`${pad}}`, node.kind);
+      out.push(`${pad}}`, node.kind, node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined);
       return;
     }
     case 'Let':
-      out.push(`${pad}let ${node.name} = ${emitExpr(node.value)};`, node.kind);
+      out.push(
+        `${pad}let ${node.name} = ${emitExpr(node.value)};`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
       return;
     case 'Return':
-      out.push(`${pad}return ${emitExpr(node.value)};`, node.kind);
+      out.push(
+        `${pad}return ${emitExpr(node.value)};`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
       return;
     case 'ExprStmt':
-      out.push(`${pad}${emitExpr(node.expr)};`, node.kind);
+      out.push(
+        `${pad}${emitExpr(node.expr)};`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
+      return;
+    case 'If': {
+      out.push(
+        `${pad}if (${emitExpr(node.condition)}) {`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
+      node.thenBody.forEach(n => emit(n, indent + 1, out));
+      if (node.elseBody && node.elseBody.length > 0) {
+        out.push(`${pad}} else {`, node.kind, node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined);
+        node.elseBody.forEach(n => emit(n, indent + 1, out));
+      }
+      out.push(`${pad}}`, node.kind, node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined);
+      return;
+    }
+    case 'While': {
+      out.push(
+        `${pad}while (${emitExpr(node.condition)}) {`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
+      node.body.forEach(n => emit(n, indent + 1, out));
+      out.push(`${pad}}`, node.kind, node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined);
+      return;
+    }
+    case 'Assign':
+      out.push(
+        `${pad}${node.target} = ${emitExpr(node.value)};`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
       return;
     case 'Binary':
     case 'Number':
+    case 'Boolean':
     case 'String':
     case 'Identifier':
-      out.push(`${pad}${emitExpr(node)};`, node.kind);
+    case 'Call':
+      out.push(
+        `${pad}${emitExpr(node)};`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
       return;
     default:
       out.push(`${pad}// unsupported`, 'Unsupported');
@@ -73,8 +126,12 @@ function emitExpr(node: IRNode): string {
         return `(${emitExpr(node.left)} + ${emitExpr(node.right)})`;
       }
       return `(${emitExpr(node.left)} ${node.op} ${emitExpr(node.right)})`;
+    case 'Call':
+      return `${node.callee}(${node.args.map(emitExpr).join(', ')})`;
     case 'Number':
       return String(node.value);
+    case 'Boolean':
+      return node.value ? 'true' : 'false';
     case 'String':
       return JSON.stringify(node.value);
     case 'Identifier':
@@ -86,7 +143,7 @@ function emitExpr(node: IRNode): string {
 
 class CodeBuilder {
   private lines: string[] = [];
-  readonly map?: { mappings: Array<{ line: number; kind: string }> };
+  readonly map?: { mappings: Array<{ line: number; kind: string; source?: { line: number; column: number } }> };
 
   constructor(trackMap: boolean) {
     if (trackMap) {
@@ -94,10 +151,10 @@ class CodeBuilder {
     }
   }
 
-  push(line: string, kind: string) {
+  push(line: string, kind: string, source?: { line: number; column: number }) {
     this.lines.push(line);
     if (this.map) {
-      this.map.mappings.push({ line: this.lines.length, kind });
+      this.map.mappings.push({ line: this.lines.length, kind, source });
     }
   }
 

@@ -89,9 +89,29 @@ parsergen --lumina-build src/main.lm --lumina-out dist/main.js --lumina-target c
 ```bash
 lumina repl
 lumina compile examples/hello.lm --out dist/hello.js --target esm
+lumina compile examples/hello.lm --sourcemap
 lumina check examples/hello.lm
 lumina watch examples
+lumina compile examples/hello.lm --dry-run
+lumina compile --list-config
+lumina watch "examples/**/*.lm"
 ```
+
+### `lumina.config.json`
+
+You can configure defaults for the Lumina CLI:
+
+```json
+{
+  "grammarPath": "src/grammar/lumina.peg",
+  "outDir": "dist",
+  "target": "esm",
+  "entries": ["examples/hello.lm"],
+  "watch": ["examples/hello.lm"]
+}
+```
+
+Schema: `lumina.config.schema.json`
 
 ### REPL
 
@@ -122,6 +142,10 @@ If built locally:
 ```bash
 node dist/bin/lumina-lsp.js
 ```
+
+### Packaging Notes
+
+This package publishes only the `dist/` output and core docs via the `files` whitelist in `package.json`.
 
 ### LSP Settings
 
@@ -233,6 +257,14 @@ npm test
 
 ```bash
 npm run build
+```
+
+## 📦 Packaging Check
+
+Before publishing, run:
+
+```bash
+npm run pack:check
 ```
 
 ## 📜 License

@@ -5,7 +5,12 @@ export type IRNode =
   | IRReturn
   | IRExprStmt
   | IRBinary
+  | IRCall
+  | IRIf
+  | IRAssign
+  | IRWhile
   | IRNumber
+  | IRBoolean
   | IRString
   | IRIdentifier
   | IRNoop;
@@ -13,6 +18,7 @@ export type IRNode =
 export interface IRProgram {
   kind: 'Program';
   body: IRNode[];
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRFunction {
@@ -20,22 +26,26 @@ export interface IRFunction {
   name: string;
   params: string[];
   body: IRNode[];
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRLet {
   kind: 'Let';
   name: string;
   value: IRNode;
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRReturn {
   kind: 'Return';
   value: IRNode;
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRExprStmt {
   kind: 'ExprStmt';
   expr: IRNode;
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRBinary {
@@ -43,23 +53,63 @@ export interface IRBinary {
   op: string;
   left: IRNode;
   right: IRNode;
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRCall {
+  kind: 'Call';
+  callee: string;
+  args: IRNode[];
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRIf {
+  kind: 'If';
+  condition: IRNode;
+  thenBody: IRNode[];
+  elseBody?: IRNode[];
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRWhile {
+  kind: 'While';
+  condition: IRNode;
+  body: IRNode[];
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRAssign {
+  kind: 'Assign';
+  target: string;
+  value: IRNode;
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRNumber {
   kind: 'Number';
   value: number;
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRBoolean {
+  kind: 'Boolean';
+  value: boolean;
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRString {
   kind: 'String';
   value: string;
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRIdentifier {
   kind: 'Identifier';
   name: string;
+  location?: import('../utils/index.js').Location;
 }
 
 export interface IRNoop {
   kind: 'Noop';
+  location?: import('../utils/index.js').Location;
 }

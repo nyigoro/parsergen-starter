@@ -1160,6 +1160,7 @@ export function parseStream<T = ASTNode>( // Default T to ASTNode
   stream: ReadableStream<string | Uint8Array>,
   _options: ParserOptions = {}
 ): AsyncGenerator<ParseResult<T> | ParseError> {
+  type ByteArray = Uint8Array<ArrayBufferLike>;
   const delimiter = typeof _options.streamDelimiter === 'string' ? _options.streamDelimiter : '\n';
   const encoding = typeof _options.streamEncoding === 'string' ? _options.streamEncoding : 'utf-8';
   const maxRecordBytes = typeof _options.streamMaxRecordBytes === 'number' ? _options.streamMaxRecordBytes : undefined;
@@ -1170,7 +1171,7 @@ export function parseStream<T = ASTNode>( // Default T to ASTNode
   const abortSignal = _options.streamAbortSignal;
   const decoder = new TextDecoder(encoding);
   const encoder = new TextEncoder();
-  const delimiterBytes = encoder.encode(delimiter);
+  const delimiterBytes = encoder.encode(delimiter) as ByteArray;
   const deadline = typeof timeoutMs === 'number' ? Date.now() + timeoutMs : undefined;
 
   const parseChunk = (chunk: string): Array<ParseResult<T> | ParseError> => {
@@ -1187,7 +1188,7 @@ export function parseStream<T = ASTNode>( // Default T to ASTNode
     return results;
   };
 
-  const indexOfBytes = (buffer: Uint8Array, needle: Uint8Array): number => {
+  const indexOfBytes = (buffer: ByteArray, needle: ByteArray): number => {
     if (needle.length === 0) return 0;
     if (needle.length > buffer.length) return -1;
     for (let i = 0; i <= buffer.length - needle.length; i++) {
@@ -1203,13 +1204,13 @@ export function parseStream<T = ASTNode>( // Default T to ASTNode
     return -1;
   };
 
-  const concatBytes = (a: Uint8Array, b: Uint8Array): Uint8Array => {
+  const concatBytes = (a: ByteArray, b: ByteArray): ByteArray => {
     if (a.length === 0) return b;
     if (b.length === 0) return a;
     const out = new Uint8Array(a.length + b.length);
     out.set(a, 0);
     out.set(b, a.length);
-    return out;
+    return out as ByteArray;
   };
 
   const ensureNotAborted = () => {
@@ -1227,7 +1228,7 @@ export function parseStream<T = ASTNode>( // Default T to ASTNode
 
   return (async function* () {
     const reader = stream.getReader();
-    let buffer = new Uint8Array(0);
+    let buffer: ByteArray = new Uint8Array(0);
 
     try {
       while (true) {
@@ -1235,12 +1236,12 @@ export function parseStream<T = ASTNode>( // Default T to ASTNode
         ensureNotTimedOut();
         const { value, done } = await reader.read();
         if (done) break;
-        const chunkBytes =
+        const chunkBytes: ByteArray =
           typeof value === 'string'
-            ? encoder.encode(value)
+            ? (encoder.encode(value) as ByteArray)
             : value instanceof Uint8Array
-              ? value
-              : encoder.encode(String(value));
+              ? (value as ByteArray)
+              : (encoder.encode(String(value)) as ByteArray);
 
         buffer = concatBytes(buffer, chunkBytes);
         if (maxRecordBytes && buffer.length > maxRecordBytes) {

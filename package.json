@@ -6,6 +6,14 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "RELEASE.md",
+    "lumina.config.schema.json"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -35,7 +43,8 @@
     "lint:check": "eslint . --ext .ts,.tsx,.js,.jsx --max-warnings 0",
     "prettier": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "pack:check": "node scripts/check-package.cjs && npm pack --dry-run"
   },
   "keywords": [
     "parser",
@@ -97,6 +106,7 @@
     "lucide-react": "^0.563.0",
     "moo": "^0.5.2",
     "react-d3-tree": "^3.6.6",
+    "fast-glob": "^3.3.3",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",
     "vscode-uri": "^3.1.0"

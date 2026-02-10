@@ -304,7 +304,7 @@ connection.onCompletion((params) => {
   const items: CompletionItem[] = [...keywordCompletions, ...typeCompletions];
   const symbols = project?.getSymbols(params.textDocument.uri)?.list() ?? [];
   for (const sym of symbols) {
-    let kind = CompletionItemKind.Variable;
+    let kind: CompletionItemKind = CompletionItemKind.Variable;
     if (sym.kind === 'function') kind = CompletionItemKind.Function;
     if (sym.kind === 'type') kind = CompletionItemKind.Class;
     items.push({ label: sym.name, kind });
