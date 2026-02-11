@@ -9,6 +9,8 @@ import { type Location } from '../utils/index.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { analyzeLumina, type SymbolTable as LuminaSymbolTable, type SymbolInfo } from '../lumina/semantic.js';
 import { type LuminaType } from '../lumina/ast.js';
+import { createStdModuleRegistry, resolveModuleBindings, type ModuleExport, type ModuleNamespace, type ModuleRegistry } from '../lumina/module-registry.js';
+import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
 
 export interface SourceDocument {
   uri: string;
@@ -16,11 +18,13 @@ export interface SourceDocument {
   text: string;
   version: number;
   imports: string[];
+  importAliases?: Map<string, string>;
   diagnostics: Diagnostic[];
   symbols?: LuminaSymbolTable;
   ast?: unknown;
   references?: Map<string, Location[]>;
   importedNames?: Set<string>;
+  moduleBindings?: Map<string, ModuleExport>;
   signatures?: Map<string, string>;
   functionHashes?: Map<string, string>;
   inferredReturns?: Map<string, LuminaType>;
@@ -61,6 +65,7 @@ export class ProjectContext {
   private virtualFiles = new Map<string, string>();
   private debugIncremental = false;
   private useHmDiagnostics = false;
+  private moduleRegistry: ModuleRegistry;
   private preludeSymbols: LuminaSymbolTable | null = null;
   private preludeNames = new Set<string>();
   private preludeLoaded = false;
@@ -70,11 +75,12 @@ export class ProjectContext {
     parser?: CompiledGrammar<unknown>,
     recoveryOptions: PanicRecoveryOptions = {},
     virtualFiles?: Map<string, string> | Record<string, string>,
-    options?: { debugIncremental?: boolean; useHmDiagnostics?: boolean }
+    options?: { debugIncremental?: boolean; useHmDiagnostics?: boolean; moduleRegistry?: ModuleRegistry }
   ) {
     this.parser = parser ?? null;
     this.debugIncremental = options?.debugIncremental ?? false;
     this.useHmDiagnostics = options?.useHmDiagnostics ?? false;
+    this.moduleRegistry = options?.moduleRegistry ?? createStdModuleRegistry();
     if (virtualFiles) {
       if (virtualFiles instanceof Map) {
         for (const [spec, text] of virtualFiles.entries()) {
@@ -179,6 +185,8 @@ export class ProjectContext {
     doc.ast = undefined;
     doc.references = undefined;
     doc.importedNames = undefined;
+    doc.importAliases = undefined;
+    doc.moduleBindings = undefined;
     const prevSignatures = doc.signatures ?? new Map<string, string>();
     let signatureChanged = false;
     let changedSymbols: string[] = [];
@@ -211,6 +219,10 @@ export class ProjectContext {
           importedNames.add(name);
         }
         doc.importedNames = importedNames;
+        const importAliases = collectImportAliases(payload as never);
+        doc.importAliases = importAliases;
+        const moduleBindings = this.buildModuleBindings(importAliases, normalized, payload as never);
+        doc.moduleBindings = moduleBindings;
         const analysis = analyzeLumina(payload as never, {
           currentUri: normalized,
           externSymbols: (name: string) => {
@@ -228,6 +240,8 @@ export class ProjectContext {
           cachedFunctionReturns: cachedReturns,
           useHm: this.useHmDiagnostics,
           hmSourceText: doc.text,
+          moduleRegistry: this.moduleRegistry,
+          moduleBindings,
         });
         doc.symbols = analysis.symbols;
         doc.inferredReturns = new Map<string, LuminaType>();
@@ -253,13 +267,14 @@ export class ProjectContext {
   getDiagnostics(uri?: string): Diagnostic[] {
     if (uri) {
       const normalized = this.toUri(this.toFsPath(uri));
-      return this.documents.get(normalized)?.diagnostics ?? [];
+      const list = this.documents.get(normalized)?.diagnostics ?? [];
+      return dedupeDiagnostics(list);
     }
     const all: Diagnostic[] = [];
     for (const doc of this.documents.values()) {
       all.push(...doc.diagnostics);
     }
-    return all;
+    return dedupeDiagnostics(all);
   }
 
   getDependencies(uri: string): string[] {
@@ -270,6 +285,16 @@ export class ProjectContext {
   getSymbols(uri: string): LuminaSymbolTable | undefined {
     const normalized = this.toUri(this.toFsPath(uri));
     return this.documents.get(normalized)?.symbols;
+  }
+
+  getModuleBindings(uri: string): Map<string, ModuleExport> {
+    const normalized = this.toUri(this.toFsPath(uri));
+    return this.documents.get(normalized)?.moduleBindings ?? new Map();
+  }
+
+  getImportAliases(uri: string): Map<string, string> {
+    const normalized = this.toUri(this.toFsPath(uri));
+    return this.documents.get(normalized)?.importAliases ?? new Map();
   }
 
   getDocumentAst(uri: string): unknown | undefined {
@@ -313,6 +338,10 @@ export class ProjectContext {
       importedNames.add(name);
     }
     doc.importedNames = importedNames;
+    const importAliases = collectImportAliases(payload as never);
+    doc.importAliases = importAliases;
+    const moduleBindings = this.buildModuleBindings(importAliases, normalized, payload as never);
+    doc.moduleBindings = moduleBindings;
     const analysis = analyzeLumina(payload as never, {
       currentUri: normalized,
       externSymbols: (name: string) => {
@@ -327,6 +356,8 @@ export class ProjectContext {
       ],
       importedNames,
       indexingOnly: true,
+      moduleRegistry: this.moduleRegistry,
+      moduleBindings,
     });
     doc.symbols = analysis.symbols;
   }
@@ -496,6 +527,29 @@ export class ProjectContext {
     return imp;
   }
 
+  private buildModuleBindings(
+    aliases: Map<string, string>,
+    currentUri: string,
+    program: { type: string; body?: unknown[] }
+  ): Map<string, ModuleExport> {
+    const bindings = resolveModuleBindings(program as never, this.moduleRegistry);
+    for (const [alias, source] of aliases.entries()) {
+      if (bindings.has(alias)) continue;
+      const moduleFromRegistry = this.moduleRegistry.get(source);
+      if (moduleFromRegistry) {
+        bindings.set(alias, moduleFromRegistry as ModuleNamespace);
+        continue;
+      }
+      const resolved = this.resolveImport(this.toFsPath(currentUri), source);
+      this.ensureDocumentLoaded(resolved);
+      const doc = this.documents.get(resolved);
+      if (!doc?.symbols) continue;
+      const module = buildModuleNamespaceFromSymbols(alias, doc.symbols.list());
+      bindings.set(alias, module);
+    }
+    return bindings;
+  }
+
   private getExternalSymbol(name: string): import('../lumina/semantic.js').SymbolInfo | undefined {
     for (const doc of this.documents.values()) {
       const sym = doc.symbols?.get(name);
@@ -568,6 +622,7 @@ export class ProjectContext {
       const ast = (parsed as { result: unknown }).result;
       const analysis = analyzeLumina(ast as never, {
         currentUri: this.toUri(this.preludePath),
+        moduleRegistry: this.moduleRegistry,
       });
       this.preludeSymbols = analysis.symbols;
       this.preludeNames = new Set(analysis.symbols.list().map((sym) => sym.name));
@@ -730,6 +785,31 @@ function collectImportNames(program: { type: string; body?: unknown[] }): Set<st
   return names;
 }
 
+function collectImportAliases(program: { type: string; body?: unknown[] }): Map<string, string> {
+  const aliases = new Map<string, string>();
+  if (!program || !Array.isArray(program.body)) return aliases;
+  for (const stmt of program.body) {
+    const node = stmt as { type?: string; spec?: unknown; source?: { value?: string } };
+    if (node.type !== 'Import') continue;
+    const source = node.source?.value;
+    if (!source) continue;
+    const spec = node.spec;
+    const addAlias = (item: unknown) => {
+      if (!item || typeof item !== 'object') return;
+      const specItem = item as { name?: string; namespace?: boolean };
+      if (specItem.namespace && specItem.name) {
+        aliases.set(specItem.name, source);
+      }
+    };
+    if (Array.isArray(spec)) {
+      for (const item of spec) addAlias(item);
+    } else {
+      addAlias(spec);
+    }
+  }
+  return aliases;
+}
+
 function collectSignatures(program: { type: string; body?: unknown[] }): Map<string, string> {
   const signatures = new Map<string, string>();
   if (!program || !Array.isArray(program.body)) return signatures;
@@ -858,6 +938,19 @@ function lintMissingSemicolons(source: string): Diagnostic[] {
     }
   }
   return diagnostics;
+}
+
+function dedupeDiagnostics(list: Diagnostic[]): Diagnostic[] {
+  const seen = new Set<string>();
+  const result: Diagnostic[] = [];
+  for (const diag of list) {
+    const start = diag.location?.start;
+    const key = `${start?.line ?? 0}:${start?.column ?? 0}:${diag.code ?? ''}:${diag.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(diag);
+  }
+  return result;
 }
 
 function locationContains(location: Location, pos: { line: number; column: number }): boolean {

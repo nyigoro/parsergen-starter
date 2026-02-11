@@ -101,6 +101,22 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('supports module member calls via registry', () => {
+    const program = `
+      import { io } from "@std";
+      fn main() {
+        io.println("hi");
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/Unknown enum variant/);
+    expect(messages).not.toMatch(/Unknown function/);
+  });
+
   test('indexing-only mode collects top-level symbols without body diagnostics', () => {
     const program = `
       struct User { id: int }

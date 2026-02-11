@@ -24,9 +24,15 @@ export type LuminaStatement =
   | LuminaBlock
   | LuminaErrorNode;
 
+export interface LuminaImportSpec {
+  name: string;
+  namespace?: boolean;
+  location?: Location;
+}
+
 export interface LuminaImport {
   type: 'Import';
-  spec: string[] | string;
+  spec: Array<string | LuminaImportSpec> | string | LuminaImportSpec;
   source: LuminaString;
   location?: Location;
 }

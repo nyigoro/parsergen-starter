@@ -22,6 +22,11 @@ import {
   RenameParams,
   PrepareRenameParams,
   Range,
+  Hover,
+  MarkupKind,
+  SignatureHelp,
+  SignatureInformation,
+  ParameterInformation,
   ResponseError,
   ErrorCodes,
   DidChangeWatchedFilesNotification,
@@ -36,6 +41,11 @@ import { ProjectContext } from '../project/context.js';
 import { defaultSettings, type LuminaLspSettings } from './config.js';
 import { createLuminaLexer } from '../lumina/lexer.js';
 import { buildCompletionItems } from './completion.js';
+import {
+  createStdModuleRegistry,
+  getPreludeExports,
+  type ModuleExport,
+} from '../lumina/module-registry.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -46,6 +56,9 @@ let settings: LuminaLspSettings = { ...defaultSettings };
 let project: ProjectContext | null = null;
 const diagnosticsDebounce = new Map<string, NodeJS.Timeout>();
 const debounceMs = 120;
+const moduleRegistry = createStdModuleRegistry();
+const preludeExports = getPreludeExports(moduleRegistry);
+const preludeExportMap = new Map<string, ModuleExport>(preludeExports.map((exp) => [exp.name, exp]));
 
 const semanticTokenTypes = [
   'keyword',
@@ -113,6 +126,104 @@ function getWordAt(doc: TextDocument, line: number, character: number): string |
   return word;
 }
 
+function findMemberAt(doc: TextDocument, line: number, character: number): { base: string; member: string } | null {
+  const text = doc.getText();
+  const offset = doc.offsetAt({ line, character });
+  const isIdent = (ch: string) => /[A-Za-z0-9_]/.test(ch);
+  if (offset < 0 || offset > text.length) return null;
+  let start = offset;
+  let end = offset;
+  while (start > 0 && isIdent(text[start - 1])) start--;
+  while (end < text.length && isIdent(text[end])) end++;
+  const word = text.slice(start, end);
+  if (!word) return null;
+  const leftDot = start - 1;
+  if (leftDot >= 0 && text[leftDot] === '.') {
+    let baseEnd = leftDot;
+    let baseStart = baseEnd - 1;
+    while (baseStart >= 0 && isIdent(text[baseStart])) baseStart--;
+    baseStart++;
+    const base = text.slice(baseStart, baseEnd);
+    if (base) return { base, member: word };
+  }
+  if (text[end] === '.') {
+    let memberStart = end + 1;
+    let memberEnd = memberStart;
+    while (memberEnd < text.length && isIdent(text[memberEnd])) memberEnd++;
+    const member = text.slice(memberStart, memberEnd);
+    if (member) return { base: word, member };
+  }
+  return null;
+}
+
+function findCallContext(
+  doc: TextDocument,
+  line: number,
+  character: number
+): { callee: string; argIndex: number } | null {
+  const text = doc.getText();
+  const offset = doc.offsetAt({ line, character });
+  let depth = 0;
+  let openIndex = -1;
+  for (let i = offset - 1; i >= 0; i--) {
+    const ch = text[i];
+    if (ch === ')') depth++;
+    else if (ch === '(') {
+      if (depth === 0) {
+        openIndex = i;
+        break;
+      }
+      depth--;
+    }
+  }
+  if (openIndex === -1) return null;
+  let end = openIndex - 1;
+  while (end >= 0 && /\s/.test(text[end])) end--;
+  if (end < 0) return null;
+  let start = end;
+  while (start >= 0 && /[A-Za-z0-9_.]/.test(text[start])) start--;
+  start++;
+  const callee = text.slice(start, end + 1);
+  if (!callee) return null;
+  let argIndex = 0;
+  let innerDepth = 0;
+  for (let i = openIndex + 1; i < offset; i++) {
+    const ch = text[i];
+    if (ch === '(') innerDepth++;
+    else if (ch === ')') innerDepth = Math.max(0, innerDepth - 1);
+    else if (ch === ',' && innerDepth === 0) argIndex++;
+  }
+  return { callee, argIndex };
+}
+
+function formatSignature(
+  name: string,
+  paramTypes: string[],
+  returnType?: string,
+  paramNames?: string[]
+): string {
+  const params = paramTypes.map((type, idx) => {
+    const label = paramNames?.[idx];
+    return label ? `${label}: ${type}` : type;
+  });
+  const ret = returnType ?? 'void';
+  return `${name}(${params.join(', ')}) -> ${ret}`;
+}
+
+function buildSignatureInfo(
+  name: string,
+  paramTypes: string[],
+  returnType?: string,
+  paramNames?: string[]
+): SignatureInformation {
+  const label = formatSignature(name, paramTypes, returnType, paramNames);
+  const parameters = paramTypes.map((type, idx) => {
+    const labelText = paramNames?.[idx] ? `${paramNames[idx]}: ${type}` : type;
+    return ParameterInformation.create(labelText);
+  });
+  return SignatureInformation.create(label, undefined, ...parameters);
+}
+
 function isValidIdentifier(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 }
@@ -138,6 +249,20 @@ function summarizeWorkspaceEdit(edit: WorkspaceEdit): { files: number; edits: nu
     edits += changes[uri]?.length ?? 0;
   }
   return { files: fileUris.length, edits };
+}
+
+function findImportedSymbolInfo(name: string, uri: string) {
+  if (!project) return null;
+  if (!project.hasImportNameInDoc(name, uri)) return null;
+  const deps = project.getDependencies(uri);
+  for (const dep of deps) {
+    const symbols = project.getSymbols(dep);
+    const sym = symbols?.get(name);
+    if (!sym) continue;
+    if (sym.visibility === 'private' && dep !== uri) continue;
+    return sym;
+  }
+  return null;
 }
 
 function publishDiagnostics(uri: string) {
@@ -259,6 +384,8 @@ connection.onInitialize((params: InitializeParams) => {
       definitionProvider: true,
       referencesProvider: true,
       renameProvider: true,
+      hoverProvider: true,
+      signatureHelpProvider: { triggerCharacters: ['(', ','] },
       codeActionProvider: true,
       semanticTokensProvider: {
         legend: semanticTokensLegend,
@@ -316,6 +443,88 @@ documents.onDidChangeContent((e) => {
 documents.onDidClose((e) => {
   project?.removeDocument(e.document.uri);
   connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
+});
+
+connection.onHover((params): Hover | null => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) return null;
+  const member = findMemberAt(doc, params.position.line, params.position.character);
+  const symbols = project?.getSymbols(params.textDocument.uri);
+  const moduleBindings = project?.getModuleBindings(params.textDocument.uri) ?? new Map<string, ModuleExport>();
+
+  if (member) {
+    const mod = moduleBindings.get(member.base);
+    if (mod?.kind === 'module') {
+      const exp = mod.exports.get(member.member);
+      if (exp?.kind === 'function') {
+        const value = formatSignature(member.member, exp.paramTypes, exp.returnType, exp.paramNames);
+        return { contents: { kind: MarkupKind.Markdown, value: `\`${value}\`` } };
+      }
+    }
+  }
+
+  const word = getWordAt(doc, params.position.line, params.position.character);
+  if (!word) return null;
+  const sym = symbols?.get(word);
+  if (sym?.kind === 'function') {
+    const value = formatSignature(word, sym.paramTypes ?? [], sym.type, sym.paramNames);
+    return { contents: { kind: MarkupKind.Markdown, value: `\`${value}\`` } };
+  }
+  const importedSym = findImportedSymbolInfo(word, params.textDocument.uri);
+  if (importedSym?.kind === 'function') {
+    const value = formatSignature(word, importedSym.paramTypes ?? [], importedSym.type, importedSym.paramNames);
+    return { contents: { kind: MarkupKind.Markdown, value: `\`${value}\`` } };
+  }
+  const prelude = preludeExportMap.get(word);
+  if (prelude?.kind === 'function') {
+    const value = formatSignature(word, prelude.paramTypes, prelude.returnType, prelude.paramNames);
+    return { contents: { kind: MarkupKind.Markdown, value: `\`${value}\`` } };
+  }
+  return null;
+});
+
+connection.onSignatureHelp((params): SignatureHelp | null => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) return null;
+  const call = findCallContext(doc, params.position.line, params.position.character);
+  if (!call) return null;
+
+  const symbols = project?.getSymbols(params.textDocument.uri);
+  const moduleBindings = project?.getModuleBindings(params.textDocument.uri) ?? new Map<string, ModuleExport>();
+
+  let signature: SignatureInformation | null = null;
+  if (call.callee.includes('.')) {
+    const [base, member] = call.callee.split('.', 2);
+    const mod = moduleBindings.get(base);
+    if (mod?.kind === 'module') {
+      const exp = mod.exports.get(member);
+      if (exp?.kind === 'function') {
+        signature = buildSignatureInfo(member, exp.paramTypes, exp.returnType, exp.paramNames);
+      }
+    }
+  } else {
+    const sym = symbols?.get(call.callee);
+    if (sym?.kind === 'function') {
+      signature = buildSignatureInfo(call.callee, sym.paramTypes ?? [], sym.type, sym.paramNames);
+    } else {
+      const importedSym = findImportedSymbolInfo(call.callee, params.textDocument.uri);
+      if (importedSym?.kind === 'function') {
+        signature = buildSignatureInfo(call.callee, importedSym.paramTypes ?? [], importedSym.type, importedSym.paramNames);
+      }
+      const prelude = preludeExportMap.get(call.callee);
+      if (prelude?.kind === 'function') {
+        signature = buildSignatureInfo(call.callee, prelude.paramTypes, prelude.returnType, prelude.paramNames);
+      }
+    }
+  }
+
+  if (!signature) return null;
+  const activeParam = Math.max(0, Math.min(call.argIndex, signature.parameters?.length ? signature.parameters.length - 1 : 0));
+  return {
+    signatures: [signature],
+    activeSignature: 0,
+    activeParameter: activeParam,
+  };
 });
 
 connection.onCompletion((params) => {

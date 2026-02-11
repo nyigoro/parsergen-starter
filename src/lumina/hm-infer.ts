@@ -11,6 +11,13 @@ import {
 } from './types.js';
 import { type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
+import {
+  createStdModuleRegistry,
+  getPreludeExports,
+  resolveModuleBindings,
+  type ModuleExport,
+  type ModuleRegistry,
+} from './module-registry.js';
 
 export interface InferResult {
   type?: Type;
@@ -34,7 +41,10 @@ const defaultLocation: Location = {
 
 const diagLocation = (location?: Location): Location => location ?? defaultLocation;
 
-export function inferProgram(program: LuminaProgram): InferResult {
+export function inferProgram(
+  program: LuminaProgram,
+  options?: { moduleRegistry?: ModuleRegistry; moduleBindings?: Map<string, ModuleExport>; preludeExports?: ModuleExport[] }
+): InferResult {
   const env = new TypeEnv();
   const subst: Subst = new Map();
   const diagnostics: Diagnostic[] = [];
@@ -44,6 +54,20 @@ export function inferProgram(program: LuminaProgram): InferResult {
   const inferredFnParams = new Map<string, Type[]>();
   const hoistedFns = new Map<string, { paramTypes: Type[]; returnType: Type }>();
   const enumRegistry = buildEnumRegistry(program);
+  const moduleRegistry = options?.moduleRegistry ?? createStdModuleRegistry();
+  const moduleBindings = options?.moduleBindings ?? resolveModuleBindings(program, moduleRegistry);
+  const preludeExports = options?.preludeExports ?? getPreludeExports(moduleRegistry);
+
+  for (const exp of preludeExports) {
+    if (exp.kind !== 'function') continue;
+    env.extend(exp.name, exp.hmType);
+  }
+
+  for (const [name, exp] of moduleBindings.entries()) {
+    if (exp.kind === 'function') {
+      env.extend(name, exp.hmType);
+    }
+  }
 
   for (const stmt of program.body) {
     if (stmt.type !== 'FnDecl') continue;
@@ -65,7 +89,8 @@ export function inferProgram(program: LuminaProgram): InferResult {
         inferredFnByName,
         inferredFnParams,
         hoistedFns,
-        enumRegistry
+        enumRegistry,
+        moduleBindings
       );
       continue;
     }
@@ -79,7 +104,8 @@ export function inferProgram(program: LuminaProgram): InferResult {
       inferredFnReturns,
       inferredFnByName,
       inferredFnParams,
-      enumRegistry
+      enumRegistry,
+      moduleBindings
     );
   }
 
@@ -135,7 +161,8 @@ function inferFunctionBody(
   inferredFnByName: Map<string, Type>,
   inferredFnParams: Map<string, Type[]>,
   hoistedFns: Map<string, { paramTypes: Type[]; returnType: Type }>,
-  enumRegistry: Map<string, EnumInfo>
+  enumRegistry: Map<string, EnumInfo>,
+  moduleBindings?: Map<string, ModuleExport>
 ): Type | null {
   const signature = hoistedFns.get(stmt.name) ?? buildFunctionSignature(stmt);
   const fnEnv = env.child();
@@ -156,7 +183,8 @@ function inferFunctionBody(
       inferredFnReturns,
       inferredFnByName,
       inferredFnParams,
-      enumRegistry
+      enumRegistry,
+      moduleBindings
     );
   }
   if (stmt.location?.start) {
@@ -177,7 +205,8 @@ function inferStatement(
   inferredFnReturns?: Map<string, Type>,
   inferredFnByName?: Map<string, Type>,
   inferredFnParams?: Map<string, Type[]>,
-  enumRegistry?: Map<string, EnumInfo>
+  enumRegistry?: Map<string, EnumInfo>,
+  moduleBindings?: Map<string, ModuleExport>
 ): Type | null {
   switch (stmt.type) {
     case 'FnDecl': {
@@ -216,7 +245,7 @@ function inferStatement(
       return fnType;
     }
     case 'Let': {
-      const valueType = inferExpr(stmt.value, env, subst, diagnostics, enumRegistry);
+      const valueType = inferExpr(stmt.value, env, subst, diagnostics, enumRegistry, moduleBindings);
       if (!valueType) return null;
       const scheme = generalize(valueType, subst, env.freeVars(subst));
       env.extend(stmt.name, scheme);
@@ -227,22 +256,22 @@ function inferStatement(
     }
     case 'Return': {
       if (!currentReturn) return null;
-      const valueType = inferExpr(stmt.value, env, subst, diagnostics, enumRegistry);
+      const valueType = inferExpr(stmt.value, env, subst, diagnostics, enumRegistry, moduleBindings);
       if (!valueType) return null;
       tryUnify(currentReturn, valueType, subst, diagnostics);
       return valueType;
     }
     case 'ExprStmt': {
-      return inferExpr(stmt.expr, env, subst, diagnostics, enumRegistry);
+      return inferExpr(stmt.expr, env, subst, diagnostics, enumRegistry, moduleBindings);
     }
     case 'If': {
-      const condType = inferExpr(stmt.condition, env, subst, diagnostics, enumRegistry);
+      const condType = inferExpr(stmt.condition, env, subst, diagnostics, enumRegistry, moduleBindings);
       if (condType) {
         tryUnify(condType, { kind: 'primitive', name: 'bool' }, subst, diagnostics);
       }
       const thenEnv = env.child();
       if (stmt.condition.type === 'IsExpr') {
-        const narrowing = getIsNarrowing(stmt.condition, env, subst, diagnostics, enumRegistry);
+        const narrowing = getIsNarrowing(stmt.condition, env, subst, diagnostics, enumRegistry, moduleBindings);
         if (narrowing) {
           thenEnv.extend(narrowing.name, { kind: 'scheme', variables: [], type: narrowing.type });
         }
@@ -264,7 +293,7 @@ function inferStatement(
       if (stmt.elseBlock) {
         const elseEnv = env.child();
         if (stmt.condition.type === 'IsExpr') {
-          const narrowing = getIsElseNarrowing(stmt.condition, env, subst, diagnostics, enumRegistry);
+          const narrowing = getIsElseNarrowing(stmt.condition, env, subst, diagnostics, enumRegistry, moduleBindings);
           if (narrowing) {
             elseEnv.extend(narrowing.name, { kind: 'scheme', variables: [], type: narrowing.type });
           }
@@ -287,7 +316,7 @@ function inferStatement(
       return null;
     }
     case 'While': {
-      const condType = inferExpr(stmt.condition, env, subst, diagnostics, enumRegistry);
+      const condType = inferExpr(stmt.condition, env, subst, diagnostics, enumRegistry, moduleBindings);
       if (condType) {
         tryUnify(condType, { kind: 'primitive', name: 'bool' }, subst, diagnostics);
       }
@@ -309,7 +338,7 @@ function inferStatement(
       return null;
     }
     case 'MatchStmt': {
-      const scrutineeType = inferExpr(stmt.value, env, subst, diagnostics, enumRegistry);
+      const scrutineeType = inferExpr(stmt.value, env, subst, diagnostics, enumRegistry, moduleBindings);
       for (const arm of stmt.arms) {
         const armEnv = env.child();
         if (scrutineeType) {
@@ -363,7 +392,8 @@ function inferExpr(
   env: TypeEnv,
   subst: Subst,
   diagnostics: Diagnostic[],
-  enumRegistry?: Map<string, EnumInfo>
+  enumRegistry?: Map<string, EnumInfo>,
+  moduleBindings?: Map<string, ModuleExport>
 ): Type | null {
   switch (expr.type) {
     case 'Number':
@@ -378,8 +408,8 @@ function inferExpr(
       return instantiate(scheme);
     }
     case 'Binary': {
-      const left = inferExpr(expr.left, env, subst, diagnostics, enumRegistry);
-      const right = inferExpr(expr.right, env, subst, diagnostics, enumRegistry);
+      const left = inferExpr(expr.left, env, subst, diagnostics, enumRegistry, moduleBindings);
+      const right = inferExpr(expr.right, env, subst, diagnostics, enumRegistry, moduleBindings);
       if (!left || !right) return null;
       if (expr.op === '==' || expr.op === '!=') {
         tryUnify(left, right, subst, diagnostics);
@@ -395,20 +425,59 @@ function inferExpr(
       return null;
     }
     case 'Call': {
+      if (expr.enumName && moduleBindings) {
+        const moduleExport = moduleBindings.get(expr.enumName);
+        if (moduleExport?.kind === 'module') {
+          const member = moduleExport.exports.get(expr.callee.name);
+          if (!member || member.kind !== 'function') {
+            diagnostics.push({
+              severity: 'error',
+              code: 'HM_MODULE_MEMBER',
+              message: `Unknown module member '${expr.enumName}.${expr.callee.name}'`,
+              source: 'lumina',
+              location: diagLocation(expr.location),
+            });
+            return null;
+          }
+          const calleeType = instantiate(member.hmType);
+          const argTypes = expr.args.map(arg => inferExpr(arg, env, subst, diagnostics, enumRegistry, moduleBindings) ?? freshTypeVar());
+          const resultType = freshTypeVar();
+          const fnType: Type = { kind: 'function', args: argTypes, returnType: resultType };
+          tryUnify(calleeType, fnType, subst, diagnostics);
+          return prune(resultType, subst);
+        }
+      }
       if (expr.enumName && enumRegistry) {
-        const constructorType = inferEnumConstructor(expr, env, subst, diagnostics, enumRegistry);
+        const constructorType = inferEnumConstructor(expr, env, subst, diagnostics, enumRegistry, moduleBindings);
         if (constructorType) return constructorType;
       }
       const calleeScheme = env.lookup(expr.callee.name);
       if (!calleeScheme) return null;
       const calleeType = instantiate(calleeScheme);
-      const argTypes = expr.args.map(arg => inferExpr(arg, env, subst, diagnostics, enumRegistry) ?? freshTypeVar());
+      const argTypes = expr.args.map(arg => inferExpr(arg, env, subst, diagnostics, enumRegistry, moduleBindings) ?? freshTypeVar());
       const resultType = freshTypeVar();
       const fnType: Type = { kind: 'function', args: argTypes, returnType: resultType };
       tryUnify(calleeType, fnType, subst, diagnostics);
       return prune(resultType, subst);
     }
     case 'Member': {
+      if (expr.object.type === 'Identifier' && moduleBindings) {
+        const moduleExport = moduleBindings.get(expr.object.name);
+        if (moduleExport?.kind === 'module') {
+          const member = moduleExport.exports.get(expr.property);
+          if (member?.kind === 'function') {
+            return instantiate(member.hmType);
+          }
+          diagnostics.push({
+            severity: 'error',
+            code: 'HM_MODULE_MEMBER',
+            message: `Unknown module member '${expr.object.name}.${expr.property}'`,
+            source: 'lumina',
+            location: diagLocation(expr.location),
+          });
+          return null;
+        }
+      }
       if (!enumRegistry) return null;
       if (expr.object.type !== 'Identifier') return null;
       const enumName = expr.object.name;
@@ -439,16 +508,16 @@ function inferExpr(
       return { kind: 'adt', name: enumName, params: paramTypes.map(p => prune(p, subst)) };
     }
     case 'IsExpr': {
-      return inferIsExpr(expr, env, subst, diagnostics, enumRegistry);
+      return inferIsExpr(expr, env, subst, diagnostics, enumRegistry, moduleBindings);
     }
     case 'MatchExpr': {
-      const scrutineeType = inferExpr(expr.value, env, subst, diagnostics, enumRegistry);
+      const scrutineeType = inferExpr(expr.value, env, subst, diagnostics, enumRegistry, moduleBindings);
       if (!scrutineeType) return null;
       let resultType: Type | null = null;
       for (const arm of expr.arms) {
         const armEnv = env.child();
         applyMatchPattern(arm.pattern, scrutineeType, armEnv, subst, diagnostics, enumRegistry);
-        const armType = inferExpr(arm.body, armEnv, subst, diagnostics, enumRegistry);
+        const armType = inferExpr(arm.body, armEnv, subst, diagnostics, enumRegistry, moduleBindings);
         if (!armType) continue;
         if (!resultType) {
           resultType = armType;
@@ -564,7 +633,8 @@ function inferEnumConstructor(
   env: TypeEnv,
   subst: Subst,
   diagnostics: Diagnostic[],
-  enumRegistry: Map<string, EnumInfo>
+  enumRegistry: Map<string, EnumInfo>,
+  moduleBindings?: Map<string, ModuleExport>
 ): Type | null {
   if (!expr.enumName) return null;
   const info = enumRegistry.get(expr.enumName);
@@ -592,7 +662,7 @@ function inferEnumConstructor(
     });
     return null;
   }
-  const argTypes = expr.args.map(arg => inferExpr(arg, env, subst, diagnostics, enumRegistry) ?? freshTypeVar());
+  const argTypes = expr.args.map(arg => inferExpr(arg, env, subst, diagnostics, enumRegistry, moduleBindings) ?? freshTypeVar());
   for (let i = 0; i < argTypes.length && i < variantParams.length; i++) {
     const expected = parseTypeNameWithEnv(variantParams[i], enumParamMap);
     tryUnify(argTypes[i], expected, subst, diagnostics);
@@ -651,7 +721,8 @@ function getIsNarrowing(
   env: TypeEnv,
   subst: Subst,
   diagnostics: Diagnostic[],
-  enumRegistry?: Map<string, EnumInfo>
+  enumRegistry?: Map<string, EnumInfo>,
+  moduleBindings?: Map<string, ModuleExport>
 ): { name: string; type: Type } | null {
   if (!enumRegistry) return null;
   if (expr.value.type !== 'Identifier') return null;
@@ -661,7 +732,7 @@ function getIsNarrowing(
   if (!info) return null;
   const paramTypes = info.typeParams.map(() => freshTypeVar());
   const expectedEnumType: Type = { kind: 'adt', name: enumName, params: paramTypes };
-  const current = inferExpr(expr.value, env, subst, diagnostics, enumRegistry);
+  const current = inferExpr(expr.value, env, subst, diagnostics, enumRegistry, moduleBindings);
   if (current) {
     tryUnify(current, expectedEnumType, subst, diagnostics);
   }
@@ -673,7 +744,8 @@ function getIsElseNarrowing(
   env: TypeEnv,
   subst: Subst,
   diagnostics: Diagnostic[],
-  enumRegistry?: Map<string, EnumInfo>
+  enumRegistry?: Map<string, EnumInfo>,
+  moduleBindings?: Map<string, ModuleExport>
 ): { name: string; type: Type } | null {
   if (!enumRegistry) return null;
   if (expr.value.type !== 'Identifier') return null;
@@ -683,7 +755,7 @@ function getIsElseNarrowing(
   if (!info || info.variants.size !== 2) return null;
   const paramTypes = info.typeParams.map(() => freshTypeVar());
   const expectedEnumType: Type = { kind: 'adt', name: enumName, params: paramTypes };
-  const current = inferExpr(expr.value, env, subst, diagnostics, enumRegistry);
+  const current = inferExpr(expr.value, env, subst, diagnostics, enumRegistry, moduleBindings);
   if (current) {
     tryUnify(current, expectedEnumType, subst, diagnostics);
   }
@@ -695,9 +767,10 @@ function inferIsExpr(
   env: TypeEnv,
   subst: Subst,
   diagnostics: Diagnostic[],
-  enumRegistry?: Map<string, EnumInfo>
+  enumRegistry?: Map<string, EnumInfo>,
+  moduleBindings?: Map<string, ModuleExport>
 ): Type | null {
-  const condType = inferExpr(expr.value, env, subst, diagnostics, enumRegistry);
+  const condType = inferExpr(expr.value, env, subst, diagnostics, enumRegistry, moduleBindings);
   if (!enumRegistry) return { kind: 'primitive', name: 'bool' };
   const enumName = resolveEnumName(expr.enumName, expr.variant, enumRegistry);
   if (!enumName) {

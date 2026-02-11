@@ -6,16 +6,21 @@ import { type CompiledGrammar } from '../grammar/index.js';
 import { type Location } from '../utils/index.js';
 import { type Diagnostic } from '../parser/index.js';
 import { type LuminaType } from '../lumina/ast.js';
+import { createStdModuleRegistry, type ModuleRegistry } from '../lumina/module-registry.js';
+import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
+import { resolveModuleBindings, type ModuleExport, type ModuleNamespace } from '../lumina/module-registry.js';
 
 export interface BrowserSourceDocument {
   uri: string;
   text: string;
   version: number;
   imports: string[];
+  importAliases?: Map<string, string>;
   diagnostics: Diagnostic[];
   symbols?: LuminaSymbolTable;
   ast?: unknown;
   importedNames?: Set<string>;
+  moduleBindings?: Map<string, ModuleExport>;
   signatures?: Map<string, string>;
   functionHashes?: Map<string, string>;
   inferredReturns?: Map<string, LuminaType>;
@@ -30,6 +35,7 @@ export class BrowserProjectContext {
   private preludeSymbols: LuminaSymbolTable | null = null;
   private preludeNames = new Set<string>();
   private preludeText: string | null = null;
+  private moduleRegistry: ModuleRegistry;
 
   constructor(
     parser?: CompiledGrammar<unknown>,
@@ -37,6 +43,7 @@ export class BrowserProjectContext {
   ) {
     this.parser = parser ?? null;
     this.preludeText = options.preludeText ?? null;
+    this.moduleRegistry = createStdModuleRegistry();
     this.recoveryOptions = {
       syncTokenTypes: luminaSyncTokenTypes,
       syncKeywordValues: ['import', 'type', 'struct', 'enum', 'fn', 'let', 'return', 'if', 'else', 'for', 'while', 'match', 'extern', 'pub'],
@@ -108,6 +115,8 @@ export class BrowserProjectContext {
     doc.diagnostics = result.diagnostics;
     doc.ast = undefined;
     doc.importedNames = undefined;
+    doc.importAliases = undefined;
+    doc.moduleBindings = undefined;
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
       const payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
@@ -123,6 +132,10 @@ export class BrowserProjectContext {
         const importedNames = new Set<string>(rawImports);
         for (const name of this.preludeNames) importedNames.add(name);
         doc.importedNames = importedNames;
+        const importAliases = collectImportAliases(payload as never);
+        doc.importAliases = importAliases;
+        const moduleBindings = this.buildModuleBindings(importAliases, payload as never);
+        doc.moduleBindings = moduleBindings;
 
         const analysis = analyzeLumina(payload as never, {
           externSymbols: (name: string) => {
@@ -138,6 +151,8 @@ export class BrowserProjectContext {
           importedNames,
           skipFunctionBodies: skipBodies,
           cachedFunctionReturns: cachedReturns,
+          moduleRegistry: this.moduleRegistry,
+          moduleBindings,
         });
         doc.symbols = analysis.symbols;
         doc.inferredReturns = new Map<string, LuminaType>();
@@ -169,6 +184,28 @@ export class BrowserProjectContext {
     const withExt = this.ensureVirtualExtension(normalized);
     if (this.virtualFiles.has(withExt)) return this.virtualUriFor(withExt);
     return this.virtualUriFor(normalized);
+  }
+
+  private buildModuleBindings(
+    aliases: Map<string, string>,
+    program: { type: string; body?: unknown[] }
+  ): Map<string, ModuleExport> {
+    const bindings = resolveModuleBindings(program as never, this.moduleRegistry);
+    for (const [alias, source] of aliases.entries()) {
+      if (bindings.has(alias)) continue;
+      const moduleFromRegistry = this.moduleRegistry.get(source);
+      if (moduleFromRegistry) {
+        bindings.set(alias, moduleFromRegistry as ModuleNamespace);
+        continue;
+      }
+      const resolved = this.resolveImport('', source);
+      this.ensureDocumentLoaded(resolved);
+      const doc = this.documents.get(this.toVirtualUri(resolved));
+      if (!doc?.symbols) continue;
+      const module = buildModuleNamespaceFromSymbols(alias, doc.symbols.list());
+      bindings.set(alias, module);
+    }
+    return bindings;
   }
 
   private ensureDocumentLoaded(uri: string) {
@@ -258,6 +295,31 @@ function collectImportNames(program: { type: string; body?: unknown[] }): Set<st
     }
   }
   return names;
+}
+
+function collectImportAliases(program: { type: string; body?: unknown[] }): Map<string, string> {
+  const aliases = new Map<string, string>();
+  if (!program || !Array.isArray(program.body)) return aliases;
+  for (const stmt of program.body) {
+    const node = stmt as { type?: string; spec?: unknown; source?: { value?: string } };
+    if (node.type !== 'Import') continue;
+    const source = node.source?.value;
+    if (!source) continue;
+    const spec = node.spec;
+    const addAlias = (item: unknown) => {
+      if (!item || typeof item !== 'object') return;
+      const specItem = item as { name?: string; namespace?: boolean };
+      if (specItem.namespace && specItem.name) {
+        aliases.set(specItem.name, source);
+      }
+    };
+    if (Array.isArray(spec)) {
+      for (const item of spec) addAlias(item);
+    } else {
+      addAlias(spec);
+    }
+  }
+  return aliases;
 }
 
 function collectFunctionBodyHashes(

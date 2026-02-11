@@ -73,10 +73,14 @@ Import
 
 ImportSpec
   = "{" _ list:ImportList _ "}" { return list; }
+  / NamespaceImport
   / Identifier
 
 ImportList
   = head:Identifier tail:(_ "," _ Identifier)* { return [head].concat(tail.map(t => t[3])); }
+
+NamespaceImport
+  = "*" _ "as" _ alias:IdName { return { name: alias.name, namespace: true, location: alias.location }; }
 
 TypeDecl
   = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {
@@ -301,7 +305,16 @@ Boolean
   / "false" { return { type: "Boolean", value: false, location: location() }; }
 
 String
-  = "\"" chars:Char* "\"" { return { type: "String", value: chars.join(""), location: location() }; }
+  = "\"" chars:Char* "\"" {
+      const raw = text();
+      let value = raw.slice(1, -1);
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        // fall back to raw slice on invalid escape sequences
+      }
+      return { type: "String", value, location: location() };
+    }
 
 Char
   = "\\\\" c:. { return c; }
