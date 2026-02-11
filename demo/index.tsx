@@ -17,7 +17,8 @@ import {
   TreePine,
   AlertCircle,
   CheckCircle,
-  XCircle
+  XCircle,
+  Copy
 } from 'lucide-react';
 import PEG from 'peggy';
 import luminaGrammarRaw from '../src/grammar/lumina.peg?raw';
@@ -335,6 +336,7 @@ function App() {
   const [luminaOutput, setLuminaOutput] = useState('');
   const [luminaStatus, setLuminaStatus] = useState<'idle' | 'parsing' | 'error' | 'ok'>('idle');
   const [luminaTab, setLuminaTab] = useState<'ast' | 'diagnostics' | 'js'>('diagnostics');
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const handleHash = () => setRoute(getRouteFromHash());
@@ -481,6 +483,26 @@ function App() {
       case 'error': return <XCircle className="text-red-400" size={16} />;
       case 'parsing': return <div className="animate-spin w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" />;
       default: return <AlertCircle className="text-gray-400" size={16} />;
+    }
+  };
+
+  const copyToClipboard = async (label: string, text: string) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus(`${label} copied`);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopyStatus(`${label} copied`);
+    } finally {
+      setTimeout(() => setCopyStatus(null), 2000);
     }
   };
 
@@ -700,6 +722,33 @@ import { add } from "lib/math.lm";`}</pre>
                 >
                   JS Output
                 </button>
+                <div className="ml-auto flex items-center gap-2 px-3">
+                  {copyStatus && <span className="text-xs text-green-400">{copyStatus}</span>}
+                  {luminaTab === 'diagnostics' && (
+                    <button
+                      onClick={() => copyToClipboard('Diagnostics', JSON.stringify(luminaDiagnostics, null, 2))}
+                      className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded flex items-center gap-1"
+                    >
+                      <Copy size={12} /> Copy
+                    </button>
+                  )}
+                  {luminaTab === 'ast' && (
+                    <button
+                      onClick={() => copyToClipboard('AST', luminaAst ? JSON.stringify(luminaAst, null, 2) : '')}
+                      className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded flex items-center gap-1"
+                    >
+                      <Copy size={12} /> Copy
+                    </button>
+                  )}
+                  {luminaTab === 'js' && (
+                    <button
+                      onClick={() => copyToClipboard('JS output', luminaOutput)}
+                      className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded flex items-center gap-1"
+                    >
+                      <Copy size={12} /> Copy
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="bg-gray-900/60 border border-gray-700 rounded p-4">
@@ -886,6 +935,25 @@ import { add } from "lib/math.lm";`}</pre>
                   >
                     <TreePine size={14} /> AST Tree
                   </button>
+                  <div className="ml-auto flex items-center gap-2 px-3">
+                    {copyStatus && <span className="text-xs text-green-400">{copyStatus}</span>}
+                    {activeTab === 'output' && (
+                      <button
+                        onClick={() => copyToClipboard('Output', output)}
+                        className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded flex items-center gap-1"
+                      >
+                        <Copy size={12} /> Copy
+                      </button>
+                    )}
+                    {activeTab === 'ast' && (
+                      <button
+                        onClick={() => copyToClipboard('AST tree', ast ? JSON.stringify(ast, null, 2) : '')}
+                        className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded flex items-center gap-1"
+                      >
+                        <Copy size={12} /> Copy
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex-1 bg-gray-700 overflow-auto">

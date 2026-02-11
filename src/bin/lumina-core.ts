@@ -8,7 +8,7 @@ import { Worker } from 'node:worker_threads';
 import { compileGrammar } from '../grammar/index.js';
 import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
 import { formatError, highlightSnippet } from '../utils/index.js';
-import { analyzeLumina, lowerLumina, optimizeIR, generateJS, irToDot } from '../index.js';
+import { analyzeLumina, lowerLumina, optimizeIR, generateJS, generateJSFromAst, irToDot } from '../index.js';
 import { extractImports } from '../project/imports.js';
 import { parseWithPanicRecovery } from '../project/panic.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
@@ -400,7 +400,8 @@ async function compileLumina(
   target: Target,
   grammarPath: string,
   useRecovery: boolean,
-  diCfg: boolean
+  diCfg: boolean,
+  useAstJs: boolean
 ) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
@@ -409,6 +410,12 @@ async function compileLumina(
   const cached = buildCache.files.get(sourcePath);
   if (cached && cached.hash === fileHash && cached.grammarHash === buildCache.grammarHash) {
     buildCache.stats.hits += 1;
+    if (useAstJs) {
+      const result = generateJSFromAst(cached.ast as never, { target });
+      await fs.writeFile(outPath, result.code, 'utf-8');
+      console.log(`Lumina compiled (cached): ${outPath}`);
+      return { ok: true, map: undefined, ir: cached.ir ?? lowerLumina(cached.ast as never) };
+    }
     const result = generateJS(cached.ir ?? lowerLumina(cached.ast as never), { target, sourceMap: true });
     await fs.writeFile(outPath, result.code, 'utf-8');
     console.log(`Lumina compiled (cached): ${outPath}`);
@@ -418,6 +425,12 @@ async function compileLumina(
   if (diskCache && diskCache.hash === fileHash && diskCache.grammarHash === buildCache.grammarHash) {
     buildCache.stats.hits += 1;
     buildCache.files.set(sourcePath, diskCache);
+    if (useAstJs) {
+      const result = generateJSFromAst(diskCache.ast as never, { target });
+      await fs.writeFile(outPath, result.code, 'utf-8');
+      console.log(`Lumina compiled (cached): ${outPath}`);
+      return { ok: true, map: undefined, ir: diskCache.ir ?? lowerLumina(diskCache.ast as never) };
+    }
     const result = generateJS(diskCache.ir ?? lowerLumina(diskCache.ast as never), { target, sourceMap: true });
     await fs.writeFile(outPath, result.code, 'utf-8');
     console.log(`Lumina compiled (cached): ${outPath}`);
@@ -441,10 +454,19 @@ async function compileLumina(
     formatDiagnosticsWithSnippet(source, analysis.diagnostics);
     return { ok: false };
   }
-  const lowered = lowerLumina(ast as never);
-  const optimized = optimizeIR(lowered) ?? lowered;
-  const result = generateJS(optimized, { target, sourceMap: true });
-  const out = result.code;
+  let out = '';
+  let optimized = null as ReturnType<typeof optimizeIR>;
+  let result: { code: string; map?: { mappings: Array<{ line: number; kind: string }> } } | null = null;
+  if (useAstJs) {
+    result = generateJSFromAst(ast as never, { target });
+    out = result.code;
+  } else {
+    const lowered = lowerLumina(ast as never);
+    optimized = optimizeIR(lowered) ?? lowered;
+    const gen = generateJS(optimized, { target, sourceMap: true });
+    out = gen.code;
+    result = gen;
+  }
   await fs.writeFile(outPath, out, 'utf-8');
   console.log(`Lumina compiled: ${outPath}`);
   if (diCfg && analysis.diGraphs) {
@@ -540,8 +562,17 @@ export async function compileLuminaTask(payload: {
   grammarPath: string;
   useRecovery: boolean;
   diCfg?: boolean;
+  useAstJs?: boolean;
 }) {
-  return compileLumina(payload.sourcePath, payload.outPath, payload.target, payload.grammarPath, payload.useRecovery, payload.diCfg ?? false);
+  return compileLumina(
+    payload.sourcePath,
+    payload.outPath,
+    payload.target,
+    payload.grammarPath,
+    payload.useRecovery,
+    payload.diCfg ?? false,
+    payload.useAstJs ?? false
+  );
 }
 
 export async function checkLuminaTask(payload: {
@@ -579,7 +610,7 @@ async function watchLumina(
 
   const runCompile = async (filePath: string, outPath: string) => {
     if (!worker) {
-      await compileLumina(filePath, outPath, target, grammarPath, useRecovery, diCfg);
+      await compileLumina(filePath, outPath, target, grammarPath, useRecovery, diCfg, useAstJs);
       return;
     }
     const result = await worker.compile({
@@ -589,6 +620,7 @@ async function watchLumina(
       grammarPath,
       useRecovery,
       diCfg,
+      useAstJs,
     });
     if (!result.ok && result.error) {
       console.error(`Lumina worker error: ${result.error}`);
@@ -719,6 +751,7 @@ Options:
   --sourcemap          Emit source map alongside output
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
+  --ast-js             Emit JS directly from AST (no IR)
 
 Config file:
   lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir, recovery
@@ -747,6 +780,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const dryRun = parseBooleanFlag(args, '--dry-run');
   const useRecovery = parseBooleanFlag(args, '--recovery') || config.recovery === true;
   const diCfg = parseBooleanFlag(args, '--di-cfg');
+  const useAstJs = parseBooleanFlag(args, '--ast-js');
   const listConfig = parseBooleanFlag(args, '--list-config');
   const sourceMap = parseBooleanFlag(args, '--sourcemap');
   const debugIr = parseBooleanFlag(args, '--debug-ir');
@@ -793,7 +827,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         const result = await checkLumina(sourcePath, grammarPath, useRecovery, diCfg);
         if (!result.ok) process.exit(1);
       } else {
-        const result = await compileLumina(sourcePath, outPath, target, grammarPath, useRecovery, diCfg);
+        const result = await compileLumina(sourcePath, outPath, target, grammarPath, useRecovery, diCfg, useAstJs);
         if (!result.ok) process.exit(1);
         if (sourceMap && result.map) {
           const mapPath = outPath + '.map';

@@ -41,10 +41,10 @@ function findSyncOffsetWithLexer(
   for (const token of tokens) {
     if (token.offset < startOffset) continue;
     if (syncTypes.includes(token.type)) {
-      return token.offset + token.value.length;
+      return token.offset + token.text.length;
     }
-    if (token.type === 'keyword' && syncKeywordValues.includes(token.value)) {
-      return token.offset + token.value.length;
+    if (token.type === 'keyword' && syncKeywordValues.includes(token.text)) {
+      return token.offset + token.text.length;
     }
   }
   return null;

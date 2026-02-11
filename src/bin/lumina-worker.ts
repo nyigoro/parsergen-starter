@@ -20,6 +20,7 @@ type CompileMessage = {
     grammarPath: string;
     useRecovery: boolean;
     diCfg?: boolean;
+    useAstJs?: boolean;
   };
 };
 

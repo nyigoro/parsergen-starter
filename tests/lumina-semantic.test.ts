@@ -150,6 +150,24 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('supports ADT type syntax sugar with generics', () => {
+    const program = `
+      type Option<T> = Some(T) | None;
+      fn main() {
+        let value = Some(1);
+        match value {
+          Some(v) => { return v; },
+          None => { return 0; },
+        }
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
   test('supports qualified enum constructors', () => {
     const program = `
       enum Status { Active, Inactive }

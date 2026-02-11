@@ -89,6 +89,22 @@ export { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from './lum
 export { analyzeLumina, SymbolTable as LuminaSymbolTable } from './lumina/semantic';
 export { lowerLumina } from './lumina/lower';
 export { generateJS } from './lumina/codegen';
+export { generateJSFromAst } from './lumina/codegen-js';
 export type { IRNode } from './lumina/ir';
 export { optimizeIR } from './lumina/optimize';
 export { irToDot } from './lumina/ir-dot';
+export { parseLumina, parseLuminaTyped, LuminaSyntaxError, type LuminaParseOptions } from './lumina/parser';
+export { normalizeDiagnostic, type DiagnosticNormalized } from './lumina/diagnostics-util';
+export {
+  type Type,
+  type TypeScheme,
+  type PrimitiveName,
+  freshTypeVar,
+  resetTypeVarCounter,
+  prune,
+  occursIn,
+  unify,
+  freeTypeVars,
+  generalize
+} from './lumina/types';
+export { inferProgram } from './lumina/hm-infer';

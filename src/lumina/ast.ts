@@ -87,7 +87,7 @@ export interface LuminaFnDecl {
 
 export interface LuminaParam {
   name: string;
-  typeName: LuminaType;
+  typeName: LuminaType | null;
   ref?: boolean;
   location?: Location;
 }

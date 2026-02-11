@@ -52,6 +52,7 @@ Statement
   = Import
   / StructDecl
   / EnumDecl
+  / AdtTypeDecl
   / TypeDecl
   / ExternTypeDecl
   / FnDecl
@@ -80,6 +81,11 @@ ImportList
 TypeDecl
   = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {
       return { type: "TypeDecl", name: node.name, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location };
+    }
+
+AdtTypeDecl
+  = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ variants:AdtVariantList _ ";"? {
+      return { type: "EnumDecl", name: node.name, variants: variants || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location };
     }
 
 StructDecl
@@ -149,11 +155,17 @@ EnumVariant
 EnumVariantParams
   = "(" _ head:TypeName tail:(_ "," _ TypeName)* _ ")" { return [head].concat(tail.map(t => t[3])); }
 
+AdtVariantList
+  = head:AdtVariant tail:(_ "|" _ AdtVariant)* { return [head].concat(tail.map(t => t[3])); }
+
+AdtVariant
+  = node:IdName _ params:EnumVariantParams? { return { name: node.name, params: params || [], location: node.location }; }
+
 ParamList
   = head:Param tail:(_ "," _ Param)* { return [head].concat(tail.map(t => t[3])); }
 
 Param
-  = ref:("ref" __)? node:IdName _ ":" _ typeName:TypeName { return { name: node.name, typeName, ref: !!ref, location: node.location }; }
+  = ref:("ref" __)? node:IdName _ typeAnn:(_ ":" _ typeName:TypeName { return typeName; })? { return { name: node.name, typeName: typeAnn || null, ref: !!ref, location: node.location }; }
 
 Block
   = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements, location: location() }; }

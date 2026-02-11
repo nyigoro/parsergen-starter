@@ -60,6 +60,7 @@ export class ProjectContext {
   private loading = new Set<string>();
   private virtualFiles = new Map<string, string>();
   private debugIncremental = false;
+  private useHmDiagnostics = false;
   private preludeSymbols: LuminaSymbolTable | null = null;
   private preludeNames = new Set<string>();
   private preludeLoaded = false;
@@ -69,10 +70,11 @@ export class ProjectContext {
     parser?: CompiledGrammar<unknown>,
     recoveryOptions: PanicRecoveryOptions = {},
     virtualFiles?: Map<string, string> | Record<string, string>,
-    options?: { debugIncremental?: boolean }
+    options?: { debugIncremental?: boolean; useHmDiagnostics?: boolean }
   ) {
     this.parser = parser ?? null;
     this.debugIncremental = options?.debugIncremental ?? false;
+    this.useHmDiagnostics = options?.useHmDiagnostics ?? false;
     if (virtualFiles) {
       if (virtualFiles instanceof Map) {
         for (const [spec, text] of virtualFiles.entries()) {
@@ -123,6 +125,10 @@ export class ProjectContext {
 
   setIncrementalDebug(enabled: boolean) {
     this.debugIncremental = enabled;
+  }
+
+  setHmDiagnostics(enabled: boolean) {
+    this.useHmDiagnostics = enabled;
   }
 
   registerVirtualFile(spec: string, text: string, version: number = 1) {
@@ -220,6 +226,8 @@ export class ProjectContext {
           importedNames,
           skipFunctionBodies,
           cachedFunctionReturns: cachedReturns,
+          useHm: this.useHmDiagnostics,
+          hmSourceText: doc.text,
         });
         doc.symbols = analysis.symbols;
         doc.inferredReturns = new Map<string, LuminaType>();

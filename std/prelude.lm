@@ -6,3 +6,5 @@ extern fn len(value: string) -> int from "string";
 extern fn upper(value: string) -> string from "string";
 type List<T> = { length: int };
 type Map<K, V> = { size: int };
+enum Option<T> { Some(T), None }
+enum Result<T, E> { Ok(T), Err(E) }

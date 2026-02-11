@@ -6,6 +6,7 @@ export interface LuminaLspSettings {
   maxIndexFiles?: number;
   renameConflictMode?: 'all' | 'exports';
   renamePreviewMode?: 'popup' | 'log' | 'off';
+  useHmDiagnostics?: boolean;
 }
 
 export const defaultSettings: LuminaLspSettings = {
@@ -16,4 +17,5 @@ export const defaultSettings: LuminaLspSettings = {
   maxIndexFiles: 2000,
   renameConflictMode: 'all',
   renamePreviewMode: 'popup',
+  useHmDiagnostics: false,
 };

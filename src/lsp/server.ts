@@ -87,7 +87,9 @@ function initProjectContext() {
   const grammarPath = resolveGrammarPath();
   const grammarText = fs.readFileSync(grammarPath, 'utf-8');
   const parser = compileGrammar(grammarText);
-  project = new ProjectContext(parser);
+  project = new ProjectContext(parser, undefined, undefined, {
+    useHmDiagnostics: settings.useHmDiagnostics ?? false,
+  });
   connection.console.info(`Lumina grammar loaded: ${grammarPath}`);
 }
 
@@ -650,13 +652,13 @@ connection.languages.semanticTokens.on((params) => {
     else if (token.type === 'comment') tokenType = 'comment';
     else if (token.type === 'identifier') {
       const builtinTypes = new Set(['int', 'string', 'bool', 'void']);
-      if (builtinTypes.has(token.value)) tokenType = 'type';
-      else tokenType = symbolMap.get(token.value) ?? 'variable';
+      if (builtinTypes.has(token.text)) tokenType = 'type';
+      else tokenType = symbolMap.get(token.text) ?? 'variable';
     }
     if (!tokenType) continue;
     const line = Math.max(0, (token.line ?? 1) - 1);
     const char = Math.max(0, (token.col ?? 1) - 1);
-    builder.push(line, char, token.value.length, semanticTokenTypes.indexOf(tokenType), 0);
+    builder.push(line, char, token.text.length, semanticTokenTypes.indexOf(tokenType), 0);
   }
   return builder.build();
 });

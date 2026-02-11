@@ -1,11 +1,109 @@
 import moo from 'moo';
 
-export type LuminaToken = moo.Token & { type: string };
+export type TokenKind =
+  | 'number'
+  | 'string'
+  | 'identifier'
+  | 'operator'
+  | 'keyword'
+  | 'newline'
+  | 'whitespace'
+  | 'comment'
+  | 'punctuation';
 
-export const luminaSyncTokenTypes = ['semicolon', 'rbrace'];
+export type TokenType =
+  | 'ws'
+  | 'comment'
+  | 'newline'
+  | 'lbrace'
+  | 'rbrace'
+  | 'lparen'
+  | 'rparen'
+  | 'lbracket'
+  | 'rbracket'
+  | 'comma'
+  | 'semicolon'
+  | 'colon'
+  | 'arrow'
+  | 'dot'
+  | 'op'
+  | 'keyword'
+  | 'string'
+  | 'number'
+  | 'identifier';
 
-export function createLuminaLexer() {
-  return moo.compile({
+interface BaseToken {
+  type: TokenType;
+  kind: TokenKind;
+  offset: number;
+  line: number;
+  col: number;
+  text: string;
+}
+
+export interface NumberToken extends BaseToken {
+  kind: 'number';
+  value: number;
+}
+
+export interface StringToken extends BaseToken {
+  kind: 'string';
+  value: string;
+}
+
+export interface IdentToken extends BaseToken {
+  kind: 'identifier';
+  name: string;
+}
+
+export interface KeywordToken extends BaseToken {
+  kind: 'keyword';
+  keyword: string;
+}
+
+export interface OperatorToken extends BaseToken {
+  kind: 'operator';
+  op: string;
+}
+
+export interface WhitespaceToken extends BaseToken {
+  kind: 'whitespace';
+}
+
+export interface NewlineToken extends BaseToken {
+  kind: 'newline';
+}
+
+export interface CommentToken extends BaseToken {
+  kind: 'comment';
+}
+
+export interface PunctuationToken extends BaseToken {
+  kind: 'punctuation';
+}
+
+export type LuminaToken =
+  | NumberToken
+  | StringToken
+  | IdentToken
+  | KeywordToken
+  | OperatorToken
+  | WhitespaceToken
+  | NewlineToken
+  | CommentToken
+  | PunctuationToken;
+
+export const luminaSyncTokenTypes: TokenType[] = ['semicolon', 'rbrace'];
+
+type MooToken = moo.Token & { type: TokenType };
+
+export interface LuminaLexer {
+  reset(input: string): LuminaLexer;
+  [Symbol.iterator](): Iterator<LuminaToken>;
+}
+
+export function createLuminaLexer(): LuminaLexer {
+  const lexer = moo.compile({
     ws: { match: /[ \t]+/, lineBreaks: false },
     comment: [
       { match: /\/\*\*[\s\S]*?\*\//, lineBreaks: true },
@@ -40,5 +138,104 @@ export function createLuminaLexer() {
       { match: /[0-9][0-9_]*/ },
     ],
     identifier: /[A-Za-z_][A-Za-z0-9_]*/,
+  });
+
+  let iterator: Iterable<MooToken> | null = null;
+  const wrapper: LuminaLexer = {
+    reset(input: string) {
+      iterator = lexer.reset(input) as Iterable<MooToken>;
+      return wrapper;
+    },
+    [Symbol.iterator]() {
+      const source = iterator ?? (lexer.reset('') as Iterable<MooToken>);
+      const gen = function* () {
+        for (const token of source) {
+          yield toLuminaToken(token);
+        }
+      };
+      return gen();
+    },
+  };
+  return wrapper;
+}
+
+function toLuminaToken(token: MooToken): LuminaToken {
+  const text = token.value ?? '';
+  const base = {
+    type: token.type,
+    kind: kindFromType(token.type),
+    offset: token.offset ?? 0,
+    line: token.line ?? 1,
+    col: token.col ?? 1,
+    text,
+  };
+
+  switch (token.type) {
+    case 'number':
+      return { ...base, kind: 'number', value: parseNumber(text) };
+    case 'string':
+      return { ...base, kind: 'string', value: unescapeString(text) };
+    case 'identifier':
+      return { ...base, kind: 'identifier', name: text };
+    case 'keyword':
+      return { ...base, kind: 'keyword', keyword: text };
+    case 'op':
+      return { ...base, kind: 'operator', op: text };
+    case 'ws':
+      return { ...base, kind: 'whitespace' };
+    case 'newline':
+      return { ...base, kind: 'newline' };
+    case 'comment':
+      return { ...base, kind: 'comment' };
+    default:
+      return { ...base, kind: 'punctuation' };
+  }
+}
+
+function kindFromType(type: TokenType): TokenKind {
+  if (type === 'number') return 'number';
+  if (type === 'string') return 'string';
+  if (type === 'identifier') return 'identifier';
+  if (type === 'keyword') return 'keyword';
+  if (type === 'op') return 'operator';
+  if (type === 'ws') return 'whitespace';
+  if (type === 'newline') return 'newline';
+  if (type === 'comment') return 'comment';
+  return 'punctuation';
+}
+
+function parseNumber(text: string): number {
+  const clean = text.replace(/_/g, '');
+  if (clean.startsWith('0x') || clean.startsWith('0X')) {
+    return Number.parseInt(clean.slice(2), 16);
+  }
+  if (clean.startsWith('0b') || clean.startsWith('0B')) {
+    return Number.parseInt(clean.slice(2), 2);
+  }
+  return Number.parseInt(clean, 10);
+}
+
+function unescapeString(text: string): string {
+  if (text.length < 2) return text;
+  const quote = text[0];
+  if ((quote !== '"' && quote !== "'") || text[text.length - 1] !== quote) return text;
+  const inner = text.slice(1, -1);
+  return inner.replace(/\\./g, (match) => {
+    switch (match[1]) {
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      case '"':
+        return '"';
+      case "'":
+        return "'";
+      case '\\':
+        return '\\';
+      default:
+        return match[1];
+    }
   });
 }

@@ -1,0 +1,163 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { compileGrammar } from '../src/grammar/index.js';
+import { inferProgram } from '../src/lumina/hm-infer.js';
+
+const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
+const parser = compileGrammar(luminaGrammar);
+
+describe('Lumina HM shadow inference', () => {
+  test('infers simple function usage without diagnostics', () => {
+    const program = `
+      fn add(a: int, b: int) {
+        return a + b;
+      }
+      fn main() {
+        let x = add(1, 2);
+        return x;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('infers unannotated parameters via HM', () => {
+    const program = `
+      fn add(x, y) {
+        return x + y;
+      }
+      fn main() {
+        return add(1, 2);
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('reports arity mismatch with LUM-002', () => {
+    const program = `
+      fn add(a: int, b: int) { return a + b; }
+      fn main() { return add(1); }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const codes = result.diagnostics.map(d => d.code);
+    expect(codes).toContain('LUM-002');
+  });
+
+  test('handles mutually recursive functions without annotations', () => {
+    const program = `
+      fn is_even(n) {
+        return is_odd(n);
+      }
+      fn is_odd(n) {
+        return is_even(n);
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('infers match expression with enum patterns', () => {
+    const program = `
+      enum Option<T> { Some(T), None }
+      fn main() {
+        let x = Option.Some(1);
+        let y = match x {
+          Option.Some(v) => v,
+          Option.None => 0
+        };
+        return y;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('reports non-bool if condition in HM inference', () => {
+    const program = `
+      fn main() {
+        if (1) { return 0; } else { return 1; }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const codes = result.diagnostics.map(d => d.code);
+    expect(codes).toContain('LUM-001');
+  });
+
+  test('reports non-exhaustive match with LUM-003', () => {
+    const program = `
+      enum Status { Active, Inactive, Pending }
+      fn main() {
+        let s = Status.Active;
+        match s {
+          Status.Active => { return 1; },
+          Status.Inactive => { return 0; },
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const codes = result.diagnostics.map(d => d.code);
+    expect(codes).toContain('LUM-003');
+  });
+
+  test('skips exhaustiveness when wildcard is present', () => {
+    const program = `
+      enum Status { Active, Inactive, Pending }
+      fn main() {
+        let s = Status.Active;
+        match s {
+          Status.Active => { return 1; },
+          _ => { return 0; },
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const codes = result.diagnostics.map(d => d.code);
+    expect(codes).not.toContain('LUM-003');
+  });
+
+  test('narrows with is in if condition', () => {
+    const program = `
+      enum Option<T> { Some(T), None }
+      fn main() {
+        let x = Option.Some(1);
+        if (x is Option.Some) { return 1; } else { return 0; }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('smart else narrowing for two-variant enums', () => {
+    const program = `
+      enum Result<T, E> { Ok(T), Err(E) }
+      fn main() {
+        let r = Result.Ok(1);
+        if (r is Result.Ok) { return 1; } else { return 0; }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+});
