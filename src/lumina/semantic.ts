@@ -113,7 +113,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
   const symbols = new SymbolTable();
   const pendingDeps = new Map<string, Set<string>>();
   const diGraphs = new Map<string, string>();
-  const registry = options?.moduleBindings ? undefined : createStdModuleRegistry();
+  const registry = options?.moduleRegistry ?? (options?.moduleBindings ? undefined : createStdModuleRegistry());
   const moduleBindings = options?.moduleBindings ?? resolveModuleBindings(program, registry);
   const importedNames = options?.importedNames ?? new Set(moduleBindings.keys());
   let activeOptions: AnalyzeOptions | undefined = options
@@ -200,7 +200,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
   }
 
   if (options?.useHm) {
-    const hm = inferProgram(program);
+    const hm = inferProgram(program, { moduleRegistry: registry, moduleBindings });
     const sourceText = options.hmSourceText ?? '';
     const sourceFile = options.currentUri ?? 'inline';
     const hmInferred = {
@@ -1089,6 +1089,22 @@ function typeCheckExpr(
     );
   };
 
+  const seedTypeParamsFromExpected = (
+    enumName: string,
+    mapping: Map<string, LuminaType>,
+    typeParamDefs: Array<{ name: string; bound?: LuminaType[] }>
+  ) => {
+    if (!expectedType) return;
+    const parsed = parseTypeName(expectedType);
+    if (!parsed || parsed.base !== enumName) return;
+    if (parsed.args.length !== typeParamDefs.length) return;
+    typeParamDefs.forEach((tp, idx) => {
+      if (!mapping.has(tp.name)) {
+        mapping.set(tp.name, parsed.args[idx]);
+      }
+    });
+  };
+
   const resolveModuleFunction = (
     binding: ModuleExport | undefined,
     member?: string
@@ -1330,6 +1346,7 @@ function typeCheckExpr(
         const typeParamDefs = enumSym?.typeParams ?? [];
         const mapping = new Map<string, LuminaType>();
         const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+        seedTypeParamsFromExpected(expr.enumName, mapping, typeParamDefs);
         if (enumVariant.params.length !== effectiveArgCount) {
           diagnostics.push(diagAt(`Argument count mismatch for '${expr.enumName}.${callee}'`, expr.location));
           return enumVariant.enumName;
@@ -1409,6 +1426,7 @@ function typeCheckExpr(
           const typeParamDefs = enumSym?.typeParams ?? [];
           const mapping = new Map<string, LuminaType>();
           const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+          seedTypeParamsFromExpected(enumVariant.enumName, mapping, typeParamDefs);
           if (enumVariant.params.length !== effectiveArgCount) {
             diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
             return enumVariant.enumName;

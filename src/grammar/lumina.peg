@@ -169,7 +169,9 @@ ParamList
   = head:Param tail:(_ "," _ Param)* { return [head].concat(tail.map(t => t[3])); }
 
 Param
-  = ref:("ref" __)? node:IdName _ typeAnn:(_ ":" _ typeName:TypeName { return typeName; })? { return { name: node.name, typeName: typeAnn || null, ref: !!ref, location: node.location }; }
+  = ref:("ref" __ ("mut" __)?)? node:IdName _ typeAnn:(_ ":" _ typeName:TypeName { return typeName; })? {
+      return { name: node.name, typeName: typeAnn || null, ref: !!ref, location: node.location };
+    }
 
 Block
   = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements, location: location() }; }

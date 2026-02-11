@@ -265,6 +265,27 @@ interface LuminaDiagnostic {
   code?: string;
 }
 
+const dedupeDiagnostics = (items: LuminaDiagnostic[]): LuminaDiagnostic[] => {
+  const seen = new Set<string>();
+  const result: LuminaDiagnostic[] = [];
+  for (const item of items) {
+    const loc = item.location;
+    const key = [
+      item.severity,
+      item.code ?? '',
+      item.message,
+      loc?.start.line ?? 0,
+      loc?.start.column ?? 0,
+      loc?.end.line ?? 0,
+      loc?.end.column ?? 0,
+    ].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+};
+
 const compilePegParser = (grammar: string) => {
   const parser = PEG.generate(grammar, {
     output: 'parser',
@@ -406,7 +427,7 @@ function App() {
       project.registerVirtualFile('lib/math.lm', 'pub fn add(a: int, b: int) -> int { return a + b; }');
       project.addOrUpdateDocument('main.lm', luminaCode, 1);
 
-      const diagnostics = project.getDiagnostics('main.lm') as LuminaDiagnostic[];
+      const diagnostics = dedupeDiagnostics(project.getDiagnostics('main.lm') as LuminaDiagnostic[]);
       const ast = project.getDocumentAst('main.lm');
       setLuminaAst(ast ?? null);
       setLuminaDiagnostics(diagnostics);
