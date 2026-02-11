@@ -22,25 +22,27 @@ import {
 import PEG from 'peggy';
 
 const defaultGrammar = `Expression
-  = left:Term operator:("+" / "-") right:Expression {
+  = left:Term _ operator:("+" / "-") _ right:Expression {
       return { type: 'Expression', operator, left, right };
     }
   / Term
 
 Term
-  = left:Factor operator:("*" / "/") right:Term {
+  = left:Factor _ operator:("*" / "/") _ right:Term {
       return { type: 'Expression', operator, left, right };
     }
   / Factor
 
 Factor
-  = "(" expr:Expression ")" { return expr; }
+  = "(" _ expr:Expression _ ")" { return expr; }
   / Number
 
 Number
-  = [0-9]+ {
+  = _ [0-9]+ {
       return { type: 'Number', value: parseInt(text(), 10) };
-    }`;
+    }
+
+_ = [ \\t\\n\\r]*`;
 
 const examples = [
   { name: 'Simple Math', code: '3 + 4 * (2 - 1)', description: 'Basic arithmetic expression' },
