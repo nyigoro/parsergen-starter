@@ -1,0 +1,6 @@
+extern fn print(message: string) -> void from "console";
+extern fn abs(value: int) -> int from "math";
+extern fn max(a: int, b: int) -> int from "math";
+extern fn min(a: int, b: int) -> int from "math";
+extern fn len(value: string) -> int from "string";
+extern fn upper(value: string) -> string from "string";

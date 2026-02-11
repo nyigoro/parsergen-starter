@@ -57,6 +57,37 @@ function findSyncOffsetByScan(input: string, startOffset: number, syncChars: str
   return null;
 }
 
+function collectErrorNodes(node: unknown, diagnostics: Diagnostic[]) {
+  const seen = new Set<unknown>();
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    if ('type' in value && (value as { type?: string }).type === 'ErrorNode') {
+      const errorNode = value as { message?: string; location?: Location };
+      diagnostics.push({
+        severity: 'error',
+        message: errorNode.message ?? 'Invalid syntax',
+        location:
+          errorNode.location ?? {
+            start: { line: 1, column: 1, offset: 0 },
+            end: { line: 1, column: 1, offset: 0 },
+          },
+        code: 'PARSE_ERROR',
+        source: 'parsergen',
+      });
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    for (const child of Object.values(value)) {
+      visit(child);
+    }
+  };
+  visit(node);
+}
+
 export function parseWithPanicRecovery<T = unknown>(
   parser: CompiledGrammar<unknown>,
   input: string,
@@ -86,6 +117,8 @@ export function parseWithPanicRecovery<T = unknown>(
       }
       working = replaceRangePreserveNewlines(working, offset, nextOffset);
     } else {
+      const payload = (result as { result?: unknown })?.result ?? result;
+      collectErrorNodes(payload, diagnostics);
       return { result, diagnostics };
     }
   }

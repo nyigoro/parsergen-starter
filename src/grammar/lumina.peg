@@ -2,8 +2,21 @@ Start
   = _ statements:StatementList _ { return { type: "Program", body: statements, location: location() }; }
 
 StatementList
-  = head:Statement tail:(_ Statement)* { return [head].concat(tail.map(t => t[1])); }
+  = head:RecoverableStatement tail:(_ RecoverableStatement)* { return [head].concat(tail.map(t => t[1])); }
   / "" { return []; }
+
+RecoverableStatement
+  = stmt:Statement { return stmt; }
+  / error:InvalidStatement { return error; }
+
+InvalidStatement
+  = tokens:(!(";" / "}") .)+ (";" / &"}" / !.) {
+      return {
+        type: "ErrorNode",
+        message: "Invalid syntax",
+        location: location()
+      };
+    }
 
 Statement
   = Import
@@ -116,8 +129,8 @@ Block
   = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements, location: location() }; }
 
 LetStmt
-  = "let" _ node:IdName _ ":" _ typeName:TypeName _ "=" _ value:Expr _ ";"? {
-      return { type: "Let", name: node.name, typeName, value, location: node.location };
+  = "let" _ mut:("mut" __)? node:IdName _ typeAnn:(_ ":" _ typeName:TypeName { return typeName; })? _ "=" _ value:Expr _ ";"? {
+      return { type: "Let", name: node.name, typeName: typeAnn || null, value, mutable: !!mut, location: node.location };
     }
 
 ReturnStmt

@@ -21,7 +21,8 @@ export type LuminaStatement =
   | LuminaAssign
   | LuminaMatchStmt
   | LuminaExprStmt
-  | LuminaBlock;
+  | LuminaBlock
+  | LuminaErrorNode;
 
 export interface LuminaImport {
   type: 'Import';
@@ -96,11 +97,18 @@ export interface LuminaBlock {
   location?: Location;
 }
 
+export interface LuminaErrorNode {
+  type: 'ErrorNode';
+  message: string;
+  location?: Location;
+}
+
 export interface LuminaLet {
   type: 'Let';
   name: string;
-  typeName: LuminaType;
+  typeName: LuminaType | null;
   value: LuminaExpr;
+  mutable?: boolean;
   location?: Location;
 }
 

@@ -160,4 +160,31 @@ describe('Panic recovery', () => {
 
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  test('collects error nodes when parsing succeeds with recoverable statements', () => {
+    const program = `
+      fn main() {
+        let x: int = ;
+        return 1;
+      }
+    `.trim() + '\n';
+
+    const result = parseWithPanicRecovery(parser, program, {
+      syncTokenTypes: luminaSyncTokenTypes,
+      syncKeywordValues: ['let', 'return', 'fn'],
+      lexer: (input) => {
+        const stream = lexer.reset(input);
+        return {
+          [Symbol.iterator]: function* () {
+            for (const token of stream) {
+              yield token;
+            }
+          },
+        };
+      },
+    });
+
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics.map((d) => d.message).join('\n')).toMatch(/Invalid syntax/);
+  });
 });

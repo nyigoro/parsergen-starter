@@ -45,6 +45,10 @@
     "cacheDir": {
       "type": "string",
       "description": "Directory for persistent build cache."
+    },
+    "recovery": {
+      "type": "boolean",
+      "description": "Enable resilient parsing (panic mode) for compile/check/watch."
     }
   }
 }

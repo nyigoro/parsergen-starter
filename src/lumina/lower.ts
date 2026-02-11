@@ -186,6 +186,7 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
     case 'TypeDecl':
     case 'StructDecl':
     case 'EnumDecl':
+    case 'ErrorNode':
       return { kind: 'Noop' } as IRNoop;
     default:
       return { kind: 'Noop' } as IRNoop;

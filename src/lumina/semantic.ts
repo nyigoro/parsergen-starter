@@ -8,7 +8,9 @@ export interface SymbolInfo {
   name: string;
   kind: SymbolKind;
   type?: LuminaType;
+  pendingReturn?: boolean;
   location?: Location;
+  mutable?: boolean;
   visibility?: 'public' | 'private';
   extern?: boolean;
   uri?: string;
@@ -70,10 +72,13 @@ export function analyzeLumina(
     typeParams?: Map<string, LuminaType | undefined>;
     externalSymbols?: SymbolInfo[];
     importedNames?: Set<string>;
+    diDebug?: boolean;
   }
 ) {
   const diagnostics: Diagnostic[] = [];
   const symbols = new SymbolTable();
+  const pendingDeps = new Map<string, Set<string>>();
+  const diGraphs = new Map<string, string>();
 
   for (const t of builtinTypes) symbols.define({ name: t, kind: 'type', type: t });
 
@@ -87,7 +92,9 @@ export function analyzeLumina(
     }
   }
 
+  // Pass 1: register type/function declarations (hoisting)
   for (const stmt of program.body) {
+    if (stmt.type === 'ErrorNode') continue;
     if (stmt.type === 'TypeDecl') {
       symbols.define({
         name: stmt.name,
@@ -127,11 +134,11 @@ export function analyzeLumina(
         enumVariants: stmt.variants.map((v) => ({ name: v.name, params: v.params ?? [] })),
       });
     } else if (stmt.type === 'FnDecl') {
-      const ret = stmt.returnType ?? 'unknown';
       symbols.define({
         name: stmt.name,
         kind: 'function',
-        type: ret,
+        type: stmt.returnType ?? undefined,
+        pendingReturn: stmt.returnType == null,
         location: stmt.location,
         visibility: stmt.visibility ?? 'private',
         extern: stmt.extern ?? false,
@@ -144,12 +151,162 @@ export function analyzeLumina(
   }
 
   const rootScope = new Scope();
+  const resolving = new Set<string>();
+
+  // Pass 2: analyze non-function statements so top-level bindings are known.
   for (const stmt of program.body) {
-    typeCheckStatement(stmt, symbols, diagnostics, null, rootScope, options);
+    if (stmt.type === 'FnDecl') continue;
+    typeCheckStatement(stmt, symbols, diagnostics, null, rootScope, options, undefined, resolving, pendingDeps, undefined, undefined);
   }
+
+  const maxPasses = 5;
+  let changed = true;
+  let pass = 0;
+  while (changed && pass < maxPasses) {
+    changed = false;
+    pass += 1;
+    for (const stmt of program.body) {
+      if (stmt.type !== 'FnDecl') continue;
+      const sym = symbols.get(stmt.name);
+      if (!sym || !sym.pendingReturn) continue;
+      if (resolving.has(stmt.name)) continue;
+      resolving.add(stmt.name);
+      pendingDeps.set(stmt.name, new Set());
+      const inferred = resolveFunctionBody(stmt, symbols, diagnostics, options, resolving, pendingDeps, rootScope, diGraphs);
+      resolving.delete(stmt.name);
+      if (inferred) {
+        symbols.define({ ...sym, type: inferred, pendingReturn: false });
+        changed = true;
+      } else if (inferred === 'void') {
+        symbols.define({ ...sym, type: 'void', pendingReturn: false });
+        changed = true;
+      }
+    }
+    const cycles = detectPendingCycles(pendingDeps);
+    if (cycles.length > 0) {
+      for (const fnName of cycles) {
+        diagnostics.push(diagAt(`Recursive inference detected for '${fnName}'`, program.location));
+        const sym = symbols.get(fnName);
+        if (sym) {
+          symbols.define({ ...sym, type: 'any', pendingReturn: false });
+        }
+      }
+      changed = false;
+    }
+  }
+
+  for (const stmt of program.body) {
+    if (stmt.type === 'ErrorNode') continue;
+    if (stmt.type === 'FnDecl') {
+      resolveFunctionBody(stmt, symbols, diagnostics, options, resolving, pendingDeps, rootScope, diGraphs);
+    }
+  }
+
   collectUnusedBindingsLocal(rootScope, diagnostics, program.location);
 
-  return { symbols, diagnostics };
+  return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined };
+}
+
+function resolveFunctionBody(
+  stmt: LuminaStatement,
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[],
+  options: {
+    externSymbols?: (name: string) => SymbolInfo | undefined;
+    currentUri?: string;
+    typeParams?: Map<string, LuminaType | undefined>;
+    diDebug?: boolean;
+  } | undefined,
+  resolving: Set<string>,
+  pendingDeps: Map<string, Set<string>>,
+  parentScope?: Scope,
+  diGraphs?: Map<string, string>
+): LuminaType | null {
+  if (stmt.type !== 'FnDecl') return null;
+  const ret = stmt.returnType ?? null;
+  const local = new SymbolTable();
+  for (const sym of symbols.list()) {
+    local.define(sym);
+  }
+  const typeParams = new Map<string, LuminaType | undefined>();
+  for (const param of stmt.typeParams ?? []) {
+    typeParams.set(param.name, param.bound?.[0]);
+  }
+  const fnScope = new Scope(parentScope);
+  for (const param of stmt.params) {
+    const known = ensureKnownType(param.typeName, symbols, new Set(typeParams.keys()), diagnostics, param.location ?? stmt.location);
+    if (known === 'unknown') {
+      const suggestion = suggestName(param.typeName, collectVisibleTypeSymbols(symbols, options));
+      const related = suggestion
+        ? [
+            {
+              location: param.location ?? stmt.location ?? defaultLocation,
+              message: `Did you mean '${suggestion}'?`,
+            },
+          ]
+        : undefined;
+      diagnostics.push(diagAt(`Unknown type '${param.typeName}' for parameter '${param.name}'`, param.location ?? stmt.location, 'error', 'UNKNOWN_TYPE', related));
+    }
+    local.define({ name: param.name, kind: 'variable', type: param.typeName, location: param.location ?? stmt.location });
+    fnScope.define(param.name, param.location ?? stmt.location);
+  }
+  if (stmt.extern) {
+    return ret ?? null;
+  }
+  if (options?.diDebug && diGraphs) {
+    diGraphs.set(stmt.name, buildCfgDot(stmt.name, stmt.body.body));
+  }
+  const collector = ret ? undefined : { types: [] as LuminaType[] };
+  const di = new DefiniteAssignment();
+  for (const param of stmt.params) {
+    di.define(fnScope, param.name, true);
+  }
+  for (const bodyStmt of stmt.body.body) {
+    typeCheckStatement(bodyStmt, local, diagnostics, ret, fnScope, { ...options, typeParams }, collector, resolving, pendingDeps, stmt.name, di);
+  }
+  collectUnusedBindings(fnScope, diagnostics, stmt.location);
+  if (ret) return ret;
+  if (pendingDeps.get(stmt.name)?.size) {
+    return null;
+  }
+  if (collector && collector.types.length > 0) {
+    const [first, ...rest] = collector.types;
+    const mismatch = rest.some((t) => t !== first);
+    if (mismatch) {
+      diagnostics.push(diagAt(`Inconsistent return types for '${stmt.name}'`, stmt.location));
+      return null;
+    }
+    return first;
+  }
+  return 'void';
+}
+
+function detectPendingCycles(graph: Map<string, Set<string>>): string[] {
+  const visited = new Set<string>();
+  const stack = new Set<string>();
+  const cycles = new Set<string>();
+
+  const visit = (node: string) => {
+    if (stack.has(node)) {
+      cycles.add(node);
+      return;
+    }
+    if (visited.has(node)) return;
+    visited.add(node);
+    stack.add(node);
+    const deps = graph.get(node);
+    if (deps) {
+      for (const dep of deps) {
+        visit(dep);
+      }
+    }
+    stack.delete(node);
+  };
+
+  for (const node of graph.keys()) {
+    visit(node);
+  }
+  return Array.from(cycles);
 }
 
 function collectVisibleSymbols(symbols: SymbolTable, options?: { currentUri?: string }): string[] {
@@ -228,9 +385,17 @@ function typeCheckStatement(
     externSymbols?: (name: string) => SymbolInfo | undefined;
     currentUri?: string;
     typeParams?: Map<string, LuminaType | undefined>;
-  }
+  },
+  returnCollector?: { types: LuminaType[] },
+  resolving?: Set<string>,
+  pendingDeps?: Map<string, Set<string>>,
+  currentFunction?: string,
+  di?: DefiniteAssignment
 ) {
   switch (stmt.type) {
+    case 'ErrorNode':
+      diagnostics.push(diagAt(stmt.message ?? 'Invalid syntax', stmt.location));
+      return;
     case 'TypeDecl':
       if (stmt.extern) {
         return;
@@ -320,82 +485,116 @@ function typeCheckStatement(
       return;
     }
     case 'FnDecl': {
-      const ret = stmt.returnType ?? null;
-      const local = new SymbolTable();
-      for (const sym of symbols.list()) {
-        local.define(sym);
-      }
-      const typeParams = new Map<string, LuminaType | undefined>();
-      for (const param of stmt.typeParams ?? []) {
-        typeParams.set(param.name, param.bound?.[0]);
-      }
-      const fnScope = new Scope(scope);
-      for (const param of stmt.params) {
-        const known = ensureKnownType(param.typeName, symbols, new Set(typeParams.keys()), diagnostics, param.location ?? stmt.location);
-        if (known === 'unknown') {
-          const suggestion = suggestName(param.typeName, collectVisibleTypeSymbols(symbols, options));
-          const related = suggestion
-            ? [
-                {
-                  location: param.location ?? stmt.location ?? defaultLocation,
-                  message: `Did you mean '${suggestion}'?`,
-                },
-              ]
-            : undefined;
-          diagnostics.push(diagAt(`Unknown type '${param.typeName}' for parameter '${param.name}'`, param.location ?? stmt.location, 'error', 'UNKNOWN_TYPE', related));
-        }
-        local.define({ name: param.name, kind: 'variable', type: param.typeName, location: param.location ?? stmt.location });
-        fnScope.define(param.name, param.location ?? stmt.location);
-      }
-      if (stmt.extern) {
-        return;
-      }
-      for (const bodyStmt of stmt.body.body) {
-        typeCheckStatement(bodyStmt, local, diagnostics, ret, fnScope, { ...options, typeParams });
-      }
-      collectUnusedBindings(fnScope, diagnostics, stmt.location);
+      resolveFunctionBody(stmt, symbols, diagnostics, options, resolving ?? new Set(), pendingDeps ?? new Map(), scope);
       return;
     }
     case 'Let': {
       const typeParams = options?.typeParams ?? new Map<string, LuminaType | undefined>();
-      const known = ensureKnownType(stmt.typeName, symbols, new Set(typeParams.keys()), diagnostics, stmt.location);
-      if (known === 'unknown') {
-        const suggestion = suggestName(stmt.typeName, collectVisibleTypeSymbols(symbols, options));
-        const related = suggestion
-          ? [
-              {
-                location: stmt.location ?? defaultLocation,
-                message: `Did you mean '${suggestion}'?`,
-              },
-            ]
-          : undefined;
-        diagnostics.push(diagAt(`Unknown type '${stmt.typeName}' for variable '${stmt.name}'`, stmt.location, 'error', 'UNKNOWN_TYPE', related));
+      const expectedType = stmt.typeName ?? null;
+      if (expectedType) {
+        const known = ensureKnownType(expectedType, symbols, new Set(typeParams.keys()), diagnostics, stmt.location);
+        if (known === 'unknown') {
+          const suggestion = suggestName(expectedType, collectVisibleTypeSymbols(symbols, options));
+          const related = suggestion
+            ? [
+                {
+                  location: stmt.location ?? defaultLocation,
+                  message: `Did you mean '${suggestion}'?`,
+                },
+              ]
+            : undefined;
+          diagnostics.push(diagAt(`Unknown type '${expectedType}' for variable '${stmt.name}'`, stmt.location, 'error', 'UNKNOWN_TYPE', related));
+        }
       }
-      const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options, stmt.typeName);
-      if (valueType && stmt.typeName && valueType !== stmt.typeName) {
-        diagnostics.push(diagAt(`Type mismatch: '${stmt.name}' is '${stmt.typeName}' but value is '${valueType}'`, stmt.location));
+      if (scope && di) {
+        di.define(scope, stmt.name, false);
       }
-      symbols.define({ name: stmt.name, kind: 'variable', type: stmt.typeName, location: stmt.location });
-      scope?.define(stmt.name, stmt.location);
+      if (scope) {
+        scope.define(stmt.name, stmt.location);
+      }
+      symbols.define({
+        name: stmt.name,
+        kind: 'variable',
+        type: expectedType ?? 'any',
+        location: stmt.location,
+        mutable: stmt.mutable ?? false,
+      });
+      const valueType = typeCheckExpr(
+        stmt.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        expectedType ?? undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      if (expectedType && valueType && valueType !== expectedType) {
+        diagnostics.push(diagAt(`Type mismatch: '${stmt.name}' is '${expectedType}' but value is '${valueType}'`, stmt.location));
+      }
+      const finalType = expectedType ?? valueType;
+      if (!finalType) {
+        if (
+          stmt.value.type === 'Call' &&
+          !expectedType &&
+          (() => {
+            const callee = stmt.value.callee.name;
+            const sym = symbols.get(callee) ?? options?.externSymbols?.(callee);
+            return !!(sym && sym.kind === 'function' && sym.pendingReturn);
+          })()
+        ) {
+          symbols.define({ name: stmt.name, kind: 'variable', type: 'any', location: stmt.location });
+          scope?.define(stmt.name, stmt.location);
+          return;
+        }
+        diagnostics.push(diagAt(`Could not infer type for '${stmt.name}'`, stmt.location));
+      }
+      symbols.define({
+        name: stmt.name,
+        kind: 'variable',
+        type: finalType ?? 'any',
+        location: stmt.location,
+        mutable: stmt.mutable ?? false,
+      });
+      if (scope && di) {
+        di.assign(scope, stmt.name);
+      }
       return;
     }
     case 'If': {
-      const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope, options);
+      const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       if (condType && condType !== 'bool') {
         diagnostics.push(diagAt(`If condition must be 'bool'`, stmt.location));
       }
-      typeCheckStatement(stmt.thenBlock, symbols, diagnostics, currentReturnType, scope, options);
-      if (stmt.elseBlock) {
-        typeCheckStatement(stmt.elseBlock, symbols, diagnostics, currentReturnType, scope, options);
+      if (di) {
+        const thenDi = di.clone();
+        const elseDi = di.clone();
+        typeCheckStatement(stmt.thenBlock, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction, thenDi);
+        if (stmt.elseBlock) {
+          typeCheckStatement(stmt.elseBlock, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction, elseDi);
+        }
+        di.mergeFromBranches([thenDi, elseDi]);
+      } else {
+        typeCheckStatement(stmt.thenBlock, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction);
+        if (stmt.elseBlock) {
+          typeCheckStatement(stmt.elseBlock, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction);
+        }
       }
       return;
     }
     case 'While': {
-      const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope, options);
+      const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       if (condType && condType !== 'bool') {
         diagnostics.push(diagAt(`While condition must be 'bool'`, stmt.location));
       }
-      typeCheckStatement(stmt.body, symbols, diagnostics, currentReturnType, scope, options);
+      if (di) {
+        const bodyDi = di.clone();
+        typeCheckStatement(stmt.body, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction, bodyDi);
+      } else {
+        typeCheckStatement(stmt.body, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction);
+      }
       return;
     }
     case 'Assign': {
@@ -405,40 +604,65 @@ function typeCheckStatement(
         diagnostics.push(diagAt(`Unknown identifier '${target}'`, stmt.location));
         return;
       }
+      if (sym.kind === 'variable' && sym.mutable === false) {
+        diagnostics.push(diagAt(`Cannot assign to immutable variable '${target}'`, stmt.location));
+        return;
+      }
       scope?.write(target);
-      const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options, sym.type);
+      const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options, sym.type, resolving, pendingDeps, currentFunction, di);
+      if (scope && di) {
+        const defScope = findDefScope(scope, target);
+        if (defScope) di.assign(defScope, target);
+      }
       if (valueType && sym.type && valueType !== sym.type) {
         diagnostics.push(diagAt(`Type mismatch: '${target}' is '${sym.type}' but value is '${valueType}'`, stmt.location));
       }
       return;
     }
     case 'Return': {
-      const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options, currentReturnType ?? undefined);
+      const valueType = typeCheckExpr(
+        stmt.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        currentReturnType ?? undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
       if (currentReturnType && valueType && valueType !== currentReturnType) {
         diagnostics.push(diagAt(`Return type '${valueType}' does not match '${currentReturnType}'`, stmt.location));
+      }
+      if (!currentReturnType && valueType && returnCollector) {
+        returnCollector.types.push(valueType);
       }
       return;
     }
     case 'ExprStmt':
-      typeCheckExpr(stmt.expr, symbols, diagnostics, scope, options);
+      typeCheckExpr(stmt.expr, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       return;
     case 'Block': {
       const blockScope = new Scope(scope);
+      const blockDi = di ?? undefined;
       for (const bodyStmt of stmt.body) {
-        typeCheckStatement(bodyStmt, symbols, diagnostics, currentReturnType, blockScope, options);
+        typeCheckStatement(bodyStmt, symbols, diagnostics, currentReturnType, blockScope, options, returnCollector, resolving, pendingDeps, currentFunction, blockDi);
       }
       collectUnusedBindings(blockScope, diagnostics, stmt.location);
       return;
     }
     case 'MatchStmt': {
-      const matchType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options);
+    const matchType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       const enumSym = matchType ? symbols.get(matchType) : undefined;
       const variants = enumSym?.enumVariants ?? [];
       const seen = new Set<string>();
       let hasWildcard = false;
+      const branchStates: DefiniteAssignment[] = [];
       for (const arm of stmt.arms) {
         const armScope = new Scope(scope);
         const armSymbols = new SymbolTable();
+        const armDi = di ? di.clone() : undefined;
         for (const sym of symbols.list()) {
           armSymbols.define(sym);
         }
@@ -471,20 +695,45 @@ function typeCheckStatement(
                   type: paramType,
                   location: arm.location ?? stmt.location,
                 });
+                if (armDi) {
+                  armDi.define(armScope, binding, true);
+                }
               });
             }
           }
         }
-        typeCheckStatement(arm.body, armSymbols, diagnostics, currentReturnType, armScope, options);
+        typeCheckStatement(arm.body, armSymbols, diagnostics, currentReturnType, armScope, options, returnCollector, resolving, pendingDeps, currentFunction, armDi);
         collectUnusedBindings(armScope, diagnostics, arm.location ?? stmt.location);
+        if (armDi) branchStates.push(armDi);
+      }
+      if (di && branchStates.length > 0) {
+        di.mergeFromBranches(branchStates);
       }
       if (matchType && (!enumSym || !enumSym.enumVariants)) {
         diagnostics.push(diagAt(`Match expression must be an enum`, stmt.location));
       } else if (!hasWildcard && enumSym?.enumVariants) {
         const missing = enumSym.enumVariants.map((v) => v.name).filter((name) => !seen.has(name));
-        if (missing.length > 0) {
-          diagnostics.push(diagAt(`Non-exhaustive match: missing ${missing.join(', ')}`, stmt.location));
-        }
+      if (missing.length > 0) {
+        const related: DiagnosticRelatedInformation[] = [
+          {
+            location: stmt.location ?? defaultLocation,
+            message: `Covered variants: ${Array.from(seen).join(', ') || 'none'}`,
+          },
+          {
+            location: stmt.location ?? defaultLocation,
+            message: `Missing variants: ${missing.join(', ')}`,
+          },
+        ];
+        diagnostics.push(
+          diagAt(
+            `Missing case${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
+            stmt.location,
+            'error',
+            'NON_EXHAUSTIVE_MATCH',
+            related
+          )
+        );
+      }
       }
       return;
     }
@@ -503,14 +752,18 @@ function typeCheckExpr(
     currentUri?: string;
     typeParams?: Map<string, LuminaType | undefined>;
   },
-  expectedType?: LuminaType
+  expectedType?: LuminaType,
+  resolving?: Set<string>,
+  pendingDeps?: Map<string, Set<string>>,
+  currentFunction?: string,
+  di?: DefiniteAssignment
 ): LuminaType | null {
   if (expr.type === 'Number') return 'int';
   if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'String') return 'string';
   if (expr.type === 'Binary') {
-    const left = typeCheckExpr(expr.left, symbols, diagnostics, scope, options);
-    const right = typeCheckExpr(expr.right, symbols, diagnostics, scope, options);
+    const left = typeCheckExpr(expr.left, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
+    const right = typeCheckExpr(expr.right, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     if (!left || !right) return null;
     if (expr.op === '+' && left === 'string' && right === 'string') return 'string';
     if (expr.op === '&&' || expr.op === '||') {
@@ -561,6 +814,12 @@ function typeCheckExpr(
       diagnostics.push(diagAt(`'${name}' is private to ${sym.uri}`, expr.location));
       return null;
     }
+    if (scope && di) {
+      const defScope = findDefScope(scope, name);
+      if (defScope && !di.isAssigned(defScope, name)) {
+        diagnostics.push(diagAt(`Variable '${name}' used before assignment`, expr.location));
+      }
+    }
     return sym.type ?? null;
   }
   if (expr.type === 'Call') {
@@ -575,7 +834,7 @@ function typeCheckExpr(
           return enumVariant.enumName;
         }
         for (let i = 0; i < expr.args.length; i++) {
-          const argType = typeCheckExpr(expr.args[i], symbols, diagnostics, scope, options);
+          const argType = typeCheckExpr(expr.args[i], symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
           const paramType = enumVariant.params[i];
           if (argType && paramType && argType !== paramType) {
             diagnostics.push(diagAt(`Type mismatch: expected '${paramType}' for '${callee}'`, expr.location));
@@ -599,6 +858,17 @@ function typeCheckExpr(
       diagnostics.push(diagAt(`'${callee}' is private to ${sym.uri}`, expr.location));
       return null;
     }
+    if (sym.pendingReturn) {
+      if (resolving?.has(callee)) {
+        diagnostics.push(diagAt(`Recursive inference detected for '${callee}'`, expr.location));
+      }
+      if (currentFunction && pendingDeps) {
+        const deps = pendingDeps.get(currentFunction) ?? new Set<string>();
+        deps.add(callee);
+        pendingDeps.set(currentFunction, deps);
+      }
+      return null;
+    }
     const typeParamDefs = sym.typeParams ?? [];
     const mapping = new Map<string, LuminaType>();
     if (expr.typeArgs && expr.typeArgs.length > 0) {
@@ -619,7 +889,7 @@ function typeCheckExpr(
 
     for (let i = 0; i < expr.args.length; i++) {
       const arg = expr.args[i];
-      const argType = typeCheckExpr(arg, symbols, diagnostics, scope, options);
+      const argType = typeCheckExpr(arg, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       const paramType = paramTypes[i];
       if (argType) {
         unifyTypes(paramType, argType, mapping);
@@ -660,11 +930,11 @@ function typeCheckExpr(
       }
     }
 
-    const returnType = substituteTypeParams(sym.type ?? 'any', mapping);
-    return returnType;
-  }
+  const returnType = substituteTypeParams(sym.type ?? 'any', mapping);
+  return returnType;
+}
   if (expr.type === 'Member') {
-    const objectType = typeCheckExpr(expr.object, symbols, diagnostics, scope, options);
+    const objectType = typeCheckExpr(expr.object, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     if (!objectType) return null;
     const structSym = symbols.get(objectType);
     if (!structSym || !structSym.structFields) {
@@ -679,7 +949,7 @@ function typeCheckExpr(
     return fieldType;
   }
   if (expr.type === 'MatchExpr') {
-      const matchType = typeCheckExpr(expr.value, symbols, diagnostics, scope, options);
+    const matchType = typeCheckExpr(expr.value, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       const enumSym = matchType ? symbols.get(matchType) : undefined;
       const variants = enumSym?.enumVariants ?? [];
       const seen = new Set<string>();
@@ -720,11 +990,14 @@ function typeCheckExpr(
                 type: paramType,
                 location: arm.location ?? expr.location,
               });
+              if (di) {
+                di.define(armScope, binding, true);
+              }
             });
           }
         }
       }
-      const bodyType = typeCheckExpr(arm.body, armSymbols, diagnostics, armScope, options);
+      const bodyType = typeCheckExpr(arm.body, armSymbols, diagnostics, armScope, options, undefined, resolving, pendingDeps, currentFunction, di);
       if (bodyType) {
         if (!armType) armType = bodyType;
         else if (armType !== bodyType) {
@@ -738,7 +1011,25 @@ function typeCheckExpr(
     } else if (!hasWildcard && enumSym?.enumVariants) {
       const missing = enumSym.enumVariants.map((v) => v.name).filter((name) => !seen.has(name));
       if (missing.length > 0) {
-        diagnostics.push(diagAt(`Non-exhaustive match: missing ${missing.join(', ')}`, expr.location));
+        const related: DiagnosticRelatedInformation[] = [
+          {
+            location: expr.location ?? defaultLocation,
+            message: `Covered variants: ${Array.from(seen).join(', ') || 'none'}`,
+          },
+          {
+            location: expr.location ?? defaultLocation,
+            message: `Missing variants: ${missing.join(', ')}`,
+          },
+        ];
+        diagnostics.push(
+          diagAt(
+            `Missing case${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
+            expr.location,
+            'error',
+            'NON_EXHAUSTIVE_MATCH',
+            related
+          )
+        );
       }
     }
     return armType ?? null;
@@ -777,6 +1068,62 @@ class Scope {
     }
     this.parent?.write(name);
   }
+}
+
+class DefiniteAssignment {
+  private assigned = new Map<Scope, Set<string>>();
+
+  clone(): DefiniteAssignment {
+    const next = new DefiniteAssignment();
+    for (const [scope, names] of this.entries()) {
+      next.assigned.set(scope, new Set(names));
+    }
+    return next;
+  }
+
+  define(scope: Scope, name: string, isAssigned: boolean) {
+    const set = this.assigned.get(scope) ?? new Set<string>();
+    if (isAssigned) set.add(name);
+    this.assigned.set(scope, set);
+  }
+
+  assign(scope: Scope, name: string) {
+    const set = this.assigned.get(scope) ?? new Set<string>();
+    set.add(name);
+    this.assigned.set(scope, set);
+  }
+
+  isAssigned(scope: Scope, name: string): boolean {
+    const set = this.assigned.get(scope);
+    return !!set && set.has(name);
+  }
+
+  mergeFromBranches(branches: DefiniteAssignment[]) {
+    for (const [scope, names] of this.entries()) {
+      const intersection = new Set<string>();
+      for (const name of names) {
+        if (branches.every((branch) => branch.isAssigned(scope, name))) {
+          intersection.add(name);
+        }
+      }
+      this.assigned.set(scope, intersection);
+    }
+  }
+
+  private *entries(): IterableIterator<[Scope, Set<string>]> {
+    for (const [scope, names] of this.assigned.entries()) {
+      yield [scope, names];
+    }
+  }
+}
+
+function findDefScope(scope: Scope | undefined, name: string): Scope | null {
+  let current = scope;
+  while (current) {
+    if (current.locals.has(name)) return current;
+    current = current.parent;
+  }
+  return null;
 }
 
 function collectUnusedBindings(scope: Scope, diagnostics: Diagnostic[], fallbackLocation?: Location) {
@@ -925,4 +1272,99 @@ function substituteTypeParams(typeName: LuminaType, mapping: Map<string, LuminaT
   if (parsed.args.length === 0) return parsed.base;
   const args = parsed.args.map((arg) => substituteTypeParams(arg, mapping));
   return `${parsed.base}<${args.join(',')}>`;
+}
+
+type CfgNode = { id: number; label: string };
+
+function buildCfgDot(functionName: string, body: LuminaStatement[]): string {
+  const nodes: CfgNode[] = [];
+  const edges: Array<[number, number]> = [];
+  let nextId = 0;
+
+  const addNode = (label: string): number => {
+    const id = nextId++;
+    nodes.push({ id, label });
+    return id;
+  };
+
+  const addEdge = (from: number | null, to: number | null) => {
+    if (from === null || to === null) return;
+    edges.push([from, to]);
+  };
+
+  const buildSequence = (stmts: LuminaStatement[]): { entry: number | null; exit: number | null } => {
+    let entry: number | null = null;
+    let last: number | null = null;
+    for (const stmt of stmts) {
+      const { entry: e, exit: x } = buildStmt(stmt);
+      if (entry === null) entry = e;
+      if (last !== null && e !== null) addEdge(last, e);
+      last = x ?? last;
+    }
+    return { entry, exit: last };
+  };
+
+  const buildStmt = (stmt: LuminaStatement): { entry: number | null; exit: number | null } => {
+    switch (stmt.type) {
+      case 'If': {
+        const cond = addNode('If');
+        const thenSeq = buildSequence(stmt.thenBlock.body);
+        const elseSeq = stmt.elseBlock ? buildSequence(stmt.elseBlock.body) : { entry: null, exit: null };
+        addEdge(cond, thenSeq.entry ?? cond);
+        addEdge(cond, elseSeq.entry ?? cond);
+        const exit = addNode('IfEnd');
+        addEdge(thenSeq.exit ?? cond, exit);
+        addEdge(elseSeq.exit ?? cond, exit);
+        return { entry: cond, exit };
+      }
+      case 'While': {
+        const cond = addNode('While');
+        const bodySeq = buildSequence(stmt.body.body);
+        addEdge(cond, bodySeq.entry ?? cond);
+        addEdge(bodySeq.exit ?? cond, cond);
+        const exit = addNode('WhileEnd');
+        addEdge(cond, exit);
+        return { entry: cond, exit };
+      }
+      case 'MatchStmt': {
+        const cond = addNode('Match');
+        const armExits: number[] = [];
+        for (const arm of stmt.arms) {
+          const armSeq = buildSequence(arm.body.body);
+          addEdge(cond, armSeq.entry ?? cond);
+          if (armSeq.exit !== null) armExits.push(armSeq.exit);
+        }
+        const exit = addNode('MatchEnd');
+        for (const ex of armExits) addEdge(ex, exit);
+        if (armExits.length === 0) addEdge(cond, exit);
+        return { entry: cond, exit };
+      }
+      case 'Block': {
+        return buildSequence(stmt.body);
+      }
+      case 'ErrorNode':
+        return { entry: null, exit: null };
+      default: {
+        const id = addNode(stmt.type);
+        return { entry: id, exit: id };
+      }
+    }
+  };
+
+  const seq = buildSequence(body);
+  if (seq.entry === null) {
+    const empty = addNode('Empty');
+    seq.entry = empty;
+    seq.exit = empty;
+  }
+
+  const lines = [`digraph ${functionName}_cfg {`];
+  for (const node of nodes) {
+    lines.push(`  n${node.id} [label="${node.label}"];`);
+  }
+  for (const [from, to] of edges) {
+    lines.push(`  n${from} -> n${to};`);
+  }
+  lines.push('}');
+  return lines.join('\n');
 }

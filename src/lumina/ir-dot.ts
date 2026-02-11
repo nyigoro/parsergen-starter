@@ -46,6 +46,9 @@ export function irToDot(ir: IRNode): string {
       case 'Let':
         label = `Let ${node.name}`;
         break;
+      case 'Phi':
+        label = `Phi ${node.name}`;
+        break;
       case 'Assign':
         label = `Assign ${node.target}`;
         break;
@@ -95,6 +98,11 @@ export function irToDot(ir: IRNode): string {
         break;
       case 'Let':
         walk(node.value, currentId, 'value');
+        break;
+      case 'Phi':
+        walk(node.condition, currentId, 'cond');
+        walk(node.thenValue, currentId, 'then');
+        walk(node.elseValue, currentId, 'else');
         break;
       case 'Assign':
         walk(node.value, currentId, 'value');

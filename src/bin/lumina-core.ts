@@ -3,12 +3,15 @@ import { existsSync, watch, readFileSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fg from 'fast-glob';
+import { Worker } from 'node:worker_threads';
 
 import { compileGrammar } from '../grammar/index.js';
-import { parseInput, ParserUtils } from '../parser/index.js';
+import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
 import { formatError, highlightSnippet } from '../utils/index.js';
 import { analyzeLumina, lowerLumina, optimizeIR, generateJS, irToDot } from '../index.js';
 import { extractImports } from '../project/imports.js';
+import { parseWithPanicRecovery } from '../project/panic.js';
+import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { runREPLWithParser } from '../repl.js';
 import { runParsergen } from './cli-core.js';
 
@@ -28,6 +31,7 @@ type LuminaConfig = {
   stdPath?: string;
   fileExtensions?: string[];
   cacheDir?: string;
+  recovery?: boolean;
 };
 
 function loadConfig(cwd = process.cwd()): LuminaConfig | null {
@@ -75,6 +79,10 @@ function validateConfig(raw: LuminaConfig): LuminaConfig {
   if (raw.cacheDir !== undefined) {
     if (typeof raw.cacheDir === 'string') normalized.cacheDir = raw.cacheDir;
     else errors.push('cacheDir must be a string');
+  }
+  if (raw.recovery !== undefined) {
+    if (typeof raw.recovery === 'boolean') normalized.recovery = raw.recovery;
+    else errors.push('recovery must be a boolean');
   }
 
   if (errors.length > 0) {
@@ -132,6 +140,12 @@ function resolveOutPath(sourcePath: string, outPathArg: string | undefined, outD
   return path.resolve('lumina.out.js');
 }
 
+type BuildConfig = {
+  fileExtensions: string[];
+  stdPath: string;
+  cacheDir: string;
+};
+
 type FileCacheEntry = {
   hash: string;
   ast: unknown;
@@ -160,6 +174,7 @@ const buildCache: BuildCache = {
 
 let configFileExtensions: string[] = ['.lm', '.lumina'];
 let configStdPath = '';
+const cliLexer = createLuminaLexer();
 
 function hashText(text: string): string {
   return crypto.createHash('sha256').update(text).digest('hex');
@@ -218,6 +233,12 @@ function ensureExtension(resolved: string, extensions: string[]): string {
 
 export function setDefaultStdPath(stdPath: string) {
   configStdPath = stdPath;
+}
+
+export function setBuildConfig(config: BuildConfig) {
+  configFileExtensions = config.fileExtensions;
+  configStdPath = config.stdPath;
+  buildCache.cacheDir = config.cacheDir;
 }
 
 function resolveImport(fromPath: string, spec: string, extensions: string[], stdPath: string): string | null {
@@ -324,7 +345,63 @@ function formatDiagnosticsWithSnippet(source: string, diagnostics: ReturnType<ty
   }
 }
 
-async function compileLumina(sourcePath: string, outPath: string, target: Target, grammarPath: string) {
+function parseSource(
+  source: string,
+  parser: ReturnType<typeof compileGrammar>,
+  useRecovery: boolean
+): { ast: unknown | null; diagnostics: Diagnostic[]; parseError: boolean } {
+  if (!useRecovery) {
+    const parsed = parseInput(parser, source);
+    if (ParserUtils.isParseError(parsed)) {
+      console.error(formatError(parsed));
+      return { ast: null, diagnostics: [], parseError: true };
+    }
+    const ast = (parsed as { result: unknown }).result;
+    return { ast, diagnostics: [], parseError: false };
+  }
+
+  const result = parseWithPanicRecovery(parser, source, {
+    syncTokenTypes: luminaSyncTokenTypes,
+    syncKeywordValues: [
+      'import',
+      'type',
+      'struct',
+      'enum',
+      'fn',
+      'let',
+      'return',
+      'if',
+      'else',
+      'for',
+      'while',
+      'match',
+      'extern',
+      'pub',
+    ],
+    lexer: (input: string) => {
+      const stream = cliLexer.reset(input);
+      return {
+        [Symbol.iterator]: function* () {
+          for (const token of stream as Iterable<LuminaToken>) {
+            yield token;
+          }
+        },
+      };
+    },
+  });
+
+  const payload = (result.result as { result?: unknown })?.result ?? result.result ?? null;
+  return { ast: payload, diagnostics: result.diagnostics, parseError: payload === null };
+}
+
+async function compileLumina(
+  sourcePath: string,
+  outPath: string,
+  target: Target,
+  grammarPath: string,
+  useRecovery: boolean,
+  diCfg: boolean
+) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
   await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath);
@@ -348,13 +425,18 @@ async function compileLumina(sourcePath: string, outPath: string, target: Target
   }
   buildCache.stats.misses += 1;
 
-  const parsed = parseInput(parser, source);
-  if (ParserUtils.isParseError(parsed)) {
-    console.error(formatError(parsed));
-    process.exit(1);
+  const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+  if (parseError) {
+    return { ok: false };
   }
-  const ast = (parsed as { result: unknown }).result;
-  const analysis = analyzeLumina(ast as never);
+  if (parseDiagnostics.length > 0) {
+    formatDiagnosticsWithSnippet(source, parseDiagnostics);
+    return { ok: false };
+  }
+  if (!ast) {
+    return { ok: false };
+  }
+  const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
   if (analysis.diagnostics.length > 0) {
     formatDiagnosticsWithSnippet(source, analysis.diagnostics);
     return { ok: false };
@@ -365,6 +447,15 @@ async function compileLumina(sourcePath: string, outPath: string, target: Target
   const out = result.code;
   await fs.writeFile(outPath, out, 'utf-8');
   console.log(`Lumina compiled: ${outPath}`);
+  if (diCfg && analysis.diGraphs) {
+    const base = path.basename(outPath, path.extname(outPath));
+    const dir = path.dirname(outPath);
+    for (const [fn, dot] of analysis.diGraphs.entries()) {
+      const filePath = path.join(dir, `${base}.${fn}.cfg.dot`);
+      await fs.writeFile(filePath, dot, 'utf-8');
+      console.log(`CFG: ${filePath}`);
+    }
+  }
   const entry: FileCacheEntry = {
     hash: fileHash,
     ast,
@@ -377,7 +468,7 @@ async function compileLumina(sourcePath: string, outPath: string, target: Target
   return { ok: true, map: result.map, ir: optimized };
 }
 
-async function checkLumina(sourcePath: string, grammarPath: string) {
+async function checkLumina(sourcePath: string, grammarPath: string, useRecovery: boolean, diCfg: boolean) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
   await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath);
@@ -404,16 +495,30 @@ async function checkLumina(sourcePath: string, grammarPath: string) {
     return { ok: true };
   }
   buildCache.stats.misses += 1;
-  const parsed = parseInput(parser, source);
-  if (ParserUtils.isParseError(parsed)) {
-    console.error(formatError(parsed));
-    process.exit(1);
+  const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+  if (parseError) {
+    return { ok: false };
   }
-  const ast = (parsed as { result: unknown }).result;
-  const analysis = analyzeLumina(ast as never);
+  if (parseDiagnostics.length > 0) {
+    formatDiagnosticsWithSnippet(source, parseDiagnostics);
+    return { ok: false };
+  }
+  if (!ast) {
+    return { ok: false };
+  }
+  const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
   if (analysis.diagnostics.length > 0) {
     formatDiagnosticsWithSnippet(source, analysis.diagnostics);
     return { ok: false };
+  }
+  if (diCfg && analysis.diGraphs) {
+    const base = path.basename(sourcePath, path.extname(sourcePath));
+    const dir = path.dirname(sourcePath);
+    for (const [fn, dot] of analysis.diGraphs.entries()) {
+      const filePath = path.join(dir, `${base}.${fn}.cfg.dot`);
+      await fs.writeFile(filePath, dot, 'utf-8');
+      console.log(`CFG: ${filePath}`);
+    }
   }
   console.log('Lumina check passed');
   const entry: FileCacheEntry = {
@@ -428,6 +533,26 @@ async function checkLumina(sourcePath: string, grammarPath: string) {
   return { ok: true };
 }
 
+export async function compileLuminaTask(payload: {
+  sourcePath: string;
+  outPath: string;
+  target: Target;
+  grammarPath: string;
+  useRecovery: boolean;
+  diCfg?: boolean;
+}) {
+  return compileLumina(payload.sourcePath, payload.outPath, payload.target, payload.grammarPath, payload.useRecovery, payload.diCfg ?? false);
+}
+
+export async function checkLuminaTask(payload: {
+  sourcePath: string;
+  grammarPath: string;
+  useRecovery: boolean;
+  diCfg?: boolean;
+}) {
+  return checkLumina(payload.sourcePath, payload.grammarPath, payload.useRecovery, payload.diCfg ?? false);
+}
+
 async function runRepl(grammarPath: string) {
   const grammarText = await fs.readFile(grammarPath, 'utf-8');
   const parser = compileGrammar(grammarText);
@@ -439,20 +564,45 @@ async function watchLumina(
   outDir: string | undefined,
   target: Target,
   grammarPath: string,
-  outPathArg?: string
+  outPathArg?: string,
+  useRecovery: boolean = false,
+  diCfg: boolean = false
 ) {
   const resolvedSources = sources.map((s) => path.resolve(s));
   const globbed = await fg(resolvedSources, { onlyFiles: true, unique: true, dot: false });
   const expandedSources = globbed.length > 0 ? globbed : resolvedSources;
+  const worker = createWorkerRunner({
+    fileExtensions: configFileExtensions,
+    stdPath: configStdPath,
+    cacheDir: buildCache.cacheDir,
+  });
+
+  const runCompile = async (filePath: string, outPath: string) => {
+    if (!worker) {
+      await compileLumina(filePath, outPath, target, grammarPath, useRecovery, diCfg);
+      return;
+    }
+    const result = await worker.compile({
+      sourcePath: filePath,
+      outPath,
+      target,
+      grammarPath,
+      useRecovery,
+      diCfg,
+    });
+    if (!result.ok && result.error) {
+      console.error(`Lumina worker error: ${result.error}`);
+    }
+  };
   const onChange = async (filePath: string) => {
     try {
       const outPath = resolveOutPath(filePath, outPathArg, outDir);
-      await compileLumina(filePath, outPath, target, grammarPath);
+      await runCompile(filePath, outPath);
       const graph = buildDepGraph();
       const dependents = getDependents(graph, filePath);
       for (const dep of dependents) {
         const depOut = resolveOutPath(dep, outPathArg, outDir);
-        await compileLumina(dep, depOut, target, grammarPath);
+        await runCompile(dep, depOut);
       }
     } catch (err) {
       console.error(`Lumina watch error: ${err instanceof Error ? err.message : String(err)}`);
@@ -461,7 +611,7 @@ async function watchLumina(
 
   for (const sourcePath of expandedSources) {
     const outPath = resolveOutPath(sourcePath, outPathArg, outDir);
-    await compileLumina(sourcePath, outPath, target, grammarPath);
+    await runCompile(sourcePath, outPath);
   }
 
   const debounce = new Map<string, NodeJS.Timeout>();
@@ -490,6 +640,62 @@ async function watchLumina(
   });
 }
 
+type WorkerRequest =
+  | { type: 'init'; payload: BuildConfig }
+  | {
+      type: 'compile';
+      id: number;
+      payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean };
+    };
+
+type WorkerResponse = { id?: number; ok?: boolean; error?: string };
+
+function createWorkerRunner(config: BuildConfig) {
+  const workerPath = resolveWorkerPath();
+  if (!workerPath) return null;
+  const isCjs = workerPath.endsWith('.cjs');
+  const worker = new Worker(workerPath, { type: isCjs ? 'commonjs' : 'module' });
+  let requestId = 0;
+  const pending = new Map<number, { resolve: (value: { ok: boolean; error?: string }) => void }>();
+
+  worker.on('message', (msg: WorkerResponse) => {
+    if (!msg || typeof msg !== 'object') return;
+    if (typeof msg.id !== 'number') return;
+    const entry = pending.get(msg.id);
+    if (!entry) return;
+    pending.delete(msg.id);
+    entry.resolve({ ok: Boolean(msg.ok), error: msg.error });
+  });
+
+  worker.on('error', (err) => {
+    for (const entry of pending.values()) {
+      entry.resolve({ ok: false, error: err.message });
+    }
+    pending.clear();
+  });
+
+  worker.postMessage({ type: 'init', payload: config } satisfies WorkerRequest);
+
+  return {
+    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean }) {
+      const id = requestId++;
+      return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        pending.set(id, { resolve });
+        worker.postMessage({ type: 'compile', id, payload } satisfies WorkerRequest);
+      });
+    },
+  };
+}
+
+function resolveWorkerPath(): string | null {
+  const binDir = process.argv[1] ? path.dirname(process.argv[1]) : path.resolve('dist/bin');
+  const esmPath = path.join(binDir, 'lumina-worker.js');
+  const cjsPath = path.join(binDir, 'lumina-worker.cjs');
+  if (existsSync(esmPath)) return esmPath;
+  if (existsSync(cjsPath)) return cjsPath;
+  return null;
+}
+
 function printHelp() {
   console.log(`
 lumina <command> [file] [options]
@@ -507,13 +713,15 @@ Options:
   --target <cjs|esm>   Output module format (default: esm)
   --grammar <path>     Override grammar path
   --dry-run            Parse and analyze only (compile command)
+  --recovery           Enable resilient parsing (panic mode)
+  --di-cfg             Emit CFG dot files during compile/check
   --list-config        Print resolved config and exit
   --sourcemap          Emit source map alongside output
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
 
 Config file:
-  lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir
+  lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir, recovery
 `);
 }
 
@@ -537,6 +745,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const outArg = (args.get('--out') as string) ?? undefined;
   const outDir = config.outDir;
   const dryRun = parseBooleanFlag(args, '--dry-run');
+  const useRecovery = parseBooleanFlag(args, '--recovery') || config.recovery === true;
+  const diCfg = parseBooleanFlag(args, '--di-cfg');
   const listConfig = parseBooleanFlag(args, '--list-config');
   const sourceMap = parseBooleanFlag(args, '--sourcemap');
   const debugIr = parseBooleanFlag(args, '--debug-ir');
@@ -559,6 +769,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
           outDir,
           entries: config.entries ?? [],
           watch: config.watch ?? [],
+          recovery: config.recovery ?? false,
         },
         null,
         2
@@ -579,10 +790,10 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       const sourcePath = path.resolve(entry);
       const outPath = resolveOutPath(sourcePath, outArg, outDir);
       if (dryRun) {
-        const result = await checkLumina(sourcePath, grammarPath);
+        const result = await checkLumina(sourcePath, grammarPath, useRecovery, diCfg);
         if (!result.ok) process.exit(1);
       } else {
-        const result = await compileLumina(sourcePath, outPath, target, grammarPath);
+        const result = await compileLumina(sourcePath, outPath, target, grammarPath, useRecovery, diCfg);
         if (!result.ok) process.exit(1);
         if (sourceMap && result.map) {
           const mapPath = outPath + '.map';
@@ -615,7 +826,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     }
     if (entries.length === 0) throw new Error('Missing <file> for check');
     for (const entry of entries) {
-      const result = await checkLumina(path.resolve(entry), grammarPath);
+      const result = await checkLumina(path.resolve(entry), grammarPath, useRecovery, diCfg);
       if (!result.ok) process.exit(1);
       if (profileCache) {
         const graph = buildDepGraph();
@@ -634,7 +845,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       sources.push(...extensions.map((ext) => `**/*${ext}`));
     }
     if (sources.length === 0) throw new Error('Missing <file> for watch');
-    await watchLumina(sources, outDir, target, grammarPath, outArg);
+    await watchLumina(sources, outDir, target, grammarPath, outArg, useRecovery, diCfg);
     return;
   }
 

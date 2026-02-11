@@ -135,6 +135,24 @@ describe('ProjectContext', () => {
     expect(first.signatureChanged).toBe(false);
   });
 
+  test('injects prelude symbols into every document', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const fileUri = path.resolve(__dirname, '../fixtures/prelude.lm');
+    const text = `
+      fn main() {
+        print("hello");
+        return 0;
+      }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(fileUri, text);
+    const diagnostics = project.getDiagnostics(fileUri);
+    const messages = diagnostics.map((d) => d.message).join('\n');
+    expect(messages).not.toMatch(/Unknown function 'print'/);
+  });
+
   test('reports changed symbols when signature changes', () => {
     const parser = compileGrammar(luminaGrammar);
     const project = new ProjectContext(parser);

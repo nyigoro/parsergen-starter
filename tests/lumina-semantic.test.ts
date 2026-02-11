@@ -58,7 +58,7 @@ describe('Lumina semantic analysis', () => {
   test('supports while loops and assignment', () => {
     const program = `
       fn main() {
-        let i: int = 0;
+        let mut i: int = 0;
         while (i < 3) {
           i = i + 1;
         }
@@ -146,7 +146,7 @@ describe('Lumina semantic analysis', () => {
     const result = parser.parse(program) as { type: string };
     const analysis = analyzeLumina(result as never);
     const messages = analysis.diagnostics.map(d => d.message).join('\n');
-    expect(messages).toMatch(/Non-exhaustive match/);
+    expect(messages).toMatch(/Missing case/);
   });
 
   test('supports match expressions and struct member access', () => {
@@ -298,7 +298,7 @@ describe('Lumina semantic analysis', () => {
   test('flags write-only bindings', () => {
     const program = `
       fn main() {
-        let x: int = 0;
+        let mut x: int = 0;
         x = 1;
         return 0;
       }
@@ -308,6 +308,179 @@ describe('Lumina semantic analysis', () => {
     const analysis = analyzeLumina(result as never);
     const messages = analysis.diagnostics.map(d => d.message).join('\n');
     expect(messages).toMatch(/Unused binding 'x' \(assigned but never read\)/);
+  });
+
+  test('flags assignment to immutable variables', () => {
+    const program = `
+      fn main() {
+        let x: int = 1;
+        x = 2;
+        return x;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Cannot assign to immutable variable 'x'/);
+  });
+
+  test('allows assignment to mutable variables', () => {
+    const program = `
+      fn main() {
+        let mut x: int = 1;
+        x = 2;
+        return x;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('flags use before assignment in initializer', () => {
+    const program = `
+      fn main() {
+        let x: int = x + 1;
+        return x;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/used before assignment/);
+  });
+
+  test('infers local variable types from literals', () => {
+    const program = `
+      fn main() {
+        let x = 5;
+        let y = "hi";
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/Could not infer type/);
+    expect(messages).not.toMatch(/Unknown type/);
+  });
+
+  test('infers variable type from expressions', () => {
+    const program = `
+      fn main() {
+        let x = 5;
+        let y = x + 2;
+        return y;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/Could not infer type/);
+    expect(messages).not.toMatch(/Type mismatch/);
+  });
+
+  test('flags mismatched assignment after inference', () => {
+    const program = `
+      fn main() {
+        let mut x = 5;
+        x = "oops";
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Type mismatch/);
+  });
+
+  test('infers function return types from return statements', () => {
+    const program = `
+      fn add(a: int, b: int) {
+        return a + b;
+      }
+      fn main() {
+        let x = add(1, 2);
+        return x;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/Inconsistent return types/);
+    expect(messages).not.toMatch(/Type mismatch/);
+  });
+
+  test('infers return types even when defined after call', () => {
+    const program = `
+      fn main() {
+        let x = add(5, 5);
+        return x;
+      }
+      fn add(a: int, b: int) {
+        return a + b;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/Could not infer type/);
+    expect(messages).not.toMatch(/Inconsistent return types/);
+  });
+
+  test('detects recursive inference loops', () => {
+    const program = `
+      fn a() { return b(); }
+      fn b() { return a(); }
+      fn main() { return 0; }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Recursive inference detected/);
+  });
+
+  test('reports inconsistent function return types', () => {
+    const program = `
+      fn bad(flag: bool) {
+        if (flag) { return 1; }
+        return "no";
+      }
+      fn main() { return 0; }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Inconsistent return types/);
+  });
+
+  test('infers type from member access', () => {
+    const program = `
+      struct User { id: int, name: string }
+      extern fn getUser() -> User;
+      fn main() {
+        let user = getUser();
+        let id = user.id;
+        return id;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/Could not infer type/);
+    expect(messages).not.toMatch(/Unknown type/);
   });
 
   test('flags unused top-level bindings', () => {
@@ -332,5 +505,35 @@ describe('Lumina semantic analysis', () => {
     const analysis = analyzeLumina(result as never);
     const messages = analysis.diagnostics.map(d => d.message).join('\n');
     expect(messages).not.toMatch(/Unused binding 'top'/);
+  });
+
+  test('ignores error nodes during analysis while reporting syntax diagnostics', () => {
+    const program = `
+      fn main() {
+        let x: int = ;
+        return 1;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Invalid syntax/);
+  });
+
+  test('emits CFG dot output when enabled', () => {
+    const program = `
+      fn main() {
+        let mut x: int = 0;
+        if (true) { x = 1; }
+        return x;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never, { diDebug: true });
+    const dot = analysis.diGraphs?.get('main') ?? '';
+    expect(dot).toMatch(/digraph main_cfg/);
+    expect(dot).toMatch(/If/);
   });
 });

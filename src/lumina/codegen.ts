@@ -56,6 +56,13 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
         node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
       );
       return;
+    case 'Phi':
+      out.push(
+        `${pad}let ${node.name} = (${emitExpr(node.condition)}) ? ${emitExpr(node.thenValue)} : ${emitExpr(node.elseValue)};`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
+      return;
     case 'Return':
       out.push(
         `${pad}return ${emitExpr(node.value)};`,

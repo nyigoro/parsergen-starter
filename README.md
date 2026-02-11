@@ -56,6 +56,7 @@ lumina compile examples/hello.lm --profile-cache
 lumina check examples/hello.lm
 lumina watch examples
 lumina compile examples/hello.lm --dry-run
+lumina compile examples/hello.lm --recovery
 lumina compile --list-config
 lumina watch "examples/**/*.lm"
 lumina init
@@ -78,7 +79,8 @@ You can configure defaults for the Lumina CLI:
   "entries": ["examples/hello.lm"],
   "watch": ["examples/hello.lm"],
   "fileExtensions": [".lm", ".lumina"],
-  "cacheDir": ".lumina-cache"
+  "cacheDir": ".lumina-cache",
+  "recovery": true
 }
 ```
 
@@ -122,6 +124,7 @@ node dist/bin/lumina-lsp.js
 - `lumina.maxIndexFiles`: max files indexed per workspace (default `2000`)
 - `lumina.renameConflictMode`: conflict checks (`"all"` or `"exports"`, default `"all"`)
 - `lumina.renamePreviewMode`: rename preview output (`"popup"`, `"log"`, `"off"`, default `"popup"`)
+- `lumina.recovery`: enable resilient parsing for CLI `compile/check/watch` (default `false`)
 - Go-to-Definition, Find References, Rename, and Semantic Tokens
 
 Example (VS Code settings):
@@ -161,6 +164,16 @@ import { main } from "./types.lm";
 
 fn entry() {
   return main();
+}
+```
+
+### Local Type Inference
+
+```lumina
+fn main() {
+  let x = 42;
+  let y: int = 10;
+  return x + y;
 }
 ```
 

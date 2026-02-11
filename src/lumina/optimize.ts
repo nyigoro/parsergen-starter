@@ -1,13 +1,243 @@
-import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr } from './ir.js';
+import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRPhi, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr } from './ir.js';
 
 export function optimizeIR(node: IRNode): IRNode | null {
   const constants = new Map<string, IRNode>();
-  let optimized = optimizeWithConstants(node, constants);
+  const ssa = convertToSSA(node);
+  let optimized = optimizeWithConstants(ssa, constants);
   if (optimized && optimized.kind === 'Program') {
     optimized = removeUnusedFunctions(optimized);
   }
   if (optimized) validateIR(optimized);
   return optimized;
+}
+
+function convertToSSA(node: IRNode): IRNode {
+  switch (node.kind) {
+    case 'Program':
+      return {
+        ...node,
+        body: node.body.map((child) => convertToSSA(child)),
+      };
+    case 'Function': {
+      if (functionHasControlFlow(node)) return node;
+      return convertFunctionToSSA(node);
+    }
+    default:
+      return node;
+  }
+}
+
+function functionHasControlFlow(fn: IRFunction): boolean {
+  const visit = (n: IRNode): boolean => {
+    switch (n.kind) {
+      case 'MatchExpr':
+      case 'Program':
+        return true;
+      case 'If':
+        return visit(n.condition) || n.thenBody.some(visit) || (n.elseBody ? n.elseBody.some(visit) : false);
+      case 'While':
+        return visit(n.condition) || n.body.some(visit);
+      case 'Let':
+        return visit(n.value);
+      case 'Phi':
+        return visit(n.condition) || visit(n.thenValue) || visit(n.elseValue);
+      case 'Assign':
+        return visit(n.value);
+      case 'Return':
+        return visit(n.value);
+      case 'ExprStmt':
+        return visit(n.expr);
+      case 'Binary':
+        return visit(n.left) || visit(n.right);
+      case 'Call':
+        return n.args.some(visit);
+      case 'Member':
+        return visit(n.object);
+      case 'Index':
+        return visit(n.target);
+      case 'Enum':
+        return n.values.some(visit);
+      default:
+        return false;
+    }
+  };
+  return fn.body.some(visit);
+}
+
+function convertFunctionToSSA(fn: IRFunction): IRFunction {
+  const version = new Map<string, number>();
+  const current = new Map<string, string>();
+
+  const baseName = (name: string): string => {
+    if (!version.has(name)) {
+      version.set(name, 0);
+      current.set(name, name);
+      return name;
+    }
+    const next = (version.get(name) ?? 0) + 1;
+    version.set(name, next);
+    const renamed = `${name}_${next}`;
+    current.set(name, renamed);
+    return renamed;
+  };
+
+  fn.params.forEach((param) => {
+    version.set(param, 0);
+    current.set(param, param);
+  });
+
+  const renameExpr = (expr: IRNode): IRNode => {
+    switch (expr.kind) {
+      case 'Identifier': {
+        const mapped = current.get(expr.name) ?? expr.name;
+        return mapped === expr.name ? expr : { ...expr, name: mapped };
+      }
+      case 'Binary':
+        return { ...expr, left: renameExpr(expr.left), right: renameExpr(expr.right) };
+      case 'Call':
+        return { ...expr, args: expr.args.map(renameExpr) };
+      case 'Member':
+        return { ...expr, object: renameExpr(expr.object) };
+      case 'Index':
+        return { ...expr, target: renameExpr(expr.target) };
+      case 'Enum':
+        return { ...expr, values: expr.values.map(renameExpr) };
+      case 'MatchExpr':
+        return {
+          ...expr,
+          value: renameExpr(expr.value),
+          arms: expr.arms.map((arm) => ({
+            ...arm,
+            body: renameExpr(arm.body),
+          })),
+        };
+      case 'Phi':
+        return {
+          ...expr,
+          condition: renameExpr(expr.condition),
+          thenValue: renameExpr(expr.thenValue),
+          elseValue: renameExpr(expr.elseValue),
+        };
+      default:
+        return expr;
+    }
+  };
+
+  const renameBlock = (
+    stmts: IRNode[],
+    mapping: Map<string, string>
+  ): { body: IRNode[]; mapping: Map<string, string> } => {
+    const saved = new Map(current);
+    current.clear();
+    for (const [k, v] of mapping.entries()) current.set(k, v);
+
+    const body: IRNode[] = [];
+    for (const stmt of stmts) {
+      switch (stmt.kind) {
+        case 'Let': {
+          const value = renameExpr(stmt.value);
+          const renamed = baseName(stmt.name);
+          body.push({ ...stmt, name: renamed, value });
+          break;
+        }
+        case 'Assign': {
+          const value = renameExpr(stmt.value);
+          const renamed = baseName(stmt.target);
+          body.push({ kind: 'Let', name: renamed, value, location: stmt.location } as IRLet);
+          break;
+        }
+        case 'Return':
+          body.push({ ...stmt, value: renameExpr(stmt.value) });
+          break;
+        case 'ExprStmt':
+          body.push({ ...stmt, expr: renameExpr(stmt.expr) });
+          break;
+        case 'If': {
+          const cond = renameExpr(stmt.condition);
+          const thenResult = renameBlock(stmt.thenBody, new Map(current));
+          const elseResult = stmt.elseBody
+            ? renameBlock(stmt.elseBody, new Map(current))
+            : { body: [], mapping: new Map(current) };
+          const ifNode: IRIf = {
+            kind: 'If',
+            condition: cond,
+            thenBody: thenResult.body,
+            elseBody: elseResult.body,
+            location: stmt.location,
+          };
+          body.push(ifNode);
+
+          const join = new Set<string>([
+            ...thenResult.mapping.keys(),
+            ...elseResult.mapping.keys(),
+          ]);
+          for (const key of join) {
+            const thenName = thenResult.mapping.get(key) ?? current.get(key) ?? key;
+            const elseName = elseResult.mapping.get(key) ?? current.get(key) ?? key;
+            if (thenName === elseName) {
+              current.set(key, thenName);
+              continue;
+            }
+            const phiName = baseName(key);
+            const phi: IRPhi = {
+              kind: 'Phi',
+              name: phiName,
+              condition: cond,
+              thenValue: { kind: 'Identifier', name: thenName },
+              elseValue: { kind: 'Identifier', name: elseName },
+            };
+            body.push(phi);
+          }
+          break;
+        }
+        case 'While': {
+          const cond = renameExpr(stmt.condition);
+          const bodyResult = renameBlock(stmt.body, new Map(current));
+          const whileNode: IRWhile = {
+            kind: 'While',
+            condition: cond,
+            body: bodyResult.body,
+            location: stmt.location,
+          };
+          body.push(whileNode);
+
+          const join = new Set<string>([
+            ...current.keys(),
+            ...bodyResult.mapping.keys(),
+          ]);
+          for (const key of join) {
+            const preName = current.get(key) ?? key;
+            const postName = bodyResult.mapping.get(key) ?? preName;
+            if (preName === postName) {
+              current.set(key, preName);
+              continue;
+            }
+            const phiName = baseName(key);
+            const phi: IRPhi = {
+              kind: 'Phi',
+              name: phiName,
+              condition: cond,
+              thenValue: { kind: 'Identifier', name: postName },
+              elseValue: { kind: 'Identifier', name: preName },
+            };
+            body.push(phi);
+          }
+          break;
+        }
+        default:
+          body.push(stmt);
+          break;
+      }
+    }
+
+    const outMapping = new Map(current);
+    current.clear();
+    for (const [k, v] of saved.entries()) current.set(k, v);
+    return { body, mapping: outMapping };
+  };
+
+  const renamed = renameBlock(fn.body, new Map(current));
+  return { ...fn, body: renamed.body };
 }
 
 function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IRNode | null {
@@ -54,6 +284,23 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
       }
       const letNode: IRLet = { kind: 'Let', name: node.name, value: finalValue, location: node.location };
       return letNode;
+    }
+    case 'Phi': {
+      const condition = optimizeWithConstants(node.condition, constants) ?? node.condition;
+      const thenValue = optimizeWithConstants(node.thenValue, constants) ?? node.thenValue;
+      const elseValue = optimizeWithConstants(node.elseValue, constants) ?? node.elseValue;
+      if (condition.kind === 'Boolean') {
+        const chosen = condition.value ? thenValue : elseValue;
+        const letNode: IRLet = { kind: 'Let', name: node.name, value: chosen, location: node.location };
+        if (isLiteral(chosen)) {
+          constants.set(node.name, chosen);
+        } else {
+          constants.delete(node.name);
+        }
+        return letNode;
+      }
+      const phi: IRPhi = { kind: 'Phi', name: node.name, condition, thenValue, elseValue, location: node.location };
+      return phi;
     }
     case 'Return': {
       const value = optimizeWithConstants(node.value, constants);
@@ -244,6 +491,11 @@ function validateIR(node: IRNode) {
       case 'Let':
         visit(n.value);
         return;
+      case 'Phi':
+        visit(n.condition);
+        visit(n.thenValue);
+        visit(n.elseValue);
+        return;
       case 'Assign':
         if (!n.target) throw new Error('IR validation: Assign target missing');
         visit(n.value);
@@ -358,6 +610,11 @@ function removeDeadStores(program: IRProgram, preserveTopLevelLets: boolean): IR
       case 'Let':
         markExpr(expr.value);
         return;
+      case 'Phi':
+        markExpr(expr.condition);
+        markExpr(expr.thenValue);
+        markExpr(expr.elseValue);
+        return;
       default:
         return;
     }
@@ -367,6 +624,11 @@ function removeDeadStores(program: IRProgram, preserveTopLevelLets: boolean): IR
     switch (stmt.kind) {
       case 'Let':
         markExpr(stmt.value);
+        return;
+      case 'Phi':
+        markExpr(stmt.condition);
+        markExpr(stmt.thenValue);
+        markExpr(stmt.elseValue);
         return;
       case 'Assign':
         markExpr(stmt.value);
@@ -409,6 +671,20 @@ function removeDeadStores(program: IRProgram, preserveTopLevelLets: boolean): IR
       } else {
         // dead store; still visit value for side effects
         markExpr(stmt.value);
+      }
+      continue;
+    }
+    if (stmt.kind === 'Phi') {
+      if (used.has(stmt.name)) {
+        kept.push(stmt);
+        markExpr(stmt.thenValue);
+        markExpr(stmt.elseValue);
+        markExpr(stmt.condition);
+        used.delete(stmt.name);
+      } else {
+        markExpr(stmt.thenValue);
+        markExpr(stmt.elseValue);
+        markExpr(stmt.condition);
       }
       continue;
     }
@@ -488,6 +764,11 @@ function removeUnusedFunctions(program: IRProgram): IRProgram {
         return;
       case 'Let':
         scanNode(node.value);
+        return;
+      case 'Phi':
+        scanNode(node.condition);
+        scanNode(node.thenValue);
+        scanNode(node.elseValue);
         return;
       case 'Return':
         scanNode(node.value);

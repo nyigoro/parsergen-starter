@@ -81,7 +81,7 @@ describe('Lumina codegen', () => {
     const out = generateJS(ir, { target: 'esm' }).code;
 
     expect(out).toMatch(/while \(true\)/);
-    expect(out).toMatch(/i = 1/);
+    expect(out).toMatch(/i_\d+ = 1/);
   });
 
   test('folds constant if branches', () => {

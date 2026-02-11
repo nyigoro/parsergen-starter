@@ -2,6 +2,7 @@ export type IRNode =
   | IRProgram
   | IRFunction
   | IRLet
+  | IRPhi
   | IRReturn
   | IRExprStmt
   | IRBinary
@@ -37,6 +38,15 @@ export interface IRLet {
   kind: 'Let';
   name: string;
   value: IRNode;
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRPhi {
+  kind: 'Phi';
+  name: string;
+  condition: IRNode;
+  thenValue: IRNode;
+  elseValue: IRNode;
   location?: import('../utils/index.js').Location;
 }
 

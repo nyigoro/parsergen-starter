@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { type CompiledGrammar } from '../grammar/index.js';
 import { extractImports } from './imports.js';
 import { parseWithPanicRecovery, type PanicRecoveryOptions } from './panic.js';
-import { type Diagnostic } from '../parser/index.js';
+import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { analyzeLumina, type SymbolTable as LuminaSymbolTable, type SymbolInfo } from '../lumina/semantic.js';
@@ -55,6 +55,10 @@ export class ProjectContext {
   private recoveryOptions: PanicRecoveryOptions;
   private luminaLexer = createLuminaLexer();
   private loading = new Set<string>();
+  private preludeSymbols: LuminaSymbolTable | null = null;
+  private preludeNames = new Set<string>();
+  private preludeLoaded = false;
+  private preludePath = path.resolve('std/prelude.lm');
 
   constructor(parser?: CompiledGrammar<unknown>, recoveryOptions: PanicRecoveryOptions = {}) {
     this.parser = parser ?? null;
@@ -92,9 +96,11 @@ export class ProjectContext {
 
   setParser(parser: CompiledGrammar<unknown>) {
     this.parser = parser;
+    this.ensurePreludeLoaded();
   }
 
   addOrUpdateDocument(uri: string, text: string, version: number = 1): SignatureChange {
+    this.ensurePreludeLoaded();
     const fsPath = this.toFsPath(uri);
     const normalizedUri = this.toUri(fsPath);
     const imports = extractImports(text);
@@ -143,15 +149,25 @@ export class ProjectContext {
         changedSymbols = diffSignatureNames(prevSignatures, nextSignatures);
         signatureChanged = changedSymbols.length > 0;
         doc.signatures = nextSignatures;
-        doc.importedNames = collectImportNames(payload as never);
+        const rawImports = collectImportNames(payload as never);
+        const importedNames = new Set<string>(rawImports);
+        for (const name of this.preludeNames) {
+          importedNames.add(name);
+        }
+        doc.importedNames = importedNames;
         const analysis = analyzeLumina(payload as never, {
           currentUri: normalized,
           externSymbols: (name: string) => {
-            if (!doc.importedNames || !doc.importedNames.has(name)) return undefined;
+            const prelude = this.preludeSymbols?.get(name);
+            if (prelude) return prelude as SymbolInfo;
+            if (!rawImports.has(name)) return undefined;
             return this.getExternalSymbol(name);
           },
-          externalSymbols: this.getExternalSymbols(doc.importedNames ?? new Set<string>(), normalized),
-          importedNames: doc.importedNames,
+          externalSymbols: [
+            ...this.getExternalSymbols(rawImports, normalized),
+            ...(this.preludeSymbols ? this.preludeSymbols.list() : []),
+          ],
+          importedNames,
         });
         doc.symbols = analysis.symbols;
         doc.diagnostics.push(...analysis.diagnostics);
@@ -409,6 +425,26 @@ export class ProjectContext {
       this.addOrUpdateDocument(uri, text, 1);
     } finally {
       this.loading.delete(uri);
+    }
+  }
+
+  private ensurePreludeLoaded() {
+    if (this.preludeLoaded) return;
+    if (!this.parser) return;
+    this.preludeLoaded = true;
+    if (!fs.existsSync(this.preludePath)) return;
+    try {
+      const text = fs.readFileSync(this.preludePath, 'utf-8');
+      const parsed = parseInput(this.parser, text);
+      if (ParserUtils.isParseError(parsed)) return;
+      const ast = (parsed as { result: unknown }).result;
+      const analysis = analyzeLumina(ast as never, {
+        currentUri: this.toUri(this.preludePath),
+      });
+      this.preludeSymbols = analysis.symbols;
+      this.preludeNames = new Set(analysis.symbols.list().map((sym) => sym.name));
+    } catch {
+      // ignore prelude load errors
     }
   }
 
