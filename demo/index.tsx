@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import PEG from 'peggy';
 import luminaGrammarRaw from '../src/grammar/lumina.peg?raw';
-import { analyzeLumina } from '../src/lumina/semantic';
+import preludeRaw from '../std/prelude.lm?raw';
+import { BrowserProjectContext } from '../src/project/browser-context';
 import { lowerLumina } from '../src/lumina/lower';
 import { optimizeIR } from '../src/lumina/optimize';
 import { generateJS } from '../src/lumina/codegen';
@@ -63,6 +64,7 @@ const presets = [
 ];
 
 const luminaSample = `import { io } from "@std";
+import { add } from "lib/math.lm";
 
 struct User { id: int, name: string }
 enum Result { Ok(int), Err(string) }
@@ -74,7 +76,7 @@ fn total(cost: int, tax: int) {
 fn main() {
   let cost = 400;
   let tax = 20;
-  let answer = total(cost, tax);
+  let answer = add(total(cost, tax), 0);
   return answer;
 }`;
 
@@ -397,29 +399,24 @@ function App() {
 
     try {
       const parser = compileGrammar(luminaGrammarRaw);
-      const parsed = parseInput(parser, luminaCode);
-      if ('result' in parsed) {
-        setLuminaAst(parsed.result);
-        const analysis = analyzeLumina(parsed.result as never);
-        const diags = (analysis.diagnostics || []) as LuminaDiagnostic[];
-        setLuminaDiagnostics(diags);
+      const project = new BrowserProjectContext(parser, { preludeText: preludeRaw });
+      project.registerVirtualFile('lib/math.lm', 'pub fn add(a: int, b: int) -> int { return a + b; }');
+      project.addOrUpdateDocument('main.lm', luminaCode, 1);
 
-        const lowered = lowerLumina(parsed.result as never);
+      const diagnostics = project.getDiagnostics('main.lm') as LuminaDiagnostic[];
+      const ast = project.getDocumentAst('main.lm');
+      setLuminaAst(ast ?? null);
+      setLuminaDiagnostics(diagnostics);
+
+      if (ast && typeof ast === 'object') {
+        const lowered = lowerLumina(ast as never);
         const optimized = optimizeIR(lowered);
         const js = optimized ? generateJS(optimized).code : '// IR optimized away';
         setLuminaOutput(js);
-        setLuminaStatus(diags.length > 0 ? 'error' : 'ok');
       } else {
-        setLuminaAst(null);
-        setLuminaDiagnostics([
-          {
-            severity: 'error',
-            message: parsed.error,
-            location: parsed.location
-          }
-        ]);
-        setLuminaStatus('error');
+        setLuminaOutput('');
       }
+      setLuminaStatus(diagnostics.length > 0 ? 'error' : 'ok');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setLuminaDiagnostics([{ severity: 'error', message }]);
