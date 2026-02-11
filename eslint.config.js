@@ -170,6 +170,7 @@ export default [
     ignores: [
       'node_modules/',
       'dist/',
+      'docs/',
       'build/',
       'lib/',
       '*.tsbuildinfo',
