@@ -930,9 +930,35 @@ function typeCheckExpr(
       }
     }
 
-  const returnType = substituteTypeParams(sym.type ?? 'any', mapping);
-  return returnType;
-}
+    const returnType = substituteTypeParams(sym.type ?? 'any', mapping);
+    return returnType;
+  }
+  if (expr.type === 'StructLiteral') {
+    const structSym = symbols.get(expr.name);
+    if (!structSym || !structSym.structFields) {
+      diagnostics.push(diagAt(`Unknown struct '${expr.name}'`, expr.location));
+      return null;
+    }
+    const provided = new Set<string>();
+    for (const field of expr.fields) {
+      provided.add(field.name);
+      const expected = structSym.structFields.get(field.name);
+      if (!expected) {
+        diagnostics.push(diagAt(`Unknown field '${field.name}' on '${expr.name}'`, field.location ?? expr.location));
+        continue;
+      }
+      const actual = typeCheckExpr(field.value, symbols, diagnostics, scope, options, expected, resolving, pendingDeps, currentFunction, di);
+      if (actual && !isTypeAssignable(actual, expected, symbols, options?.typeParams)) {
+        diagnostics.push(diagAt(`Type mismatch for '${field.name}': expected '${expected}', got '${actual}'`, field.location ?? expr.location));
+      }
+    }
+    for (const fieldName of structSym.structFields.keys()) {
+      if (!provided.has(fieldName)) {
+        diagnostics.push(diagAt(`Missing field '${fieldName}' for '${expr.name}'`, expr.location));
+      }
+    }
+    return expr.name;
+  }
   if (expr.type === 'Member') {
     const objectType = typeCheckExpr(expr.object, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     if (!objectType) return null;

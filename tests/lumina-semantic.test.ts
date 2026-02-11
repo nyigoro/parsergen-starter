@@ -133,6 +133,21 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('supports struct literals with field checks', () => {
+    const program = `
+      struct Session { user_id: int, is_admin: bool }
+      fn main() {
+        let sess = Session { user_id: 101, is_admin: true };
+        return sess.user_id;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
   test('checks match exhaustiveness for enums', () => {
     const program = `
       enum Option { Some(int), None }

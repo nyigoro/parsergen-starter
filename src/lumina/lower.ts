@@ -1,5 +1,5 @@
 import { type LuminaProgram, type LuminaStatement, type LuminaExpr } from './ast.js';
-import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRIdentifier, type IRNoop, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr } from './ir.js';
+import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRIdentifier, type IRNoop, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr, type IRStructLiteral } from './ir.js';
 
 export function lowerLumina(program: LuminaProgram): IRProgram {
   const ctx = createLowerContext(program);
@@ -248,6 +248,18 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
         location: expr.location,
       };
       return member;
+    }
+    case 'StructLiteral': {
+      const structNode: IRStructLiteral = {
+        kind: 'StructLiteral',
+        name: expr.name,
+        fields: expr.fields.map((field) => ({
+          name: field.name,
+          value: lowerExpr(field.value, ctx),
+        })),
+        location: expr.location,
+      };
+      return structNode;
     }
     case 'MatchExpr': {
       const matchExpr: IRMatchExpr = {

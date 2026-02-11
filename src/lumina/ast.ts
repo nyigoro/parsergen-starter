@@ -190,6 +190,7 @@ export type LuminaExpr =
   | LuminaBinary
   | LuminaMember
   | LuminaCall
+  | LuminaStructLiteral
   | LuminaNumber
   | LuminaString
   | LuminaBoolean
@@ -240,5 +241,18 @@ export interface LuminaCall {
   callee: LuminaIdentifier;
   args: LuminaExpr[];
   typeArgs?: string[];
+  location?: Location;
+}
+
+export interface LuminaStructLiteral {
+  type: 'StructLiteral';
+  name: string;
+  fields: LuminaStructLiteralField[];
+  location?: Location;
+}
+
+export interface LuminaStructLiteralField {
+  name: string;
+  value: LuminaExpr;
   location?: Location;
 }

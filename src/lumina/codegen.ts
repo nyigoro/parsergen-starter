@@ -109,6 +109,7 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
       );
       return;
     case 'Binary':
+    case 'StructLiteral':
     case 'Number':
     case 'Boolean':
     case 'String':
@@ -145,6 +146,12 @@ function emitExpr(node: IRNode): string {
       return `${emitExpr(node.target)}[${node.index}]`;
     case 'Enum':
       return `{ tag: ${JSON.stringify(node.tag)}, values: [${node.values.map(emitExpr).join(', ')}] }`;
+    case 'StructLiteral': {
+      const fields = node.fields
+        .map((field) => `${field.name}: ${emitExpr(field.value)}`)
+        .join(', ');
+      return `{ ${fields} }`;
+    }
     case 'MatchExpr': {
       const tempName = `__match_expr_${Math.random().toString(36).slice(2, 8)}`;
       let body = `const ${tempName} = ${emitExpr(node.value)};\n`;

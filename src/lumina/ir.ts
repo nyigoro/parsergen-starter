@@ -6,6 +6,7 @@ export type IRNode =
   | IRReturn
   | IRExprStmt
   | IRBinary
+  | IRStructLiteral
   | IRMember
   | IRIndex
   | IRCall
@@ -67,6 +68,13 @@ export interface IRBinary {
   op: string;
   left: IRNode;
   right: IRNode;
+  location?: import('../utils/index.js').Location;
+}
+
+export interface IRStructLiteral {
+  kind: 'StructLiteral';
+  name: string;
+  fields: Array<{ name: string; value: IRNode }>;
   location?: import('../utils/index.js').Location;
 }
 

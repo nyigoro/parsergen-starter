@@ -67,6 +67,9 @@ export function irToDot(ir: IRNode): string {
       case 'Enum':
         label = `Enum ${node.tag}`;
         break;
+      case 'StructLiteral':
+        label = `Struct ${node.name}`;
+        break;
       case 'MatchExpr':
         label = 'MatchExpr';
         break;
@@ -128,6 +131,9 @@ export function irToDot(ir: IRNode): string {
         break;
       case 'Enum':
         node.values.forEach((value, idx) => walk(value, currentId, `value${idx}`));
+        break;
+      case 'StructLiteral':
+        node.fields.forEach((field, idx) => walk(field.value, currentId, `field${idx}:${field.name}`));
         break;
       case 'MatchExpr':
         walk(node.value, currentId, 'value');

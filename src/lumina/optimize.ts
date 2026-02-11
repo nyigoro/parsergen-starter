@@ -1,4 +1,4 @@
-import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRPhi, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr } from './ir.js';
+import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRPhi, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr, type IRStructLiteral } from './ir.js';
 
 export function optimizeIR(node: IRNode): IRNode | null {
   const constants = new Map<string, IRNode>();
@@ -51,6 +51,8 @@ function functionHasControlFlow(fn: IRFunction): boolean {
         return visit(n.left) || visit(n.right);
       case 'Call':
         return n.args.some(visit);
+      case 'StructLiteral':
+        return n.fields.some((field) => visit(field.value));
       case 'Member':
         return visit(n.object);
       case 'Index':
@@ -96,6 +98,8 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
         return { ...expr, left: renameExpr(expr.left), right: renameExpr(expr.right) };
       case 'Call':
         return { ...expr, args: expr.args.map(renameExpr) };
+      case 'StructLiteral':
+        return { ...expr, fields: expr.fields.map((field) => ({ ...field, value: renameExpr(field.value) })) };
       case 'Member':
         return { ...expr, object: renameExpr(expr.object) };
       case 'Index':
@@ -329,6 +333,14 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
       const call: IRCall = { kind: 'Call', callee: node.callee, args, location: node.location };
       return call;
     }
+    case 'StructLiteral': {
+      const fields = node.fields.map((field) => ({
+        ...field,
+        value: optimizeWithConstants(field.value, constants) ?? field.value,
+      }));
+      const structNode: IRStructLiteral = { kind: 'StructLiteral', name: node.name, fields, location: node.location };
+      return structNode;
+    }
     case 'Member': {
       const object = optimizeWithConstants(node.object, constants) ?? node.object;
       const member: IRMember = { kind: 'Member', object, property: node.property, location: node.location };
@@ -536,6 +548,9 @@ function validateIR(node: IRNode) {
         if (!n.tag) throw new Error('IR validation: Enum tag missing');
         n.values.forEach(visit);
         return;
+      case 'StructLiteral':
+        n.fields.forEach((field) => visit(field.value));
+        return;
       case 'MatchExpr':
         visit(n.value);
         n.arms.forEach((arm) => visit(arm.body));
@@ -583,6 +598,9 @@ function removeDeadStores(program: IRProgram, preserveTopLevelLets: boolean): IR
         return;
       case 'Enum':
         expr.values.forEach(markExpr);
+        return;
+      case 'StructLiteral':
+        expr.fields.forEach((field) => markExpr(field.value));
         return;
       case 'MatchExpr':
         markExpr(expr.value);
@@ -745,6 +763,9 @@ function removeUnusedFunctions(program: IRProgram): IRProgram {
         return;
       case 'Enum':
         node.values.forEach(scanNode);
+        return;
+      case 'StructLiteral':
+        node.fields.forEach((field) => scanNode(field.value));
         return;
       case 'MatchExpr':
         scanNode(node.value);
