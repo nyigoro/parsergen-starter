@@ -40,7 +40,7 @@
     "test": "jest --config jest.config.cjs",
     "test:watch": "jest --watch",
     "dev:ui": "vite",
-    "build:ui": "vite build && npm run copy:cname",
+    "build:ui": "vite build && npm run copy:cname && node scripts/build-404.cjs",
     "copy:cname": "node scripts/copy-cname.cjs",
     "init": "tsx src/bin/cli.ts --init",
     "repl:smoke": "node scripts/repl-smoke.cjs",

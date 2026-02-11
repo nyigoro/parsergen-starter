@@ -23,6 +23,7 @@ import PEG from 'peggy';
 import luminaGrammarRaw from '../src/grammar/lumina.peg?raw';
 import preludeRaw from '../std/prelude.lm?raw';
 import { BrowserProjectContext } from '../src/project/browser-context';
+import { compileGrammar as compileLuminaGrammar } from '../src/grammar/index';
 import { lowerLumina } from '../src/lumina/lower';
 import { optimizeIR } from '../src/lumina/optimize';
 import { generateJS } from '../src/lumina/codegen';
@@ -263,7 +264,7 @@ interface LuminaDiagnostic {
   code?: string;
 }
 
-const compileGrammar = (grammar: string) => {
+const compilePegParser = (grammar: string) => {
   const parser = PEG.generate(grammar, {
     output: 'parser',
     format: 'bare',
@@ -356,7 +357,7 @@ function App() {
     setGrammarError(null);
 
     try {
-      const parser = compileGrammar(grammar);
+      const parser = compilePegParser(grammar);
       const result: DemoParseResult<unknown> | DemoParseError = parseInput(parser, code);
       const endTime = window.performance.now();
 
@@ -398,7 +399,7 @@ function App() {
     setLuminaOutput('');
 
     try {
-      const parser = compileGrammar(luminaGrammarRaw);
+      const parser = compileLuminaGrammar(luminaGrammarRaw);
       const project = new BrowserProjectContext(parser, { preludeText: preludeRaw });
       project.registerVirtualFile('lib/math.lm', 'pub fn add(a: int, b: int) -> int { return a + b; }');
       project.addOrUpdateDocument('main.lm', luminaCode, 1);
