@@ -150,6 +150,39 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('supports qualified enum constructors', () => {
+    const program = `
+      enum Status { Active, Inactive }
+      enum Result { Ok(int), Err(string) }
+      fn main() {
+        let s = Status.Active;
+        let t = Status.Active();
+        let r = Result.Ok(1);
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('reports missing payloads for qualified enum variants', () => {
+    const program = `
+      enum Result { Ok(int), Err(string) }
+      fn main() {
+        let r = Result.Ok;
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/expects 1 payload/);
+  });
+
   test('supports struct literals with field checks', () => {
     const program = `
       struct Session { user_id: int, is_admin: bool }

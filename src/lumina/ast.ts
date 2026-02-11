@@ -245,6 +245,7 @@ export interface LuminaCall {
   callee: LuminaIdentifier;
   args: LuminaExpr[];
   typeArgs?: string[];
+  enumName?: string | null;
   location?: Location;
 }
 

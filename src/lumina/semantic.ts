@@ -433,7 +433,9 @@ function getNarrowingFromCondition(
 
   const tryMatch = (left: LuminaExpr, right: LuminaExpr, when: 'then' | 'else') => {
     if (left.type !== 'Identifier' || right.type !== 'Call') return null;
-    const payloadType = getEnumPayloadType(symbols, right.callee.name, options);
+    const payloadType = right.enumName
+      ? getEnumPayloadTypeQualified(symbols, right.enumName, right.callee.name, options)
+      : getEnumPayloadType(symbols, right.callee.name, options);
     if (!payloadType) return null;
     return { name: left.name, type: payloadType, when };
   };
@@ -948,14 +950,26 @@ function typeCheckExpr(
   if (expr.type === 'Number') return 'int';
   if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'String') return 'string';
-    if (expr.type === 'Binary') {
-      if (expr.op === '|>') {
-        if (expr.right.type !== 'Call') {
-          diagnostics.push(diagAt(`Pipe target must be a function call`, expr.location));
-          return null;
-        }
-        const callExpr = expr.right;
-        const piped = typeCheckExpr(expr.left, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
+  if (expr.type === 'Binary') {
+    if (expr.op === '|>') {
+      if (expr.right.type !== 'Call') {
+        diagnostics.push(diagAt(`Pipe target must be a function call`, expr.location));
+        return null;
+      }
+      const callExpr = expr.right;
+      const piped = typeCheckExpr(
+        expr.left,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      if (!callExpr.enumName) {
         const calleeSym = symbols.get(callExpr.callee.name) ?? options?.externSymbols?.(callExpr.callee.name);
         if (calleeSym?.kind === 'function' && calleeSym.paramRefs?.[0]) {
           const isLValue = (value: LuminaExpr) => value.type === 'Identifier' || value.type === 'Member';
@@ -985,11 +999,24 @@ function typeCheckExpr(
             }
           }
         }
-        const callType = typeCheckExpr(callExpr, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di, piped ?? undefined);
-        return callType;
       }
-      const left = typeCheckExpr(expr.left, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
-      const right = typeCheckExpr(expr.right, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
+      const callType = typeCheckExpr(
+        callExpr,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di,
+        piped ?? undefined
+      );
+      return callType;
+    }
+    const left = typeCheckExpr(expr.left, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
+    const right = typeCheckExpr(expr.right, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     if (!left || !right) return null;
     if (expr.op === '+' && left === 'string' && right === 'string') return 'string';
     if (expr.op === '&&' || expr.op === '||') {
@@ -1081,16 +1108,18 @@ function typeCheckExpr(
       return 'bool';
     }
     if (expr.type === 'Call') {
-    const callee = expr.callee.name;
-    scope?.read(callee);
-    const sym = symbols.get(callee) ?? options?.externSymbols?.(callee);
-    const isLValue = (value: LuminaExpr) => value.type === 'Identifier' || value.type === 'Member';
-    if (!sym || sym.kind !== 'function') {
-      const enumVariant = findEnumVariant(symbols, callee, options);
-      if (enumVariant) {
+      const callee = expr.callee.name;
+      const isLValue = (value: LuminaExpr) => value.type === 'Identifier' || value.type === 'Member';
+
+      if (expr.enumName) {
+        const enumVariant = findEnumVariantQualified(symbols, expr.enumName, callee, options);
+        if (!enumVariant) {
+          diagnostics.push(diagAt(`Unknown enum variant '${expr.enumName}.${callee}'`, expr.location));
+          return null;
+        }
         const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
         if (enumVariant.params.length !== effectiveArgCount) {
-          diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
+          diagnostics.push(diagAt(`Argument count mismatch for '${expr.enumName}.${callee}'`, expr.location));
           return enumVariant.enumName;
         }
         for (let i = 0; i < effectiveArgCount; i++) {
@@ -1111,23 +1140,57 @@ function typeCheckExpr(
                 );
           const paramType = enumVariant.params[i];
           if (argType && paramType && argType !== paramType) {
-            diagnostics.push(diagAt(`Type mismatch: expected '${paramType}' for '${callee}'`, expr.location));
+            diagnostics.push(diagAt(`Type mismatch: expected '${paramType}' for '${expr.enumName}.${callee}'`, expr.location));
           }
         }
         return enumVariant.enumName;
       }
-      const suggestion = suggestName(callee, collectVisibleSymbols(symbols, options));
-      const related = suggestion
-        ? [
-            {
-              location: expr.location ?? defaultLocation,
-              message: `Did you mean '${suggestion}'?`,
-            },
-          ]
-        : undefined;
-      diagnostics.push(diagAt(`Unknown function '${callee}'`, expr.location, 'error', 'UNKNOWN_FUNCTION', related));
-      return null;
-    }
+
+      scope?.read(callee);
+      const sym = symbols.get(callee) ?? options?.externSymbols?.(callee);
+      if (!sym || sym.kind !== 'function') {
+        const enumVariant = findEnumVariant(symbols, callee, options);
+        if (enumVariant) {
+          const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+          if (enumVariant.params.length !== effectiveArgCount) {
+            diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
+            return enumVariant.enumName;
+          }
+          for (let i = 0; i < effectiveArgCount; i++) {
+            const argType =
+              pipedArgType && i === 0
+                ? pipedArgType
+                : typeCheckExpr(
+                    expr.args[pipedArgType ? i - 1 : i],
+                    symbols,
+                    diagnostics,
+                    scope,
+                    options,
+                    undefined,
+                    resolving,
+                    pendingDeps,
+                    currentFunction,
+                    di
+                  );
+            const paramType = enumVariant.params[i];
+            if (argType && paramType && argType !== paramType) {
+              diagnostics.push(diagAt(`Type mismatch: expected '${paramType}' for '${callee}'`, expr.location));
+            }
+          }
+          return enumVariant.enumName;
+        }
+        const suggestion = suggestName(callee, collectVisibleSymbols(symbols, options));
+        const related = suggestion
+          ? [
+              {
+                location: expr.location ?? defaultLocation,
+                message: `Did you mean '${suggestion}'?`,
+              },
+            ]
+          : undefined;
+        diagnostics.push(diagAt(`Unknown function '${callee}'`, expr.location, 'error', 'UNKNOWN_FUNCTION', related));
+        return null;
+      }
     if (sym.uri && options?.currentUri && sym.uri !== options.currentUri && sym.visibility === 'private') {
       diagnostics.push(diagAt(`'${callee}' is private to ${sym.uri}`, expr.location));
       return null;
@@ -1310,6 +1373,22 @@ function typeCheckExpr(
     const parsed = parseTypeName(objectType);
     const structName = parsed?.base ?? objectType;
     const structSym = symbols.get(structName);
+    if (structSym?.enumVariants) {
+      const variant = findEnumVariantQualified(symbols, structName, expr.property, options);
+      if (!variant) {
+        diagnostics.push(diagAt(`Unknown enum variant '${structName}.${expr.property}'`, expr.location));
+        return null;
+      }
+      if (variant.params.length > 0) {
+        diagnostics.push(
+          diagAt(
+            `Variant '${structName}.${expr.property}' expects ${variant.params.length} payload value(s). Use '${structName}.${expr.property}(...)'`,
+            expr.location
+          )
+        );
+      }
+      return structName;
+    }
     if (!structSym || !structSym.structFields) {
       diagnostics.push(diagAt(`'${objectType}' has no fields`, expr.location));
       return null;

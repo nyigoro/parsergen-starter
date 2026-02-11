@@ -13,23 +13,27 @@ export function lowerLumina(program: LuminaProgram): IRProgram {
 type EnumVariantInfo = { enumName: string; name: string; hasPayload: boolean };
 
 type LowerContext = {
-  variants: Map<string, EnumVariantInfo>;
+  variantsByName: Map<string, EnumVariantInfo>;
+  variantsByQualified: Map<string, EnumVariantInfo>;
   matchCounter: number;
 };
 
 function createLowerContext(program: LuminaProgram): LowerContext {
-  const variants = new Map<string, EnumVariantInfo>();
+  const variantsByName = new Map<string, EnumVariantInfo>();
+  const variantsByQualified = new Map<string, EnumVariantInfo>();
   for (const stmt of program.body) {
     if (stmt.type !== 'EnumDecl') continue;
     for (const variant of stmt.variants) {
-      variants.set(variant.name, {
+      const info: EnumVariantInfo = {
         enumName: stmt.name,
         name: variant.name,
         hasPayload: (variant.params ?? []).length > 0,
-      });
+      };
+      variantsByName.set(variant.name, info);
+      variantsByQualified.set(`${stmt.name}.${variant.name}`, info);
     }
   }
-  return { variants, matchCounter: 0 };
+  return { variantsByName, variantsByQualified, matchCounter: 0 };
 }
 
 function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
@@ -120,7 +124,9 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
       for (const arm of stmt.arms) {
         const armBody: IRNode[] = [];
         if (arm.pattern.type === 'EnumPattern') {
-          const variant = ctx.variants.get(arm.pattern.variant);
+          const variant = arm.pattern.enumName
+            ? ctx.variantsByQualified.get(`${arm.pattern.enumName}.${arm.pattern.variant}`)
+            : ctx.variantsByName.get(arm.pattern.variant);
           if (variant?.hasPayload && arm.pattern.bindings.length > 0) {
             arm.pattern.bindings.forEach((binding, index) => {
               if (binding === '_') return;
@@ -218,7 +224,9 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       return bin;
     }
     case 'Call': {
-      const variant = ctx.variants.get(expr.callee.name);
+      const variant = expr.enumName
+        ? ctx.variantsByQualified.get(`${expr.enumName}.${expr.callee.name}`)
+        : ctx.variantsByName.get(expr.callee.name);
       if (variant) {
         const enumNode: IREnumConstruct = {
           kind: 'Enum',
@@ -253,6 +261,19 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       return id;
     }
     case 'Member': {
+      if (expr.object.type === 'Identifier') {
+        const qualified = `${expr.object.name}.${expr.property}`;
+        const variant = ctx.variantsByQualified.get(qualified);
+        if (variant && !variant.hasPayload) {
+          const enumNode: IREnumConstruct = {
+            kind: 'Enum',
+            tag: variant.name,
+            values: [],
+            location: expr.location,
+          };
+          return enumNode;
+        }
+      }
       const member: IRMember = {
         kind: 'Member',
         object: lowerExpr(expr.object, ctx),

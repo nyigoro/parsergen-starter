@@ -244,6 +244,7 @@ Mul
 Primary
   = MatchExpr
   / StructLiteral
+  / QualifiedCall
   / Call
   / Member
   / Number
@@ -340,6 +341,19 @@ Call
   = callee:IdName _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" {
       return { type: "Call", callee: { type: "Identifier", name: callee.name, location: callee.location }, args: args || [], typeArgs: targs || [], location: location() };
     }
+
+QualifiedCall
+  = enumName:IdName _ "." _ variant:IdName _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" {
+      return {
+        type: "Call",
+        callee: { type: "Identifier", name: variant.name, location: variant.location },
+        args: args || [],
+        typeArgs: targs || [],
+        enumName: enumName.name,
+        location: location()
+      };
+    }
+
 
 ArgList
   = head:Expr tail:(_ "," _ Expr)* { return [head].concat(tail.map(t => t[3])); }
