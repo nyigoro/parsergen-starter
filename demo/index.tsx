@@ -20,6 +20,11 @@ import {
   XCircle
 } from 'lucide-react';
 import PEG from 'peggy';
+import luminaGrammarRaw from '../src/grammar/lumina.peg?raw';
+import { analyzeLumina } from '../src/lumina/semantic';
+import { lowerLumina } from '../src/lumina/lower';
+import { optimizeIR } from '../src/lumina/optimize';
+import { generateJS } from '../src/lumina/codegen';
 
 const defaultGrammar = `Expression
   = left:Term _ operator:("+" / "-") _ right:Expression {
@@ -56,6 +61,22 @@ const presets = [
   { name: 'JSON Parser', grammar: 'Object\n  = "{" pairs:Pair* "}" { return Object.fromEntries(pairs); }\n\nPair\n  = key:String ":" value:Value { return [key, value]; }' },
   { name: 'Simple Language', grammar: 'Program\n  = Statement*\n\nStatement\n  = Assignment / Expression' },
 ];
+
+const luminaSample = `import { io } from "@std";
+
+struct User { id: int, name: string }
+enum Result { Ok(int), Err(string) }
+
+fn total(cost: int, tax: int) {
+  return cost + tax;
+}
+
+fn main() {
+  let cost = 400;
+  let tax = 20;
+  let answer = total(cost, tax);
+  return answer;
+}`;
 
 const pegLanguage = StreamLanguage.define({
   token(stream) {
@@ -230,6 +251,16 @@ interface DemoParseResult<T> {
   result: T;
 }
 
+interface LuminaDiagnostic {
+  severity: string;
+  message: string;
+  location?: {
+    start: { line: number; column: number; offset: number };
+    end: { line: number; column: number; offset: number };
+  };
+  code?: string;
+}
+
 const compileGrammar = (grammar: string) => {
   const parser = PEG.generate(grammar, {
     output: 'parser',
@@ -295,6 +326,12 @@ function App() {
   const [performance, setPerformance] = useState<ParsePerformance | null>(null);
   const [parseHistory, setParseHistory] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [luminaCode, setLuminaCode] = useState(luminaSample);
+  const [luminaAst, setLuminaAst] = useState<unknown>(null);
+  const [luminaDiagnostics, setLuminaDiagnostics] = useState<LuminaDiagnostic[]>([]);
+  const [luminaOutput, setLuminaOutput] = useState('');
+  const [luminaStatus, setLuminaStatus] = useState<'idle' | 'parsing' | 'error' | 'ok'>('idle');
+  const [luminaTab, setLuminaTab] = useState<'ast' | 'diagnostics' | 'js'>('diagnostics');
 
   useEffect(() => {
     const handleHash = () => setRoute(getRouteFromHash());
@@ -350,6 +387,43 @@ function App() {
       const elapsed = window.performance.now() - startTime;
       setPerformance({ time: elapsed, nodes: 0 });
       setParseHistory(prev => [...prev, elapsed].slice(-30));
+    }
+  };
+
+  const handleLuminaParse = () => {
+    setLuminaStatus('parsing');
+    setLuminaDiagnostics([]);
+    setLuminaOutput('');
+
+    try {
+      const parser = compileGrammar(luminaGrammarRaw);
+      const parsed = parseInput(parser, luminaCode);
+      if ('result' in parsed) {
+        setLuminaAst(parsed.result);
+        const analysis = analyzeLumina(parsed.result as never);
+        const diags = (analysis.diagnostics || []) as LuminaDiagnostic[];
+        setLuminaDiagnostics(diags);
+
+        const lowered = lowerLumina(parsed.result as never);
+        const optimized = optimizeIR(lowered);
+        const js = optimized ? generateJS(optimized).code : '// IR optimized away';
+        setLuminaOutput(js);
+        setLuminaStatus(diags.length > 0 ? 'error' : 'ok');
+      } else {
+        setLuminaAst(null);
+        setLuminaDiagnostics([
+          {
+            severity: 'error',
+            message: parsed.error,
+            location: parsed.location
+          }
+        ]);
+        setLuminaStatus('error');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setLuminaDiagnostics([{ severity: 'error', message }]);
+      setLuminaStatus('error');
     }
   };
 
@@ -568,6 +642,84 @@ lumina watch examples`}</pre>
   ├─ user sources
   ├─ dependency graph
   └─ diagnostics + IR`}</pre>
+              </div>
+            </section>
+
+            <section className="bg-gray-800/70 border border-gray-700 rounded-lg p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-blue-300 flex items-center gap-2"><Zap size={14} /> Lumina Playground</div>
+                  <div className="text-xs text-gray-400">Runs the Lumina grammar + semantic analysis directly in the browser.</div>
+                </div>
+                <button
+                  onClick={handleLuminaParse}
+                  className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm"
+                >
+                  Analyze
+                </button>
+              </div>
+
+              <CodeMirror
+                value={luminaCode}
+                height="12rem"
+                theme={oneDark}
+                extensions={[javascript()]}
+                onChange={(value) => setLuminaCode(value)}
+                basicSetup={{ lineNumbers: true, foldGutter: false }}
+                className="rounded overflow-hidden"
+              />
+
+              <div className="flex items-center gap-4 text-xs text-gray-400">
+                <span>Status:</span>
+                <span className={luminaStatus === 'ok' ? 'text-green-400' : luminaStatus === 'error' ? 'text-red-400' : 'text-gray-400'}>
+                  {luminaStatus}
+                </span>
+              </div>
+
+              <div className="flex bg-gray-900/60 border border-gray-700 rounded">
+                <button
+                  onClick={() => setLuminaTab('diagnostics')}
+                  className={`px-4 py-2 text-sm ${luminaTab === 'diagnostics' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
+                >
+                  Diagnostics
+                </button>
+                <button
+                  onClick={() => setLuminaTab('ast')}
+                  className={`px-4 py-2 text-sm ${luminaTab === 'ast' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
+                >
+                  AST
+                </button>
+                <button
+                  onClick={() => setLuminaTab('js')}
+                  className={`px-4 py-2 text-sm ${luminaTab === 'js' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
+                >
+                  JS Output
+                </button>
+              </div>
+
+              <div className="bg-gray-900/60 border border-gray-700 rounded p-4">
+                {luminaTab === 'diagnostics' && (
+                  <div className="space-y-2 text-sm">
+                    {luminaDiagnostics.length === 0 && <div className="text-gray-400">No diagnostics yet.</div>}
+                    {luminaDiagnostics.map((diag, idx) => (
+                      <div key={idx} className="border border-gray-700 rounded p-3">
+                        <div className="text-xs uppercase text-gray-400">{diag.severity}</div>
+                        <div className="text-sm">{diag.message}</div>
+                        {diag.location && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            {diag.location.start.line}:{diag.location.start.column}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {luminaTab === 'ast' && (
+                  <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{luminaAst ? JSON.stringify(luminaAst, null, 2) : 'No AST yet.'}</pre>
+                )}
+                {luminaTab === 'js' && (
+                  <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{luminaOutput || 'No JS output yet.'}</pre>
+                )}
               </div>
             </section>
           </div>
