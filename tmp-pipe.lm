@@ -1,0 +1,6 @@
+fn add(a: int, b: int) -> int { return a + b; }
+fn double(x: int) -> int { return x * 2; }
+fn main() {
+  let base = 10 |> add(5) |> double();
+  return base;
+}

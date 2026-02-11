@@ -1,3 +1,13 @@
+{
+  function expectedStatementTokens() {
+    return [
+      "fn", "struct", "enum", "type", "extern", "import", "pub",
+      "let", "if", "while", "match", "return",
+      "identifier", "number", "string", "true", "false",
+      "{", "}"
+    ];
+  }
+}
 Start
   = _ statements:StatementList _ { return { type: "Program", body: statements, location: location() }; }
 
@@ -9,11 +19,15 @@ RecoverableStatement
   = stmt:Statement { return stmt; }
   / error:InvalidStatement { return error; }
 
+SyncKeyword
+  = "fn" / "struct" / "enum" / "type" / "extern" / "import" / "pub"
+
 InvalidStatement
-  = tokens:(!(";" / "}") .)+ (";" / &"}" / !.) {
+  = tokens:(!(";" / "}" / SyncKeyword) .)+ (";" / &"}" / &SyncKeyword / !.) {
       return {
         type: "ErrorNode",
         message: "Invalid syntax",
+        expected: expectedStatementTokens(),
         location: location()
       };
     }
@@ -123,7 +137,7 @@ ParamList
   = head:Param tail:(_ "," _ Param)* { return [head].concat(tail.map(t => t[3])); }
 
 Param
-  = node:IdName _ ":" _ typeName:TypeName { return { name: node.name, typeName, location: node.location }; }
+  = ref:("ref" __)? node:IdName _ ":" _ typeName:TypeName { return { name: node.name, typeName, ref: !!ref, location: node.location }; }
 
 Block
   = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements, location: location() }; }
@@ -166,14 +180,33 @@ LogicOr
     }
 
 LogicAnd
-  = head:Equality tail:(_ "&&" _ Equality)* {
+  = head:Pipe tail:(_ "&&" _ Pipe)* {
       return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
     }
 
+Pipe
+  = head:Equality tail:(_ "|>" _ PipeTarget)* {
+      return tail.reduce((acc, t) => ({ type: "Binary", op: "|>", left: acc, right: t[3], location: location() }), head);
+    }
+
+PipeTarget
+  = callee:IdName _ "(" _ args:ArgList? _ ")" {
+      return { type: "Call", callee: { type: "Identifier", name: callee.name, location: callee.location }, args: args || [], typeArgs: [], location: location() };
+    }
+  / callee:IdName {
+      return { type: "Call", callee: { type: "Identifier", name: callee.name, location: callee.location }, args: [], typeArgs: [], location: location() };
+    }
+
 Equality
-  = head:Relational tail:(_ ("==" / "!=") _ Relational)* {
+  = head:IsExpr tail:(_ ("==" / "!=") _ IsExpr)* {
       return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
     }
+
+IsExpr
+  = head:Relational _ "is" _ qual:QualifiedVariant {
+      return { type: "IsExpr", value: head, variant: qual.variant, enumName: qual.enumName, location: location() };
+    }
+  / Relational
 
 Relational
   = head:Add tail:(_ ("<=" / ">=" / "<" / ">") _ Add)* {
@@ -204,8 +237,8 @@ Primary
   / "(" _ expr:Expr _ ")" { return expr; }
 
 StructLiteral
-  = name:IdName _ "{" _ fields:StructLiteralFieldList? _ "}" {
-      return { type: "StructLiteral", name: name.name, fields: fields || [], location: location() };
+  = name:IdName _ targs:TypeArgs? _ "{" _ fields:StructLiteralFieldList? _ "}" {
+      return { type: "StructLiteral", name: name.name, typeArgs: targs || [], fields: fields || [], location: location() };
     }
 
 StructLiteralFieldList
@@ -259,7 +292,11 @@ MatchArm
 
 MatchPattern
   = "_" { return { type: "WildcardPattern", location: location() }; }
-  / node:IdName _ binds:MatchBindingList? { return { type: "EnumPattern", variant: node.name, bindings: binds || [], location: node.location }; }
+  / qual:QualifiedVariant _ binds:MatchBindingList? { return { type: "EnumPattern", variant: qual.variant, enumName: qual.enumName, bindings: binds || [], location: qual.location }; }
+
+QualifiedVariant
+  = enumName:IdName _ "." _ variant:IdName { return { enumName: enumName.name, variant: variant.name, location: enumName.location }; }
+  / variant:IdName { return { enumName: null, variant: variant.name, location: variant.location }; }
 
 MatchBindingList
   = "(" _ head:MatchBinding tail:(_ "," _ MatchBinding)* _ ")" { return [head].concat(tail.map(t => t[3])); }

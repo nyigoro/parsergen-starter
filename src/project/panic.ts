@@ -1,4 +1,4 @@
-import { type CompiledGrammar } from '../grammar/index.js';
+import { type CompiledGrammar, wrapGrammarWithExpectations } from '../grammar/index.js';
 import { type Location } from '../utils/index.js';
 import { parseInput, type ParseError, type ParseResult, type Diagnostic } from '../parser/index.js';
 import { type LuminaToken } from '../lumina/lexer.js';
@@ -15,9 +15,11 @@ function toDiagnostic(error: ParseError): Diagnostic {
     start: { line: 1, column: 1, offset: 0 },
     end: { line: 1, column: 1, offset: 0 },
   };
+  const expected = error.expected && error.expected.length > 0 ? ` Expected: ${error.expected.join(', ')}` : '';
+  const found = error.found !== undefined && error.found !== null ? ` Found: "${error.found}"` : '';
   return {
     severity: 'error',
-    message: error.error,
+    message: `${error.error}${expected}${found}`,
     location,
     code: 'PARSE_ERROR',
     source: 'parsergen',
@@ -57,17 +59,24 @@ function findSyncOffsetByScan(input: string, startOffset: number, syncChars: str
   return null;
 }
 
-function collectErrorNodes(node: unknown, diagnostics: Diagnostic[]) {
+function collectErrorNodes(node: unknown, diagnostics: Diagnostic[], getExpected?: () => string[] | undefined) {
   const seen = new Set<unknown>();
   const visit = (value: unknown) => {
     if (!value || typeof value !== 'object') return;
     if (seen.has(value)) return;
     seen.add(value);
     if ('type' in value && (value as { type?: string }).type === 'ErrorNode') {
-      const errorNode = value as { message?: string; location?: Location };
+      const errorNode = value as { message?: string; location?: Location; expected?: string[] };
+      const expectedList =
+        errorNode.expected && errorNode.expected.length > 0
+          ? errorNode.expected
+          : getExpected?.();
+      const expected = expectedList && expectedList.length > 0
+        ? ` Expected: ${expectedList.join(', ')}`
+        : '';
       diagnostics.push({
         severity: 'error',
-        message: errorNode.message ?? 'Invalid syntax',
+        message: `${errorNode.message ?? 'Invalid syntax'}${expected}`,
         location:
           errorNode.location ?? {
             start: { line: 1, column: 1, offset: 0 },
@@ -93,15 +102,17 @@ export function parseWithPanicRecovery<T = unknown>(
   input: string,
   options: PanicRecoveryOptions = {}
 ): { result?: ParseResult<T> | ParseError; diagnostics: Diagnostic[] } {
+  const wrappedParser =
+    typeof parser.getLastExpected === 'function' ? parser : wrapGrammarWithExpectations(parser);
   const diagnostics: Diagnostic[] = [];
   const maxErrors = options.maxErrors ?? 25;
   const syncTokenTypes = options.syncTokenTypes ?? ['semicolon', 'rbrace'];
-  const syncKeywordValues = options.syncKeywordValues ?? [];
+  const syncKeywordValues = options.syncKeywordValues ?? ['fn', 'struct', 'enum', 'type', 'extern', 'import', 'pub', 'return', 'if', 'while', 'match'];
   const syncChars = [';', '}'];
   let working = input;
 
   for (let i = 0; i < maxErrors; i++) {
-    const result = parseInput(parser, working) as ParseResult<T> | ParseError;
+    const result = parseInput(wrappedParser, working) as ParseResult<T> | ParseError;
     if (result && typeof result === 'object' && 'success' in result && result.success === false) {
       diagnostics.push(toDiagnostic(result));
       const offset = result.location?.start.offset ?? 0;
@@ -118,7 +129,7 @@ export function parseWithPanicRecovery<T = unknown>(
       working = replaceRangePreserveNewlines(working, offset, nextOffset);
     } else {
       const payload = (result as { result?: unknown })?.result ?? result;
-      collectErrorNodes(payload, diagnostics);
+      collectErrorNodes(payload, diagnostics, wrappedParser.getLastExpected);
       return { result, diagnostics };
     }
   }

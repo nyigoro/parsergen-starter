@@ -38,6 +38,8 @@ export interface CompiledGrammar<ASTNode = unknown> {
   source: string;
   options: CompileOptions;
   analyze?: (ast: ASTNode) => AnalysisResult;
+  getLastExpected?: () => string[] | undefined;
+  getLastFound?: () => string | null | undefined;
 }
 
 export interface CompileOptions {
@@ -174,6 +176,42 @@ export function compileGrammar<ASTNode = unknown>(
       : formatAnyError(error);
     throw new Error(`Grammar compilation failed:\n${formattedError}`);
   }
+}
+
+export function wrapGrammarWithExpectations<ASTNode = unknown>(
+  grammar: CompiledGrammar<ASTNode>
+): CompiledGrammar<ASTNode> {
+  let lastExpected: string[] | undefined;
+  let lastFound: string | null | undefined;
+
+  const parse = (input: string, options?: ParserBuildOptions) => {
+    try {
+      return grammar.parse(input, options);
+    } catch (error: unknown) {
+      const err = error as {
+        expected?: Array<{ description?: string; text?: string; toString(): string }>;
+        found?: unknown;
+      };
+      if (Array.isArray(err.expected)) {
+        lastExpected = err.expected.map((exp) => exp.description || exp.text || exp.toString());
+      } else {
+        lastExpected = undefined;
+      }
+      if (err.found !== undefined && err.found !== null) {
+        lastFound = String(err.found);
+      } else {
+        lastFound = null;
+      }
+      throw error;
+    }
+  };
+
+  return {
+    ...grammar,
+    parse,
+    getLastExpected: () => lastExpected,
+    getLastFound: () => lastFound,
+  };
 }
 
 export async function compileGrammarFromFile<ASTNode = unknown>(

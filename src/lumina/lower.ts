@@ -196,6 +196,18 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
 function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
   switch (expr.type) {
     case 'Binary': {
+      if (expr.op === '|>') {
+        if (expr.right.type === 'Call') {
+          const call: IRCall = {
+            kind: 'Call',
+            callee: expr.right.callee.name,
+            args: [lowerExpr(expr.left, ctx), ...expr.right.args.map((arg) => lowerExpr(arg, ctx))],
+            location: expr.location,
+          };
+          return call;
+        }
+        return lowerExpr(expr.left, ctx);
+      }
       const bin: IRBinary = {
         kind: 'Binary',
         op: expr.op,

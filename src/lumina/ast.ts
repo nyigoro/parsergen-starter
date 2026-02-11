@@ -88,6 +88,7 @@ export interface LuminaFnDecl {
 export interface LuminaParam {
   name: string;
   typeName: LuminaType;
+  ref?: boolean;
   location?: Location;
 }
 
@@ -100,6 +101,7 @@ export interface LuminaBlock {
 export interface LuminaErrorNode {
   type: 'ErrorNode';
   message: string;
+  expected?: string[];
   location?: Location;
 }
 
@@ -158,6 +160,7 @@ export type LuminaMatchPattern = LuminaEnumPattern | LuminaWildcardPattern;
 export interface LuminaEnumPattern {
   type: 'EnumPattern';
   variant: string;
+  enumName?: string | null;
   bindings: string[];
   location?: Location;
 }
@@ -191,6 +194,7 @@ export type LuminaExpr =
   | LuminaMember
   | LuminaCall
   | LuminaStructLiteral
+  | LuminaIsExpr
   | LuminaNumber
   | LuminaString
   | LuminaBoolean
@@ -244,9 +248,18 @@ export interface LuminaCall {
   location?: Location;
 }
 
+export interface LuminaIsExpr {
+  type: 'IsExpr';
+  value: LuminaExpr;
+  variant: string;
+  enumName?: string | null;
+  location?: Location;
+}
+
 export interface LuminaStructLiteral {
   type: 'StructLiteral';
   name: string;
+  typeArgs?: string[];
   fields: LuminaStructLiteralField[];
   location?: Location;
 }

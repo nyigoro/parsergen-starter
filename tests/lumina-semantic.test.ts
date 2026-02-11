@@ -111,13 +111,14 @@ describe('Lumina semantic analysis', () => {
       }
     `.trim() + '\n';
 
-    const result = parser.parse(program) as { type: string };
-    const fn = (result as { body: Array<{ type?: string; body?: { body?: Array<{ type?: string; value?: { value?: number } }> } }> })
-      .body.find((stmt) => stmt.type === 'FnDecl');
+    const result = parser.parse(program) as unknown as {
+      body?: Array<{ type?: string; body?: { body?: Array<{ type?: string; value?: { value?: number } }> } }>;
+    };
+    const fn = result.body?.find((stmt) => stmt.type === 'FnDecl');
     const lets = fn?.body?.body?.filter((stmt) => stmt.type === 'Let') ?? [];
-    expect(lets[0].value.value).toBe(10);
-    expect(lets[1].value.value).toBe(26);
-    expect(lets[2].value.value).toBe(1000000);
+    expect(lets[0]?.value?.value).toBe(10);
+    expect(lets[1]?.value?.value).toBe(26);
+    expect(lets[2]?.value?.value).toBe(1000000);
   });
 
   test('supports struct and enum declarations', () => {
@@ -146,6 +147,42 @@ describe('Lumina semantic analysis', () => {
     const analysis = analyzeLumina(result as never);
     const errors = analysis.diagnostics.filter(d => d.severity === 'error');
     expect(errors.length).toBe(0);
+  });
+
+  test('warns on shadowed bindings', () => {
+    const program = `
+      fn main() {
+        let x: int = 1;
+        if (true) {
+          let x: int = 2;
+          return x;
+        }
+        return x;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const warning = analysis.diagnostics.find(d => d.code === 'SHADOWED_BINDING');
+    expect(warning?.severity).toBe('warning');
+  });
+
+  test('supports generic struct literals and member access', () => {
+    const program = `
+      struct Box<T> { value: T }
+      fn main() {
+        let boxed = Box<int> { value: 1 };
+        let inferred = Box { value: 2 };
+        let value = boxed.value;
+        return value;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/Type mismatch/);
+    expect(messages).not.toMatch(/Unknown field/);
   });
 
   test('checks match exhaustiveness for enums', () => {
@@ -183,6 +220,198 @@ describe('Lumina semantic analysis', () => {
     const analysis = analyzeLumina(result as never);
     const messages = analysis.diagnostics.map(d => d.message).join('\n');
     expect(messages).not.toMatch(/Match arms must return the same type/);
+  });
+
+  test('narrows match value type inside enum arms', () => {
+    const program = `
+      struct User { id: int }
+      enum Result { Ok(User), Err(string) }
+      fn main() {
+        let res = Ok(User { id: 1 });
+        match res {
+          Ok(u) => { return res.id; },
+          Err(msg) => { return 0; },
+        }
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).not.toMatch(/has no fields/);
+    expect(messages).not.toMatch(/Unknown field/);
+  });
+
+  test('narrows types in if branches comparing enum variants', () => {
+    const program = `
+      struct User { id: int }
+      enum Option { Some(User), None }
+      fn main() {
+        let user = User { id: 1 };
+        let opt = Some(user);
+        if (opt == Some(user)) {
+          return opt.id;
+        }
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('supports qualified enum patterns', () => {
+    const program = `
+      enum Result { Ok(int), Err(string) }
+      fn main() {
+        let res = Ok(1);
+        match res {
+          Result.Ok(value) => { return value; },
+          Result.Err(msg) => { return 0; },
+        }
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('rejects mismatched qualified enum patterns', () => {
+    const program = `
+      enum Result { Ok(int), Err(string) }
+      enum Option { Some(int), None }
+      fn main() {
+        let res = Ok(1);
+        match res {
+          Option.None => { return 0; },
+          Result.Ok(value) => { return value; },
+        }
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Match value is/);
+  });
+
+  test('supports is-operator narrowing', () => {
+    const program = `
+      struct User { id: int }
+      enum Option { Some(User), None }
+      fn main() {
+        let opt = Some(User { id: 1 });
+        if (opt is Some) {
+          return opt.id;
+        }
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('supports qualified is-operator and negative narrowing', () => {
+    const program = `
+      struct User { id: int }
+      enum Result { Ok(User), Err(string) }
+      fn main() {
+        let res = Ok(User { id: 7 });
+        if (res is Result.Err) {
+          return 0;
+        } else {
+          return res.id;
+        }
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('supports pipe operator lowering and type checking', () => {
+    const program = `
+      fn add(a: int, b: int) -> int { return a + b; }
+      fn double(x: int) -> int { return x * 2; }
+      fn main() {
+        let base = 10 |> add(5) |> double();
+        return base;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('supports ref parameters with lvalue arguments', () => {
+    const program = `
+      fn bump(ref x: int) -> int { return x + 1; }
+      fn main() {
+        let mut v: int = 1;
+        return bump(v);
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('flags ref parameters with non-lvalue arguments', () => {
+    const program = `
+      fn bump(ref x: int) -> int { return x + 1; }
+      fn main() {
+        return bump(1);
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/expects a reference/);
+  });
+
+  test('allows pipe into ref parameters from lvalues', () => {
+    const program = `
+      fn inc(ref x: int) -> int { return x + 1; }
+      fn main() {
+        let mut v: int = 1;
+        let y = v |> inc();
+        return y;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('warns when passing immutable values by ref', () => {
+    const program = `
+      fn bump(ref x: int) -> int { return x + 1; }
+      fn main() {
+        let x: int = 1;
+        return bump(x);
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const warning = analysis.diagnostics.find(d => d.code === 'REF_MUT_REQUIRED');
+    expect(warning?.severity).toBe('warning');
   });
 
   test('supports enum payload destructuring with multiple fields', () => {
