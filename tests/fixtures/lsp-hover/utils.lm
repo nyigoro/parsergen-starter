@@ -1,0 +1,5 @@
+import { add as add_impl } from "./math.lm";
+
+pub fn sum(a: int, b: int) -> int {
+  return add_impl(a, b);
+}

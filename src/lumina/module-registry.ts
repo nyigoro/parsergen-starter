@@ -52,6 +52,11 @@ const moduleFunction = (
   hmType: scheme(fnType(hmArgs, hmReturn)),
 });
 
+const aliasModuleFunction = (fn: ModuleFunction, name: string): ModuleFunction => {
+  if (fn.name === name) return fn;
+  return { ...fn, name };
+};
+
 export function createStdModuleRegistry(): ModuleRegistry {
   const registry: ModuleRegistry = new Map();
   const ioModule: ModuleNamespace = {
@@ -155,8 +160,7 @@ export function resolveModuleBindings(
   for (const stmt of program.body) {
     if (stmt.type !== 'Import') continue;
     const node = stmt as LuminaImport;
-    const rawSource = node.source?.value;
-    const source = rawSource ? rawSource.replace(/,/g, '') : rawSource;
+    const source = node.source?.value;
     if (!source) continue;
     const module = registry.get(source);
     if (!module) continue;
@@ -167,36 +171,40 @@ export function resolveModuleBindings(
     }
     if (Array.isArray(spec)) {
       for (const item of spec) {
+        const specItem = item as { name?: string; alias?: string; namespace?: boolean };
         const name =
           typeof item === 'string'
             ? item
-            : item && typeof item === 'object' && 'name' in (item as { name?: string })
-              ? (item as { name?: string }).name
+            : specItem && typeof specItem === 'object'
+              ? specItem.name
               : undefined;
-        const isNamespace =
-          item && typeof item === 'object' && 'namespace' in (item as { namespace?: boolean })
-            ? Boolean((item as { namespace?: boolean }).namespace)
-            : false;
         if (!name) continue;
+        const localName = specItem.alias ?? name;
+        const isNamespace = Boolean(specItem?.namespace);
         if (isNamespace) {
-          bindings.set(name, module);
+          bindings.set(localName, module);
         } else {
           const exp = module.exports.get(name);
-          if (exp) bindings.set(name, exp);
+          if (exp) {
+            bindings.set(localName, exp.kind === 'function' ? aliasModuleFunction(exp, localName) : exp);
+          }
         }
       }
       continue;
     }
     if (spec && typeof spec === 'object' && 'name' in (spec as { name?: string })) {
-      const name = (spec as { name?: string }).name;
-      const isNamespace =
-        'namespace' in (spec as { namespace?: boolean }) ? Boolean((spec as { namespace?: boolean }).namespace) : false;
-      if (!name) continue;
+      const specItem = spec as { name?: string; alias?: string; namespace?: boolean };
+      const name = specItem.name;
+      const localName = specItem.alias ?? name;
+      const isNamespace = Boolean(specItem.namespace);
+      if (!name || !localName) continue;
       if (isNamespace) {
-        bindings.set(name, module);
+        bindings.set(localName, module);
       } else {
         const exp = module.exports.get(name);
-        if (exp) bindings.set(name, exp);
+        if (exp) {
+          bindings.set(localName, exp.kind === 'function' ? aliasModuleFunction(exp, localName) : exp);
+        }
       }
     }
   }

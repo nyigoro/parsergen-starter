@@ -318,21 +318,7 @@ function resolveFunctionBody(
   stmt: LuminaStatement,
   symbols: SymbolTable,
   diagnostics: Diagnostic[],
-  options: {
-    externSymbols?: (name: string) => SymbolInfo | undefined;
-    currentUri?: string;
-    typeParams?: Map<string, LuminaType | undefined>;
-    diDebug?: boolean;
-    skipFunctionBodies?: Set<string>;
-    cachedFunctionReturns?: Map<string, LuminaType>;
-    useHm?: boolean;
-    hmInferred?: {
-      letTypes: Map<string, LuminaType>;
-      fnReturns: Map<string, LuminaType>;
-      fnByName: Map<string, LuminaType>;
-      fnParams: Map<string, LuminaType[]>;
-    };
-  } | undefined,
+  options: AnalyzeOptions | undefined,
   resolving: Set<string>,
   pendingDeps: Map<string, Set<string>>,
   parentScope?: Scope,
@@ -1509,6 +1495,44 @@ function typeCheckExpr(
           return `${enumVariant.enumName}<${args.join(',')}>`;
         }
         return enumVariant.enumName;
+      }
+
+      const directModuleFn = options?.moduleBindings?.get(callee);
+      if (directModuleFn && directModuleFn.kind === 'function') {
+        const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+        if (directModuleFn.paramTypes.length !== effectiveArgCount) {
+          diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
+          return directModuleFn.returnType;
+        }
+        for (let i = 0; i < effectiveArgCount; i++) {
+          const argType =
+            pipedArgType && i === 0
+              ? pipedArgType
+              : typeCheckExpr(
+                  expr.args[pipedArgType ? i - 1 : i],
+                  symbols,
+                  diagnostics,
+                  scope,
+                  options,
+                  undefined,
+                  resolving,
+                  pendingDeps,
+                  currentFunction,
+                  di
+                );
+          const expected = directModuleFn.paramTypes[i];
+          if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
+            reportCallArgMismatch(
+              callee,
+              i,
+              expected,
+              argType,
+              expr.args[pipedArgType ? i - 1 : i]?.location ?? expr.location,
+              directModuleFn.paramNames?.[i] ?? null
+            );
+          }
+        }
+        return directModuleFn.returnType;
       }
 
       scope?.read(callee);

@@ -77,7 +77,11 @@ ImportSpec
   / Identifier
 
 ImportList
-  = head:Identifier tail:(_ "," _ Identifier)* { return [head].concat(tail.map(t => t[3])); }
+  = head:ImportItem tail:(_ "," _ ImportItem)* { return [head].concat(tail.map(t => t[3])); }
+
+ImportItem
+  = name:IdName _ "as" _ alias:IdName { return { name: name.name, alias: alias.name, location: name.location }; }
+  / name:IdName { return { name: name.name, location: name.location }; }
 
 NamespaceImport
   = "*" _ "as" _ alias:IdName { return { name: alias.name, namespace: true, location: alias.location }; }
@@ -275,11 +279,10 @@ Primary
   / Number
   / String
   / Boolean
-  / Identifier
   / "(" _ expr:Expr _ ")" { return expr; }
 
 StructLiteral
-  = name:IdName _ targs:TypeArgs? _ "{" _ fields:StructLiteralFieldList? _ "}" {
+  = name:IdName _ targs:TypeArgs? &(_ "{") _ "{" _ fields:StructLiteralFieldList? _ "}" {
       return { type: "StructLiteral", name: name.name, typeArgs: targs || [], fields: fields || [], location: location() };
     }
 
@@ -289,8 +292,12 @@ StructLiteralFieldList
 StructLiteralField
   = field:IdName _ ":" _ value:Expr { return { name: field.name, value, location: field.location }; }
 
+Keyword
+  = ("fn" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "let" / "mut" / "ref"
+    / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is") ![a-zA-Z0-9_]
+
 IdName
-  = name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }
+  = !Keyword name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }
 
 Identifier
   = node:IdName { return { type: "Identifier", name: node.name, location: node.location }; }
@@ -314,20 +321,22 @@ Boolean
   / "false" { return { type: "Boolean", value: false, location: location() }; }
 
 String
-  = "\"" chars:Char* "\"" {
-      const raw = text();
-      let value = raw.slice(1, -1);
-      try {
-        value = JSON.parse(raw);
-      } catch {
-        // fall back to raw slice on invalid escape sequences
-      }
-      return { type: "String", value, location: location() };
+  = "\"" chars:DoubleStringCharacter* "\"" {
+      return { type: "String", value: chars.join(""), location: location() };
     }
 
-Char
-  = "\\\\" c:. { return c; }
-  / !'"' .
+DoubleStringCharacter
+  = !("\"" / "\\") char:. { return char; }
+  / "\\" seq:EscapeSequence { return seq; }
+
+EscapeSequence
+  = "\"" { return "\""; }
+  / "\\" { return "\\"; }
+  / "n" { return "\n"; }
+  / "r" { return "\r"; }
+  / "t" { return "\t"; }
+  / "0" { return "\0"; }
+  / "u" hex:$([0-9a-fA-F]{4}) { return String.fromCharCode(parseInt(hex, 16)); }
 
 _ = (WS / Comment)*
 __ = (WS / Comment)+
@@ -368,7 +377,7 @@ MatchExprArm
   = pattern:MatchPattern _ "=>" _ body:Expr { return { pattern, body, location: location() }; }
 
 Member
-  = base:Identifier tail:(_ "." _ IdName)+ {
+  = base:Identifier tail:(_ "." _ IdName)* {
       return tail.reduce((acc, t) => ({ type: "Member", object: acc, property: t[3].name, location: location() }), base);
     }
 Call

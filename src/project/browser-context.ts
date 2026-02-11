@@ -16,6 +16,7 @@ export interface BrowserSourceDocument {
   version: number;
   imports: string[];
   importAliases?: Map<string, string>;
+  importNameMap?: Map<string, ImportBinding>;
   diagnostics: Diagnostic[];
   symbols?: LuminaSymbolTable;
   ast?: unknown;
@@ -25,6 +26,13 @@ export interface BrowserSourceDocument {
   functionHashes?: Map<string, string>;
   inferredReturns?: Map<string, LuminaType>;
 }
+
+type ImportBinding = {
+  local: string;
+  original: string;
+  source: string;
+  namespace: boolean;
+};
 
 export class BrowserProjectContext {
   private documents = new Map<string, BrowserSourceDocument>();
@@ -116,6 +124,7 @@ export class BrowserProjectContext {
     doc.ast = undefined;
     doc.importedNames = undefined;
     doc.importAliases = undefined;
+    doc.importNameMap = undefined;
     doc.moduleBindings = undefined;
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
       const payload = (result.result as { result: unknown }).result ?? result.result;
@@ -128,25 +137,25 @@ export class BrowserProjectContext {
           if (prevHashes.get(name) === hash) skipBodies.add(name);
         }
         const cachedReturns = doc.inferredReturns ?? new Map<string, LuminaType>();
-        const rawImports = collectImportNames(payload as never);
-        const importedNames = new Set<string>(rawImports);
+        const importInfo = collectImportBindings(payload as never);
+        const importedNames = new Set<string>(importInfo.locals);
         for (const name of this.preludeNames) importedNames.add(name);
         doc.importedNames = importedNames;
-        const importAliases = collectImportAliases(payload as never);
-        doc.importAliases = importAliases;
-        const moduleBindings = this.buildModuleBindings(importAliases, payload as never);
+        doc.importAliases = importInfo.aliases;
+        doc.importNameMap = importInfo.map;
+        const moduleBindings = this.buildModuleBindings(importInfo.bindings, payload as never);
         doc.moduleBindings = moduleBindings;
 
         const analysis = analyzeLumina(payload as never, {
           externSymbols: (name: string) => {
             const prelude = this.preludeSymbols?.get(name);
             if (prelude) return prelude as SymbolInfo;
-            if (!rawImports.has(name)) return undefined;
-            return this.getExternalSymbol(name);
+            if (!importInfo.locals.has(name)) return undefined;
+            return this.getExternalSymbol(name, uri);
           },
           externalSymbols: [
             ...(this.preludeSymbols ? this.preludeSymbols.list() : []),
-            ...this.getExternalSymbols(rawImports, uri),
+            ...this.getExternalSymbols(importInfo.locals, uri),
           ],
           importedNames,
           skipFunctionBodies: skipBodies,
@@ -187,25 +196,50 @@ export class BrowserProjectContext {
   }
 
   private buildModuleBindings(
-    aliases: Map<string, string>,
+    bindings: ImportBinding[],
     program: { type: string; body?: unknown[] }
   ): Map<string, ModuleExport> {
-    const bindings = resolveModuleBindings(program as never, this.moduleRegistry);
-    for (const [alias, source] of aliases.entries()) {
-      if (bindings.has(alias)) continue;
-      const moduleFromRegistry = this.moduleRegistry.get(source);
-      if (moduleFromRegistry) {
-        bindings.set(alias, moduleFromRegistry as ModuleNamespace);
+    const bindingsMap = resolveModuleBindings(program as never, this.moduleRegistry);
+    const modulesBySource = new Map<string, ModuleNamespace>();
+    for (const binding of bindings) {
+      if (bindingsMap.has(binding.local)) continue;
+      const registryModule = this.moduleRegistry.get(binding.source);
+      if (registryModule) {
+        if (binding.namespace) {
+          bindingsMap.set(binding.local, registryModule as ModuleNamespace);
+        } else {
+          const exp = registryModule.exports.get(binding.original);
+          if (exp) {
+            bindingsMap.set(
+              binding.local,
+              exp.kind === 'function' && exp.name !== binding.local ? { ...exp, name: binding.local } : exp
+            );
+          }
+        }
         continue;
       }
-      const resolved = this.resolveImport('', source);
-      this.ensureDocumentLoaded(resolved);
-      const doc = this.documents.get(this.toVirtualUri(resolved));
-      if (!doc?.symbols) continue;
-      const module = buildModuleNamespaceFromSymbols(alias, doc.symbols.list());
-      bindings.set(alias, module);
+      let module = modulesBySource.get(binding.source);
+      if (!module) {
+        const resolved = this.resolveImport('', binding.source);
+        this.ensureDocumentLoaded(resolved);
+        const doc = this.documents.get(this.toVirtualUri(resolved));
+        if (!doc?.symbols) continue;
+        module = buildModuleNamespaceFromSymbols(binding.source, doc.symbols.list());
+        modulesBySource.set(binding.source, module);
+      }
+      if (binding.namespace) {
+        bindingsMap.set(binding.local, module);
+      } else {
+        const exp = module.exports.get(binding.original);
+        if (exp) {
+          bindingsMap.set(
+            binding.local,
+            exp.kind === 'function' && exp.name !== binding.local ? { ...exp, name: binding.local } : exp
+          );
+        }
+      }
     }
-    return bindings;
+    return bindingsMap;
   }
 
   private ensureDocumentLoaded(uri: string) {
@@ -229,10 +263,30 @@ export class BrowserProjectContext {
     }
   }
 
-  private getExternalSymbol(name: string): SymbolInfo | undefined {
-    for (const doc of this.documents.values()) {
-      const sym = doc.symbols?.get(name);
+  private getExternalSymbol(name: string, currentUri: string): SymbolInfo | undefined {
+    const normalized = this.toVirtualUri(currentUri);
+    const resolved = this.resolveImportedSymbol(name, normalized);
+    if (resolved) return resolved;
+    for (const other of this.documents.values()) {
+      if (other.uri === normalized) continue;
+      const sym = other.symbols?.get(name);
       if (sym) return sym as SymbolInfo;
+    }
+    return undefined;
+  }
+
+  resolveImportedSymbol(name: string, uri: string): SymbolInfo | undefined {
+    const normalized = this.toVirtualUri(uri);
+    const doc = this.documents.get(normalized);
+    const binding = doc?.importNameMap?.get(name);
+    if (binding) {
+      if (binding.namespace) return undefined;
+      const resolved = this.resolveImport(normalized, binding.source);
+      const target = this.documents.get(this.toVirtualUri(resolved));
+      const sym = target?.symbols?.get(binding.original);
+      if (!sym) return undefined;
+      if (sym.visibility === 'private' && this.toVirtualUri(resolved) !== normalized) return undefined;
+      return { ...sym, name } as SymbolInfo;
     }
     return undefined;
   }
@@ -240,14 +294,8 @@ export class BrowserProjectContext {
   private getExternalSymbols(names: Set<string>, currentUri: string): SymbolInfo[] {
     const results: SymbolInfo[] = [];
     for (const name of names) {
-      for (const doc of this.documents.values()) {
-        if (doc.uri === currentUri) continue;
-        const sym = doc.symbols?.get(name);
-        if (sym) {
-          results.push(sym as SymbolInfo);
-          break;
-        }
-      }
+      const sym = this.getExternalSymbol(name, currentUri);
+      if (sym) results.push(sym as SymbolInfo);
     }
     return results;
   }
@@ -272,54 +320,61 @@ export class BrowserProjectContext {
   }
 }
 
-function collectImportNames(program: { type: string; body?: unknown[] }): Set<string> {
-  const names = new Set<string>();
-  if (!program || !Array.isArray(program.body)) return names;
-  for (const stmt of program.body) {
-    const node = stmt as { type?: string; spec?: unknown };
-    if (node.type !== 'Import') continue;
-    const spec = node.spec;
-    if (Array.isArray(spec)) {
-      for (const item of spec) {
-        if (typeof item === 'string') names.add(item);
-        else if (item && typeof item === 'object' && 'name' in (item as { name?: string })) {
-          const name = (item as { name?: string }).name;
-          if (name) names.add(name);
-        }
-      }
-    } else if (typeof spec === 'string') {
-      names.add(spec);
-    } else if (spec && typeof spec === 'object' && 'name' in (spec as { name?: string })) {
-      const name = (spec as { name?: string }).name;
-      if (name) names.add(name);
-    }
-  }
-  return names;
-}
-
-function collectImportAliases(program: { type: string; body?: unknown[] }): Map<string, string> {
+function collectImportBindings(program: { type: string; body?: unknown[] }): {
+  locals: Set<string>;
+  aliases: Map<string, string>;
+  bindings: ImportBinding[];
+  map: Map<string, ImportBinding>;
+} {
+  const locals = new Set<string>();
   const aliases = new Map<string, string>();
-  if (!program || !Array.isArray(program.body)) return aliases;
+  const bindings: ImportBinding[] = [];
+  const map = new Map<string, ImportBinding>();
+  if (!program || !Array.isArray(program.body)) return { locals, aliases, bindings, map };
+
+  const register = (local: string, original: string, source: string, namespace: boolean) => {
+    locals.add(local);
+    if (namespace) aliases.set(local, source);
+    const binding: ImportBinding = { local, original, source, namespace };
+    bindings.push(binding);
+    map.set(local, binding);
+  };
+
   for (const stmt of program.body) {
     const node = stmt as { type?: string; spec?: unknown; source?: { value?: string } };
     if (node.type !== 'Import') continue;
     const source = node.source?.value;
     if (!source) continue;
     const spec = node.spec;
-    const addAlias = (item: unknown) => {
-      if (!item || typeof item !== 'object') return;
-      const specItem = item as { name?: string; namespace?: boolean };
-      if (specItem.namespace && specItem.name) {
-        aliases.set(specItem.name, source);
-      }
-    };
     if (Array.isArray(spec)) {
-      for (const item of spec) addAlias(item);
-    } else {
-      addAlias(spec);
+      for (const item of spec) {
+        if (typeof item === 'string') {
+          register(item, item, source, false);
+          continue;
+        }
+        if (!item || typeof item !== 'object') continue;
+        const specItem = item as { name?: string; alias?: string; namespace?: boolean };
+        const name = specItem.name;
+        if (!name) continue;
+        const local = specItem.alias ?? name;
+        register(local, name, source, Boolean(specItem.namespace));
+      }
+      continue;
+    }
+    if (typeof spec === 'string') {
+      register(spec, spec, source, true);
+      continue;
+    }
+    if (spec && typeof spec === 'object' && 'name' in (spec as { name?: string })) {
+      const specItem = spec as { name?: string; alias?: string; namespace?: boolean };
+      const name = specItem.name;
+      if (!name) continue;
+      const local = specItem.alias ?? name;
+      register(local, name, source, Boolean(specItem.namespace));
     }
   }
-  return aliases;
+
+  return { locals, aliases, bindings, map };
 }
 
 function collectFunctionBodyHashes(

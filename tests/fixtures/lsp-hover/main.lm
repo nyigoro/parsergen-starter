@@ -1,0 +1,10 @@
+import { sum } from "./utils.lm";
+import { add as sum2 } from "./math.lm";
+import * as m from "./math.lm";
+
+fn main() {
+  let x = sum(1, 2);
+  let y = sum2(3, 4);
+  let z = m.add(5, 6);
+  return x + y + z;
+}
