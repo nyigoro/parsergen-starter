@@ -26,6 +26,7 @@ export type LuminaStatement =
 
 export interface LuminaImportSpec {
   name: string;
+  alias?: string;
   namespace?: boolean;
   location?: Location;
 }

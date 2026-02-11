@@ -3,6 +3,13 @@ import { type Diagnostic, type DiagnosticRelatedInformation } from '../parser/in
 import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaType } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
+import {
+  createStdModuleRegistry,
+  resolveModuleBindings,
+  type ModuleExport,
+  type ModuleFunction,
+  type ModuleRegistry,
+} from './module-registry.js';
 
 export type SymbolKind = 'type' | 'function' | 'variable';
 
@@ -78,41 +85,47 @@ const getLValueBaseName = (expr: LuminaExpr): string | null => {
   return current.type === 'Identifier' ? current.name : null;
 };
 
-export function analyzeLumina(
-  program: LuminaProgram,
-  options?: {
-    externSymbols?: (name: string) => SymbolInfo | undefined;
-    currentUri?: string;
-    typeParams?: Map<string, LuminaType | undefined>;
-    externalSymbols?: SymbolInfo[];
-    importedNames?: Set<string>;
-    diDebug?: boolean;
-    skipFunctionBodies?: Set<string>;
-    cachedFunctionReturns?: Map<string, LuminaType>;
-    indexingOnly?: boolean;
-    recursiveWrappers?: string[];
-    useHm?: boolean;
-    hmSourceText?: string;
-    hmInferred?: {
-      letTypes: Map<string, LuminaType>;
-      fnReturns: Map<string, LuminaType>;
-      fnByName: Map<string, LuminaType>;
-      fnParams: Map<string, LuminaType[]>;
-    };
-  }
-) {
+export interface AnalyzeOptions {
+  externSymbols?: (name: string) => SymbolInfo | undefined;
+  currentUri?: string;
+  typeParams?: Map<string, LuminaType | undefined>;
+  externalSymbols?: SymbolInfo[];
+  importedNames?: Set<string>;
+  diDebug?: boolean;
+  skipFunctionBodies?: Set<string>;
+  cachedFunctionReturns?: Map<string, LuminaType>;
+  indexingOnly?: boolean;
+  recursiveWrappers?: string[];
+  useHm?: boolean;
+  hmSourceText?: string;
+  hmInferred?: {
+    letTypes: Map<string, LuminaType>;
+    fnReturns: Map<string, LuminaType>;
+    fnByName: Map<string, LuminaType>;
+    fnParams: Map<string, LuminaType[]>;
+  };
+  moduleBindings?: Map<string, ModuleExport>;
+  moduleRegistry?: ModuleRegistry;
+}
+
+export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) {
   const diagnostics: Diagnostic[] = [];
   const symbols = new SymbolTable();
   const pendingDeps = new Map<string, Set<string>>();
   const diGraphs = new Map<string, string>();
-  let activeOptions = options;
+  const registry = options?.moduleBindings ? undefined : createStdModuleRegistry();
+  const moduleBindings = options?.moduleBindings ?? resolveModuleBindings(program, registry);
+  const importedNames = options?.importedNames ?? new Set(moduleBindings.keys());
+  let activeOptions: AnalyzeOptions | undefined = options
+    ? { ...options, moduleBindings, importedNames }
+    : { moduleBindings, importedNames };
 
   for (const t of builtinTypes) symbols.define({ name: t, kind: 'type', type: t });
 
-  if (options?.externalSymbols) {
-    for (const sym of options.externalSymbols) {
-      if (options.currentUri && sym.uri && sym.uri === options.currentUri) continue;
-      if (options.importedNames && !options.importedNames.has(sym.name)) continue;
+  if (activeOptions?.externalSymbols) {
+    for (const sym of activeOptions.externalSymbols) {
+      if (activeOptions.currentUri && sym.uri && sym.uri === activeOptions.currentUri) continue;
+      if (activeOptions.importedNames && !activeOptions.importedNames.has(sym.name)) continue;
       if (!symbols.has(sym.name)) {
         symbols.define(sym);
       }
@@ -1038,18 +1051,7 @@ function typeCheckExpr(
   symbols: SymbolTable,
   diagnostics: Diagnostic[],
   scope?: Scope,
-  options?: {
-    externSymbols?: (name: string) => SymbolInfo | undefined;
-    currentUri?: string;
-    typeParams?: Map<string, LuminaType | undefined>;
-    useHm?: boolean;
-    hmInferred?: {
-      letTypes: Map<string, LuminaType>;
-      fnReturns: Map<string, LuminaType>;
-      fnByName: Map<string, LuminaType>;
-      fnParams: Map<string, LuminaType[]>;
-    };
-  },
+  options?: AnalyzeOptions,
   expectedType?: LuminaType,
   resolving?: Set<string>,
   pendingDeps?: Map<string, Set<string>>,
@@ -1085,6 +1087,22 @@ function typeCheckExpr(
         'LUM-001'
       )
     );
+  };
+
+  const resolveModuleFunction = (
+    binding: ModuleExport | undefined,
+    member?: string
+  ): ModuleFunction | null => {
+    if (!binding) return null;
+    if (binding.kind === 'function') {
+      return member ? null : binding;
+    }
+    if (binding.kind === 'module') {
+      if (!member) return null;
+      const exp = binding.exports.get(member);
+      return exp && exp.kind === 'function' ? exp : null;
+    }
+    return null;
   };
   if (expr.type === 'Number') return 'int';
   if (expr.type === 'Boolean') return 'bool';
@@ -1263,6 +1281,46 @@ function typeCheckExpr(
       const isLValue = (value: LuminaExpr) => value.type === 'Identifier' || value.type === 'Member';
 
       if (expr.enumName) {
+        const moduleFn = options?.moduleBindings
+          ? resolveModuleFunction(options.moduleBindings.get(expr.enumName), callee)
+          : null;
+        if (moduleFn) {
+          const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+          if (moduleFn.paramTypes.length !== effectiveArgCount) {
+            diagnostics.push(diagAt(`Argument count mismatch for '${expr.enumName}.${callee}'`, expr.location));
+            return moduleFn.returnType;
+          }
+          for (let i = 0; i < effectiveArgCount; i++) {
+            const argType =
+              pipedArgType && i === 0
+                ? pipedArgType
+                : typeCheckExpr(
+                    expr.args[pipedArgType ? i - 1 : i],
+                    symbols,
+                    diagnostics,
+                    scope,
+                    options,
+                    undefined,
+                    resolving,
+                    pendingDeps,
+                    currentFunction,
+                    di
+                  );
+            const expected = moduleFn.paramTypes[i];
+            if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
+              reportCallArgMismatch(
+                `${expr.enumName}.${callee}`,
+                i,
+                expected,
+                argType,
+                expr.args[pipedArgType ? i - 1 : i]?.location ?? expr.location,
+                moduleFn.paramNames?.[i] ?? null
+              );
+            }
+          }
+          return moduleFn.returnType;
+        }
+
         const enumVariant = findEnumVariantQualified(symbols, expr.enumName, callee, options);
         if (!enumVariant) {
           diagnostics.push(diagAt(`Unknown enum variant '${expr.enumName}.${callee}'`, expr.location));
@@ -1620,8 +1678,17 @@ function typeCheckExpr(
     return `${expr.name}<${args.join(',')}>`;
   }
   if (expr.type === 'Member') {
-    if (expr.object.type === 'Identifier' && options?.importedNames?.has(expr.object.name)) {
-      return 'any';
+    if (expr.object.type === 'Identifier') {
+      if (options?.importedNames?.has(expr.object.name)) {
+        return 'any';
+      }
+      const binding = options?.moduleBindings?.get(expr.object.name);
+      if (binding && binding.kind === 'module') {
+        const exp = binding.exports.get(expr.property);
+        if (exp && exp.kind === 'function') {
+          return 'any';
+        }
+      }
     }
     const objectType = typeCheckExpr(expr.object, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     if (!objectType) return null;
