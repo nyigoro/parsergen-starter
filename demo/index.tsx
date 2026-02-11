@@ -4,8 +4,22 @@ import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { StreamLanguage } from '@codemirror/language';
-import { ChevronDown, ChevronRight, Play, Download, Upload, Info, Code, Zap, FileText, TreePine, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
-import { compileGrammar, parseInput, formatError, ParseError, ParseResult } from '../src/index';
+import {
+  ChevronDown,
+  ChevronRight,
+  Play,
+  Download,
+  Upload,
+  Info,
+  Code,
+  Zap,
+  FileText,
+  TreePine,
+  AlertCircle,
+  CheckCircle,
+  XCircle
+} from 'lucide-react';
+import PEG from 'peggy';
 
 const defaultGrammar = `Expression
   = left:Term operator:("+" / "-") right:Expression {
@@ -93,13 +107,13 @@ const transformToTree = (node: unknown, depth = 0): TreeNode => {
 };
 
 interface TreeVisualizationProps {
-    data: TreeNode | null;
-    onNodeClick: (node: TreeNode, path: string) => void;
+  data: TreeNode | null;
+  onNodeClick: (node: TreeNode, path: string) => void;
 }
 
 const TreeVisualization: FC<TreeVisualizationProps> = ({ data, onNodeClick }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set<string>());
-  
+
   const toggleNode = (path: string) => {
     const newExpanded = new Set(expandedNodes);
     if (newExpanded.has(path)) {
@@ -113,11 +127,11 @@ const TreeVisualization: FC<TreeVisualizationProps> = ({ data, onNodeClick }) =>
   const renderNode = (node: TreeNode, path = '', depth = 0) => {
     const hasChildren = node.children && node.children.length > 0;
     const isExpanded = expandedNodes.has(path);
-    
+
     return (
       <div key={path} className="tree-node">
-        <div 
-          className={`flex items-center py-1 px-2 hover:bg-gray-600 rounded cursor-pointer transition-colors`}
+        <div
+          className="flex items-center py-1 px-2 hover:bg-gray-600 rounded cursor-pointer transition-colors"
           style={{ marginLeft: `${depth * 20}px` }}
           onClick={() => {
             if (hasChildren) toggleNode(path);
@@ -130,7 +144,7 @@ const TreeVisualization: FC<TreeVisualizationProps> = ({ data, onNodeClick }) =>
             <div className="w-4" />
           )}
           <span className={`ml-2 font-mono text-sm ${
-            node.type === 'literal' ? 'text-green-400' : 
+            node.type === 'literal' ? 'text-green-400' :
             node.type === 'array' ? 'text-blue-400' : 'text-yellow-400'
           }`}>
             {node.name}
@@ -138,7 +152,7 @@ const TreeVisualization: FC<TreeVisualizationProps> = ({ data, onNodeClick }) =>
         </div>
         {hasChildren && isExpanded && (
           <div className="tree-children">
-            {node.children!.map((child, i) => 
+            {node.children!.map((child, i) =>
               renderNode(child, `${path}/${i}`, depth + 1)
             )}
           </div>
@@ -148,7 +162,6 @@ const TreeVisualization: FC<TreeVisualizationProps> = ({ data, onNodeClick }) =>
   };
 
   useEffect(() => {
-    // Auto-expand first level
     if (data) {
       setExpandedNodes(new Set(['0']));
     }
@@ -162,8 +175,8 @@ const TreeVisualization: FC<TreeVisualizationProps> = ({ data, onNodeClick }) =>
 };
 
 interface ParsePerformance {
-    time: number;
-    nodes: number;
+  time: number;
+  nodes: number;
 }
 
 interface SessionData {
@@ -198,7 +211,74 @@ const PerformanceSparkline: FC<{ data: number[] }> = ({ data }) => {
   );
 };
 
+type Route = 'home' | 'playground' | 'lumina';
+
+interface DemoParseError {
+  error: string;
+  location?: {
+    start: { line: number; column: number; offset: number };
+    end: { line: number; column: number; offset: number };
+  };
+  expected?: string[];
+  found?: string | null;
+  input?: string;
+}
+
+interface DemoParseResult<T> {
+  result: T;
+}
+
+const compileGrammar = (grammar: string) => {
+  const parser = PEG.generate(grammar, {
+    output: 'parser',
+    format: 'bare',
+    optimize: 'speed'
+  });
+  return parser;
+};
+
+const parseInput = <T,>(parser: { parse: (input: string) => T }, input: string): DemoParseResult<T> | DemoParseError => {
+  try {
+    return { result: parser.parse(input) };
+  } catch (error: unknown) {
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      const err = error as { message: string; location?: DemoParseError['location']; expected?: string[]; found?: string | null };
+      return {
+        error: err.message,
+        location: err.location,
+        expected: err.expected,
+        found: err.found ?? null,
+        input
+      };
+    }
+    return { error: 'Unknown parse error', input };
+  }
+};
+
+const formatError = (error: DemoParseError): string => {
+  const parts = [`Parse Error: ${error.error}`];
+  if (error.location) {
+    const { start, end } = error.location;
+    parts.push(`At ${start.line}:${start.column} → ${end.line}:${end.column}`);
+  }
+  if (error.expected && error.expected.length > 0) {
+    parts.push(`Expected: ${error.expected.join(', ')}`);
+  }
+  if (error.found !== undefined && error.found !== null) {
+    parts.push(`Found: "${error.found}"`);
+  }
+  return parts.join('\n');
+};
+
+const getRouteFromHash = (): Route => {
+  if (typeof window === 'undefined') return 'home';
+  const raw = window.location.hash.replace(/^#\/?/, '').trim();
+  if (raw === 'playground' || raw === 'lumina') return raw;
+  return 'home';
+};
+
 function App() {
+  const [route, setRoute] = useState<Route>(() => getRouteFromHash());
   const [code, setCode] = useState('3 + 4 * (2 - 1)');
   const [grammar, setGrammar] = useState(defaultGrammar);
   const [output, setOutput] = useState('');
@@ -214,16 +294,31 @@ function App() {
   const [parseHistory, setParseHistory] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    const handleHash = () => setRoute(getRouteFromHash());
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
+
+  const navigate = (next: Route) => {
+    if (next === 'home') {
+      window.location.hash = '';
+    } else {
+      window.location.hash = next;
+    }
+    setRoute(next);
+  };
+
   const handleParse = () => {
     const startTime = window.performance.now();
     setParseStatus('parsing');
     setGrammarError(null);
-    
+
     try {
       const parser = compileGrammar(grammar);
-      const result: ParseResult<unknown> | ParseError = parseInput(parser, code);
+      const result: DemoParseResult<unknown> | DemoParseError = parseInput(parser, code);
       const endTime = window.performance.now();
-      
+
       if ('result' in result) {
         const jsonOutput = JSON.stringify(result.result, null, 2);
         setOutput(jsonOutput);
@@ -297,8 +392,8 @@ function App() {
           if (data.grammar) setGrammar(data.grammar);
           if (data.code) setCode(data.code);
           if (data.output) setOutput(data.output);
-        } catch (error: unknown) { // Explicitly type error as unknown
-          console.error("Error importing data:", error);
+        } catch (error: unknown) {
+          console.error('Error importing data:', error);
           alert('Invalid file format');
         }
       };
@@ -323,223 +418,371 @@ function App() {
   }, [code, grammar, autoparse]);
 
   return (
-    <div className="bg-gray-900 text-white min-h-screen flex">
-      {/* Sidebar */}
-      <div className="w-80 bg-gray-800 flex flex-col border-r border-gray-700">
-        <div className="p-4 border-b border-gray-700">
-          <h1 className="text-xl font-bold flex items-center gap-2">
+    <div className="bg-gray-900 text-white min-h-screen flex flex-col">
+      <header className="border-b border-gray-800 bg-gray-900/90 backdrop-blur">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <TreePine className="text-blue-400" />
-            Parser Studio
-          </h1>
-        </div>
-        
-        <div className="flex border-b border-gray-700">
-          <button 
-            onClick={() => setSidebarTab('examples')}
-            className={`flex-1 px-4 py-2 text-sm flex items-center gap-2 ${sidebarTab === 'examples' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
-          >
-            <Play size={14} /> Examples
-          </button>
-          <button 
-            onClick={() => setSidebarTab('presets')}
-            className={`flex-1 px-4 py-2 text-sm flex items-center gap-2 ${sidebarTab === 'presets' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
-          >
-            <FileText size={14} /> Grammars
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-auto p-4">
-          {sidebarTab === 'examples' && (
-            <div className="space-y-2">
-              {examples.map((example, i) => (
-                <div key={i} className="bg-gray-700 rounded p-3 cursor-pointer hover:bg-gray-600 transition-colors" onClick={() => loadExample(example)}>
-                  <div className="font-medium text-sm">{example.name}</div>
-                  <div className="text-xs text-gray-400 mt-1">{example.description}</div>
-                  <div className="text-xs text-blue-300 mt-1 font-mono">{example.code}</div>
-                </div>
-              ))}
+            <div>
+              <div className="text-lg font-semibold">Lumina Parser Studio</div>
+              <div className="text-xs text-gray-400">Interactive demo for the parser + tooling pipeline</div>
             </div>
-          )}
-          
-          {sidebarTab === 'presets' && (
-            <div className="space-y-2">
-              {presets.map((preset, i) => (
-                <div key={i} className="bg-gray-700 rounded p-3 cursor-pointer hover:bg-gray-600 transition-colors" onClick={() => loadPreset(preset)}>
-                  <div className="font-medium text-sm">{preset.name}</div>
-                  <div className="text-xs text-gray-400 mt-1 font-mono overflow-hidden">{preset.grammar.substring(0, 60)}...</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="p-4 border-t border-gray-700 space-y-3">
-          <div className="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              checked={autoparse} 
-              onChange={(e) => setAutoparse(e.target.checked)}
-              className="rounded"
-            />
-            <label className="text-sm">Auto-parse</label>
           </div>
-          
-          <div className="flex gap-2">
-            <button onClick={exportData} className="flex-1 bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1">
-              <Download size={12} /> Export
-            </button>
-            <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1">
-              <Upload size={12} /> Import
-            </button>
-          </div>
-          
-          <input ref={fileInputRef} type="file" accept=".json" onChange={importData} className="hidden" />
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="bg-gray-800 p-4 border-b border-gray-700 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setShowGrammar(!showGrammar)}
-              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm flex items-center gap-2"
+          <nav className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('home')}
+              className={`px-3 py-1.5 rounded text-sm ${route === 'home' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
             >
-              <Code size={14} /> {showGrammar ? 'Hide' : 'Show'} Grammar
+              Home
             </button>
-            
-            <div className="flex items-center gap-2">
-              {getStatusIcon()}
-              <span className="text-sm capitalize">{parseStatus}</span>
-              {performance && (
-                <span className="text-xs text-gray-400">
-                  ({performance.time.toFixed(1)}ms, {performance.nodes} nodes)
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">History</span>
-              <PerformanceSparkline data={parseHistory} />
-            </div>
-          </div>
-          
-          <button 
-            onClick={handleParse}
-            disabled={parseStatus === 'parsing'}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded flex items-center gap-2 transition-colors"
-          >
-            <Zap size={14} /> Parse
-          </button>
+            <button
+              onClick={() => navigate('playground')}
+              className={`px-3 py-1.5 rounded text-sm ${route === 'playground' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
+            >
+              Playground
+            </button>
+            <button
+              onClick={() => navigate('lumina')}
+              className={`px-3 py-1.5 rounded text-sm ${route === 'lumina' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
+            >
+              Lumina
+            </button>
+          </nav>
         </div>
+      </header>
 
-        {/* Grammar Editor */}
-        {showGrammar && (
-          <div className="bg-gray-800 border-b border-gray-700 p-4">
-            <CodeMirror
-              value={grammar}
-              height="8rem"
-              theme={oneDark}
-              extensions={[pegLanguage]}
-              onChange={(value) => setGrammar(value)}
-              basicSetup={{ lineNumbers: true, foldGutter: false }}
-              className="rounded overflow-hidden"
-            />
-            {grammarError && (
-              <div className="mt-3 text-sm text-red-300 bg-red-900/30 border border-red-700 rounded p-2">
-                Grammar error: {grammarError}
+      {route === 'home' && (
+        <main className="flex-1">
+          <div className="max-w-6xl mx-auto px-6 py-12 space-y-12">
+            <section className="grid gap-8 lg:grid-cols-2 items-center">
+              <div className="space-y-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-blue-300">Parsergen + Lumina</div>
+                <h1 className="text-4xl font-semibold leading-tight">Build grammars, explore ASTs, and ship a compiler toolchain.</h1>
+                <p className="text-gray-300 leading-relaxed">
+                  This demo showcases the Lumina pipeline: lexer, PEG parser, semantic analysis, IR, and codegen.
+                  Use the playground to experiment with grammars, then switch to Lumina to see the language tooling stack.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => navigate('playground')}
+                    className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-medium"
+                  >
+                    Open Playground
+                  </button>
+                  <button
+                    onClick={() => navigate('lumina')}
+                    className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded text-sm"
+                  >
+                    Lumina Overview
+                  </button>
+                </div>
               </div>
-            )}
+              <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-6 space-y-4">
+                <div className="flex items-center gap-2 text-sm text-blue-300">
+                  <Zap size={14} /> Pipeline Snapshot
+                </div>
+                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`Lexer → Parser → Semantic → IR → Codegen
+
+Features:
+- Panic recovery
+- Match exhaustiveness
+- CFG + SSA utilities
+- LSP diagnostics + rename`}</pre>
+                <div className="flex gap-2 text-xs text-gray-400">
+                  <span className="px-2 py-1 bg-gray-900 rounded">PEG + Moo</span>
+                  <span className="px-2 py-1 bg-gray-900 rounded">Lumina CLI</span>
+                  <span className="px-2 py-1 bg-gray-900 rounded">LSP</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-6 md:grid-cols-3">
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-2">
+                <div className="flex items-center gap-2 text-blue-300"><Code size={16} /> Grammar Studio</div>
+                <p className="text-sm text-gray-300">Load PEG grammars, parse samples, inspect JSON output or AST trees.</p>
+              </div>
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-2">
+                <div className="flex items-center gap-2 text-blue-300"><TreePine size={16} /> Semantic Layer</div>
+                <p className="text-sm text-gray-300">Track types, match exhaustiveness, DI, and SSA-ready IR.</p>
+              </div>
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-2">
+                <div className="flex items-center gap-2 text-blue-300"><FileText size={16} /> Tooling DX</div>
+                <p className="text-sm text-gray-300">CLI pipeline, LSP diagnostics, rename, references, and watch mode.</p>
+              </div>
+            </section>
+
+            <section className="bg-gray-800/60 border border-gray-700 rounded-lg p-6">
+              <div className="flex items-center gap-2 text-blue-300 text-sm mb-3"><Play size={14} /> Try It Quickly</div>
+              <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`lumina repl
+lumina compile examples/hello.lm --out dist/hello.js
+lumina check examples/hello.lm`}</pre>
+            </section>
           </div>
-        )}
+        </main>
+      )}
 
-        <div className="flex-1 flex">
-          {/* Input/Output Area */}
-          <div className="flex-1 flex flex-col">
-            {/* Input */}
-            <div className="bg-gray-800 p-4">
-            <CodeMirror
-              value={code}
-              height="10rem"
-              theme={oneDark}
-              extensions={[javascript()]}
-              onChange={(value) => setCode(value)}
-              basicSetup={{ lineNumbers: true, foldGutter: false }}
-              className="rounded overflow-hidden"
-            />
+      {route === 'lumina' && (
+        <main className="flex-1">
+          <div className="max-w-6xl mx-auto px-6 py-12 space-y-10">
+            <section className="space-y-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-blue-300">Lumina Toolchain</div>
+              <h2 className="text-3xl font-semibold">Language pipeline and IDE features</h2>
+              <p className="text-gray-300">Lumina ships a full compiler pipeline with panic recovery, SSA-ready IR, and diagnostics designed for LSP integrations.</p>
+            </section>
+
+            <section className="grid gap-6 md:grid-cols-2">
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-3">
+                <div className="text-sm text-blue-300 flex items-center gap-2"><Zap size={14} /> Compiler Pipeline</div>
+                <ul className="text-sm text-gray-300 space-y-2">
+                  <li>Lexer with modern literals and comment support</li>
+                  <li>PEG parser with panic-mode recovery</li>
+                  <li>Semantic analysis with inference + DI checks</li>
+                  <li>IR passes with SSA + DCE hooks</li>
+                </ul>
+              </div>
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-3">
+                <div className="text-sm text-blue-300 flex items-center gap-2"><Info size={14} /> IDE + LSP</div>
+                <ul className="text-sm text-gray-300 space-y-2">
+                  <li>Diagnostics with multi-error reporting</li>
+                  <li>Go-to-definition and references</li>
+                  <li>Rename with conflict checks</li>
+                  <li>Semantic tokens + completion</li>
+                </ul>
+              </div>
+            </section>
+
+            <section className="grid gap-6 md:grid-cols-2">
+              <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5">
+                <div className="text-sm text-blue-300 mb-3">CLI</div>
+                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`lumina compile src/main.lm --out dist/main.js
+lumina compile src/main.lm --sourcemap --debug-ir
+lumina check src/main.lm
+lumina watch examples`}</pre>
+              </div>
+              <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5">
+                <div className="text-sm text-blue-300 mb-3">Project Flow</div>
+                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`ProjectContext
+  ├─ std/prelude.lm
+  ├─ user sources
+  ├─ dependency graph
+  └─ diagnostics + IR`}</pre>
+              </div>
+            </section>
+          </div>
+        </main>
+      )}
+
+      {route === 'playground' && (
+        <main className="flex-1 flex">
+          <div className="w-80 bg-gray-800 flex flex-col border-r border-gray-700">
+            <div className="p-4 border-b border-gray-700">
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                <TreePine className="text-blue-400" />
+                Parser Studio
+              </h1>
             </div>
 
-            {/* Output Tabs */}
-            <div className="flex bg-gray-800 border-t border-gray-700">
-              <button 
-                onClick={() => setActiveTab('output')}
-                className={`px-6 py-3 text-sm flex items-center gap-2 ${activeTab === 'output' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
+            <div className="flex border-b border-gray-700">
+              <button
+                onClick={() => setSidebarTab('examples')}
+                className={`flex-1 px-4 py-2 text-sm flex items-center gap-2 ${sidebarTab === 'examples' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
               >
-                <FileText size={14} /> JSON Output
+                <Play size={14} /> Examples
               </button>
-              <button 
-                onClick={() => setActiveTab('ast')}
-                className={`px-6 py-3 text-sm flex items-center gap-2 ${activeTab === 'ast' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
+              <button
+                onClick={() => setSidebarTab('presets')}
+                className={`flex-1 px-4 py-2 text-sm flex items-center gap-2 ${sidebarTab === 'presets' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
               >
-                <TreePine size={14} /> AST Tree
+                <FileText size={14} /> Grammars
               </button>
             </div>
 
-            {/* Output Content */}
-            <div className="flex-1 bg-gray-700 overflow-auto">
-              {activeTab === 'output' && (
-                <pre className="p-4 text-sm font-mono h-full overflow-auto whitespace-pre-wrap">{output || 'No output yet - click Parse to generate'}</pre>
+            <div className="flex-1 overflow-auto p-4">
+              {sidebarTab === 'examples' && (
+                <div className="space-y-2">
+                  {examples.map((example, i) => (
+                    <div key={i} className="bg-gray-700 rounded p-3 cursor-pointer hover:bg-gray-600 transition-colors" onClick={() => loadExample(example)}>
+                      <div className="font-medium text-sm">{example.name}</div>
+                      <div className="text-xs text-gray-400 mt-1">{example.description}</div>
+                      <div className="text-xs text-blue-300 mt-1 font-mono">{example.code}</div>
+                    </div>
+                  ))}
+                </div>
               )}
-              {activeTab === 'ast' && (
-                <TreeVisualization 
-                  data={ast} 
-                  onNodeClick={(node, path) => setSelectedNode({ node, path })}
+
+              {sidebarTab === 'presets' && (
+                <div className="space-y-2">
+                  {presets.map((preset, i) => (
+                    <div key={i} className="bg-gray-700 rounded p-3 cursor-pointer hover:bg-gray-600 transition-colors" onClick={() => loadPreset(preset)}>
+                      <div className="font-medium text-sm">{preset.name}</div>
+                      <div className="text-xs text-gray-400 mt-1 font-mono overflow-hidden">{preset.grammar.substring(0, 60)}...</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-700 space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={autoparse}
+                  onChange={(e) => setAutoparse(e.target.checked)}
+                  className="rounded"
                 />
-              )}
-            </div>
-          </div>
+                <label className="text-sm">Auto-parse</label>
+              </div>
 
-          {/* Node Inspector */}
-          {selectedNode && (
-            <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
-              <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h3 className="font-medium flex items-center gap-2">
-                  <Info size={14} /> Node Inspector
-                </h3>
-                <button 
-                  onClick={() => setSelectedNode(null)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  <XCircle size={16} />
+              <div className="flex gap-2">
+                <button onClick={exportData} className="flex-1 bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1">
+                  <Download size={12} /> Export
+                </button>
+                <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm flex items-center gap-1">
+                  <Upload size={12} /> Import
                 </button>
               </div>
-              <div className="flex-1 p-4 overflow-auto">
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-gray-400 uppercase tracking-wide">Name</label>
-                    <div className="font-mono text-sm">{selectedNode.node.name}</div>
+
+              <input ref={fileInputRef} type="file" accept=".json" onChange={importData} className="hidden" />
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col">
+            <div className="bg-gray-800 p-4 border-b border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setShowGrammar(!showGrammar)}
+                  className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm flex items-center gap-2"
+                >
+                  <Code size={14} /> {showGrammar ? 'Hide' : 'Show'} Grammar
+                </button>
+
+                <div className="flex items-center gap-2">
+                  {getStatusIcon()}
+                  <span className="text-sm capitalize">{parseStatus}</span>
+                  {performance && (
+                    <span className="text-xs text-gray-400">
+                      ({performance.time.toFixed(1)}ms, {performance.nodes} nodes)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">History</span>
+                  <PerformanceSparkline data={parseHistory} />
+                </div>
+              </div>
+
+              <button
+                onClick={handleParse}
+                disabled={parseStatus === 'parsing'}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded flex items-center gap-2 transition-colors"
+              >
+                <Zap size={14} /> Parse
+              </button>
+            </div>
+
+            {showGrammar && (
+              <div className="bg-gray-800 border-b border-gray-700 p-4">
+                <CodeMirror
+                  value={grammar}
+                  height="8rem"
+                  theme={oneDark}
+                  extensions={[pegLanguage]}
+                  onChange={(value) => setGrammar(value)}
+                  basicSetup={{ lineNumbers: true, foldGutter: false }}
+                  className="rounded overflow-hidden"
+                />
+                {grammarError && (
+                  <div className="mt-3 text-sm text-red-300 bg-red-900/30 border border-red-700 rounded p-2">
+                    Grammar error: {grammarError}
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-400 uppercase tracking-wide">Type</label>
-                    <div className="font-mono text-sm">{selectedNode.node.type || 'unknown'}</div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 uppercase tracking-wide">Path</label>
-                    <div className="font-mono text-sm text-blue-300">{selectedNode.path}</div>
-                  </div>
-                  {selectedNode.node.children && (
-                    <div>
-                      <label className="text-xs text-gray-400 uppercase tracking-wide">Children</label>
-                      <div className="font-mono text-sm">{selectedNode.node.children.length}</div>
-                    </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex-1 flex">
+              <div className="flex-1 flex flex-col">
+                <div className="bg-gray-800 p-4">
+                  <CodeMirror
+                    value={code}
+                    height="10rem"
+                    theme={oneDark}
+                    extensions={[javascript()]}
+                    onChange={(value) => setCode(value)}
+                    basicSetup={{ lineNumbers: true, foldGutter: false }}
+                    className="rounded overflow-hidden"
+                  />
+                </div>
+
+                <div className="flex bg-gray-800 border-t border-gray-700">
+                  <button
+                    onClick={() => setActiveTab('output')}
+                    className={`px-6 py-3 text-sm flex items-center gap-2 ${activeTab === 'output' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
+                  >
+                    <FileText size={14} /> JSON Output
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('ast')}
+                    className={`px-6 py-3 text-sm flex items-center gap-2 ${activeTab === 'ast' ? 'bg-gray-700 border-b-2 border-blue-500' : ''}`}
+                  >
+                    <TreePine size={14} /> AST Tree
+                  </button>
+                </div>
+
+                <div className="flex-1 bg-gray-700 overflow-auto">
+                  {activeTab === 'output' && (
+                    <pre className="p-4 text-sm font-mono h-full overflow-auto whitespace-pre-wrap">{output || 'No output yet - click Parse to generate'}</pre>
+                  )}
+                  {activeTab === 'ast' && (
+                    <TreeVisualization
+                      data={ast}
+                      onNodeClick={(node, path) => setSelectedNode({ node, path })}
+                    />
                   )}
                 </div>
               </div>
+
+              {selectedNode && (
+                <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
+                  <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+                    <h3 className="font-medium flex items-center gap-2">
+                      <Info size={14} /> Node Inspector
+                    </h3>
+                    <button
+                      onClick={() => setSelectedNode(null)}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <XCircle size={16} />
+                    </button>
+                  </div>
+                  <div className="flex-1 p-4 overflow-auto">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase tracking-wide">Name</label>
+                        <div className="font-mono text-sm">{selectedNode.node.name}</div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase tracking-wide">Type</label>
+                        <div className="font-mono text-sm">{selectedNode.node.type || 'unknown'}</div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase tracking-wide">Path</label>
+                        <div className="font-mono text-sm text-blue-300">{selectedNode.path}</div>
+                      </div>
+                      {selectedNode.node.children && (
+                        <div>
+                          <label className="text-xs text-gray-400 uppercase tracking-wide">Children</label>
+                          <div className="font-mono text-sm">{selectedNode.node.children.length}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </main>
+      )}
     </div>
   );
 }

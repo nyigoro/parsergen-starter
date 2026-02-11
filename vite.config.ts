@@ -9,9 +9,14 @@ export default defineConfig({
     react(),
   ],
   root: 'demo',
+  base: './',
   server: { open: true },
   // If you need to specify file extensions, use assetsInclude instead
   assetsInclude: ['**/*.peg'],
+  build: {
+    outDir: '../docs',
+    emptyOutDir: true,
+  },
   css: {
     postcss: {
       plugins: [
