@@ -642,6 +642,13 @@ lumina watch examples`}</pre>
   ├─ user sources
   ├─ dependency graph
   └─ diagnostics + IR`}</pre>
+                <div className="mt-4 text-xs text-gray-300">Virtual file demo:</div>
+                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`project.registerVirtualFile("lib/math.lm", \`
+  pub fn add(a: int, b: int) -> int { return a + b; }
+\`);
+
+// main.lm
+import { add } from "lib/math.lm";`}</pre>
               </div>
             </section>
 

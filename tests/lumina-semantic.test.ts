@@ -101,6 +101,22 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('indexing-only mode collects top-level symbols without body diagnostics', () => {
+    const program = `
+      struct User { id: int }
+      fn main() {
+        let x: int = ;
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never, { indexingOnly: true });
+    expect(analysis.symbols.get('User')).toBeDefined();
+    expect(analysis.symbols.get('main')).toBeDefined();
+    expect(analysis.diagnostics.length).toBe(0);
+  });
+
   test('parses numeric literals with underscores and bases', () => {
     const program = `
       fn main() {
@@ -141,6 +157,31 @@ describe('Lumina semantic analysis', () => {
         let sess = Session { user_id: 101, is_admin: true };
         return sess.user_id;
       }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
+  test('rejects recursive structs without indirection', () => {
+    const program = `
+      struct Node { next: Node }
+      fn main() { return 0; }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Recursive field 'next'/);
+  });
+
+  test('allows recursive structs with indirection', () => {
+    const program = `
+      type Option<T> = { value: T };
+      struct Node { next: Option<Node> }
+      fn main() { return 0; }
     `.trim() + '\n';
 
     const result = parser.parse(program) as { type: string };

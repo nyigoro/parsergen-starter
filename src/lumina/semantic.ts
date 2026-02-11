@@ -84,6 +84,10 @@ export function analyzeLumina(
     externalSymbols?: SymbolInfo[];
     importedNames?: Set<string>;
     diDebug?: boolean;
+    skipFunctionBodies?: Set<string>;
+    cachedFunctionReturns?: Map<string, LuminaType>;
+    indexingOnly?: boolean;
+    recursiveWrappers?: string[];
   }
 ) {
   const diagnostics: Diagnostic[] = [];
@@ -145,11 +149,12 @@ export function analyzeLumina(
         enumVariants: stmt.variants.map((v) => ({ name: v.name, params: v.params ?? [] })),
       });
     } else if (stmt.type === 'FnDecl') {
+      const cachedReturn = options?.cachedFunctionReturns?.get(stmt.name);
       symbols.define({
         name: stmt.name,
         kind: 'function',
-        type: stmt.returnType ?? undefined,
-        pendingReturn: stmt.returnType == null,
+        type: stmt.returnType ?? cachedReturn ?? undefined,
+        pendingReturn: stmt.returnType == null && cachedReturn == null,
         location: stmt.location,
         visibility: stmt.visibility ?? 'private',
         extern: stmt.extern ?? false,
@@ -162,8 +167,14 @@ export function analyzeLumina(
     }
   }
 
+  if (options?.indexingOnly) {
+    return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined };
+  }
+
   const rootScope = new Scope();
   const resolving = new Set<string>();
+
+  validateRecursiveStructs(symbols, diagnostics, options);
 
   // Pass 2: analyze non-function statements so top-level bindings are known.
   for (const stmt of program.body) {
@@ -179,6 +190,7 @@ export function analyzeLumina(
     pass += 1;
     for (const stmt of program.body) {
       if (stmt.type !== 'FnDecl') continue;
+      if (options?.skipFunctionBodies?.has(stmt.name)) continue;
       const sym = symbols.get(stmt.name);
       if (!sym || !sym.pendingReturn) continue;
       if (resolving.has(stmt.name)) continue;
@@ -210,6 +222,7 @@ export function analyzeLumina(
   for (const stmt of program.body) {
     if (stmt.type === 'ErrorNode') continue;
     if (stmt.type === 'FnDecl') {
+      if (options?.skipFunctionBodies?.has(stmt.name)) continue;
       resolveFunctionBody(stmt, symbols, diagnostics, options, resolving, pendingDeps, rootScope, diGraphs);
     }
   }
@@ -228,6 +241,8 @@ function resolveFunctionBody(
     currentUri?: string;
     typeParams?: Map<string, LuminaType | undefined>;
     diDebug?: boolean;
+    skipFunctionBodies?: Set<string>;
+    cachedFunctionReturns?: Map<string, LuminaType>;
   } | undefined,
   resolving: Set<string>,
   pendingDeps: Map<string, Set<string>>,
@@ -235,6 +250,11 @@ function resolveFunctionBody(
   diGraphs?: Map<string, string>
 ): LuminaType | null {
   if (stmt.type !== 'FnDecl') return null;
+  if (options?.skipFunctionBodies?.has(stmt.name)) {
+    const cached = options.cachedFunctionReturns?.get(stmt.name);
+    if (cached) return cached;
+    return stmt.returnType ?? null;
+  }
   const ret = stmt.returnType ?? null;
   const local = new SymbolTable();
   for (const sym of symbols.list()) {
@@ -1535,6 +1555,101 @@ function collectUnusedBindingsLocal(scope: Scope, diagnostics: Diagnostic[], fal
       diagnostics.push(diagAt(`Unused binding '${name}'${detail}`, location ?? fallbackLocation, 'warning'));
     }
   }
+}
+
+function validateRecursiveStructs(
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[],
+  options?: { currentUri?: string; recursiveWrappers?: string[] }
+) {
+  const wrapperList = options?.recursiveWrappers ?? ['Option', 'Box', 'Ref'];
+  const wrapperSet = new Set(wrapperList);
+  const structs = symbols.list().filter((sym) => sym.kind === 'type' && sym.structFields);
+  const visiting = new Set<string>();
+  const checked = new Set<string>();
+
+  const checkStruct = (name: string) => {
+    if (checked.has(name)) return;
+    if (visiting.has(name)) return;
+    visiting.add(name);
+    const sym = symbols.get(name);
+    if (!sym || !sym.structFields) {
+      visiting.delete(name);
+      checked.add(name);
+      return;
+    }
+    for (const [fieldName, fieldType] of sym.structFields.entries()) {
+      const error = hasUnwrappedRecursion(fieldType, name, symbols, new Set(), false, wrapperSet);
+      if (error) {
+        diagnostics.push(
+          diagAt(
+            `Recursive field '${fieldName}' on '${name}' must be wrapped in an indirection type (Option/Box/Ref)`,
+            sym.location,
+            'error',
+            'RECURSIVE_STRUCT',
+            [
+              {
+                location: sym.location ?? defaultLocation,
+                message: `Suggested fix: wrap '${fieldName}' in ${wrapperList.map((w) => `${w}<${name}>`).join(' / ')}`,
+              },
+            ]
+          )
+        );
+        break;
+      }
+    }
+    visiting.delete(name);
+    checked.add(name);
+  };
+
+  for (const sym of structs) {
+    checkStruct(sym.name);
+  }
+}
+
+function hasUnwrappedRecursion(
+  typeName: LuminaType,
+  target: string,
+  symbols: SymbolTable,
+  seen: Set<string>,
+  inWrapper: boolean,
+  wrapperSet: Set<string>
+): boolean {
+  const parsed = parseTypeName(typeName);
+  if (!parsed) {
+    if (typeName === target) return !inWrapper;
+    const sym = symbols.get(typeName);
+    if (!sym || !sym.structFields) return false;
+    const key = `${typeName}|${inWrapper ? 'w' : 'u'}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    for (const field of sym.structFields.values()) {
+      if (hasUnwrappedRecursion(field, target, symbols, seen, inWrapper, wrapperSet)) return true;
+    }
+    return false;
+  }
+
+  if (parsed.base === target) {
+    return !inWrapper;
+  }
+
+  const wrapped = inWrapper || wrapperSet.has(parsed.base);
+  if (parsed.args.length > 0) {
+    for (const arg of parsed.args) {
+      if (hasUnwrappedRecursion(arg, target, symbols, seen, wrapped, wrapperSet)) return true;
+    }
+    return false;
+  }
+
+  const sym = symbols.get(parsed.base);
+  if (!sym || !sym.structFields) return false;
+  const key = `${parsed.base}|${wrapped ? 'w' : 'u'}`;
+  if (seen.has(key)) return false;
+  seen.add(key);
+  for (const field of sym.structFields.values()) {
+    if (hasUnwrappedRecursion(field, target, symbols, seen, wrapped, wrapperSet)) return true;
+  }
+  return false;
 }
 
 function ensureKnownType(

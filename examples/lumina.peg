@@ -9,7 +9,23 @@
   }
 }
 Start
-  = _ statements:StatementList _ { return { type: "Program", body: statements, location: location() }; }
+  = _ statements:TopStatementList _ { return { type: "Program", body: statements, location: location() }; }
+
+TopStatementList
+  = head:RecoverableTopStatement tail:(_ RecoverableTopStatement)* { return [head].concat(tail.map(t => t[1])); }
+  / "" { return []; }
+
+RecoverableTopStatement
+  = stmt:Statement { return stmt; }
+  / error:InvalidStatement { return error; }
+  / _ "}" {
+      return {
+        type: "ErrorNode",
+        message: "Unexpected closing brace. Possible double-closing of a block or function.",
+        expected: expectedStatementTokens(),
+        location: location()
+      };
+    }
 
 StatementList
   = head:RecoverableStatement tail:(_ RecoverableStatement)* { return [head].concat(tail.map(t => t[1])); }
@@ -288,7 +304,7 @@ MatchArmList
   = head:MatchArm tail:(_ "," _ MatchArm)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 MatchArm
-  = pattern:MatchPattern _ "=>" _ body:Block { return { pattern, body, location: location() }; }
+  = pattern:MatchPattern _ "=>" _ body:Block _ ";"? { return { pattern, body, location: location() }; }
 
 MatchPattern
   = "_" { return { type: "WildcardPattern", location: location() }; }

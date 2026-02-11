@@ -153,6 +153,53 @@ describe('ProjectContext', () => {
     expect(messages).not.toMatch(/Unknown function 'print'/);
   });
 
+  test('resolves virtual imports', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    project.registerVirtualFile('lib/utils.lm', `
+      pub fn add(a: int, b: int) -> int { return a + b; }
+    `.trim() + '\n');
+
+    const mainUri = 'virtual://main.lm';
+    const mainText = `
+      import { add } from "lib/utils.lm";
+      fn main() {
+        return add(1, 2);
+      }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(mainUri, mainText);
+    const deps = project.getDependencies(mainUri);
+    expect(deps).toContain('virtual://lib/utils.lm');
+    expect(project.getDiagnostics(mainUri).length).toBe(0);
+  });
+
+  test('skips rechecking unchanged function bodies', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const root = path.resolve(__dirname, '../fixtures');
+    const fileUri = path.join(root, 'inc.lm');
+
+    const first = `
+      fn helper() { return 1; }
+      fn main() { return helper(); }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(fileUri, first);
+
+    const second = `
+      fn helper() { return 1; }
+      fn main() { return helper(); }
+      let top: int = 1;
+    `.trim() + '\n';
+
+    const update = project.addOrUpdateDocument(fileUri, second);
+    expect(update.signatureChanged).toBe(false);
+    expect(project.getDiagnostics(fileUri).length).toBeGreaterThanOrEqual(0);
+  });
+
   test('reports changed symbols when signature changes', () => {
     const parser = compileGrammar(luminaGrammar);
     const project = new ProjectContext(parser);

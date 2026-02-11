@@ -8,6 +8,7 @@ import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { analyzeLumina, type SymbolTable as LuminaSymbolTable, type SymbolInfo } from '../lumina/semantic.js';
+import { type LuminaType } from '../lumina/ast.js';
 
 export interface SourceDocument {
   uri: string;
@@ -21,6 +22,8 @@ export interface SourceDocument {
   references?: Map<string, Location[]>;
   importedNames?: Set<string>;
   signatures?: Map<string, string>;
+  functionHashes?: Map<string, string>;
+  inferredReturns?: Map<string, LuminaType>;
 }
 
 export interface SignatureChange {
@@ -55,13 +58,32 @@ export class ProjectContext {
   private recoveryOptions: PanicRecoveryOptions;
   private luminaLexer = createLuminaLexer();
   private loading = new Set<string>();
+  private virtualFiles = new Map<string, string>();
+  private debugIncremental = false;
   private preludeSymbols: LuminaSymbolTable | null = null;
   private preludeNames = new Set<string>();
   private preludeLoaded = false;
   private preludePath = path.resolve('std/prelude.lm');
 
-  constructor(parser?: CompiledGrammar<unknown>, recoveryOptions: PanicRecoveryOptions = {}) {
+  constructor(
+    parser?: CompiledGrammar<unknown>,
+    recoveryOptions: PanicRecoveryOptions = {},
+    virtualFiles?: Map<string, string> | Record<string, string>,
+    options?: { debugIncremental?: boolean }
+  ) {
     this.parser = parser ?? null;
+    this.debugIncremental = options?.debugIncremental ?? false;
+    if (virtualFiles) {
+      if (virtualFiles instanceof Map) {
+        for (const [spec, text] of virtualFiles.entries()) {
+          this.virtualFiles.set(this.normalizeVirtualSpec(spec), text);
+        }
+      } else {
+        for (const [spec, text] of Object.entries(virtualFiles)) {
+          this.virtualFiles.set(this.normalizeVirtualSpec(spec), text);
+        }
+      }
+    }
     this.recoveryOptions = {
       syncTokenTypes: luminaSyncTokenTypes,
       syncKeywordValues: [
@@ -99,6 +121,17 @@ export class ProjectContext {
     this.ensurePreludeLoaded();
   }
 
+  setIncrementalDebug(enabled: boolean) {
+    this.debugIncremental = enabled;
+  }
+
+  registerVirtualFile(spec: string, text: string, version: number = 1) {
+    const normalized = this.normalizeVirtualSpec(spec);
+    this.virtualFiles.set(normalized, text);
+    const uri = this.virtualUriFor(normalized);
+    this.addOrUpdateDocument(uri, text, version);
+  }
+
   addOrUpdateDocument(uri: string, text: string, version: number = 1): SignatureChange {
     this.ensurePreludeLoaded();
     const fsPath = this.toFsPath(uri);
@@ -113,6 +146,8 @@ export class ProjectContext {
         imports,
         diagnostics: [],
         signatures: existing?.signatures,
+        functionHashes: existing?.functionHashes,
+        inferredReturns: existing?.inferredReturns,
       };
     this.documents.set(normalizedUri, doc);
     this.graph.set(normalizedUri, imports.map((imp) => this.resolveImport(fsPath, imp)));
@@ -145,10 +180,25 @@ export class ProjectContext {
       const payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
         doc.ast = payload;
+        const nextFunctionHashes = collectFunctionBodyHashes(payload as never, doc.text);
+        const prevFunctionHashes = doc.functionHashes ?? new Map<string, string>();
+        const skipFunctionBodies = new Set<string>();
+        for (const [name, hash] of nextFunctionHashes.entries()) {
+          const prev = prevFunctionHashes.get(name);
+          if (prev && prev === hash) {
+            skipFunctionBodies.add(name);
+          }
+        }
+        const cachedReturns = doc.inferredReturns ?? new Map<string, LuminaType>();
         const nextSignatures = collectSignatures(payload as never);
         changedSymbols = diffSignatureNames(prevSignatures, nextSignatures);
         signatureChanged = changedSymbols.length > 0;
         doc.signatures = nextSignatures;
+        doc.functionHashes = nextFunctionHashes;
+        if (this.debugIncremental && skipFunctionBodies.size > 0) {
+          // eslint-disable-next-line no-console -- debug-only logging
+          console.log(`[ProjectContext] Skipping ${skipFunctionBodies.size} function bodies in ${normalized}: ${Array.from(skipFunctionBodies).join(', ')}`);
+        }
         const rawImports = collectImportNames(payload as never);
         const importedNames = new Set<string>(rawImports);
         for (const name of this.preludeNames) {
@@ -168,8 +218,16 @@ export class ProjectContext {
             ...(this.preludeSymbols ? this.preludeSymbols.list() : []),
           ],
           importedNames,
+          skipFunctionBodies,
+          cachedFunctionReturns: cachedReturns,
         });
         doc.symbols = analysis.symbols;
+        doc.inferredReturns = new Map<string, LuminaType>();
+        for (const sym of analysis.symbols.list()) {
+          if (sym.kind === 'function' && sym.type) {
+            doc.inferredReturns.set(sym.name, sym.type);
+          }
+        }
         doc.diagnostics.push(...analysis.diagnostics);
         doc.references = collectReferences(payload as never);
       }
@@ -228,6 +286,41 @@ export class ProjectContext {
       }
       return false;
     });
+  }
+
+  indexDocument(uri: string) {
+    const normalized = this.toUri(this.toFsPath(uri));
+    const doc = this.documents.get(normalized);
+    if (!doc || !this.parser) return;
+    const result = parseWithPanicRecovery(this.parser, doc.text, this.recoveryOptions);
+    if (!result.result || typeof result.result !== 'object' || !('success' in result.result) || !(result.result as { success: boolean }).success) {
+      return;
+    }
+    const payload = (result.result as { result: unknown }).result ?? result.result;
+    if (!payload || typeof payload !== 'object' || !('type' in (payload as object))) return;
+    doc.ast = payload;
+    const rawImports = collectImportNames(payload as never);
+    const importedNames = new Set<string>(rawImports);
+    for (const name of this.preludeNames) {
+      importedNames.add(name);
+    }
+    doc.importedNames = importedNames;
+    const analysis = analyzeLumina(payload as never, {
+      currentUri: normalized,
+      externSymbols: (name: string) => {
+        const prelude = this.preludeSymbols?.get(name);
+        if (prelude) return prelude as SymbolInfo;
+        if (!rawImports.has(name)) return undefined;
+        return this.getExternalSymbol(name);
+      },
+      externalSymbols: [
+        ...this.getExternalSymbols(rawImports, normalized),
+        ...(this.preludeSymbols ? this.preludeSymbols.list() : []),
+      ],
+      importedNames,
+      indexingOnly: true,
+    });
+    doc.symbols = analysis.symbols;
   }
 
   listDocuments(): SourceDocument[] {
@@ -372,12 +465,26 @@ export class ProjectContext {
   }
 
   private resolveImport(fromFsPath: string, imp: string): string {
+    if (fromFsPath.startsWith('virtual://')) {
+      if (imp.startsWith('.')) {
+        const base = this.normalizeVirtualSpec(fromFsPath);
+        const baseDir = path.posix.dirname(base);
+        const resolved = path.posix.normalize(path.posix.join(baseDir, imp));
+        const withExt = this.ensureVirtualExtension(resolved);
+        return this.virtualUriFor(withExt);
+      }
+      const virtualTarget = this.resolveVirtualSpec(imp);
+      if (virtualTarget) return this.virtualUriFor(virtualTarget);
+      return imp;
+    }
     if (imp.startsWith('.')) {
       const base = path.dirname(fromFsPath);
       const resolved = path.resolve(base, imp);
       const withExt = this.ensureExtension(resolved);
       return this.toUri(withExt);
     }
+    const virtualTarget = this.resolveVirtualSpec(imp);
+    if (virtualTarget) return this.virtualUriFor(virtualTarget);
     return imp;
   }
 
@@ -415,6 +522,19 @@ export class ProjectContext {
 
   private ensureDocumentLoaded(uri: string) {
     if (this.documents.has(uri)) return;
+    if (uri.startsWith('virtual://')) {
+      if (this.loading.has(uri)) return;
+      const spec = this.normalizeVirtualSpec(uri);
+      const text = this.virtualFiles.get(spec);
+      if (!text) return;
+      try {
+        this.loading.add(uri);
+        this.addOrUpdateDocument(uri, text, 1);
+      } finally {
+        this.loading.delete(uri);
+      }
+      return;
+    }
     if (!uri.startsWith('file://')) return;
     if (this.loading.has(uri)) return;
     const fsPath = this.toFsPath(uri);
@@ -452,12 +572,41 @@ export class ProjectContext {
     if (uriOrPath.startsWith('file://')) {
       return fileURLToPath(uriOrPath);
     }
+    if (uriOrPath.startsWith('virtual://')) {
+      return uriOrPath;
+    }
     return uriOrPath;
   }
 
   private toUri(pathOrUri: string): string {
     if (pathOrUri.startsWith('file://')) return pathOrUri;
+    if (pathOrUri.startsWith('virtual://')) return pathOrUri;
     return pathToFileURL(pathOrUri).toString();
+  }
+
+  private normalizeVirtualSpec(spec: string): string {
+    return spec.startsWith('virtual://') ? spec.slice('virtual://'.length) : spec;
+  }
+
+  private virtualUriFor(spec: string): string {
+    return `virtual://${this.normalizeVirtualSpec(spec)}`;
+  }
+
+  private resolveVirtualSpec(spec: string): string | null {
+    const normalized = this.normalizeVirtualSpec(spec);
+    if (this.virtualFiles.has(normalized)) return normalized;
+    const withExt = this.ensureVirtualExtension(normalized);
+    if (this.virtualFiles.has(withExt)) return withExt;
+    return null;
+  }
+
+  private ensureVirtualExtension(resolved: string): string {
+    if (path.extname(resolved)) return resolved;
+    const candidates = ['.lum', '.lumina'].map((ext) => resolved + ext);
+    for (const candidate of candidates) {
+      if (this.virtualFiles.has(candidate)) return candidate;
+    }
+    return resolved + '.lum';
   }
 }
 
@@ -647,6 +796,35 @@ function diffSignatureNames(a: Map<string, string>, b: Map<string, string>): str
     }
   }
   return Array.from(changed);
+}
+
+function collectFunctionBodyHashes(
+  program: { type: string; body?: unknown[] },
+  source: string
+): Map<string, string> {
+  const hashes = new Map<string, string>();
+  if (!program || !Array.isArray(program.body)) return hashes;
+  for (const stmt of program.body) {
+    const fn = stmt as { type?: string; name?: string; body?: { location?: Location } };
+    if (fn.type !== 'FnDecl' || !fn.name) continue;
+    const loc = fn.body?.location;
+    let bodyText = '';
+    if (loc?.start?.offset !== undefined && loc?.end?.offset !== undefined) {
+      bodyText = source.slice(loc.start.offset, loc.end.offset);
+    } else if (fn.body) {
+      bodyText = JSON.stringify(fn.body);
+    }
+    hashes.set(fn.name, hashString(bodyText));
+  }
+  return hashes;
+}
+
+function hashString(value: string): string {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 33) ^ value.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16);
 }
 
 function lintMissingSemicolons(source: string): Diagnostic[] {

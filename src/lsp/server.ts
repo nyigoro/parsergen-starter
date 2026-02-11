@@ -673,6 +673,7 @@ connection.onDidChangeWatchedFiles((change) => {
 });
 
 connection.onDocumentSymbol((params) => {
+  project?.indexDocument(params.textDocument.uri);
   const symbols = project?.getSymbols(params.textDocument.uri)?.list() ?? [];
   const documentSymbols: DocumentSymbol[] = [];
   for (const sym of symbols) {
@@ -698,6 +699,7 @@ connection.onWorkspaceSymbol((params) => {
   const query = params.query.toLowerCase();
   const results: SymbolInformation[] = [];
   for (const doc of project.listDocuments()) {
+    project.indexDocument(doc.uri);
     const symbols = doc.symbols?.list() ?? [];
     for (const sym of symbols) {
       if (!sym.location) continue;
