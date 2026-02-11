@@ -1,0 +1,15 @@
+import { io } from "@std";
+
+struct User { id: int, name: string }
+enum Result { Ok(int), Err(string) }
+
+fn total(cost: int, tax: int) {
+  return cost + tax;
+}
+
+fn main() {
+  let cost = 400;
+  let tax = 20;
+  let answer = total(cost, tax);
+  return answer;
+}
