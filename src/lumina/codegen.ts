@@ -18,15 +18,16 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
 
   if (includeRuntime) {
     builder.push(`function print(...args) { console.log(...args); }`, 'Runtime');
+    builder.push(`function __set(obj, prop, value) { obj[prop] = value; return value; }`, 'Runtime');
   }
 
   emit(ir, 0, builder);
 
   let code = builder.toString().trimEnd() + '\n';
   if (target === 'cjs') {
-    code += 'module.exports = { print };\n';
+    code += 'module.exports = { print, __set };\n';
   } else {
-    code += 'export { print };\n';
+    code += 'export { print, __set };\n';
   }
 
   return { code, map: builder.map };

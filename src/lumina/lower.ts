@@ -93,13 +93,30 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
       return whileNode;
     }
     case 'Assign': {
-      const assign: IRAssign = {
-        kind: 'Assign',
-        target: stmt.target.name,
-        value: lowerExpr(stmt.value, ctx),
+      if (stmt.target.type === 'Identifier') {
+        const assign: IRAssign = {
+          kind: 'Assign',
+          target: stmt.target.name,
+          value: lowerExpr(stmt.value, ctx),
+          location: stmt.location,
+        };
+        return assign;
+      }
+      const expr: IRExprStmt = {
+        kind: 'ExprStmt',
+        expr: {
+          kind: 'Call',
+          callee: '__set',
+          args: [
+            lowerExpr(stmt.target.object, ctx),
+            { kind: 'String', value: stmt.target.property, location: stmt.location } as IRString,
+            lowerExpr(stmt.value, ctx),
+          ],
+          location: stmt.location,
+        } as IRCall,
         location: stmt.location,
       };
-      return assign;
+      return expr;
     }
     case 'Block': {
       return {

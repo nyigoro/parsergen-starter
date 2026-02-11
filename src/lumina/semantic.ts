@@ -20,6 +20,8 @@ export interface SymbolInfo {
   pendingReturn?: boolean;
   location?: Location;
   mutable?: boolean;
+  ref?: boolean;
+  refMutable?: boolean;
   visibility?: 'public' | 'private';
   extern?: boolean;
   uri?: string;
@@ -27,6 +29,7 @@ export interface SymbolInfo {
   paramTypes?: LuminaType[];
   paramNames?: string[];
   paramRefs?: boolean[];
+  paramRefMuts?: boolean[];
   externModule?: string | null;
   enumVariants?: Array<{ name: string; params: LuminaType[] }>;
   enumName?: string;
@@ -83,6 +86,17 @@ const getLValueBaseName = (expr: LuminaExpr): string | null => {
     current = current.object;
   }
   return current.type === 'Identifier' ? current.name : null;
+};
+
+const resolveMutableSource = (
+  expr: LuminaExpr,
+  symbols: SymbolTable,
+  options?: AnalyzeOptions
+): boolean => {
+  const baseName = getLValueBaseName(expr);
+  if (!baseName) return false;
+  const sym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
+  return !!(sym && (sym.mutable || sym.refMutable));
 };
 
 export interface AnalyzeOptions {
@@ -190,6 +204,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         paramTypes: stmt.params.map((p, idx) => p.typeName ?? hmParamTypes?.[idx] ?? 'any'),
         paramNames: stmt.params.map((p) => p.name),
         paramRefs: stmt.params.map((p) => !!p.ref),
+        paramRefMuts: stmt.params.map((p) => !!p.refMut),
         externModule: stmt.externModule ?? null,
       });
     }
@@ -362,7 +377,15 @@ function resolveFunctionBody(
         diagnostics.push(diagAt(`Unknown type '${param.typeName}' for parameter '${param.name}'`, param.location ?? stmt.location, 'error', 'UNKNOWN_TYPE', related));
       }
     }
-    local.define({ name: param.name, kind: 'variable', type: paramType, location: param.location ?? stmt.location });
+    local.define({
+      name: param.name,
+      kind: 'variable',
+      type: paramType,
+      location: param.location ?? stmt.location,
+      ref: !!param.ref,
+      refMutable: !!param.refMut,
+      mutable: false,
+    });
     fnScope.define(param.name, param.location ?? stmt.location);
   });
   if (stmt.extern) {
@@ -596,25 +619,15 @@ function typeCheckStatement(
   diagnostics: Diagnostic[],
   currentReturnType: LuminaType | null,
   scope?: Scope,
-  options?: {
-    externSymbols?: (name: string) => SymbolInfo | undefined;
-    currentUri?: string;
-    typeParams?: Map<string, LuminaType | undefined>;
-    useHm?: boolean;
-    hmInferred?: {
-      letTypes: Map<string, LuminaType>;
-      fnReturns: Map<string, LuminaType>;
-      fnByName: Map<string, LuminaType>;
-      fnParams: Map<string, LuminaType[]>;
-    };
-  },
+  options?: AnalyzeOptions,
   returnCollector?: { types: LuminaType[] },
   resolving?: Set<string>,
   pendingDeps?: Map<string, Set<string>>,
   currentFunction?: string,
   di?: DefiniteAssignment
 ) {
-  switch (stmt.type) {
+  try {
+    switch (stmt.type) {
     case 'ErrorNode':
       diagnostics.push(diagAt(stmt.message ?? 'Invalid syntax', stmt.location));
       return;
@@ -884,24 +897,99 @@ function typeCheckStatement(
       return;
     }
     case 'Assign': {
-      const target = stmt.target.name;
-      const sym = symbols.get(target) ?? options?.externSymbols?.(target);
-      if (!sym) {
-        diagnostics.push(diagAt(`Unknown identifier '${target}'`, stmt.location));
+      if (stmt.target.type === 'Identifier') {
+        const target = stmt.target.name;
+        const sym = symbols.get(target) ?? options?.externSymbols?.(target);
+        if (!sym) {
+          diagnostics.push(diagAt(`Unknown identifier '${target}'`, stmt.location));
+          return;
+        }
+        if (sym.kind === 'variable' && sym.mutable === false) {
+          diagnostics.push(diagAt(`Cannot assign to immutable variable '${target}'`, stmt.location));
+          return;
+        }
+        scope?.write(target);
+        const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options, sym.type, resolving, pendingDeps, currentFunction, di);
+        if (scope && di) {
+          const defScope = findDefScope(scope, target);
+          if (defScope) di.assign(defScope, target);
+        }
+        if (valueType && sym.type && valueType !== sym.type) {
+          diagnostics.push(diagAt(`Type mismatch: '${target}' is '${sym.type}' but value is '${valueType}'`, stmt.location));
+        }
         return;
       }
-      if (sym.kind === 'variable' && sym.mutable === false) {
-        diagnostics.push(diagAt(`Cannot assign to immutable variable '${target}'`, stmt.location));
+
+      const baseName = getLValueBaseName(stmt.target);
+      if (!baseName) {
+        diagnostics.push(diagAt('Invalid assignment target', stmt.location));
         return;
       }
-      scope?.write(target);
-      const valueType = typeCheckExpr(stmt.value, symbols, diagnostics, scope, options, sym.type, resolving, pendingDeps, currentFunction, di);
-      if (scope && di) {
-        const defScope = findDefScope(scope, target);
-        if (defScope) di.assign(defScope, target);
+      const baseSym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
+      if (!baseSym) {
+        diagnostics.push(diagAt(`Unknown identifier '${baseName}'`, stmt.location));
+        return;
       }
-      if (valueType && sym.type && valueType !== sym.type) {
-        diagnostics.push(diagAt(`Type mismatch: '${target}' is '${sym.type}' but value is '${valueType}'`, stmt.location));
+      if (baseSym.ref && !baseSym.refMutable) {
+        diagnostics.push(diagAt(`Cannot assign through immutable reference '${baseName}'`, stmt.location, 'error', 'REF_MUT_REQUIRED'));
+        return;
+      }
+      if (baseSym.mutable === false && !baseSym.refMutable) {
+        diagnostics.push(diagAt(`Cannot assign through immutable binding '${baseName}'`, stmt.location));
+        return;
+      }
+
+      const objectType = typeCheckExpr(
+        stmt.target.object,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      if (!objectType) return;
+      const parsed = parseTypeName(objectType);
+      const structName = parsed?.base ?? objectType;
+      const structSym = symbols.get(structName);
+      if (!structSym || !structSym.structFields) {
+        diagnostics.push(diagAt(`'${objectType}' has no fields`, stmt.location));
+        return;
+      }
+      const fieldType = structSym.structFields.get(stmt.target.property);
+      if (!fieldType) {
+        diagnostics.push(diagAt(`Unknown field '${stmt.target.property}' on '${objectType}'`, stmt.location));
+        return;
+      }
+      const mapping = new Map<string, LuminaType>();
+      if (parsed && structSym.typeParams && parsed.args.length === structSym.typeParams.length) {
+        structSym.typeParams.forEach((tp, idx) => {
+          mapping.set(tp.name, parsed.args[idx]);
+        });
+      }
+      const resolvedField = substituteTypeParams(fieldType, mapping);
+      const valueType = typeCheckExpr(
+        stmt.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        resolvedField,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      if (valueType && !isTypeAssignable(valueType, resolvedField, symbols, options?.typeParams)) {
+        diagnostics.push(
+          diagAt(
+            `Type mismatch for '${stmt.target.property}': expected '${resolvedField}', got '${valueType}'`,
+            stmt.location
+          )
+        );
       }
       return;
     }
@@ -948,6 +1036,7 @@ function typeCheckStatement(
       let hasWildcard = false;
       const branchStates: DefiniteAssignment[] = [];
       const matchValueName = stmt.value.type === 'Identifier' ? stmt.value.name : null;
+      const matchMutability = resolveMutableSource(stmt.value, symbols, options);
       for (const arm of stmt.arms) {
         const armScope = new Scope(scope);
         const armSymbols = new SymbolTable();
@@ -998,6 +1087,7 @@ function typeCheckStatement(
                   kind: 'variable',
                   type: paramType,
                   location: arm.location ?? stmt.location,
+                  mutable: matchMutability,
                 });
                 if (armDi) {
                   armDi.define(armScope, binding, true);
@@ -1043,6 +1133,9 @@ function typeCheckStatement(
     }
     case 'Import':
       return;
+    }
+  } finally {
+    scope?.clearBorrows();
   }
 }
 
@@ -1159,12 +1252,13 @@ function typeCheckExpr(
             const baseName = getLValueBaseName(expr.left);
             if (baseName) {
               const baseSym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
-              if (baseSym?.kind === 'variable' && baseSym.mutable === false) {
+              const requiresMut = calleeSym.paramRefMuts?.[0] ?? false;
+              if (requiresMut && baseSym?.kind === 'variable' && baseSym.mutable === false && !baseSym.refMutable) {
                 diagnostics.push(
                   diagAt(
-                    `'${baseName}' should be mutable when passed by reference`,
+                    `'${baseName}' must be mutable when passed by mutable reference`,
                     expr.left.location ?? expr.location,
-                    'warning',
+                    'error',
                     'REF_MUT_REQUIRED'
                   )
                 );
@@ -1537,6 +1631,7 @@ function typeCheckExpr(
 
     const paramTypes = sym.paramTypes ?? [];
     const paramRefs = sym.paramRefs ?? [];
+    const paramRefMuts = sym.paramRefMuts ?? [];
     const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
     if (paramTypes.length !== effectiveArgCount) {
       diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
@@ -1545,6 +1640,7 @@ function typeCheckExpr(
 
     for (let i = 0; i < effectiveArgCount; i++) {
       const refRequired = paramRefs[i] ?? false;
+      const refMutable = paramRefMuts[i] ?? false;
       if (refRequired) {
         const argExpr = pipedArgType && i === 0 ? undefined : expr.args[pipedArgType ? i - 1 : i];
         if (argExpr && !isLValue(argExpr)) {
@@ -1560,15 +1656,28 @@ function typeCheckExpr(
           const baseName = getLValueBaseName(argExpr);
           if (baseName) {
             const baseSym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
-            if (baseSym?.kind === 'variable' && baseSym.mutable === false) {
+            if (refMutable && baseSym?.kind === 'variable' && baseSym.mutable === false && !baseSym.refMutable) {
               diagnostics.push(
                 diagAt(
-                  `'${baseName}' should be mutable when passed by reference`,
+                  `'${baseName}' must be mutable when passed by mutable reference`,
                   argExpr.location ?? expr.location,
-                  'warning',
+                  'error',
                   'REF_MUT_REQUIRED'
                 )
               );
+            }
+            if (scope) {
+              const ok = refMutable ? scope.borrowMut(baseName) : scope.borrowShared(baseName);
+              if (!ok) {
+                diagnostics.push(
+                  diagAt(
+                    `Cannot borrow '${baseName}'${refMutable ? ' mutably' : ''} while it is already borrowed`,
+                    argExpr.location ?? expr.location,
+                    'error',
+                    'BORROW_CONFLICT'
+                  )
+                );
+              }
             }
           }
         }
@@ -1727,6 +1836,16 @@ function typeCheckExpr(
           )
         );
       }
+      if (expectedType) {
+        const parsedExpected = parseTypeName(expectedType);
+        if (parsedExpected?.base === structName) {
+          return expectedType;
+        }
+      }
+      if ((structSym.typeParams?.length ?? 0) > 0) {
+        const args = (structSym.typeParams ?? []).map(() => 'any');
+        return `${structName}<${args.join(',')}>`;
+      }
       return structName;
     }
     if (!structSym || !structSym.structFields) {
@@ -1759,6 +1878,7 @@ function typeCheckExpr(
       let hasWildcard = false;
       let armType: LuminaType | null = null;
       const matchValueName = expr.value.type === 'Identifier' ? expr.value.name : null;
+      const matchMutability = resolveMutableSource(expr.value, symbols, options);
       for (const arm of expr.arms) {
         const armScope = new Scope(scope);
         const armSymbols = new SymbolTable();
@@ -1804,11 +1924,12 @@ function typeCheckExpr(
                 if (!paramType) return;
                 armScope.define(binding, arm.location ?? expr.location);
                 armSymbols.define({
-                name: binding,
-                kind: 'variable',
-                type: paramType,
-                location: arm.location ?? expr.location,
-              });
+                  name: binding,
+                  kind: 'variable',
+                  type: paramType,
+                  location: arm.location ?? expr.location,
+                  mutable: matchMutability,
+                });
               if (di) {
                 di.define(armScope, binding, true);
               }
@@ -1862,6 +1983,8 @@ class Scope {
     reads = new Set<string>();
     writes = new Set<string>();
     narrowed = new Map<string, LuminaType>();
+    borrowedMut = new Set<string>();
+    borrowedShared = new Set<string>();
     children: Scope[] = [];
 
     constructor(parent?: Scope) {
@@ -1898,6 +2021,33 @@ class Scope {
         return this.narrowed.get(name);
       }
       return this.parent?.lookupNarrowed(name);
+    }
+
+    canBorrowMut(name: string): boolean {
+      if (this.borrowedMut.has(name) || this.borrowedShared.has(name)) return false;
+      return this.parent ? this.parent.canBorrowMut(name) : true;
+    }
+
+    canBorrowShared(name: string): boolean {
+      if (this.borrowedMut.has(name)) return false;
+      return this.parent ? this.parent.canBorrowShared(name) : true;
+    }
+
+    borrowMut(name: string): boolean {
+      if (!this.canBorrowMut(name)) return false;
+      this.borrowedMut.add(name);
+      return true;
+    }
+
+    borrowShared(name: string): boolean {
+      if (!this.canBorrowShared(name)) return false;
+      this.borrowedShared.add(name);
+      return true;
+    }
+
+    clearBorrows() {
+      this.borrowedMut.clear();
+      this.borrowedShared.clear();
     }
   }
 

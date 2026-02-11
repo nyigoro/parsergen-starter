@@ -96,6 +96,7 @@ export interface LuminaParam {
   name: string;
   typeName: LuminaType | null;
   ref?: boolean;
+  refMut?: boolean;
   location?: Location;
 }
 
@@ -134,9 +135,11 @@ export interface LuminaWhile {
   location?: Location;
 }
 
+export type LuminaAssignTarget = LuminaIdentifier | LuminaMember;
+
 export interface LuminaAssign {
   type: 'Assign';
-  target: LuminaIdentifier;
+  target: LuminaAssignTarget;
   value: LuminaExpr;
   location?: Location;
 }

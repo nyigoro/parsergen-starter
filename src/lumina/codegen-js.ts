@@ -29,15 +29,16 @@ class JSGenerator {
     const lines: string[] = [];
     if (this.includeRuntime) {
       lines.push('function print(...args) { console.log(...args); }');
+      lines.push('function __set(obj, prop, value) { obj[prop] = value; return value; }');
     }
     for (const stmt of node.body) {
       const chunk = this.emitStatement(stmt);
       if (chunk) lines.push(chunk);
     }
     if (this.target === 'cjs') {
-      lines.push('module.exports = { print };');
+      lines.push('module.exports = { print, __set };');
     } else {
-      lines.push('export { print };');
+      lines.push('export { print, __set };');
     }
     return lines.join('\n') + '\n';
   }
@@ -54,7 +55,7 @@ class JSGenerator {
       case 'Return':
         return `${this.pad()}return ${this.emitExpr(stmt.value)};`;
       case 'Assign':
-        return `${this.pad()}${stmt.target.name} = ${this.emitExpr(stmt.value)};`;
+        return `${this.pad()}${this.emitExpr(stmt.target as LuminaExpr)} = ${this.emitExpr(stmt.value)};`;
       case 'ExprStmt':
         return `${this.pad()}${this.emitExpr(stmt.expr)};`;
       case 'If': {

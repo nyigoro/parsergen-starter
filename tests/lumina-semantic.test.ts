@@ -507,9 +507,9 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
-  test('warns when passing immutable values by ref', () => {
+  test('errors when passing immutable values by ref mut', () => {
     const program = `
-      fn bump(ref x: int) -> int { return x + 1; }
+      fn bump(ref mut x: int) -> int { return x + 1; }
       fn main() {
         let x: int = 1;
         return bump(x);
@@ -519,7 +519,7 @@ describe('Lumina semantic analysis', () => {
     const result = parser.parse(program) as { type: string };
     const analysis = analyzeLumina(result as never);
     const warning = analysis.diagnostics.find(d => d.code === 'REF_MUT_REQUIRED');
-    expect(warning?.severity).toBe('warning');
+    expect(warning?.severity).toBe('error');
   });
 
   test('supports enum payload destructuring with multiple fields', () => {
