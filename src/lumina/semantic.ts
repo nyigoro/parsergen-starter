@@ -282,17 +282,19 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       resolving.delete(stmt.name);
       if (inferred) {
         symbols.define({ ...sym, type: inferred, pendingReturn: false });
+        pendingDeps.delete(stmt.name);
         changed = true;
       } else if (inferred === 'void') {
         symbols.define({ ...sym, type: 'void', pendingReturn: false });
+        pendingDeps.delete(stmt.name);
         changed = true;
       }
     }
     const cycles = detectPendingCycles(pendingDeps);
     if (cycles.length > 0) {
       for (const fnName of cycles) {
-        diagnostics.push(diagAt(`Recursive inference detected for '${fnName}'`, program.location));
         const sym = symbols.get(fnName);
+        diagnostics.push(diagAt(`Recursive inference detected for '${fnName}'`, sym?.location ?? program.location));
         if (sym) {
           symbols.define({ ...sym, type: 'any', pendingReturn: false });
         }
@@ -390,7 +392,12 @@ function resolveFunctionBody(
   }
   collectUnusedBindings(fnScope, diagnostics, stmt.location);
   if (ret) return ret;
+  const hasReturn = blockHasReturn(stmt.body);
   if (pendingDeps.get(stmt.name)?.size) {
+    if (collector && collector.types.length === 0 && !hasReturn) {
+      pendingDeps.delete(stmt.name);
+      return 'void';
+    }
     return null;
   }
   if (collector && collector.types.length > 0) {
@@ -403,6 +410,26 @@ function resolveFunctionBody(
     return first;
   }
   return 'void';
+}
+
+function blockHasReturn(block: { body: LuminaStatement[] }): boolean {
+  const visit = (stmt: LuminaStatement): boolean => {
+    switch (stmt.type) {
+      case 'Return':
+        return true;
+      case 'Block':
+        return stmt.body.some(visit);
+      case 'If':
+        return visit(stmt.thenBlock) || (stmt.elseBlock ? visit(stmt.elseBlock) : false);
+      case 'While':
+        return visit(stmt.body);
+      case 'MatchStmt':
+        return stmt.arms.some((arm) => visit(arm.body));
+      default:
+        return false;
+    }
+  };
+  return block.body.some(visit);
 }
 
 function detectPendingCycles(graph: Map<string, Set<string>>): string[] {
@@ -798,6 +825,11 @@ function typeCheckStatement(
           return;
         }
         diagnostics.push(diagAt(`Could not infer type for '${stmt.name}'`, stmt.location));
+      }
+      if (finalType === 'void') {
+        diagnostics.push(
+          diagAt(`Cannot bind void value to '${stmt.name}'`, stmt.location, 'error', 'VOID_BINDING')
+        );
       }
       symbols.define({
         name: stmt.name,
@@ -1631,9 +1663,6 @@ function typeCheckExpr(
       return null;
     }
     if (sym.pendingReturn) {
-      if (resolving?.has(callee)) {
-        diagnostics.push(diagAt(`Recursive inference detected for '${callee}'`, expr.location));
-      }
       if (currentFunction && pendingDeps) {
         const deps = pendingDeps.get(currentFunction) ?? new Set<string>();
         deps.add(callee);
@@ -1830,15 +1859,16 @@ function typeCheckExpr(
   }
   if (expr.type === 'Member') {
     if (expr.object.type === 'Identifier') {
-      if (options?.importedNames?.has(expr.object.name)) {
-        return 'any';
-      }
       const binding = options?.moduleBindings?.get(expr.object.name);
       if (binding && binding.kind === 'module') {
         const exp = binding.exports.get(expr.property);
         if (exp && exp.kind === 'function') {
           return 'any';
         }
+        return 'any';
+      }
+      if (options?.importedNames?.has(expr.object.name) && !symbols.has(expr.object.name)) {
+        return 'any';
       }
     }
     const objectType = typeCheckExpr(expr.object, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
