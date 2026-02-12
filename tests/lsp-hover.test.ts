@@ -86,3 +86,45 @@ describe('LSP hover/signature across imports', () => {
     expect(memberSig?.activeParam).toBe(0);
   });
 });
+
+describe('LSP hover/signature for @std registry', () => {
+  test('shows std module signature for member calls', () => {
+    const project = new ProjectContext(parser);
+    const source = `
+import { io } from "@std";
+
+fn main() {
+  io.println("hello");
+}
+`.trim() + '\n';
+    const uri = pathToFileURL(path.join(__dirname, 'fixtures', 'lsp-hover', 'std-main.lm')).toString();
+    project.addOrUpdateDocument(uri, source, 1);
+
+    const doc = TextDocument.create(uri, 'lumina', 1, source);
+    const moduleBindings = project.getModuleBindings(uri);
+    const symbols = project.getSymbols(uri);
+
+    const hoverOffset = source.indexOf('io.println') + 'io.'.length;
+    const hoverPos = doc.positionAt(hoverOffset);
+    const hoverLabel = resolveHoverLabel({
+      doc,
+      position: hoverPos,
+      symbols,
+      moduleBindings,
+      resolveImportedSymbol: (name) => project.resolveImportedSymbol(name, uri),
+    });
+    expect(hoverLabel).toBe('println(value: string) -> void');
+
+    const sigOffset = source.indexOf('io.println("hello")') + 'io.println('.length;
+    const sigPos = doc.positionAt(sigOffset);
+    const sig = resolveSignatureHelp({
+      doc,
+      position: sigPos,
+      symbols,
+      moduleBindings,
+      resolveImportedSymbol: (name) => project.resolveImportedSymbol(name, uri),
+    });
+    expect(sig?.signature.label).toBe('println(value: string) -> void');
+    expect(sig?.activeParam).toBe(0);
+  });
+});

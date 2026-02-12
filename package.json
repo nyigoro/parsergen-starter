@@ -32,8 +32,8 @@
     "repl": "tsx src/repl.ts",
     "dev": "tsx src/index.ts",
     "build": "npm run build:esm && npm run build:cjs && npm run build:dts && npm run build:clean",
-    "build:esm": "tsup src/index.ts src/bin/cli.ts src/bin/lumina.ts src/bin/lumina-lsp.ts src/bin/lumina-worker.ts --format esm --clean",
-    "build:cjs": "tsup src/index.ts src/bin/cli-cjs.ts src/bin/lumina-cjs.ts src/bin/lumina-lsp.ts src/bin/lumina-worker.ts --format cjs --clean false && node scripts/rename-cjs.cjs",
+    "build:esm": "tsup src/index.ts src/lumina-runtime.ts src/bin/cli.ts src/bin/lumina.ts src/bin/lumina-lsp.ts src/bin/lumina-worker.ts --format esm --clean",
+    "build:cjs": "tsup src/index.ts src/lumina-runtime.ts src/bin/cli-cjs.ts src/bin/lumina-cjs.ts src/bin/lumina-lsp.ts src/bin/lumina-worker.ts --format cjs --clean false && node scripts/rename-cjs.cjs",
     "build:dts": "tsup src/index.ts --format esm --dts --clean false",
     "build:clean": "node scripts/clean-dist-bin.mjs",
     "build:verify": "node scripts/verify-dist.cjs",
@@ -115,6 +115,7 @@
     "moo": "^0.5.2",
     "react-d3-tree": "^3.6.6",
     "fast-glob": "^3.3.3",
+    "source-map": "^0.7.4",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",
     "vscode-uri": "^3.1.0"

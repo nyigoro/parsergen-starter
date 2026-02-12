@@ -12,6 +12,7 @@ import {
 } from '../grammar/index.js';
 
 import { compileGrammar, analyzeLumina, lowerLumina, optimizeIR, generateJS } from '../index.js';
+import { ensureRuntimeForOutput } from './runtime.js';
 
 import { parseInput, parseStream, ParserUtils } from '../parser/index.js';
 import { runREPLWithParser } from '../repl.js';
@@ -601,6 +602,7 @@ export async function runParsergen(args: string[], options?: { deprecate?: boole
         }).code;
         const outPath = config.luminaOut ?? 'lumina.out.js';
         await fs.writeFile(outPath, out, 'utf-8');
+        await ensureRuntimeForOutput(outPath, config.luminaTarget ?? 'esm');
         log.success(`Lumina compiled: ${outPath}`);
         return;
       } catch (err) {

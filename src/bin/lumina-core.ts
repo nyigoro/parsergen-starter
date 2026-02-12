@@ -9,11 +9,13 @@ import { compileGrammar } from '../grammar/index.js';
 import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
 import { formatError, highlightSnippet } from '../utils/index.js';
 import { analyzeLumina, lowerLumina, optimizeIR, generateJS, generateJSFromAst, irToDot } from '../index.js';
+import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
 import { parseWithPanicRecovery } from '../project/panic.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { runREPLWithParser } from '../repl.js';
 import { runParsergen } from './cli-core.js';
+import { type RawSourceMap } from 'source-map';
 
 type Target = 'cjs' | 'esm';
 
@@ -178,6 +180,24 @@ const cliLexer = createLuminaLexer();
 
 function hashText(text: string): string {
   return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+function appendSourceMapComment(code: string, mapFileName: string): string {
+  const trimmed = code.trimEnd();
+  if (trimmed.endsWith(`//# sourceMappingURL=${mapFileName}`)) {
+    return trimmed + '\n';
+  }
+  return `${trimmed}\n//# sourceMappingURL=${mapFileName}\n`;
+}
+
+function appendInlineSourceMapComment(code: string, map: RawSourceMap): string {
+  const trimmed = code.trimEnd();
+  const base64 = Buffer.from(JSON.stringify(map), 'utf-8').toString('base64');
+  const comment = `//# sourceMappingURL=data:application/json;base64,${base64}`;
+  if (trimmed.endsWith(comment)) {
+    return trimmed + '\n';
+  }
+  return `${trimmed}\n${comment}\n`;
 }
 
 type DepCacheEntry = {
@@ -401,7 +421,9 @@ async function compileLumina(
   grammarPath: string,
   useRecovery: boolean,
   diCfg: boolean,
-  useAstJs: boolean
+  useAstJs: boolean,
+  sourceMap: boolean,
+  inlineSourceMap: boolean
 ) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
@@ -411,13 +433,51 @@ async function compileLumina(
   if (cached && cached.hash === fileHash && cached.grammarHash === buildCache.grammarHash) {
     buildCache.stats.hits += 1;
     if (useAstJs) {
-      const result = generateJSFromAst(cached.ast as never, { target });
-      await fs.writeFile(outPath, result.code, 'utf-8');
+      const result = generateJSFromAst(cached.ast as never, {
+        target,
+        sourceMap,
+        sourceFile: sourcePath,
+        sourceContent: source,
+      });
+      let out = result.code;
+      if (sourceMap && result.map) {
+        if (inlineSourceMap) {
+          out = appendInlineSourceMapComment(out, result.map);
+        } else {
+          const mapFileName = path.basename(outPath) + '.map';
+          out = appendSourceMapComment(out, mapFileName);
+        }
+      }
+      await fs.writeFile(outPath, out, 'utf-8');
+      if (sourceMap && result.map && !inlineSourceMap) {
+        const mapPath = outPath + '.map';
+        await fs.writeFile(mapPath, JSON.stringify(result.map, null, 2), 'utf-8');
+      }
+      await ensureRuntimeForOutput(outPath, target);
       console.log(`Lumina compiled (cached): ${outPath}`);
       return { ok: true, map: undefined, ir: cached.ir ?? lowerLumina(cached.ast as never) };
     }
-    const result = generateJS(cached.ir ?? lowerLumina(cached.ast as never), { target, sourceMap: true });
-    await fs.writeFile(outPath, result.code, 'utf-8');
+    const result = generateJS(cached.ir ?? lowerLumina(cached.ast as never), {
+      target,
+      sourceMap,
+      sourceFile: sourcePath,
+      sourceContent: source,
+    });
+    let out = result.code;
+    if (sourceMap && result.map) {
+      if (inlineSourceMap) {
+        out = appendInlineSourceMapComment(out, result.map);
+      } else {
+        const mapFileName = path.basename(outPath) + '.map';
+        out = appendSourceMapComment(out, mapFileName);
+      }
+    }
+    await fs.writeFile(outPath, out, 'utf-8');
+    if (sourceMap && result.map && !inlineSourceMap) {
+      const mapPath = outPath + '.map';
+      await fs.writeFile(mapPath, JSON.stringify(result.map, null, 2), 'utf-8');
+    }
+    await ensureRuntimeForOutput(outPath, target);
     console.log(`Lumina compiled (cached): ${outPath}`);
     return { ok: true, map: result.map, ir: cached.ir ?? lowerLumina(cached.ast as never) };
   }
@@ -426,13 +486,51 @@ async function compileLumina(
     buildCache.stats.hits += 1;
     buildCache.files.set(sourcePath, diskCache);
     if (useAstJs) {
-      const result = generateJSFromAst(diskCache.ast as never, { target });
-      await fs.writeFile(outPath, result.code, 'utf-8');
+      const result = generateJSFromAst(diskCache.ast as never, {
+        target,
+        sourceMap,
+        sourceFile: sourcePath,
+        sourceContent: source,
+      });
+      let out = result.code;
+      if (sourceMap && result.map) {
+        if (inlineSourceMap) {
+          out = appendInlineSourceMapComment(out, result.map);
+        } else {
+          const mapFileName = path.basename(outPath) + '.map';
+          out = appendSourceMapComment(out, mapFileName);
+        }
+      }
+      await fs.writeFile(outPath, out, 'utf-8');
+      if (sourceMap && result.map && !inlineSourceMap) {
+        const mapPath = outPath + '.map';
+        await fs.writeFile(mapPath, JSON.stringify(result.map, null, 2), 'utf-8');
+      }
+      await ensureRuntimeForOutput(outPath, target);
       console.log(`Lumina compiled (cached): ${outPath}`);
       return { ok: true, map: undefined, ir: diskCache.ir ?? lowerLumina(diskCache.ast as never) };
     }
-    const result = generateJS(diskCache.ir ?? lowerLumina(diskCache.ast as never), { target, sourceMap: true });
-    await fs.writeFile(outPath, result.code, 'utf-8');
+    const result = generateJS(diskCache.ir ?? lowerLumina(diskCache.ast as never), {
+      target,
+      sourceMap,
+      sourceFile: sourcePath,
+      sourceContent: source,
+    });
+    let out = result.code;
+    if (sourceMap && result.map) {
+      if (inlineSourceMap) {
+        out = appendInlineSourceMapComment(out, result.map);
+      } else {
+        const mapFileName = path.basename(outPath) + '.map';
+        out = appendSourceMapComment(out, mapFileName);
+      }
+    }
+    await fs.writeFile(outPath, out, 'utf-8');
+    if (sourceMap && result.map && !inlineSourceMap) {
+      const mapPath = outPath + '.map';
+      await fs.writeFile(mapPath, JSON.stringify(result.map, null, 2), 'utf-8');
+    }
+    await ensureRuntimeForOutput(outPath, target);
     console.log(`Lumina compiled (cached): ${outPath}`);
     return { ok: true, map: result.map, ir: diskCache.ir ?? lowerLumina(diskCache.ast as never) };
   }
@@ -456,18 +554,36 @@ async function compileLumina(
   }
   let out = '';
   let optimized = null as ReturnType<typeof optimizeIR>;
-  let result: { code: string; map?: { mappings: Array<{ line: number; kind: string }> } } | null = null;
+  let result: { code: string; map?: RawSourceMap } | null = null;
   if (useAstJs) {
-    result = generateJSFromAst(ast as never, { target });
+    result = generateJSFromAst(ast as never, {
+      target,
+      sourceMap,
+      sourceFile: sourcePath,
+      sourceContent: source,
+    });
     out = result.code;
   } else {
     const lowered = lowerLumina(ast as never);
     optimized = optimizeIR(lowered) ?? lowered;
-    const gen = generateJS(optimized, { target, sourceMap: true });
+    const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
     out = gen.code;
     result = gen;
   }
+  if (sourceMap && result.map) {
+    if (inlineSourceMap) {
+      out = appendInlineSourceMapComment(out, result.map);
+    } else {
+      const mapFileName = path.basename(outPath) + '.map';
+      out = appendSourceMapComment(out, mapFileName);
+    }
+  }
   await fs.writeFile(outPath, out, 'utf-8');
+  if (sourceMap && result.map && !inlineSourceMap) {
+    const mapPath = outPath + '.map';
+    await fs.writeFile(mapPath, JSON.stringify(result.map, null, 2), 'utf-8');
+  }
+  await ensureRuntimeForOutput(outPath, target);
   console.log(`Lumina compiled: ${outPath}`);
   if (diCfg && analysis.diGraphs) {
     const base = path.basename(outPath, path.extname(outPath));
@@ -563,6 +679,8 @@ export async function compileLuminaTask(payload: {
   useRecovery: boolean;
   diCfg?: boolean;
   useAstJs?: boolean;
+  sourceMap?: boolean;
+  inlineSourceMap?: boolean;
 }) {
   return compileLumina(
     payload.sourcePath,
@@ -571,7 +689,9 @@ export async function compileLuminaTask(payload: {
     payload.grammarPath,
     payload.useRecovery,
     payload.diCfg ?? false,
-    payload.useAstJs ?? false
+    payload.useAstJs ?? false,
+    payload.sourceMap ?? false,
+    payload.inlineSourceMap ?? false
   );
 }
 
@@ -597,7 +717,8 @@ async function watchLumina(
   grammarPath: string,
   outPathArg?: string,
   useRecovery: boolean = false,
-  diCfg: boolean = false
+  diCfg: boolean = false,
+  inlineSourceMap: boolean = false
 ) {
   const resolvedSources = sources.map((s) => path.resolve(s));
   const globbed = await fg(resolvedSources, { onlyFiles: true, unique: true, dot: false });
@@ -610,7 +731,17 @@ async function watchLumina(
 
   const runCompile = async (filePath: string, outPath: string) => {
     if (!worker) {
-      await compileLumina(filePath, outPath, target, grammarPath, useRecovery, diCfg, useAstJs);
+      await compileLumina(
+        filePath,
+        outPath,
+        target,
+        grammarPath,
+        useRecovery,
+        diCfg,
+        useAstJs,
+        sourceMap,
+        inlineSourceMap
+      );
       return;
     }
     const result = await worker.compile({
@@ -621,6 +752,8 @@ async function watchLumina(
       useRecovery,
       diCfg,
       useAstJs,
+      sourceMap,
+      inlineSourceMap,
     });
     if (!result.ok && result.error) {
       console.error(`Lumina worker error: ${result.error}`);
@@ -677,7 +810,17 @@ type WorkerRequest =
   | {
       type: 'compile';
       id: number;
-      payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean };
+      payload: {
+        sourcePath: string;
+        outPath: string;
+        target: Target;
+        grammarPath: string;
+        useRecovery: boolean;
+        diCfg: boolean;
+        useAstJs?: boolean;
+        sourceMap?: boolean;
+        inlineSourceMap?: boolean;
+      };
     };
 
 type WorkerResponse = { id?: number; ok?: boolean; error?: string };
@@ -709,7 +852,7 @@ function createWorkerRunner(config: BuildConfig) {
   worker.postMessage({ type: 'init', payload: config } satisfies WorkerRequest);
 
   return {
-    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean }) {
+    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean }) {
       const id = requestId++;
       return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         pending.set(id, { resolve });
@@ -749,6 +892,7 @@ Options:
   --di-cfg             Emit CFG dot files during compile/check
   --list-config        Print resolved config and exit
   --sourcemap          Emit source map alongside output
+  --inline-sourcemap   Embed base64 source map (opt-in)
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
   --ast-js             Emit JS directly from AST (no IR)
@@ -783,6 +927,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const useAstJs = parseBooleanFlag(args, '--ast-js');
   const listConfig = parseBooleanFlag(args, '--list-config');
   const sourceMap = parseBooleanFlag(args, '--sourcemap');
+  const inlineSourceMap = parseBooleanFlag(args, '--inline-sourcemap');
   const debugIr = parseBooleanFlag(args, '--debug-ir');
   const profileCache = parseBooleanFlag(args, '--profile-cache');
   buildCache.cacheDir = config.cacheDir ?? '.lumina-cache';
@@ -827,13 +972,18 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         const result = await checkLumina(sourcePath, grammarPath, useRecovery, diCfg);
         if (!result.ok) process.exit(1);
       } else {
-        const result = await compileLumina(sourcePath, outPath, target, grammarPath, useRecovery, diCfg, useAstJs);
+        const result = await compileLumina(
+          sourcePath,
+          outPath,
+          target,
+          grammarPath,
+          useRecovery,
+          diCfg,
+          useAstJs,
+          sourceMap,
+          inlineSourceMap
+        );
         if (!result.ok) process.exit(1);
-        if (sourceMap && result.map) {
-          const mapPath = outPath + '.map';
-          await fs.writeFile(mapPath, JSON.stringify(result.map, null, 2), 'utf-8');
-          console.log(`Source map: ${mapPath}`);
-        }
         if (debugIr && result.ir) {
           const dotPath = outPath + '.dot';
           const dot = irToDot(result.ir);
@@ -879,7 +1029,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       sources.push(...extensions.map((ext) => `**/*${ext}`));
     }
     if (sources.length === 0) throw new Error('Missing <file> for watch');
-    await watchLumina(sources, outDir, target, grammarPath, outArg, useRecovery, diCfg);
+    await watchLumina(sources, outDir, target, grammarPath, outArg, useRecovery, diCfg, inlineSourceMap);
     return;
   }
 
