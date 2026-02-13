@@ -11,6 +11,9 @@
 - ✅ Complete JSON parser project (500+ lines, multi-file)
 - ✅ Source maps with external/inline options
 - ✅ LSP quick-fixes for type holes
+- ✅ Async/await with Promise types + async stdlib
+- ✅ Cross-file LSP hover/definition (module graph)
+- ✅ SSA optimization fixes (function-scoped SSA, loop-safe const folding)
 
 **Proven Capabilities:**
 - Production-grade type inference (HM + generics + row polymorphism)
@@ -19,7 +22,7 @@
 - Working stdlib (io/str/math/list with 40+ functions)
 - Real-world utility (JSON parser compiles and runs)
 
-**What's Next:** Canonical module IDs, LSP cross-file features, async/await
+**What's Next:** Package management, stdlib Phase 2, move/borrow safety polish
 
 ---
 

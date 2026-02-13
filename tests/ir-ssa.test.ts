@@ -63,7 +63,7 @@ describe('IR SSA conversion', () => {
     expect(hasPhi(ir)).toBe(true);
   });
 
-  test('inserts Phi nodes after loops for carried variables', () => {
+  test('preserves assignments inside loops to avoid SSA scoping issues', () => {
     const program = `
       fn main(flag: bool) {
         let x: int = 0;
@@ -77,6 +77,18 @@ describe('IR SSA conversion', () => {
     const ast = parser.parse(program);
     const ir = optimizeIR(lowerLumina(ast as never))!;
 
+    const hasAssign = (node: unknown): boolean => {
+      if (!node || typeof node !== 'object') return false;
+      const n = node as { kind?: string; body?: unknown[]; thenBody?: unknown[]; elseBody?: unknown[]; value?: unknown; expr?: unknown };
+      if (n.kind === 'Assign') return true;
+      if (Array.isArray(n.body) && n.body.some(hasAssign)) return true;
+      if (Array.isArray(n.thenBody) && n.thenBody.some(hasAssign)) return true;
+      if (Array.isArray(n.elseBody) && n.elseBody.some(hasAssign)) return true;
+      if (n.value && hasAssign(n.value)) return true;
+      if (n.expr && hasAssign(n.expr)) return true;
+      return false;
+    };
+
     const hasPhi = (node: unknown): boolean => {
       if (!node || typeof node !== 'object') return false;
       const n = node as { kind?: string; body?: unknown[]; thenBody?: unknown[]; elseBody?: unknown[]; value?: unknown; expr?: unknown };
@@ -89,6 +101,7 @@ describe('IR SSA conversion', () => {
       return false;
     };
 
-    expect(hasPhi(ir)).toBe(true);
+    expect(hasAssign(ir)).toBe(true);
+    expect(hasPhi(ir)).toBe(false);
   });
 });

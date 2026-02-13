@@ -21,6 +21,7 @@ type CompileMessage = {
     useRecovery: boolean;
     diCfg?: boolean;
     useAstJs?: boolean;
+    noOptimize?: boolean;
     sourceMap?: boolean;
     inlineSourceMap?: boolean;
   };

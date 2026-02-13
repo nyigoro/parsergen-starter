@@ -24,6 +24,7 @@ export type IRNode =
 export interface IRProgram {
   kind: 'Program';
   body: IRNode[];
+  ssa?: boolean;
   location?: import('../utils/index.js').Location;
 }
 

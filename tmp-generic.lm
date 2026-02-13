@@ -1,0 +1,4 @@
+fn main() -> int {
+  let x: Option<int> = Option.None;
+  0
+}

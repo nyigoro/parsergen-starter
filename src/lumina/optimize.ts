@@ -6,6 +6,9 @@ export function optimizeIR(node: IRNode): IRNode | null {
   let optimized = optimizeWithConstants(ssa, constants);
   if (optimized && optimized.kind === 'Program') {
     optimized = removeUnusedFunctions(optimized);
+    if (optimized && optimized.kind === 'Program') {
+      optimized.ssa = true;
+    }
   }
   if (optimized) validateIR(optimized);
   return optimized;
@@ -129,7 +132,8 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
 
   const renameBlock = (
     stmts: IRNode[],
-    mapping: Map<string, string>
+    mapping: Map<string, string>,
+    ssaEnabled = true
   ): { body: IRNode[]; mapping: Map<string, string> } => {
     const saved = new Map(current);
     current.clear();
@@ -140,14 +144,23 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
       switch (stmt.kind) {
         case 'Let': {
           const value = renameExpr(stmt.value);
-          const renamed = baseName(stmt.name);
-          body.push({ ...stmt, name: renamed, value });
+          if (ssaEnabled) {
+            const renamed = baseName(stmt.name);
+            body.push({ ...stmt, name: renamed, value });
+          } else {
+            body.push({ ...stmt, value });
+          }
           break;
         }
         case 'Assign': {
           const value = renameExpr(stmt.value);
-          const renamed = baseName(stmt.target);
-          body.push({ kind: 'Let', name: renamed, value, location: stmt.location } as IRLet);
+          if (ssaEnabled) {
+            const renamed = baseName(stmt.target);
+            body.push({ kind: 'Let', name: renamed, value, location: stmt.location } as IRLet);
+          } else {
+            const target = current.get(stmt.target) ?? stmt.target;
+            body.push({ ...stmt, target, value });
+          }
           break;
         }
         case 'Return':
@@ -158,9 +171,9 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
           break;
         case 'If': {
           const cond = renameExpr(stmt.condition);
-          const thenResult = renameBlock(stmt.thenBody, new Map(current));
+          const thenResult = renameBlock(stmt.thenBody, new Map(current), ssaEnabled);
           const elseResult = stmt.elseBody
-            ? renameBlock(stmt.elseBody, new Map(current))
+            ? renameBlock(stmt.elseBody, new Map(current), ssaEnabled)
             : { body: [], mapping: new Map(current) };
           const ifNode: IRIf = {
             kind: 'If',
@@ -170,6 +183,10 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
             location: stmt.location,
           };
           body.push(ifNode);
+
+          if (!ssaEnabled) {
+            break;
+          }
 
           const join = new Set<string>([
             ...thenResult.mapping.keys(),
@@ -196,7 +213,7 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
         }
         case 'While': {
           const cond = renameExpr(stmt.condition);
-          const bodyResult = renameBlock(stmt.body, new Map(current));
+          const bodyResult = renameBlock(stmt.body, new Map(current), false);
           const whileNode: IRWhile = {
             kind: 'While',
             condition: cond,
@@ -204,28 +221,6 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
             location: stmt.location,
           };
           body.push(whileNode);
-
-          const join = new Set<string>([
-            ...current.keys(),
-            ...bodyResult.mapping.keys(),
-          ]);
-          for (const key of join) {
-            const preName = current.get(key) ?? key;
-            const postName = bodyResult.mapping.get(key) ?? preName;
-            if (preName === postName) {
-              current.set(key, preName);
-              continue;
-            }
-            const phiName = baseName(key);
-            const phi: IRPhi = {
-              kind: 'Phi',
-              name: phiName,
-              condition: cond,
-              thenValue: { kind: 'Identifier', name: postName },
-              elseValue: { kind: 'Identifier', name: preName },
-            };
-            body.push(phi);
-          }
           break;
         }
         default:
@@ -381,8 +376,15 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
       return ifNode;
     }
     case 'While': {
-      const condition = optimizeWithConstants(node.condition, constants) ?? node.condition;
-      const body = node.body.map((n) => optimizeWithConstants(n, new Map(constants))).filter((n): n is IRNode => n !== null && n.kind !== 'Noop');
+      const mutated = new Set<string>();
+      for (const stmt of node.body) collectAssignedNames(stmt, mutated);
+      const scoped = new Map(constants);
+      for (const name of mutated) scoped.delete(name);
+      const condition = optimizeWithConstants(node.condition, scoped) ?? node.condition;
+      const body = node.body
+        .map((n) => optimizeWithConstants(n, new Map(scoped)))
+        .filter((n): n is IRNode => n !== null && n.kind !== 'Noop');
+      for (const name of mutated) constants.delete(name);
       if (condition.kind === 'Boolean' && condition.value === false) return null;
       const whileNode: IRWhile = { kind: 'While', condition, body, location: node.location };
       return whileNode;
@@ -412,6 +414,70 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
       return null;
     default:
       return node;
+  }
+}
+
+function collectAssignedNames(node: IRNode, out: Set<string>): void {
+  switch (node.kind) {
+    case 'Let':
+      out.add(node.name);
+      collectAssignedNames(node.value, out);
+      return;
+    case 'Assign':
+      out.add(node.target);
+      collectAssignedNames(node.value, out);
+      return;
+    case 'If':
+      collectAssignedNames(node.condition, out);
+      node.thenBody.forEach((n) => collectAssignedNames(n, out));
+      node.elseBody?.forEach((n) => collectAssignedNames(n, out));
+      return;
+    case 'While':
+      collectAssignedNames(node.condition, out);
+      node.body.forEach((n) => collectAssignedNames(n, out));
+      return;
+    case 'MatchExpr':
+      collectAssignedNames(node.value, out);
+      node.arms.forEach((arm) => collectAssignedNames(arm.body, out));
+      return;
+    case 'ExprStmt':
+      collectAssignedNames(node.expr, out);
+      return;
+    case 'Return':
+      collectAssignedNames(node.value, out);
+      return;
+    case 'Binary':
+      collectAssignedNames(node.left, out);
+      collectAssignedNames(node.right, out);
+      return;
+    case 'Call':
+      node.args.forEach((arg) => collectAssignedNames(arg, out));
+      return;
+    case 'StructLiteral':
+      node.fields.forEach((field) => collectAssignedNames(field.value, out));
+      return;
+    case 'Member':
+      collectAssignedNames(node.object, out);
+      return;
+    case 'Index':
+      collectAssignedNames(node.target, out);
+      return;
+    case 'Enum':
+      node.values.forEach((value) => collectAssignedNames(value, out));
+      return;
+    case 'Phi':
+      collectAssignedNames(node.condition, out);
+      collectAssignedNames(node.thenValue, out);
+      collectAssignedNames(node.elseValue, out);
+      return;
+    case 'Program':
+      node.body.forEach((n) => collectAssignedNames(n, out));
+      return;
+    case 'Function':
+      node.body.forEach((n) => collectAssignedNames(n, out));
+      return;
+    default:
+      return;
   }
 }
 

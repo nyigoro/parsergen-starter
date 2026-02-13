@@ -53,7 +53,8 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append('\n');
   }
 
-  emit(ir, 0, builder);
+  const hoistSsa = ir.kind === 'Program' && ir.ssa === true;
+  emit(ir, 0, builder, { hoistSsa });
 
   let code = builder.toString().trimEnd() + '\n';
   if (includeRuntime) {
@@ -74,11 +75,72 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   return { code, map };
 }
 
-function emit(node: IRNode, indent: number, out: CodeBuilder): void {
+type EmitContext = {
+  hoistSsa: boolean;
+  ssaNames?: Set<string> | null;
+};
+
+const SSA_NAME_PATTERN = /_\d+$/;
+
+function collectSsaNames(nodes: IRNode[], out: Set<string>): void {
+  for (const node of nodes) {
+    switch (node.kind) {
+      case 'Let':
+        if (SSA_NAME_PATTERN.test(node.name)) out.add(node.name);
+        collectSsaNames([node.value], out);
+        break;
+      case 'Phi':
+        if (SSA_NAME_PATTERN.test(node.name)) out.add(node.name);
+        collectSsaNames([node.condition, node.thenValue, node.elseValue], out);
+        break;
+      case 'If':
+        collectSsaNames([node.condition], out);
+        collectSsaNames(node.thenBody, out);
+        if (node.elseBody) collectSsaNames(node.elseBody, out);
+        break;
+      case 'While':
+        collectSsaNames([node.condition], out);
+        collectSsaNames(node.body, out);
+        break;
+      case 'Return':
+        collectSsaNames([node.value], out);
+        break;
+      case 'ExprStmt':
+        collectSsaNames([node.expr], out);
+        break;
+      case 'Binary':
+        collectSsaNames([node.left, node.right], out);
+        break;
+      case 'Call':
+        collectSsaNames(node.args, out);
+        break;
+      case 'StructLiteral':
+        collectSsaNames(node.fields.map((field) => field.value), out);
+        break;
+      case 'Member':
+        collectSsaNames([node.object], out);
+        break;
+      case 'Index':
+        collectSsaNames([node.target], out);
+        break;
+      case 'Enum':
+        collectSsaNames(node.values, out);
+        break;
+      case 'MatchExpr':
+        collectSsaNames([node.value], out);
+        collectSsaNames(node.arms.map((arm) => arm.body), out);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext): void {
   const pad = '  '.repeat(indent);
   switch (node.kind) {
     case 'Program':
-      node.body.forEach((n) => emit(n, indent, out));
+      node.body.forEach((n) => emit(n, indent, out, ctx));
       return;
     case 'Function': {
       const params = node.params.join(', ');
@@ -88,27 +150,57 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
         node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
       );
       out.append('\n');
-      node.body.forEach((n) => emit(n, indent + 1, out));
+      let ssaNames: Set<string> | null = null;
+      if (ctx.hoistSsa) {
+        const collected = new Set<string>();
+        collectSsaNames(node.body, collected);
+        if (collected.size > 0) ssaNames = collected;
+      }
+      if (ssaNames && ssaNames.size > 0) {
+        const declPad = '  '.repeat(indent + 1);
+        for (const name of Array.from(ssaNames).sort()) {
+          out.append(`${declPad}let ${name};`, 'Let');
+          out.append('\n');
+        }
+      }
+      const nextCtx: EmitContext = { ...ctx, ssaNames };
+      node.body.forEach((n) => emit(n, indent + 1, out, nextCtx));
       out.append(`${pad}}`, node.kind, node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined);
       out.append('\n');
       return;
     }
     case 'Let':
-      out.append(
-        `${pad}let ${node.name} = `,
-        node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
-      );
+      if (ctx.ssaNames?.has(node.name)) {
+        out.append(
+          `${pad}${node.name} = `,
+          node.kind,
+          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        );
+      } else {
+        out.append(
+          `${pad}let ${node.name} = `,
+          node.kind,
+          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        );
+      }
       out.appendExpr(emitExpr(node.value));
       out.append(';');
       out.append('\n');
       return;
     case 'Phi':
-      out.append(
-        `${pad}let ${node.name} = (`,
-        node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
-      );
+      if (ctx.ssaNames?.has(node.name)) {
+        out.append(
+          `${pad}${node.name} = (`,
+          node.kind,
+          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        );
+      } else {
+        out.append(
+          `${pad}let ${node.name} = (`,
+          node.kind,
+          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        );
+      }
       out.appendExpr(emitExpr(node.condition));
       out.append(') ? ');
       out.appendExpr(emitExpr(node.thenValue));
@@ -146,7 +238,7 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
       out.appendExpr(emitExpr(node.condition));
       out.append(') {');
       out.append('\n');
-      node.thenBody.forEach((n) => emit(n, indent + 1, out));
+      node.thenBody.forEach((n) => emit(n, indent + 1, out, ctx));
       if (node.elseBody && node.elseBody.length > 0) {
         out.append(
           `${pad}} else {`,
@@ -154,7 +246,7 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
           node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
         );
         out.append('\n');
-        node.elseBody.forEach((n) => emit(n, indent + 1, out));
+        node.elseBody.forEach((n) => emit(n, indent + 1, out, ctx));
       }
       out.append(
         `${pad}}`,
@@ -173,7 +265,7 @@ function emit(node: IRNode, indent: number, out: CodeBuilder): void {
       out.appendExpr(emitExpr(node.condition));
       out.append(') {');
       out.append('\n');
-      node.body.forEach((n) => emit(n, indent + 1, out));
+      node.body.forEach((n) => emit(n, indent + 1, out, ctx));
       out.append(
         `${pad}}`,
         node.kind,

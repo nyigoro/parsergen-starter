@@ -57,6 +57,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 |---|---|---|
 | AST lowering | Beta | Used by transpiler |
 | JS codegen | Beta | Match lowering + IIFE |
+| IR optimization (SSA) | Stable | Function‑scoped SSA + loop‑safe constant propagation |
 | Source maps | Stable | External + inline options |
 | Multi‑file module compilation | Stable | Import resolution via bundling (topological compile planned) |
 

@@ -80,8 +80,9 @@ describe('Lumina codegen', () => {
     const ir = optimizeIR(lowerLumina(ast as never))!;
     const out = generateJS(ir, { target: 'esm' }).code;
 
-    expect(out).toMatch(/while \(true\)/);
-    expect(out).toMatch(/i_\d+ = 1/);
+    expect(out).toMatch(/while \(\(i < 3\)\)|while \(i < 3\)/);
+    expect(out).toMatch(/i = \(i \+ 1\)|i = i \+ 1/);
+    expect(out).not.toMatch(/while \(true\)/);
   });
 
   test('folds constant if branches', () => {

@@ -803,6 +803,7 @@ async function compileLumina(
   useRecovery: boolean,
   diCfg: boolean,
   useAstJs: boolean,
+  noOptimize: boolean,
   sourceMap: boolean,
   inlineSourceMap: boolean
 ) {
@@ -836,7 +837,7 @@ async function compileLumina(
     } else {
       const monoAst = monomorphizeAst(bundle.program as never);
       const lowered = lowerLumina(monoAst as never);
-      optimized = optimizeIR(lowered) ?? lowered;
+      optimized = noOptimize ? lowered : optimizeIR(lowered) ?? lowered;
       const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
       out = gen.code;
       result = gen;
@@ -889,7 +890,9 @@ async function compileLumina(
       return { ok: true, map: undefined, ir: cached.ir ?? lowerLumina(monoAst as never) };
     }
     const monoAst = monomorphizeAst(cached.ast as never);
-    const result = generateJS(cached.ir ?? lowerLumina(monoAst as never), {
+    const lowered = lowerLumina(monoAst as never);
+    const ir = noOptimize ? lowered : (cached.ir ?? optimizeIR(lowered) ?? lowered);
+    const result = generateJS(ir, {
       target,
       sourceMap,
       sourceFile: sourcePath,
@@ -911,7 +914,7 @@ async function compileLumina(
     }
     await ensureRuntimeForOutput(outPath, target);
     console.log(`Lumina compiled (cached): ${outPath}`);
-    return { ok: true, map: result.map, ir: cached.ir ?? lowerLumina(cached.ast as never) };
+    return { ok: true, map: result.map, ir };
   }
   const diskCache = await readDiskCache(sourcePath);
   if (diskCache && diskCache.hash === fileHash && diskCache.grammarHash === buildCache.grammarHash) {
@@ -944,7 +947,9 @@ async function compileLumina(
       return { ok: true, map: undefined, ir: diskCache.ir ?? lowerLumina(monoAst as never) };
     }
     const monoAst = monomorphizeAst(diskCache.ast as never);
-    const result = generateJS(diskCache.ir ?? lowerLumina(monoAst as never), {
+    const lowered = lowerLumina(monoAst as never);
+    const ir = noOptimize ? lowered : (diskCache.ir ?? optimizeIR(lowered) ?? lowered);
+    const result = generateJS(ir, {
       target,
       sourceMap,
       sourceFile: sourcePath,
@@ -966,7 +971,7 @@ async function compileLumina(
     }
     await ensureRuntimeForOutput(outPath, target);
     console.log(`Lumina compiled (cached): ${outPath}`);
-    return { ok: true, map: result.map, ir: diskCache.ir ?? lowerLumina(diskCache.ast as never) };
+    return { ok: true, map: result.map, ir };
   }
   buildCache.stats.misses += 1;
 
@@ -1001,7 +1006,7 @@ async function compileLumina(
   } else {
     const monoAst = monomorphizeAst(ast as never);
     const lowered = lowerLumina(monoAst as never);
-    optimized = optimizeIR(lowered) ?? lowered;
+    optimized = noOptimize ? lowered : optimizeIR(lowered) ?? lowered;
     const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
     out = gen.code;
     result = gen;
@@ -1034,7 +1039,7 @@ async function compileLumina(
     hash: fileHash,
     ast,
     diagnostics: analysis.diagnostics,
-    ir: optimized,
+    ir: noOptimize ? null : optimized,
     grammarHash: buildCache.grammarHash ?? '',
   };
   buildCache.files.set(sourcePath, entry);
@@ -1115,6 +1120,7 @@ export async function compileLuminaTask(payload: {
   useRecovery: boolean;
   diCfg?: boolean;
   useAstJs?: boolean;
+  noOptimize?: boolean;
   sourceMap?: boolean;
   inlineSourceMap?: boolean;
 }) {
@@ -1126,6 +1132,7 @@ export async function compileLuminaTask(payload: {
     payload.useRecovery,
     payload.diCfg ?? false,
     payload.useAstJs ?? false,
+    payload.noOptimize ?? false,
     payload.sourceMap ?? false,
     payload.inlineSourceMap ?? false
   );
@@ -1154,6 +1161,7 @@ async function watchLumina(
   outPathArg?: string,
   useRecovery: boolean = false,
   diCfg: boolean = false,
+  noOptimize: boolean = false,
   inlineSourceMap: boolean = false
 ) {
   const resolvedSources = sources.map((s) => path.resolve(s));
@@ -1175,6 +1183,7 @@ async function watchLumina(
         useRecovery,
         diCfg,
         useAstJs,
+        noOptimize,
         sourceMap,
         inlineSourceMap
       );
@@ -1188,6 +1197,7 @@ async function watchLumina(
       useRecovery,
       diCfg,
       useAstJs,
+      noOptimize,
       sourceMap,
       inlineSourceMap,
     });
@@ -1254,6 +1264,7 @@ type WorkerRequest =
         useRecovery: boolean;
         diCfg: boolean;
         useAstJs?: boolean;
+        noOptimize?: boolean;
         sourceMap?: boolean;
         inlineSourceMap?: boolean;
       };
@@ -1333,6 +1344,7 @@ Options:
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
   --ast-js             Emit JS directly from AST (no IR)
+  --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
 
 Config file:
   lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir, recovery
@@ -1362,6 +1374,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const useRecovery = parseBooleanFlag(args, '--recovery') || config.recovery === true;
   const diCfg = parseBooleanFlag(args, '--di-cfg');
   const useAstJs = parseBooleanFlag(args, '--ast-js');
+  const noOptimize = parseBooleanFlag(args, '--no-optimize');
   const listConfig = parseBooleanFlag(args, '--list-config');
   const sourceMapMode = args.get('--source-map') as string | undefined;
   let sourceMap = parseBooleanFlag(args, '--sourcemap');
@@ -1431,6 +1444,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
           useRecovery,
           diCfg,
           useAstJs,
+          noOptimize,
           sourceMap,
           inlineSourceMap
         );
@@ -1480,7 +1494,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       sources.push(...extensions.map((ext) => `**/*${ext}`));
     }
     if (sources.length === 0) throw new Error('Missing <file> for watch');
-    await watchLumina(sources, outDir, target, grammarPath, outArg, useRecovery, diCfg, inlineSourceMap);
+    await watchLumina(sources, outDir, target, grammarPath, outArg, useRecovery, diCfg, noOptimize, inlineSourceMap);
     return;
   }
 
