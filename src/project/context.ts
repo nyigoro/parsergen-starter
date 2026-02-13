@@ -29,6 +29,8 @@ export interface SourceDocument {
   signatures?: Map<string, string>;
   functionHashes?: Map<string, string>;
   inferredReturns?: Map<string, LuminaType>;
+  hmCallSignatures?: Map<number, { args: LuminaType[]; returnType: LuminaType }>;
+  hmExprTypes?: Map<number, string>;
 }
 
 type ImportBinding = {
@@ -196,6 +198,8 @@ export class ProjectContext {
     doc.importAliases = undefined;
     doc.importNameMap = undefined;
     doc.moduleBindings = undefined;
+    doc.hmCallSignatures = undefined;
+    doc.hmExprTypes = undefined;
     const prevSignatures = doc.signatures ?? new Map<string, string>();
     let signatureChanged = false;
     let changedSymbols: string[] = [];
@@ -253,6 +257,8 @@ export class ProjectContext {
           moduleBindings,
         });
         doc.symbols = analysis.symbols;
+        doc.hmCallSignatures = analysis.hmCallSignatures;
+        doc.hmExprTypes = analysis.hmExprTypes;
         doc.inferredReturns = new Map<string, LuminaType>();
         for (const sym of analysis.symbols.list()) {
           if (sym.kind === 'function' && sym.type) {
@@ -301,6 +307,16 @@ export class ProjectContext {
     return this.documents.get(normalized)?.moduleBindings ?? new Map();
   }
 
+  getHmCallSignatures(uri: string): Map<number, { args: LuminaType[]; returnType: LuminaType }> {
+    const normalized = this.toUri(this.toFsPath(uri));
+    return this.documents.get(normalized)?.hmCallSignatures ?? new Map();
+  }
+
+  getHmExprTypes(uri: string): Map<number, string> {
+    const normalized = this.toUri(this.toFsPath(uri));
+    return this.documents.get(normalized)?.hmExprTypes ?? new Map();
+  }
+
   getImportAliases(uri: string): Map<string, string> {
     const normalized = this.toUri(this.toFsPath(uri));
     return this.documents.get(normalized)?.importAliases ?? new Map();
@@ -320,6 +336,39 @@ export class ProjectContext {
       return { ...sym, name } as SymbolInfo;
     }
     return undefined;
+  }
+
+  resolveImportedMember(base: string, member: string, uri: string): SymbolInfo | undefined {
+    const normalized = this.toUri(this.toFsPath(uri));
+    const doc = this.documents.get(normalized);
+    const binding = doc?.importNameMap?.get(base);
+    if (!binding || !binding.namespace) return undefined;
+
+    const registryModule = this.moduleRegistry.get(binding.source);
+    if (registryModule) {
+      const exp = registryModule.exports.get(member);
+      if (exp?.kind === 'function') {
+        return {
+          name: member,
+          kind: 'function',
+          type: exp.returnType,
+          paramTypes: exp.paramTypes,
+          paramNames: exp.paramNames,
+          visibility: 'public',
+          extern: true,
+          uri: exp.moduleId,
+        };
+      }
+      return undefined;
+    }
+
+    const resolved = this.resolveImport(this.toFsPath(normalized), binding.source);
+    this.ensureDocumentLoaded(resolved);
+    const target = this.documents.get(resolved);
+    const sym = target?.symbols?.get(member);
+    if (!sym) return undefined;
+    if (sym.visibility === 'private' && resolved !== normalized) return undefined;
+    return { ...sym, name: member } as SymbolInfo;
   }
 
   getDocumentAst(uri: string): unknown | undefined {
@@ -385,6 +434,7 @@ export class ProjectContext {
       moduleBindings,
     });
     doc.symbols = analysis.symbols;
+    doc.hmCallSignatures = analysis.hmCallSignatures;
   }
 
   listDocuments(): SourceDocument[] {
@@ -559,12 +609,14 @@ export class ProjectContext {
   ): Map<string, ModuleExport> {
     const bindingsMap = resolveModuleBindings(program as never, this.moduleRegistry);
     const modulesBySource = new Map<string, ModuleNamespace>();
+    const aliasModule = (mod: ModuleNamespace, alias: string): ModuleNamespace =>
+      mod.name === alias ? mod : { ...mod, name: alias };
     for (const binding of bindings) {
       if (bindingsMap.has(binding.local)) continue;
       const registryModule = this.moduleRegistry.get(binding.source);
       if (registryModule) {
         if (binding.namespace) {
-          bindingsMap.set(binding.local, registryModule as ModuleNamespace);
+          bindingsMap.set(binding.local, aliasModule(registryModule as ModuleNamespace, binding.local));
         } else {
           const exp = registryModule.exports.get(binding.original);
           if (exp) {
@@ -576,17 +628,17 @@ export class ProjectContext {
         }
         continue;
       }
-      let module = modulesBySource.get(binding.source);
+      const resolved = this.resolveImport(this.toFsPath(currentUri), binding.source);
+      let module = modulesBySource.get(resolved);
       if (!module) {
-        const resolved = this.resolveImport(this.toFsPath(currentUri), binding.source);
         this.ensureDocumentLoaded(resolved);
         const doc = this.documents.get(resolved);
         if (!doc?.symbols) continue;
-        module = buildModuleNamespaceFromSymbols(binding.source, doc.symbols.list());
-        modulesBySource.set(binding.source, module);
+        module = buildModuleNamespaceFromSymbols(binding.source, doc.symbols.list(), resolved);
+        modulesBySource.set(resolved, module);
       }
       if (binding.namespace) {
-        bindingsMap.set(binding.local, module);
+        bindingsMap.set(binding.local, aliasModule(module, binding.local));
       } else {
         const exp = module.exports.get(binding.original);
         if (exp) {
@@ -732,7 +784,17 @@ function collectReferences(program: { type: string; body?: unknown[] }): Map<str
 
   const walkExpr = (expr: unknown) => {
     if (!expr || typeof expr !== 'object') return;
-    const node = expr as { type?: string; name?: string; left?: unknown; right?: unknown; value?: unknown; location?: Location; callee?: unknown; args?: unknown[] };
+    const node = expr as {
+      type?: string;
+      name?: string;
+      left?: unknown;
+      right?: unknown;
+      value?: unknown;
+      location?: Location;
+      callee?: unknown;
+      args?: unknown[];
+      target?: unknown;
+    };
     switch (node.type) {
       case 'Identifier':
         if (node.name) add(node.name, node.location);
@@ -746,6 +808,9 @@ function collectReferences(program: { type: string; body?: unknown[] }): Map<str
       case 'Binary':
         walkExpr(node.left);
         walkExpr(node.right);
+        return;
+      case 'Move':
+        walkExpr(node.target);
         return;
       case 'Number':
       case 'String':

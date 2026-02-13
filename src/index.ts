@@ -108,3 +108,4 @@ export {
   generalize
 } from './lumina/types';
 export { inferProgram } from './lumina/hm-infer';
+export { monomorphize, collectInstantiations, specializeFunction, rewriteCallSites } from './lumina/monomorphize';

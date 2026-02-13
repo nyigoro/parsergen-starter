@@ -221,9 +221,12 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
     case 'Binary': {
       if (expr.op === '|>') {
         if (expr.right.type === 'Call') {
+          const calleeName = expr.right.enumName
+            ? `${expr.right.enumName}.${expr.right.callee.name}`
+            : expr.right.callee.name;
           const call: IRCall = {
             kind: 'Call',
-            callee: expr.right.callee.name,
+            callee: calleeName,
             args: [lowerExpr(expr.left, ctx), ...expr.right.args.map((arg) => lowerExpr(arg, ctx))],
             location: expr.location,
           };
@@ -255,7 +258,7 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       }
       const call: IRCall = {
         kind: 'Call',
-        callee: expr.callee.name,
+        callee: expr.enumName ? `${expr.enumName}.${expr.callee.name}` : expr.callee.name,
         args: expr.args.map((arg) => lowerExpr(arg, ctx)),
         location: expr.location,
       };
@@ -276,6 +279,9 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
     case 'Identifier': {
       const id: IRIdentifier = { kind: 'Identifier', name: expr.name, location: expr.location };
       return id;
+    }
+    case 'Move': {
+      return lowerExpr(expr.target, ctx);
     }
     case 'Member': {
       if (expr.object.type === 'Identifier') {

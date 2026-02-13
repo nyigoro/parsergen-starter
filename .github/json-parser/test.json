@@ -1,0 +1,69 @@
+# Test Cases for JSON Parser
+
+## Valid Inputs
+
+### Primitives
+null
+true
+false
+42
+3.14
+-15
+"hello world"
+
+### Arrays
+[]
+[1]
+[1, 2, 3]
+[true, false, null]
+["a", "b", "c"]
+[1, "two", true, null]
+
+### Objects
+{}
+{"key": "value"}
+{"name": "Lumina", "version": 1.0}
+{"a": 1, "b": 2, "c": 3}
+
+### Nested Structures
+{"array": [1, 2, 3]}
+{"nested": {"inner": "value"}}
+[{"id": 1}, {"id": 2}]
+{"users": [{"name": "Alice"}, {"name": "Bob"}]}
+
+### Complex Example
+{
+  "name": "JSON Parser",
+  "version": 1.0,
+  "features": ["parsing", "validation", "pretty-printing"],
+  "metadata": {
+    "author": "Lumina",
+    "license": "MIT",
+    "tags": ["json", "parser", "lumina"]
+  },
+  "stats": {
+    "lines": 200,
+    "functions": 15,
+    "tests": 10
+  }
+}
+
+## Invalid Inputs
+
+### Missing quotes on keys
+{key: "value"}
+
+### Trailing commas
+[1, 2, 3,]
+{"a": 1,}
+
+### Missing values
+{"key": }
+[1, 2, ]
+
+### Unclosed structures
+{"key": "value"
+[1, 2, 3
+
+### Invalid escapes
+"hello\xworld"

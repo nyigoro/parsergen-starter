@@ -1,0 +1,48 @@
+import { io, str } from "@std"
+
+// Local Option type to keep the demo self-contained
+pub enum Option<T> {
+  Some(T),
+  None
+}
+
+fn identity<T>(x: T) -> T {
+  return x;
+}
+
+fn wrap<T>(x: T) -> Option<T> {
+  return Option.Some(x);
+}
+
+fn unwrap_or<T>(opt: Option<T>, fallback: T) -> T {
+  match opt {
+    Option.Some(val) => {
+      return val;
+    },
+    Option.None => {
+      return fallback;
+    }
+  }
+}
+
+pub fn main() {
+  let int_val = identity(42);
+  let str_val = identity("hello");
+  let bool_val = identity(true);
+
+  let opt_int = wrap(10);
+  let opt_str = wrap("hi");
+
+  let got_int = unwrap_or(opt_int, 0);
+  let got_str = unwrap_or(opt_str, "default");
+
+  io.println(str.from_int(int_val));
+  io.println(str_val);
+  if (bool_val) {
+    io.println("true");
+  } else {
+    io.println("false");
+  }
+  io.println(str.from_int(got_int));
+  io.println(got_str);
+}

@@ -1,0 +1,66 @@
+import { parse } from "./parser.lm"
+import { stringify } from "./stringify.lm"
+import { Result, Option, ParseError } from "./types.lm"
+import { io, str } from "@std"
+
+pub fn main() -> void {
+  io.println("Lumina JSON Parser")
+  io.println("Enter JSON (or 'exit' to quit):")
+  io.println("")
+
+  repl()
+}
+
+fn repl() -> void {
+  io.print("> ")
+
+  match io.readLine() {
+    Option.Some(input) => {
+      if (str.eq(input, "exit")) {
+        io.println("Goodbye!")
+      } else {
+        if (str.eq(input, "")) {
+          repl()
+        } else {
+          process_input(input)
+          repl()
+        }
+      }
+    },
+    Option.None => {
+      io.println("No input available")
+      repl()
+    }
+  }
+}
+
+fn process_input(input: string) -> void {
+  match parse(input) {
+    Result.Ok(value) => {
+      io.println("Parsed successfully:")
+      io.println(stringify(value))
+      io.println("")
+    },
+    Result.Err(error) => {
+      io.println("Parse error:")
+      io.println(format_error(error))
+      io.println("")
+    }
+  }
+}
+
+fn format_error(error: ParseError) -> string {
+  match error {
+    ParseError.UnexpectedToken(tok, pos) => {
+      return str.concat("Unexpected token: ", str.concat(tok, str.concat(" at position ", str.from_int(pos))))
+    },
+    ParseError.UnexpectedEof => { return "Unexpected end of input" },
+    ParseError.InvalidNumber(s) => { return str.concat("Invalid number: ", s) },
+    ParseError.InvalidString(s) => { return str.concat("Invalid string: ", s) },
+    ParseError.UnexpectedChar(c, pos) => {
+      return str.concat("Unexpected character: ", str.concat(c, str.concat(" at position ", str.from_int(pos))))
+    }
+  }
+}
+
+main()

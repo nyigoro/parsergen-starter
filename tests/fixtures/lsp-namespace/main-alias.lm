@@ -1,0 +1,6 @@
+import * as m from "./math.lm";
+import * as calc from "./math.lm";
+
+fn main() {
+  return calc.add(1, 1);
+}

@@ -195,6 +195,10 @@ export default [
       'transform.js',
       'grammar.peg',
       '.parsergenrc',
+      'examples/json-parser/*.js',
+      'examples/json-parser/*.mjs',
+      'examples/json-parser/*.cjs',
+      'examples/json-parser/lumina-runtime.*',
     ],
   },
 ];

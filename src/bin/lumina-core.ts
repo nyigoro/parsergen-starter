@@ -8,7 +8,16 @@ import { Worker } from 'node:worker_threads';
 import { compileGrammar } from '../grammar/index.js';
 import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
 import { formatError, highlightSnippet } from '../utils/index.js';
-import { analyzeLumina, lowerLumina, optimizeIR, generateJS, generateJSFromAst, irToDot } from '../index.js';
+import {
+  analyzeLumina,
+  lowerLumina,
+  optimizeIR,
+  generateJS,
+  generateJSFromAst,
+  irToDot,
+  inferProgram,
+  monomorphize,
+} from '../index.js';
 import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
 import { parseWithPanicRecovery } from '../project/panic.js';
@@ -414,6 +423,378 @@ function parseSource(
   return { ast: payload, diagnostics: result.diagnostics, parseError: payload === null };
 }
 
+type ImportBindingLite = { local: string; original: string; source: string; namespace: boolean };
+
+function collectImportBindingsLite(program: { type?: string; body?: unknown[] }): ImportBindingLite[] {
+  const bindings: ImportBindingLite[] = [];
+  if (!program || !Array.isArray(program.body)) return bindings;
+  for (const stmt of program.body) {
+    const node = stmt as { type?: string; spec?: unknown; source?: { value?: string } };
+    if (node.type !== 'Import') continue;
+    const source = node.source?.value;
+    if (!source) continue;
+    const spec = node.spec;
+    if (Array.isArray(spec)) {
+      for (const item of spec) {
+        if (typeof item === 'string') {
+          bindings.push({ local: item, original: item, source, namespace: false });
+          continue;
+        }
+        if (!item || typeof item !== 'object') continue;
+        const specItem = item as { name?: string; alias?: string; namespace?: boolean };
+        const name = specItem.name;
+        if (!name) continue;
+        const local = specItem.alias ?? name;
+        bindings.push({ local, original: name, source, namespace: Boolean(specItem.namespace) });
+      }
+      continue;
+    }
+    if (typeof spec === 'string') {
+      bindings.push({ local: spec, original: spec, source, namespace: true });
+      continue;
+    }
+    if (spec && typeof spec === 'object' && 'name' in (spec as { name?: string })) {
+      const specItem = spec as { name?: string; alias?: string; namespace?: boolean };
+      const name = specItem.name;
+      if (!name) continue;
+      const local = specItem.alias ?? name;
+      bindings.push({ local, original: name, source, namespace: Boolean(specItem.namespace) });
+    }
+  }
+  return bindings;
+}
+
+function parseTypeNameLite(typeName: string): { base: string; args: string[] } | null {
+  const lt = typeName.indexOf('<');
+  if (lt < 0) return { base: typeName, args: [] };
+  if (!typeName.endsWith('>')) return null;
+  const base = typeName.slice(0, lt);
+  const inner = typeName.slice(lt + 1, -1);
+  const args: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === '<') depth += 1;
+    if (ch === '>') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      args.push(inner.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const tail = inner.slice(start).trim();
+  if (tail.length > 0) args.push(tail);
+  return { base, args };
+}
+
+function rewriteTypeNameLite(typeExpr: unknown, renameMap: Map<string, string>): unknown {
+  if (typeof typeExpr !== 'string') return typeExpr;
+  const parsed = parseTypeNameLite(typeExpr);
+  if (!parsed) return renameMap.get(typeExpr) ?? typeExpr;
+  const base = renameMap.get(parsed.base) ?? parsed.base;
+  if (parsed.args.length === 0) return base;
+  const args = parsed.args.map((arg) => rewriteTypeNameLite(arg, renameMap) as string);
+  return `${base}<${args.join(',')}>`;
+}
+
+function rewriteProgramImports(
+  program: { type?: string; body?: unknown[] },
+  renameMap: Map<string, string>,
+  namespaceAliases: Map<string, string | null>
+): { type: string; body: unknown[]; location?: unknown } {
+  const makeIdentifier = (name: string, location?: unknown) => ({ type: 'Identifier', name, location });
+  const rewriteExpr = (expr: unknown): unknown => {
+    if (!expr || typeof expr !== 'object') return expr;
+    const node = expr as { type?: string; [key: string]: unknown };
+    switch (node.type) {
+      case 'Identifier': {
+        const name = node.name as string | undefined;
+        if (name && renameMap.has(name)) node.name = renameMap.get(name);
+        return node;
+      }
+      case 'Call': {
+        const enumName = node.enumName as string | null | undefined;
+        if (enumName) {
+          if (renameMap.has(enumName)) {
+            node.enumName = renameMap.get(enumName);
+          } else if (namespaceAliases.has(enumName)) {
+            const replacement = namespaceAliases.get(enumName);
+            node.enumName = replacement ?? null;
+          }
+        }
+        const callee = node.callee as { name?: string } | undefined;
+        if (callee?.name && renameMap.has(callee.name)) {
+          callee.name = renameMap.get(callee.name);
+        }
+        if (Array.isArray(node.args)) {
+          node.args = node.args.map((arg) => rewriteExpr(arg));
+        }
+        return node;
+      }
+      case 'Member': {
+        const object = node.object as { type?: string; name?: string } | undefined;
+        if (object?.type === 'Identifier' && object.name && namespaceAliases.has(object.name)) {
+          const replacement = namespaceAliases.get(object.name);
+          if (replacement) {
+            object.name = replacement;
+            node.object = object;
+            return node;
+          }
+          return makeIdentifier(node.property as string, node.location);
+        }
+        node.object = rewriteExpr(node.object);
+        return node;
+      }
+      case 'Binary':
+        node.left = rewriteExpr(node.left);
+        node.right = rewriteExpr(node.right);
+        return node;
+      case 'Move':
+        node.target = rewriteExpr(node.target);
+        return node;
+      case 'StructLiteral': {
+        const name = node.name as string | undefined;
+        if (name && renameMap.has(name)) node.name = renameMap.get(name);
+        if (Array.isArray(node.fields)) {
+          node.fields = node.fields.map((field: { value?: unknown }) => ({
+            ...field,
+            value: rewriteExpr(field.value),
+          }));
+        }
+        return node;
+      }
+      case 'MatchExpr': {
+        node.value = rewriteExpr(node.value);
+        if (Array.isArray(node.arms)) {
+          node.arms = node.arms.map((arm: { pattern?: unknown; body?: unknown }) => ({
+            ...arm,
+            pattern: rewritePattern(arm.pattern),
+            body: rewriteExpr(arm.body),
+          }));
+        }
+        return node;
+      }
+      case 'IsExpr': {
+        const enumName = node.enumName as string | null | undefined;
+        if (enumName) {
+          if (renameMap.has(enumName)) {
+            node.enumName = renameMap.get(enumName);
+          } else if (namespaceAliases.has(enumName)) {
+            const replacement = namespaceAliases.get(enumName);
+            node.enumName = replacement ?? null;
+          }
+        }
+        node.value = rewriteExpr(node.value);
+        return node;
+      }
+      default:
+        return node;
+    }
+  };
+
+  const rewritePattern = (pattern: unknown): unknown => {
+    if (!pattern || typeof pattern !== 'object') return pattern;
+    const node = pattern as { type?: string; enumName?: string | null };
+    if (node.type === 'EnumPattern' && node.enumName) {
+      if (renameMap.has(node.enumName)) {
+        node.enumName = renameMap.get(node.enumName) ?? node.enumName;
+      } else if (namespaceAliases.has(node.enumName)) {
+        const replacement = namespaceAliases.get(node.enumName);
+        node.enumName = replacement ?? null;
+      }
+    }
+    return node;
+  };
+
+  const rewriteStmt = (stmt: unknown): unknown => {
+    if (!stmt || typeof stmt !== 'object') return stmt;
+    const node = stmt as { type?: string; [key: string]: unknown };
+    switch (node.type) {
+      case 'FnDecl': {
+        if (Array.isArray(node.params)) {
+          node.params = node.params.map((param: { typeName?: unknown }) => ({
+            ...param,
+            typeName: rewriteTypeNameLite(param.typeName, renameMap),
+          }));
+        }
+        node.returnType = rewriteTypeNameLite(node.returnType, renameMap);
+        if (Array.isArray(node.typeParams)) {
+          node.typeParams = node.typeParams.map((param: { bound?: unknown[] }) => ({
+            ...param,
+            bound: Array.isArray(param.bound)
+              ? param.bound.map((bound) => rewriteTypeNameLite(bound, renameMap))
+              : param.bound,
+          }));
+        }
+        node.body = rewriteStmt(node.body);
+        return node;
+      }
+      case 'Let':
+        node.typeName = rewriteTypeNameLite(node.typeName, renameMap);
+        node.value = rewriteExpr(node.value);
+        return node;
+      case 'Return':
+        node.value = rewriteExpr(node.value);
+        return node;
+      case 'Assign':
+        node.target = rewriteExpr(node.target);
+        node.value = rewriteExpr(node.value);
+        return node;
+      case 'ExprStmt':
+        node.expr = rewriteExpr(node.expr);
+        return node;
+      case 'If':
+        node.condition = rewriteExpr(node.condition);
+        node.thenBlock = rewriteStmt(node.thenBlock);
+        if (node.elseBlock) node.elseBlock = rewriteStmt(node.elseBlock);
+        return node;
+      case 'While':
+        node.condition = rewriteExpr(node.condition);
+        node.body = rewriteStmt(node.body);
+        return node;
+      case 'MatchStmt':
+        node.value = rewriteExpr(node.value);
+        if (Array.isArray(node.arms)) {
+          node.arms = node.arms.map((arm: { pattern?: unknown; body?: unknown }) => ({
+            ...arm,
+            pattern: rewritePattern(arm.pattern),
+            body: rewriteStmt(arm.body),
+          }));
+        }
+        return node;
+      case 'Block':
+        if (Array.isArray(node.body)) node.body = node.body.map(rewriteStmt);
+        return node;
+      case 'StructDecl':
+      case 'TypeDecl': {
+        if (Array.isArray(node.body)) {
+          node.body = node.body.map((field: { typeName?: unknown }) => ({
+            ...field,
+            typeName: rewriteTypeNameLite(field.typeName, renameMap),
+          }));
+        }
+        if (Array.isArray(node.typeParams)) {
+          node.typeParams = node.typeParams.map((param: { bound?: unknown[] }) => ({
+            ...param,
+            bound: Array.isArray(param.bound)
+              ? param.bound.map((bound) => rewriteTypeNameLite(bound, renameMap))
+              : param.bound,
+          }));
+        }
+        return node;
+      }
+      case 'EnumDecl': {
+        if (Array.isArray(node.variants)) {
+          node.variants = node.variants.map((variant: { params?: unknown[] }) => ({
+            ...variant,
+            params: Array.isArray(variant.params)
+              ? variant.params.map((param) => rewriteTypeNameLite(param, renameMap))
+              : variant.params,
+          }));
+        }
+        if (Array.isArray(node.typeParams)) {
+          node.typeParams = node.typeParams.map((param: { bound?: unknown[] }) => ({
+            ...param,
+            bound: Array.isArray(param.bound)
+              ? param.bound.map((bound) => rewriteTypeNameLite(bound, renameMap))
+              : param.bound,
+          }));
+        }
+        return node;
+      }
+      case 'StructLiteral':
+      case 'MatchExpr':
+        return rewriteExpr(node);
+      default:
+        return node;
+    }
+  };
+
+  const body = Array.isArray(program.body)
+    ? program.body
+        .filter((stmt) => {
+          const node = stmt as { type?: string; source?: { value?: string } };
+          if (node.type !== 'Import') return true;
+          const source = node.source?.value ?? '';
+          return !source.startsWith('.');
+        })
+        .map((stmt) => rewriteStmt(stmt))
+    : [];
+
+  return { type: 'Program', body, location: (program as { location?: unknown }).location };
+}
+
+async function bundleProgram(
+  entryPath: string,
+  parser: ReturnType<typeof compileGrammar>,
+  useRecovery: boolean,
+  extensions: string[],
+  stdPath: string
+): Promise<{ program: unknown; sources: Map<string, string> } | null> {
+  const visited = new Map<string, { ast: unknown; text: string; bindings: ImportBindingLite[] }>();
+  const order: string[] = [];
+  const sources = new Map<string, string>();
+
+  const visit = async (filePath: string): Promise<boolean> => {
+    if (visited.has(filePath)) return true;
+    const text = await fs.readFile(filePath, 'utf-8');
+    const { ast, diagnostics, parseError } = parseSource(text, parser, useRecovery);
+    if (parseError) return false;
+    if (diagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(text, diagnostics);
+      return false;
+    }
+    if (!ast) return false;
+    const bindings = collectImportBindingsLite(ast as { type?: string; body?: unknown[] });
+    visited.set(filePath, { ast, text, bindings });
+    sources.set(filePath, text);
+
+    const imports = extractImports(text);
+    for (const imp of imports) {
+      if (!imp.startsWith('.')) continue;
+      const resolved = resolveImport(filePath, imp, extensions, stdPath);
+      if (!resolved) continue;
+      const ok = await visit(resolved);
+      if (!ok) return false;
+    }
+    order.push(filePath);
+    return true;
+  };
+
+  const ok = await visit(entryPath);
+  if (!ok) return null;
+
+  const mergedBody: unknown[] = [];
+  for (const filePath of order) {
+    const entry = visited.get(filePath);
+    if (!entry) continue;
+    const renameMap = new Map<string, string>();
+    const namespaceAliases = new Map<string, string | null>();
+    for (const binding of entry.bindings) {
+      if (!binding.source.startsWith('.')) continue;
+      if (binding.namespace) {
+        namespaceAliases.set(binding.local, null);
+        continue;
+      }
+      if (binding.local !== binding.original) {
+        renameMap.set(binding.local, binding.original);
+      }
+    }
+    const rewritten = rewriteProgramImports(entry.ast as { type?: string; body?: unknown[] }, renameMap, namespaceAliases);
+    if (Array.isArray(rewritten.body)) {
+      mergedBody.push(...rewritten.body);
+    }
+  }
+
+  return { program: { type: 'Program', body: mergedBody }, sources };
+}
+
+function monomorphizeAst(program: unknown): unknown {
+  const hm = inferProgram(program as never);
+  const cloned = JSON.parse(JSON.stringify(program)) as never;
+  return monomorphize(cloned, { inferredCalls: hm.inferredCalls });
+}
+
 async function compileLumina(
   sourcePath: string,
   outPath: string,
@@ -428,12 +809,62 @@ async function compileLumina(
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
   await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath);
+  const hasRelativeImports = extractImports(source).some((imp) => imp.startsWith('.'));
+  if (hasRelativeImports) {
+    const bundle = await bundleProgram(sourcePath, parser, useRecovery, configFileExtensions, configStdPath);
+    if (!bundle) return { ok: false };
+    for (const [depPath, depSource] of bundle.sources.entries()) {
+      await updateDependenciesForFile(depPath, depSource, configFileExtensions, configStdPath);
+    }
+    const analysis = analyzeLumina(bundle.program as never, { diDebug: diCfg });
+    if (analysis.diagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+      return { ok: false };
+    }
+    let out = '';
+    let optimized = null as ReturnType<typeof optimizeIR>;
+    let result: { code: string; map?: RawSourceMap } | null = null;
+    if (useAstJs) {
+      const monoAst = monomorphizeAst(bundle.program as never);
+      result = generateJSFromAst(monoAst as never, {
+        target,
+        sourceMap,
+        sourceFile: sourcePath,
+        sourceContent: source,
+      });
+      out = result.code;
+    } else {
+      const monoAst = monomorphizeAst(bundle.program as never);
+      const lowered = lowerLumina(monoAst as never);
+      optimized = optimizeIR(lowered) ?? lowered;
+      const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
+      out = gen.code;
+      result = gen;
+    }
+    if (sourceMap && result.map) {
+      if (inlineSourceMap) {
+        out = appendInlineSourceMapComment(out, result.map);
+      } else {
+        const mapFileName = path.basename(outPath) + '.map';
+        out = appendSourceMapComment(out, mapFileName);
+      }
+    }
+    await fs.writeFile(outPath, out, 'utf-8');
+    if (sourceMap && result.map && !inlineSourceMap) {
+      const mapPath = outPath + '.map';
+      await fs.writeFile(mapPath, JSON.stringify(result.map, null, 2), 'utf-8');
+    }
+    await ensureRuntimeForOutput(outPath, target);
+    console.log(`Lumina compiled (bundled): ${outPath}`);
+    return { ok: true, map: result.map, ir: optimized };
+  }
   const fileHash = hashText(source);
   const cached = buildCache.files.get(sourcePath);
   if (cached && cached.hash === fileHash && cached.grammarHash === buildCache.grammarHash) {
     buildCache.stats.hits += 1;
     if (useAstJs) {
-      const result = generateJSFromAst(cached.ast as never, {
+      const monoAst = monomorphizeAst(cached.ast as never);
+      const result = generateJSFromAst(monoAst as never, {
         target,
         sourceMap,
         sourceFile: sourcePath,
@@ -455,9 +886,10 @@ async function compileLumina(
       }
       await ensureRuntimeForOutput(outPath, target);
       console.log(`Lumina compiled (cached): ${outPath}`);
-      return { ok: true, map: undefined, ir: cached.ir ?? lowerLumina(cached.ast as never) };
+      return { ok: true, map: undefined, ir: cached.ir ?? lowerLumina(monoAst as never) };
     }
-    const result = generateJS(cached.ir ?? lowerLumina(cached.ast as never), {
+    const monoAst = monomorphizeAst(cached.ast as never);
+    const result = generateJS(cached.ir ?? lowerLumina(monoAst as never), {
       target,
       sourceMap,
       sourceFile: sourcePath,
@@ -486,7 +918,8 @@ async function compileLumina(
     buildCache.stats.hits += 1;
     buildCache.files.set(sourcePath, diskCache);
     if (useAstJs) {
-      const result = generateJSFromAst(diskCache.ast as never, {
+      const monoAst = monomorphizeAst(diskCache.ast as never);
+      const result = generateJSFromAst(monoAst as never, {
         target,
         sourceMap,
         sourceFile: sourcePath,
@@ -508,9 +941,10 @@ async function compileLumina(
       }
       await ensureRuntimeForOutput(outPath, target);
       console.log(`Lumina compiled (cached): ${outPath}`);
-      return { ok: true, map: undefined, ir: diskCache.ir ?? lowerLumina(diskCache.ast as never) };
+      return { ok: true, map: undefined, ir: diskCache.ir ?? lowerLumina(monoAst as never) };
     }
-    const result = generateJS(diskCache.ir ?? lowerLumina(diskCache.ast as never), {
+    const monoAst = monomorphizeAst(diskCache.ast as never);
+    const result = generateJS(diskCache.ir ?? lowerLumina(monoAst as never), {
       target,
       sourceMap,
       sourceFile: sourcePath,
@@ -556,7 +990,8 @@ async function compileLumina(
   let optimized = null as ReturnType<typeof optimizeIR>;
   let result: { code: string; map?: RawSourceMap } | null = null;
   if (useAstJs) {
-    result = generateJSFromAst(ast as never, {
+    const monoAst = monomorphizeAst(ast as never);
+    result = generateJSFromAst(monoAst as never, {
       target,
       sourceMap,
       sourceFile: sourcePath,
@@ -564,7 +999,8 @@ async function compileLumina(
     });
     out = result.code;
   } else {
-    const lowered = lowerLumina(ast as never);
+    const monoAst = monomorphizeAst(ast as never);
+    const lowered = lowerLumina(monoAst as never);
     optimized = optimizeIR(lowered) ?? lowered;
     const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
     out = gen.code;
@@ -891,8 +1327,9 @@ Options:
   --recovery           Enable resilient parsing (panic mode)
   --di-cfg             Emit CFG dot files during compile/check
   --list-config        Print resolved config and exit
-  --sourcemap          Emit source map alongside output
-  --inline-sourcemap   Embed base64 source map (opt-in)
+  --source-map <mode>  Emit source map: inline | external | none
+  --sourcemap          Emit source map alongside output (legacy)
+  --inline-sourcemap   Embed base64 source map (legacy)
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
   --ast-js             Emit JS directly from AST (no IR)
@@ -926,8 +1363,22 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const diCfg = parseBooleanFlag(args, '--di-cfg');
   const useAstJs = parseBooleanFlag(args, '--ast-js');
   const listConfig = parseBooleanFlag(args, '--list-config');
-  const sourceMap = parseBooleanFlag(args, '--sourcemap');
-  const inlineSourceMap = parseBooleanFlag(args, '--inline-sourcemap');
+  const sourceMapMode = args.get('--source-map') as string | undefined;
+  let sourceMap = parseBooleanFlag(args, '--sourcemap');
+  let inlineSourceMap = parseBooleanFlag(args, '--inline-sourcemap');
+  if (typeof sourceMapMode === 'string') {
+    const mode = sourceMapMode.toLowerCase();
+    if (mode === 'none') {
+      sourceMap = false;
+      inlineSourceMap = false;
+    } else if (mode === 'inline') {
+      sourceMap = true;
+      inlineSourceMap = true;
+    } else if (mode === 'external') {
+      sourceMap = true;
+      inlineSourceMap = false;
+    }
+  }
   const debugIr = parseBooleanFlag(args, '--debug-ir');
   const profileCache = parseBooleanFlag(args, '--profile-cache');
   buildCache.cacheDir = config.cacheDir ?? '.lumina-cache';

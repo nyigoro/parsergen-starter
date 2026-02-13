@@ -1,0 +1,9 @@
+fn identity<T>(x: T) -> T {
+  return x;
+}
+
+fn main() {
+  let a = identity(1);
+  let b = identity("hi");
+  return a;
+}

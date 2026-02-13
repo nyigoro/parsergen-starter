@@ -86,6 +86,18 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('rejects recursive structs without indirection', () => {
+    const program = `
+      struct Node { next: Node }
+      fn main() { return 0; }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Recursive field/);
+  });
+
   test('supports extern symbols with module sources', () => {
     const program = `
       extern fn readFile(path: string) -> string from "node:fs";
@@ -257,6 +269,22 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('infers Option.None in recursive struct literal with HM enabled', () => {
+    const program = `
+      enum Option<T> { Some(T), None }
+      struct Task { id: int, subtask: Option<Task> }
+      fn main() {
+        let t = Task { id: 1, subtask: Option.None };
+        return t.id;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never, { useHm: true, hmSourceText: program });
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
   test('warns on shadowed bindings', () => {
     const program = `
       fn main() {
@@ -307,6 +335,181 @@ describe('Lumina semantic analysis', () => {
     const analysis = analyzeLumina(result as never);
     const messages = analysis.diagnostics.map(d => d.message).join('\n');
     expect(messages).toMatch(/Missing case/);
+  });
+
+  test('flags missing Err after Result.map when matching', () => {
+    const program = `
+      import { Result } from "@std";
+      enum Result<T, E> { Ok(T), Err(E) }
+      fn inc(x: int) -> int { return x + 1; }
+      fn main() {
+        let res: Result<int,string> = Result.Ok(1);
+        let mapped = Result.map(inc, res);
+        match mapped {
+          Result.Ok(v) => { return v; }
+        }
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const messages = analysis.diagnostics.map(d => d.message).join('\n');
+    expect(messages).toMatch(/Missing case/);
+  });
+
+  test('reports use-after-move with related move location', () => {
+    const program = `
+      fn main() {
+        let x = 1;
+        let y = move x;
+        let z = x;
+        return y;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'USE_AFTER_MOVE');
+    expect(moveError).toBeTruthy();
+    expect(moveError?.message).toMatch(/Cannot use 'x'/);
+    expect(moveError?.relatedInformation?.[0]?.message).toMatch(/Moved here/);
+  });
+
+  test('flags use-after-move when moved in only one branch', () => {
+    const program = `
+      fn main() {
+        let x = 1;
+        if (true) {
+          let y = move x;
+        } else {
+          let y = 0;
+        }
+        let z = x;
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'USE_AFTER_MOVE');
+    expect(moveError).toBeTruthy();
+  });
+
+  test('allows use after reinit in both branches', () => {
+    const program = `
+      fn main() {
+        let mut x: int = 1;
+        let y = move x;
+        if (true) {
+          x = 2;
+        } else {
+          x = 3;
+        }
+        let z = x;
+        return z;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'USE_AFTER_MOVE');
+    expect(moveError).toBeFalsy();
+  });
+
+  test('flags move while borrowed in the same statement', () => {
+    const program = `
+      fn consume(ref x: int, y: int) -> int { return y; }
+      fn main() {
+        let mut x: int = 1;
+        return consume(x, move x);
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'MOVE_WHILE_BORROWED');
+    expect(moveError).toBeTruthy();
+  });
+
+  test('flags use-after-move when only some match arms move', () => {
+    const program = `
+      enum Opt { Some(int), None }
+      fn main() {
+        let x = 1;
+        match Some(1) {
+          Some(_) => { let y = move x; },
+          None => { let y = 0; },
+        }
+        let z = x;
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'USE_AFTER_MOVE');
+    expect(moveError).toBeTruthy();
+  });
+
+  test('rejects variable use after move in single match arm', () => {
+    const program = `
+      struct Box { val: int }
+      enum Opt { Some(int), None }
+      fn main() {
+        let b = Box { val: 10 };
+        let opt = Some(1);
+        match opt {
+          Some(_) => { let y = move b; },
+          None => { },
+        }
+        let z = b;
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    expect(analysis.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'USE_AFTER_MOVE' })
+    );
+  });
+
+  test('allows partial moves of struct fields', () => {
+    const program = `
+      struct Pair { a: int, b: int }
+      fn main() {
+        let p = Pair { a: 1, b: 2 };
+        let moved = move p.a;
+        let ok = p.b;
+        let bad = p.a;
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveErrors = analysis.diagnostics.filter(d => d.code === 'USE_AFTER_MOVE');
+    expect(moveErrors.some(d => d.message.includes("p.a"))).toBe(true);
+    expect(moveErrors.some(d => d.message.includes("p.b"))).toBe(false);
+  });
+
+  test('rejects moving whole struct after partial move', () => {
+    const program = `
+      struct Pair { a: int, b: int }
+      fn main() {
+        let p = Pair { a: 1, b: 2 };
+        let moved = move p.a;
+        let whole = p;
+        let whole2 = move p;
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveErrors = analysis.diagnostics.filter(d => d.code === 'USE_AFTER_MOVE');
+    expect(moveErrors.some(d => d.message.includes("Cannot use 'p' because field 'a' was already moved"))).toBe(true);
+    expect(moveErrors.some(d => d.message.includes("Cannot move 'p' because field 'a' was already moved"))).toBe(true);
   });
 
   test('supports match expressions and struct member access', () => {

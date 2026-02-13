@@ -1,0 +1,242 @@
+import { List, Option, Result, Token, ParseError, JsonValue, Entry } from "./types.lm"
+import { lex } from "./lexer.lm"
+
+struct ParseResult {
+  value: JsonValue,
+  rest: List<Token>
+}
+
+struct MembersResult {
+  members: List<Entry>,
+  rest: List<Token>
+}
+
+struct ElementsResult {
+  elements: List<JsonValue>,
+  rest: List<Token>
+}
+
+// Main parse entry point
+pub fn parse(input: string) -> Result<JsonValue, ParseError> {
+  match lex(input) {
+    Result.Ok(tokens) => {
+      match parse_value(tokens) {
+        Result.Ok(res) => {
+          match res.rest {
+            List.Cons(Token.Eof, _) => { return Result.Ok(res.value) },
+            List.Cons(tok, _) => { return Result.Err(ParseError.UnexpectedToken(token_name(tok), 0)) },
+            List.Nil => { return Result.Ok(res.value) }
+          }
+        },
+        Result.Err(e) => { return Result.Err(e) }
+      }
+    },
+    Result.Err(e) => { return Result.Err(e) }
+  }
+}
+
+// Parse any JSON value
+fn parse_value(tokens: List<Token>) -> Result<ParseResult, ParseError> {
+  match tokens {
+    List.Nil => { return Result.Err(ParseError.UnexpectedEof) },
+    List.Cons(tok, rest) => {
+      match tok {
+        Token.NullLit => { return Result.Ok(ParseResult { value: JsonValue.Null, rest: rest }) },
+        Token.TrueLit => { return Result.Ok(ParseResult { value: JsonValue.Bool(true), rest: rest }) },
+        Token.FalseLit => { return Result.Ok(ParseResult { value: JsonValue.Bool(false), rest: rest }) },
+        Token.NumberLit(n) => { return Result.Ok(ParseResult { value: JsonValue.Number(n), rest: rest }) },
+        Token.StringLit(s) => { return Result.Ok(ParseResult { value: JsonValue.String(s), rest: rest }) },
+        Token.LeftBrace => { return parse_object(rest) },
+        Token.LeftBracket => { return parse_array(rest) },
+        _ => { return Result.Err(ParseError.UnexpectedToken(token_name(tok), 0)) }
+      }
+    }
+  }
+}
+
+// Parse object: { "key": value, ... }
+fn parse_object(tokens: List<Token>) -> Result<ParseResult, ParseError> {
+  match tokens {
+    List.Cons(Token.RightBrace, rest) => {
+      return Result.Ok(ParseResult { value: JsonValue.Object(List.Nil), rest: rest })
+    },
+    _ => {
+      match parse_members(tokens, List.Nil) {
+        Result.Ok(members_res) => {
+          match expect_token(members_res.rest, Token.RightBrace) {
+            Result.Ok(rest) => {
+              return Result.Ok(ParseResult {
+                value: JsonValue.Object(list_reverse(members_res.members)),
+                rest: rest
+              })
+            },
+            Result.Err(e) => { return Result.Err(e) }
+          }
+        },
+        Result.Err(e) => { return Result.Err(e) }
+      }
+    }
+  }
+}
+
+// Parse object members
+fn parse_members(tokens: List<Token>, acc: List<Entry>) -> Result<MembersResult, ParseError> {
+  match tokens {
+    List.Cons(Token.StringLit(key), rest1) => {
+      match expect_token(rest1, Token.Colon) {
+        Result.Ok(rest2) => {
+          match parse_value(rest2) {
+            Result.Ok(val_res) => {
+              let entry = Entry { key: key, value: val_res.value }
+              match val_res.rest {
+                List.Cons(Token.Comma, rest3) => {
+                  return parse_members(rest3, List.Cons(entry, acc))
+                },
+                _ => {
+                  return Result.Ok(MembersResult { members: List.Cons(entry, acc), rest: val_res.rest })
+                }
+              }
+            },
+            Result.Err(e) => { return Result.Err(e) }
+          }
+        },
+        Result.Err(e) => { return Result.Err(e) }
+      }
+    },
+    _ => { return Result.Err(ParseError.UnexpectedToken("expected string key", 0)) }
+  }
+}
+
+// Parse array: [ value, ... ]
+fn parse_array(tokens: List<Token>) -> Result<ParseResult, ParseError> {
+  match tokens {
+    List.Cons(Token.RightBracket, rest) => {
+      return Result.Ok(ParseResult { value: JsonValue.Array(List.Nil), rest: rest })
+    },
+    _ => {
+      match parse_elements(tokens, List.Nil) {
+        Result.Ok(elems_res) => {
+          match expect_token(elems_res.rest, Token.RightBracket) {
+            Result.Ok(rest) => {
+              return Result.Ok(ParseResult {
+                value: JsonValue.Array(list_reverse(elems_res.elements)),
+                rest: rest
+              })
+            },
+            Result.Err(e) => { return Result.Err(e) }
+          }
+        },
+        Result.Err(e) => { return Result.Err(e) }
+      }
+    }
+  }
+}
+
+// Parse array elements
+fn parse_elements(tokens: List<Token>, acc: List<JsonValue>) -> Result<ElementsResult, ParseError> {
+  match parse_value(tokens) {
+    Result.Ok(val_res) => {
+      match val_res.rest {
+        List.Cons(Token.Comma, rest) => {
+          return parse_elements(rest, List.Cons(val_res.value, acc))
+        },
+        _ => {
+          return Result.Ok(ElementsResult { elements: List.Cons(val_res.value, acc), rest: val_res.rest })
+        }
+      }
+    },
+    Result.Err(e) => { return Result.Err(e) }
+  }
+}
+
+// Expect a specific token
+fn expect_token(tokens: List<Token>, expected: Token) -> Result<List<Token>, ParseError> {
+  match tokens {
+    List.Nil => { return Result.Err(ParseError.UnexpectedEof) },
+    List.Cons(tok, rest) => {
+      if (token_eq(tok, expected)) {
+        return Result.Ok(rest)
+      }
+      return Result.Err(ParseError.UnexpectedToken(token_name(tok), 0))
+    }
+  }
+}
+
+// Token equality check
+fn token_eq(a: Token, b: Token) -> bool {
+  match a {
+    Token.LeftBrace => {
+      match b {
+        Token.LeftBrace => { return true },
+        _ => { return false }
+      }
+    },
+    Token.RightBrace => {
+      match b {
+        Token.RightBrace => { return true },
+        _ => { return false }
+      }
+    },
+    Token.LeftBracket => {
+      match b {
+        Token.LeftBracket => { return true },
+        _ => { return false }
+      }
+    },
+    Token.RightBracket => {
+      match b {
+        Token.RightBracket => { return true },
+        _ => { return false }
+      }
+    },
+    Token.Colon => {
+      match b {
+        Token.Colon => { return true },
+        _ => { return false }
+      }
+    },
+    Token.Comma => {
+      match b {
+        Token.Comma => { return true },
+        _ => { return false }
+      }
+    },
+    Token.Eof => {
+      match b {
+        Token.Eof => { return true },
+        _ => { return false }
+      }
+    },
+    _ => { return false }
+  }
+}
+
+// Get token name for error messages
+fn token_name(tok: Token) -> string {
+  match tok {
+    Token.LeftBrace => { return "{" },
+    Token.RightBrace => { return "}" },
+    Token.LeftBracket => { return "[" },
+    Token.RightBracket => { return "]" },
+    Token.Colon => { return ":" },
+    Token.Comma => { return "," },
+    Token.StringLit(_) => { return "string" },
+    Token.NumberLit(_) => { return "number" },
+    Token.TrueLit => { return "true" },
+    Token.FalseLit => { return "false" },
+    Token.NullLit => { return "null" },
+    Token.Eof => { return "EOF" }
+  }
+}
+
+// List reverse helper
+fn list_reverse<T>(list: List<T>) -> List<T> {
+  return list_reverse_into(list, List.Nil)
+}
+
+fn list_reverse_into<T>(list: List<T>, acc: List<T>) -> List<T> {
+  match list {
+    List.Nil => { return acc },
+    List.Cons(head, tail) => { return list_reverse_into(tail, List.Cons(head, acc)) }
+  }
+}

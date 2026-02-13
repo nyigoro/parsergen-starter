@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 export type LuminaEnumLike =
   | { $tag: string; $payload?: unknown }
   | { tag: string; values?: unknown[] };
@@ -21,9 +23,13 @@ const getEnumPayload = (value: LuminaEnumLike): unknown => {
   return values;
 };
 
+const isNodeRuntime = (): boolean =>
+  typeof process !== 'undefined' &&
+  typeof (process as { versions?: { node?: string } }).versions?.node === 'string';
+
 const supportsColor = (): boolean => {
   if (typeof window !== 'undefined') return false;
-  if (typeof process === 'undefined') return false;
+  if (!isNodeRuntime()) return false;
   const stdout = (process as { stdout?: { isTTY?: boolean } }).stdout;
   return Boolean(stdout && stdout.isTTY);
 };
@@ -158,21 +164,166 @@ export function toJsonString(value: unknown, pretty: boolean = true): string {
   return JSON.stringify(normalized, null, pretty ? 2 : undefined);
 }
 
+const renderArgs = (args: unknown[]): string => args.map((arg) => formatValue(arg)).join(' ');
+
+const writeStdout = (text: string, newline: boolean) => {
+  if (isNodeRuntime()) {
+    const stdout = (process as { stdout?: { write?: (chunk: string) => void } }).stdout;
+    if (stdout?.write) {
+      stdout.write(text + (newline ? '\n' : ''));
+      return;
+    }
+  }
+  // eslint-disable-next-line no-console -- runtime output
+  console.log(text);
+};
+
+const writeStderr = (text: string, newline: boolean) => {
+  if (isNodeRuntime()) {
+    const stderr = (process as { stderr?: { write?: (chunk: string) => void } }).stderr;
+    if (stderr?.write) {
+      stderr.write(text + (newline ? '\n' : ''));
+      return;
+    }
+  }
+  // eslint-disable-next-line no-console -- runtime output
+  console.error(text);
+};
+
+let stdinCache: string[] | null = null;
+let stdinIndex = 0;
+
+const readStdinLines = (): string[] => {
+  if (stdinCache) return stdinCache;
+  const globalAny = globalThis as { __luminaStdin?: string | string[] };
+  if (globalAny.__luminaStdin !== undefined) {
+    const raw = globalAny.__luminaStdin;
+    stdinCache = Array.isArray(raw) ? raw.map(String) : String(raw).split(/\r?\n/);
+    return stdinCache;
+  }
+  if (isNodeRuntime()) {
+    const stdin = (process as { stdin?: { read?: () => unknown; setEncoding?: (enc: string) => void } }).stdin;
+    const isTty = (stdin as { isTTY?: boolean } | undefined)?.isTTY;
+    if (isTty !== true) {
+      try {
+        const raw = readFileSync(0, 'utf8');
+        if (raw.length > 0) {
+          stdinCache = raw.split(/\r?\n/);
+          return stdinCache;
+        }
+      } catch {
+        // ignore stdin read errors
+      }
+    }
+    if (stdin?.setEncoding) stdin.setEncoding('utf8');
+    const chunk = stdin?.read?.();
+    if (typeof chunk === 'string') {
+      stdinCache = chunk.split(/\r?\n/);
+      return stdinCache;
+    }
+    if (chunk && typeof (chunk as { toString?: (enc: string) => string }).toString === 'function') {
+      stdinCache = (chunk as { toString: (enc: string) => string }).toString('utf8').split(/\r?\n/);
+      return stdinCache;
+    }
+  }
+  stdinCache = [];
+  return stdinCache;
+};
+
 export const io = {
+  print: (...args: unknown[]) => {
+    writeStdout(renderArgs(args), false);
+  },
   println: (...args: unknown[]) => {
-    const rendered = args.map((arg) => formatValue(arg));
-    // eslint-disable-next-line no-console -- runtime output
-    console.log(...rendered);
+    writeStdout(renderArgs(args), true);
+  },
+  eprint: (...args: unknown[]) => {
+    writeStderr(renderArgs(args), false);
+  },
+  eprintln: (...args: unknown[]) => {
+    writeStderr(renderArgs(args), true);
+  },
+  readLine: () => {
+    const globalAny = globalThis as { __luminaReadLine?: () => string | null | undefined };
+    if (typeof globalAny.__luminaReadLine === 'function') {
+      const value = globalAny.__luminaReadLine();
+      return value == null ? Option.None : Option.Some(value);
+    }
+    if (typeof (globalThis as { prompt?: (message?: string) => string | null }).prompt === 'function') {
+      const value = (globalThis as { prompt?: (message?: string) => string | null }).prompt?.();
+      return value == null ? Option.None : Option.Some(value);
+    }
+    const lines = readStdinLines();
+    if (stdinIndex >= lines.length) return Option.None;
+    const value = lines[stdinIndex++];
+    return Option.Some(value);
   },
   printJson: (value: unknown, pretty: boolean = true) => {
     // eslint-disable-next-line no-console -- runtime output
     console.log(toJsonString(value, pretty));
   },
-  print: (...args: unknown[]) => {
-    const rendered = args.map((arg) => formatValue(arg));
-    // eslint-disable-next-line no-console -- runtime output
-    console.log(...rendered);
+};
+
+export const str = {
+  length: (value: string) => value.length,
+  concat: (a: string, b: string) => a + b,
+  split: (value: string, sep: string) => value.split(sep),
+  trim: (value: string) => value.trim(),
+  contains: (haystack: string, needle: string) => haystack.includes(needle),
+  eq: (a: string, b: string) => a === b,
+  char_at: (value: string, index: number) => {
+    if (Number.isNaN(index) || index < 0 || index >= value.length) return Option.None;
+    return Option.Some(value.charAt(index));
   },
+  is_whitespace: (value: string) => value === ' ' || value === '\n' || value === '\t' || value === '\r',
+  is_digit: (value: string) => {
+    if (!value || value.length === 0) return false;
+    const code = value.charCodeAt(0);
+    return code >= 48 && code <= 57;
+  },
+  to_int: (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? Result.Err(`Invalid int: ${value}`) : Result.Ok(parsed);
+  },
+  to_float: (value: string) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isNaN(parsed) ? Result.Err(`Invalid float: ${value}`) : Result.Ok(parsed);
+  },
+  from_int: (value: number) => String(Math.trunc(value)),
+  from_float: (value: number) => String(value),
+};
+
+export const math = {
+  abs: (value: number) => Math.trunc(Math.abs(value)),
+  min: (a: number, b: number) => Math.trunc(Math.min(a, b)),
+  max: (a: number, b: number) => Math.trunc(Math.max(a, b)),
+  absf: (value: number) => Math.abs(value),
+  minf: (a: number, b: number) => Math.min(a, b),
+  maxf: (a: number, b: number) => Math.max(a, b),
+  sqrt: (value: number) => Math.sqrt(value),
+  pow: (base: number, exp: number) => Math.pow(base, exp),
+  floor: (value: number) => Math.floor(value),
+  ceil: (value: number) => Math.ceil(value),
+  round: (value: number) => Math.round(value),
+  pi: Math.PI,
+  e: Math.E,
+};
+
+export const list = {
+  map: <A, B>(f: (value: A) => B, xs: A[]): B[] => xs.map(f),
+  filter: <A>(pred: (value: A) => boolean, xs: A[]): A[] => xs.filter(pred),
+  fold: <A, B>(f: (acc: B, value: A) => B, init: B, xs: A[]): B => xs.reduce((acc, val) => f(acc, val), init),
+  reverse: <A>(xs: A[]): A[] => xs.slice().reverse(),
+  length: <A>(xs: A[]): number => xs.length,
+  append: <A>(xs: A[], ys: A[]): A[] => xs.concat(ys),
+  take: <A>(n: number, xs: A[]): A[] => xs.slice(0, Math.max(0, n)),
+  drop: <A>(n: number, xs: A[]): A[] => xs.slice(Math.max(0, n)),
+  find: <A>(pred: (value: A) => boolean, xs: A[]) => {
+    const found = xs.find(pred);
+    return found === undefined ? Option.None : Option.Some(found);
+  },
+  any: <A>(pred: (value: A) => boolean, xs: A[]): boolean => xs.some(pred),
+  all: <A>(pred: (value: A) => boolean, xs: A[]): boolean => xs.every(pred),
 };
 
 export class LuminaPanic extends Error {
@@ -190,15 +341,33 @@ export class LuminaPanic extends Error {
 export const Option = {
   Some: (value: unknown) => ({ $tag: 'Some', $payload: value }),
   None: { $tag: 'None' },
-  map: (opt: unknown, fn: (value: unknown) => unknown) => {
+  map: (fn: (value: unknown) => unknown, opt: unknown) => {
     const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
     if (tag === 'Some') return Option.Some(fn(getEnumPayload(opt)));
     return Option.None;
   },
-  and_then: (opt: unknown, fn: (value: unknown) => unknown) => {
+  and_then: (fn: (value: unknown) => unknown, opt: unknown) => {
     const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
     if (tag === 'Some') return fn(getEnumPayload(opt));
     return Option.None;
+  },
+  or_else: (fallback: () => unknown, opt: unknown) => {
+    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
+    if (tag === 'Some') return opt;
+    return fallback();
+  },
+  unwrap_or: (fallback: unknown, opt: unknown) => {
+    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
+    if (tag === 'Some') return getEnumPayload(opt);
+    return fallback;
+  },
+  is_some: (opt: unknown) => {
+    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
+    return tag === 'Some';
+  },
+  is_none: (opt: unknown) => {
+    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
+    return tag !== 'Some';
   },
   unwrap: (opt: unknown, message?: string) => {
     const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
@@ -216,20 +385,33 @@ export const Option = {
 export const Result = {
   Ok: (value: unknown) => ({ $tag: 'Ok', $payload: value }),
   Err: (error: unknown) => ({ $tag: 'Err', $payload: error }),
-  map: (res: unknown, fn: (value: unknown) => unknown) => {
+  map: (fn: (value: unknown) => unknown, res: unknown) => {
     const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
     if (tag === 'Ok') return Result.Ok(fn(getEnumPayload(res)));
     return res;
   },
-  and_then: (res: unknown, fn: (value: unknown) => unknown) => {
+  and_then: (fn: (value: unknown) => unknown, res: unknown) => {
     const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
     if (tag === 'Ok') return fn(getEnumPayload(res));
     return res;
   },
-  unwrap_or: (res: unknown, fallback: unknown) => {
+  or_else: (fn: (error: unknown) => unknown, res: unknown) => {
+    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
+    if (tag === 'Ok') return res;
+    return fn(getEnumPayload(res));
+  },
+  unwrap_or: (fallback: unknown, res: unknown) => {
     const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
     if (tag === 'Ok') return getEnumPayload(res);
     return fallback;
+  },
+  is_ok: (res: unknown) => {
+    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
+    return tag === 'Ok';
+  },
+  is_err: (res: unknown) => {
+    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
+    return tag !== 'Ok';
   },
 };
 

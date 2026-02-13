@@ -1,0 +1,265 @@
+import { List, Option, Result, Token, ParseError } from "./types.lm"
+import { str } from "@std"
+
+struct LexResult {
+  token: Token,
+  pos: int
+}
+
+struct DigitScan {
+  text: string,
+  pos: int,
+  found: bool
+}
+
+// Main lexer entry point
+pub fn lex(input: string) -> Result<List<Token>, ParseError> {
+  match lex_tokens(input, 0, List.Nil) {
+    Result.Ok(tokens) => { return Result.Ok(list_reverse(tokens)) },
+    Result.Err(e) => { return Result.Err(e) }
+  }
+}
+
+// Recursive tokenization (accumulates in reverse)
+fn lex_tokens(input: string, pos: int, acc: List<Token>) -> Result<List<Token>, ParseError> {
+  let pos = skip_whitespace(input, pos)
+  let len = str.length(input)
+
+  if (pos >= len) {
+    return Result.Ok(List.Cons(Token.Eof, acc))
+  }
+
+  match char_at(input, pos) {
+    Option.Some(c) => {
+      if (str.eq(c, "{")) {
+        return lex_tokens(input, pos + 1, List.Cons(Token.LeftBrace, acc))
+      }
+      if (str.eq(c, "}")) {
+        return lex_tokens(input, pos + 1, List.Cons(Token.RightBrace, acc))
+      }
+      if (str.eq(c, "[")) {
+        return lex_tokens(input, pos + 1, List.Cons(Token.LeftBracket, acc))
+      }
+      if (str.eq(c, "]")) {
+        return lex_tokens(input, pos + 1, List.Cons(Token.RightBracket, acc))
+      }
+      if (str.eq(c, ":")) {
+        return lex_tokens(input, pos + 1, List.Cons(Token.Colon, acc))
+      }
+      if (str.eq(c, ",")) {
+        return lex_tokens(input, pos + 1, List.Cons(Token.Comma, acc))
+      }
+      if (str.eq(c, "\"")) {
+        match lex_string(input, pos + 1, "") {
+          Result.Ok(res) => { return lex_tokens(input, res.pos, List.Cons(res.token, acc)) },
+          Result.Err(e) => { return Result.Err(e) }
+        }
+      }
+      if (is_digit(c) || str.eq(c, "-")) {
+        match lex_number(input, pos, "") {
+          Result.Ok(res) => { return lex_tokens(input, res.pos, List.Cons(res.token, acc)) },
+          Result.Err(e) => { return Result.Err(e) }
+        }
+      }
+      if (match_literal(input, pos, "true") && is_delimiter(input, pos + 4)) {
+        return lex_tokens(input, pos + 4, List.Cons(Token.TrueLit, acc))
+      }
+      if (match_literal(input, pos, "false") && is_delimiter(input, pos + 5)) {
+        return lex_tokens(input, pos + 5, List.Cons(Token.FalseLit, acc))
+      }
+      if (match_literal(input, pos, "null") && is_delimiter(input, pos + 4)) {
+        return lex_tokens(input, pos + 4, List.Cons(Token.NullLit, acc))
+      }
+
+      return Result.Err(ParseError.UnexpectedChar(c, pos))
+    },
+    Option.None => { return Result.Err(ParseError.UnexpectedEof) }
+  }
+}
+
+// Helper: get character at position
+fn char_at(s: string, pos: int) -> Option<string> {
+  return str.char_at(s, pos)
+}
+
+// Helper: skip whitespace
+fn skip_whitespace(input: string, pos: int) -> int {
+  match char_at(input, pos) {
+    Option.Some(c) => {
+      if (str.is_whitespace(c)) {
+        return skip_whitespace(input, pos + 1)
+      }
+      return pos
+    },
+    Option.None => { return pos }
+  }
+}
+
+// Helper: check if digit
+fn is_digit(c: string) -> bool {
+  return str.is_digit(c)
+}
+
+// Helper: match literal string at position
+fn match_literal(input: string, pos: int, literal: string) -> bool {
+  return match_literal_at(input, pos, literal, 0)
+}
+
+fn match_literal_at(input: string, pos: int, literal: string, idx: int) -> bool {
+  match char_at(literal, idx) {
+    Option.None => { return true },
+    Option.Some(ch) => {
+      match char_at(input, pos + idx) {
+        Option.Some(c) => {
+          if (str.eq(c, ch)) {
+            return match_literal_at(input, pos, literal, idx + 1)
+          }
+          return false
+        },
+        Option.None => { return false }
+      }
+    }
+  }
+}
+
+fn is_delimiter(input: string, pos: int) -> bool {
+  match char_at(input, pos) {
+    Option.None => { return true },
+    Option.Some(c) => {
+      if (str.is_whitespace(c)) { return true }
+      if (str.eq(c, ",")) { return true }
+      if (str.eq(c, "]")) { return true }
+      if (str.eq(c, "}")) { return true }
+      if (str.eq(c, ":")) { return true }
+      return false
+    }
+  }
+}
+
+fn escape_char(c: string) -> Option<string> {
+  if (str.eq(c, "\"")) { return Option.Some("\"") }
+  if (str.eq(c, "\\")) { return Option.Some("\\") }
+  if (str.eq(c, "/")) { return Option.Some("/") }
+  if (str.eq(c, "b")) { return Option.Some("\u0008") }
+  if (str.eq(c, "f")) { return Option.Some("\u000c") }
+  if (str.eq(c, "n")) { return Option.Some("\n") }
+  if (str.eq(c, "r")) { return Option.Some("\r") }
+  if (str.eq(c, "t")) { return Option.Some("\t") }
+  return Option.None
+}
+
+// Lex string literal (basic escapes)
+fn lex_string(input: string, pos: int, acc: string) -> Result<LexResult, ParseError> {
+  match char_at(input, pos) {
+    Option.None => { return Result.Err(ParseError.UnexpectedEof) },
+    Option.Some(c) => {
+      if (str.eq(c, "\"")) {
+        return Result.Ok(LexResult { token: Token.StringLit(acc), pos: pos + 1 })
+      }
+      if (str.eq(c, "\\")) {
+        match char_at(input, pos + 1) {
+          Option.None => { return Result.Err(ParseError.UnexpectedEof) },
+          Option.Some(esc) => {
+            match escape_char(esc) {
+              Option.Some(decoded) => { return lex_string(input, pos + 2, str.concat(acc, decoded)) },
+              Option.None => { return Result.Err(ParseError.InvalidString(acc)) }
+            }
+          }
+        }
+      }
+
+      return lex_string(input, pos + 1, str.concat(acc, c))
+    }
+  }
+}
+
+fn take_digits(input: string, pos: int, acc: string, found: bool) -> DigitScan {
+  match char_at(input, pos) {
+    Option.Some(c) => {
+      if (is_digit(c)) {
+        return take_digits(input, pos + 1, str.concat(acc, c), true)
+      }
+      return DigitScan { text: acc, pos: pos, found: found }
+    },
+    Option.None => { return DigitScan { text: acc, pos: pos, found: found } }
+  }
+}
+
+// Lex number literal
+fn lex_number(input: string, pos: int, acc: string) -> Result<LexResult, ParseError> {
+  let mut pos = pos
+  let mut acc = acc
+
+  match char_at(input, pos) {
+    Option.Some(c) => {
+      if (str.eq(c, "-")) {
+        acc = str.concat(acc, "-")
+        pos = pos + 1
+      }
+    },
+    Option.None => { return Result.Err(ParseError.UnexpectedEof) }
+  }
+
+  let mut scan = take_digits(input, pos, acc, false)
+  if (scan.found == false) {
+    return Result.Err(ParseError.InvalidNumber(scan.text))
+  }
+
+  pos = scan.pos
+  acc = scan.text
+
+  match char_at(input, pos) {
+    Option.Some(c) => {
+      if (str.eq(c, ".")) {
+        scan = take_digits(input, pos + 1, str.concat(acc, "."), false)
+        if (scan.found == false) {
+          return Result.Err(ParseError.InvalidNumber(scan.text))
+        }
+        pos = scan.pos
+        acc = scan.text
+      }
+    },
+    Option.None => {}
+  }
+
+  match char_at(input, pos) {
+    Option.Some(c) => {
+      if (str.eq(c, "e") || str.eq(c, "E")) {
+        acc = str.concat(acc, c)
+        pos = pos + 1
+        match char_at(input, pos) {
+          Option.Some(sign) => {
+            if (str.eq(sign, "+") || str.eq(sign, "-")) {
+              acc = str.concat(acc, sign)
+              pos = pos + 1
+            }
+          },
+          Option.None => {}
+        }
+        scan = take_digits(input, pos, acc, false)
+        if (scan.found == false) {
+          return Result.Err(ParseError.InvalidNumber(scan.text))
+        }
+        pos = scan.pos
+        acc = scan.text
+      }
+    },
+    Option.None => {}
+  }
+
+  match str.to_float(acc) {
+    Result.Ok(n) => { return Result.Ok(LexResult { token: Token.NumberLit(n), pos: pos }) },
+    Result.Err(_) => { return Result.Err(ParseError.InvalidNumber(acc)) }
+  }
+}
+
+fn list_reverse<T>(list: List<T>) -> List<T> {
+  return list_reverse_into(list, List.Nil)
+}
+
+fn list_reverse_into<T>(list: List<T>, acc: List<T>) -> List<T> {
+  match list {
+    List.Nil => { return acc },
+    List.Cons(head, tail) => { return list_reverse_into(tail, List.Cons(head, acc)) }
+  }
+}

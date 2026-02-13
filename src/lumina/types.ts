@@ -1,10 +1,14 @@
 export type PrimitiveName = 'int' | 'float' | 'string' | 'bool' | 'void' | 'any';
 
+import { type Location } from '../utils/index.js';
+
 export type Type =
   | { kind: 'primitive'; name: PrimitiveName }
   | { kind: 'function'; args: Type[]; returnType: Type }
   | { kind: 'variable'; id: number }
-  | { kind: 'adt'; name: string; params: Type[] };
+  | { kind: 'adt'; name: string; params: Type[] }
+  | { kind: 'row'; fields: Map<string, Type>; tail: Type | null }
+  | { kind: 'hole'; location?: Location };
 
 export interface TypeScheme {
   kind: 'scheme';
@@ -13,6 +17,45 @@ export interface TypeScheme {
 }
 
 export type Subst = Map<number, Type>;
+
+export type UnificationReason = 'mismatch' | 'arity' | 'recursive';
+
+export interface UnificationTraceEntry {
+  expected: Type;
+  found: Type;
+  note?: string;
+  location?: { start: { line: number; column: number; offset?: number }; end: { line: number; column: number; offset?: number } };
+}
+
+export interface SourceMapping {
+  generatedLine: number;
+  generatedColumn: number;
+  originalLine: number;
+  originalColumn: number;
+  source: string;
+  name?: string;
+}
+
+export class UnificationError extends Error {
+  expected: Type;
+  found: Type;
+  reason: UnificationReason;
+  trace: UnificationTraceEntry[];
+
+  constructor(reason: UnificationReason, expected: Type, found: Type, trace: UnificationTraceEntry[] = []) {
+    const message =
+      reason === 'arity'
+        ? 'Function arity mismatch'
+        : reason === 'recursive'
+          ? 'Recursive type detected'
+          : 'Type mismatch';
+    super(message);
+    this.reason = reason;
+    this.expected = expected;
+    this.found = found;
+    this.trace = trace;
+  }
+}
 
 let nextTypeVarId = 0;
 
@@ -45,56 +88,191 @@ export function occursIn(target: Type, type: Type, subst: Subst): boolean {
   if (t.kind === 'adt') {
     return t.params.some(param => occursIn(target, param, subst));
   }
+  if (t.kind === 'row') {
+    for (const field of t.fields.values()) {
+      if (occursIn(target, field, subst)) return true;
+    }
+    return t.tail ? occursIn(target, t.tail, subst) : false;
+  }
   return false;
 }
 
-export function unify(t1: Type, t2: Type, subst: Subst): void {
-  const left = prune(t1, subst);
-  const right = prune(t2, subst);
+const sanitizeTypeSegment = (value: string): string =>
+  value.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+
+export function normalizeTypeName(type: Type): string {
+  switch (type.kind) {
+    case 'primitive':
+      return sanitizeTypeSegment(type.name);
+    case 'adt': {
+      const base = sanitizeTypeSegment(type.name);
+      if (type.params.length === 0) return base;
+      const params = type.params.map(normalizeTypeName).join('_');
+      return `${base}_${params}`;
+    }
+    case 'function': {
+      const args = type.args.map(normalizeTypeName).join('_') || 'Unit';
+      const ret = normalizeTypeName(type.returnType);
+      return `Fn_${args}_${ret}`;
+    }
+    case 'variable':
+      return `T${type.id}`;
+    case 'row': {
+      const fields = Array.from(type.fields.entries())
+        .map(([name, value]) => `${sanitizeTypeSegment(name)}_${normalizeTypeName(value)}`)
+        .join('_');
+      const tail = type.tail ? normalizeTypeName(type.tail) : 'Closed';
+      return `Row_${fields}_${tail}`;
+    }
+    case 'hole':
+      return 'Hole';
+    default:
+      return 'Unknown';
+  }
+}
+
+function occursInWithBarrier(
+  target: Type,
+  type: Type,
+  subst: Subst,
+  passedBarrier: boolean,
+  wrapperSet: Set<string>
+): boolean {
+  if (target.kind !== 'variable') return false;
+  const t = prune(type, subst);
+  if (t.kind === 'variable') {
+    return t.id === target.id ? !passedBarrier : false;
+  }
+  if (t.kind === 'function') {
+    return (
+      t.args.some(arg => occursInWithBarrier(target, arg, subst, passedBarrier, wrapperSet)) ||
+      occursInWithBarrier(target, t.returnType, subst, passedBarrier, wrapperSet)
+    );
+  }
+  if (t.kind === 'adt') {
+    const nextBarrier = passedBarrier || wrapperSet.has(t.name);
+    return t.params.some(param => occursInWithBarrier(target, param, subst, nextBarrier, wrapperSet));
+  }
+  if (t.kind === 'row') {
+    for (const field of t.fields.values()) {
+      if (occursInWithBarrier(target, field, subst, passedBarrier, wrapperSet)) return true;
+    }
+    return t.tail ? occursInWithBarrier(target, t.tail, subst, passedBarrier, wrapperSet) : false;
+  }
+  return false;
+}
+
+export function unify(
+  t1: Type,
+  t2: Type,
+  subst: Subst,
+  wrapperSet?: Set<string>,
+  trace: UnificationTraceEntry[] = [],
+  rowResolver?: (type: Type) => Type | null
+): void {
+  let left = prune(t1, subst);
+  let right = prune(t2, subst);
+  const wrappers = wrapperSet;
 
   if (left.kind === 'variable') {
     if (right.kind === 'variable' && left.id === right.id) return;
-    if (occursIn(left, right, subst)) {
-      throw new Error('Recursive type detected');
+    if (wrappers) {
+      if (occursInWithBarrier(left, right, subst, false, wrappers)) {
+        throw new UnificationError('recursive', left, right, trace);
+      }
+    } else if (occursIn(left, right, subst)) {
+      throw new UnificationError('recursive', left, right, trace);
     }
     subst.set(left.id, right);
     return;
   }
 
   if (right.kind === 'variable') {
-    unify(right, left, subst);
+    unify(right, left, subst, wrappers, trace, rowResolver);
     return;
+  }
+
+  if (rowResolver && (left.kind === 'row' || right.kind === 'row')) {
+    if (left.kind === 'adt') {
+      left = rowResolver(left) ?? left;
+    }
+    if (right.kind === 'adt') {
+      right = rowResolver(right) ?? right;
+    }
   }
 
   if (left.kind === 'primitive' && right.kind === 'primitive') {
     if (left.name !== right.name) {
-      throw new Error(`Type mismatch: ${left.name} vs ${right.name}`);
+      throw new UnificationError('mismatch', left, right, trace);
     }
     return;
   }
 
   if (left.kind === 'function' && right.kind === 'function') {
     if (left.args.length !== right.args.length) {
-      throw new Error('Function arity mismatch');
+      throw new UnificationError('arity', left, right, trace);
     }
     for (let i = 0; i < left.args.length; i++) {
-      unify(left.args[i], right.args[i], subst);
+      unify(left.args[i], right.args[i], subst, wrappers, trace, rowResolver);
     }
-    unify(left.returnType, right.returnType, subst);
+    unify(left.returnType, right.returnType, subst, wrappers, trace, rowResolver);
     return;
   }
 
   if (left.kind === 'adt' && right.kind === 'adt') {
     if (left.name !== right.name || left.params.length !== right.params.length) {
-      throw new Error(`Type mismatch: ${left.name} vs ${right.name}`);
+      throw new UnificationError('mismatch', left, right, trace);
     }
     for (let i = 0; i < left.params.length; i++) {
-      unify(left.params[i], right.params[i], subst);
+      unify(left.params[i], right.params[i], subst, wrappers, trace, rowResolver);
     }
     return;
   }
 
-  throw new Error(`Type mismatch: ${left.kind} vs ${right.kind}`);
+  if (left.kind === 'row' && right.kind === 'row') {
+    const leftFields = left.fields;
+    const rightFields = right.fields;
+    for (const [name, type] of leftFields) {
+      const other = rightFields.get(name);
+      if (other) {
+        unify(type, other, subst, wrappers, trace, rowResolver);
+      }
+    }
+    const leftExtra = new Map<string, Type>();
+    for (const [name, type] of leftFields) {
+      if (!rightFields.has(name)) leftExtra.set(name, type);
+    }
+    const rightExtra = new Map<string, Type>();
+    for (const [name, type] of rightFields) {
+      if (!leftFields.has(name)) rightExtra.set(name, type);
+    }
+    if (leftExtra.size > 0) {
+      if (!right.tail) {
+        throw new UnificationError('mismatch', left, right, trace);
+      }
+      const freshTail = freshTypeVar();
+      unify(right.tail, { kind: 'row', fields: leftExtra, tail: freshTail }, subst, wrappers, trace, rowResolver);
+    }
+    if (rightExtra.size > 0) {
+      if (!left.tail) {
+        throw new UnificationError('mismatch', left, right, trace);
+      }
+      const freshTail = freshTypeVar();
+      unify(left.tail, { kind: 'row', fields: rightExtra, tail: freshTail }, subst, wrappers, trace, rowResolver);
+    }
+    if (left.tail && right.tail) {
+      unify(left.tail, right.tail, subst, wrappers, trace, rowResolver);
+    } else if (leftExtra.size === 0 && rightExtra.size === 0) {
+      if (left.tail && !right.tail) {
+        unify(left.tail, { kind: 'row', fields: new Map(), tail: null }, subst, wrappers, trace, rowResolver);
+      } else if (!left.tail && right.tail) {
+        unify(right.tail, { kind: 'row', fields: new Map(), tail: null }, subst, wrappers, trace, rowResolver);
+      }
+    }
+    return;
+  }
+
+  throw new UnificationError('mismatch', left, right, trace);
 }
 
 export function freeTypeVars(type: Type, subst: Subst, acc = new Set<number>()): Set<number> {
@@ -110,6 +288,15 @@ export function freeTypeVars(type: Type, subst: Subst, acc = new Set<number>()):
   }
   if (t.kind === 'adt') {
     t.params.forEach(param => freeTypeVars(param, subst, acc));
+    return acc;
+  }
+  if (t.kind === 'row') {
+    for (const field of t.fields.values()) {
+      freeTypeVars(field, subst, acc);
+    }
+    if (t.tail) {
+      freeTypeVars(t.tail, subst, acc);
+    }
   }
   return acc;
 }

@@ -1,4 +1,10 @@
 {
+  let nodeId = 0;
+  function createNode(type, data, loc) {
+    const resolvedLoc = data && data.location ? data.location : loc();
+    return { id: ++nodeId, type: type, ...data, location: resolvedLoc };
+  }
+
   function expectedStatementTokens() {
     return [
       "fn", "struct", "enum", "type", "extern", "import", "pub",
@@ -9,7 +15,7 @@
   }
 }
 Start
-  = _ statements:TopStatementList _ { return { type: "Program", body: statements, location: location() }; }
+  = _ statements:TopStatementList _ { return createNode("Program", { body: statements }, location); }
 
 TopStatementList
   = head:RecoverableTopStatement tail:(_ RecoverableTopStatement)* { return [head].concat(tail.map(t => t[1])); }
@@ -19,12 +25,10 @@ RecoverableTopStatement
   = stmt:Statement { return stmt; }
   / error:InvalidStatement { return error; }
   / _ "}" {
-      return {
-        type: "ErrorNode",
+      return createNode("ErrorNode", {
         message: "Unexpected closing brace. Possible double-closing of a block or function.",
-        expected: expectedStatementTokens(),
-        location: location()
-      };
+        expected: expectedStatementTokens()
+      }, location);
     }
 
 StatementList
@@ -40,12 +44,10 @@ SyncKeyword
 
 InvalidStatement
   = tokens:(!(";" / "}" / SyncKeyword) .)+ (";" / &"}" / &SyncKeyword / !.) {
-      return {
-        type: "ErrorNode",
+      return createNode("ErrorNode", {
         message: "Invalid syntax",
-        expected: expectedStatementTokens(),
-        location: location()
-      };
+        expected: expectedStatementTokens()
+      }, location);
     }
 
 Statement
@@ -68,7 +70,7 @@ Statement
 
 Import
   = "import" _ spec:ImportSpec _ "from" _ source:String _ ";"? {
-      return { type: "Import", spec, source, location: location() };
+      return createNode("Import", { spec, source }, location);
     }
 
 ImportSpec
@@ -88,27 +90,27 @@ NamespaceImport
 
 TypeDecl
   = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {
-      return { type: "TypeDecl", name: node.name, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location };
+      return createNode("TypeDecl", { name: node.name, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 AdtTypeDecl
   = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ variants:AdtVariantList _ ";"? {
-      return { type: "EnumDecl", name: node.name, variants: variants || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location };
+      return createNode("EnumDecl", { name: node.name, variants: variants || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
     }
 
 StructDecl
   = visibility:Visibility? _ "struct" _ node:IdName _ tparams:TypeParams? _ "{" _ fields:TypeFieldList? _ "}" _ ";"? {
-      return { type: "StructDecl", name: node.name, body: fields || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location };
+      return createNode("StructDecl", { name: node.name, body: fields || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
     }
 
 EnumDecl
   = visibility:Visibility? _ "enum" _ node:IdName _ tparams:TypeParams? _ "{" _ variants:EnumVariantList? _ "}" _ ";"? {
-      return { type: "EnumDecl", name: node.name, variants: variants || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location };
+      return createNode("EnumDecl", { name: node.name, variants: variants || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
     }
 
 ExternTypeDecl
   = visibility:Visibility? _ "extern" _ "type" _ node:IdName _ tparams:TypeParams? _ source:FromClause? _ ";"? {
-      return { type: "TypeDecl", name: node.name, body: [], typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location };
+      return createNode("TypeDecl", { name: node.name, body: [], typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location }, location);
     }
 
 TypeBody
@@ -121,18 +123,21 @@ TypeField
   = node:IdName _ ":" _ typeName:TypeName { return { name: node.name, typeName, location: node.location }; }
 
 TypeName
-  = base:IdName _ args:TypeArgs? {
-      return args ? `${base.name}<${args.join(",")}>` : base.name;
+  = "_" { return { kind: "TypeHole", location: location() }; }
+  / base:IdName _ args:TypeArgs? {
+      if (!args) return base.name;
+      const rendered = args.map(arg => typeof arg === "string" ? arg : "_");
+      return `${base.name}<${rendered.join(",")}>`;
     }
 
 FnDecl
   = visibility:Visibility? _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
-      return { type: "FnDecl", name: node.name, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location };
+      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 ExternFnDecl
   = visibility:Visibility? _ "extern" _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ source:FromClause? _ ";"? {
-      return { type: "FnDecl", name: node.name, params: params || [], returnType: ret || "any", body: { type: "Block", body: [] }, typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location };
+      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || "any", body: createNode("Block", { body: [] }, location), typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location }, location);
     }
 
 FromClause
@@ -185,94 +190,95 @@ ParamRef
   = "ref" __ mut:("mut" __)? { return { mut: !!mut }; }
 
 Block
-  = "{" _ statements:StatementList _ "}" { return { type: "Block", body: statements, location: location() }; }
+  = "{" _ statements:StatementList _ "}" { return createNode("Block", { body: statements }, location); }
 
 LetStmt
   = "let" _ mut:("mut" __)? node:IdName _ typeAnn:(_ ":" _ typeName:TypeName { return typeName; })? _ "=" _ value:Expr _ ";"? {
-      return { type: "Let", name: node.name, typeName: typeAnn || null, value, mutable: !!mut, location: node.location };
+      return createNode("Let", { name: node.name, typeName: typeAnn || null, value, mutable: !!mut, location: node.location }, location);
     }
 
 ReturnStmt
-  = "return" _ value:Expr _ ";"? { return { type: "Return", value, location: location() }; }
+  = "return" _ value:Expr _ ";"? { return createNode("Return", { value }, location); }
 
 MatchStmt
   = "match" _ value:Expr _ "{" _ arms:MatchArmList? _ "}" {
-      return { type: "MatchStmt", value, arms: arms || [], location: location() };
+      return createNode("MatchStmt", { value, arms: arms || [] }, location);
     }
 
 WhileStmt
   = "while" _ "(" _ condition:Expr _ ")" _ body:Block {
-      return { type: "While", condition, body, location: location() };
+      return createNode("While", { condition, body }, location);
     }
 
 AssignStmt
-  = target:(Member / Identifier) _ "=" _ value:Expr _ ";"? { return { type: "Assign", target, value, location: location() }; }
+  = target:(Member / Identifier) _ "=" _ value:Expr _ ";"? { return createNode("Assign", { target, value }, location); }
 
 IfStmt
   = "if" _ "(" _ condition:Expr _ ")" _ thenBlock:Block _ elsePart:(_ "else" _ elseBlock:Block)? {
-      return { type: "If", condition, thenBlock, elseBlock: elsePart ? elsePart[3] : null, location: location() };
+      return createNode("If", { condition, thenBlock, elseBlock: elsePart ? elsePart[3] : null }, location);
     }
 
 ExprStmt
-  = expr:Expr _ ";"? { return { type: "ExprStmt", expr, location: location() }; }
+  = expr:Expr _ ";"? { return createNode("ExprStmt", { expr }, location); }
 
 Expr
   = LogicOr
 
 LogicOr
   = head:LogicAnd tail:(_ "||" _ LogicAnd)* {
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+      return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3] }, location), head);
     }
 
 LogicAnd
   = head:Pipe tail:(_ "&&" _ Pipe)* {
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+      return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3] }, location), head);
     }
 
 Pipe
   = head:Equality tail:(_ "|>" _ PipeTarget)* {
-      return tail.reduce((acc, t) => ({ type: "Binary", op: "|>", left: acc, right: t[3], location: location() }), head);
+      return tail.reduce((acc, t) => createNode("Binary", { op: "|>", left: acc, right: t[3] }, location), head);
     }
 
 PipeTarget
   = callee:IdName _ "(" _ args:ArgList? _ ")" {
-      return { type: "Call", callee: { type: "Identifier", name: callee.name, location: callee.location }, args: args || [], typeArgs: [], location: location() };
+      return createNode("Call", { callee: createNode("Identifier", { name: callee.name, location: callee.location }, location), args: args || [], typeArgs: [] }, location);
     }
   / callee:IdName {
-      return { type: "Call", callee: { type: "Identifier", name: callee.name, location: callee.location }, args: [], typeArgs: [], location: location() };
+      return createNode("Call", { callee: createNode("Identifier", { name: callee.name, location: callee.location }, location), args: [], typeArgs: [] }, location);
     }
 
 Equality
   = head:IsExpr tail:(_ ("==" / "!=") _ IsExpr)* {
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+      return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3] }, location), head);
     }
 
 IsExpr
   = head:Relational _ "is" _ qual:QualifiedVariant {
-      return { type: "IsExpr", value: head, variant: qual.variant, enumName: qual.enumName, location: location() };
+      return createNode("IsExpr", { value: head, variant: qual.variant, enumName: qual.enumName }, location);
     }
   / Relational
 
 Relational
   = head:Add tail:(_ ("<=" / ">=" / "<" / ">") _ Add)* {
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: location() }), head);
+      return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3] }, location), head);
     }
 
 Add
   = head:Mul tail:(_ ("+" / "-") _ Mul)* {
       const loc = location();
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: loc }), head);
+      return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3], location: loc }, location), head);
     }
 
 Mul
   = head:Primary tail:(_ ("*" / "/") _ Primary)* {
       const loc = location();
-      return tail.reduce((acc, t) => ({ type: "Binary", op: t[1], left: acc, right: t[3], location: loc }), head);
+      return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3], location: loc }, location), head);
     }
 
 Primary
   = MatchExpr
   / StructLiteral
+  / MoveExpr
   / QualifiedCall
   / Call
   / Member
@@ -283,7 +289,7 @@ Primary
 
 StructLiteral
   = name:IdName _ targs:TypeArgs? &(_ "{") _ "{" _ fields:StructLiteralFieldList? _ "}" {
-      return { type: "StructLiteral", name: name.name, typeArgs: targs || [], fields: fields || [], location: location() };
+      return createNode("StructLiteral", { name: name.name, typeArgs: targs || [], fields: fields || [], location: location() }, location);
     }
 
 StructLiteralFieldList
@@ -293,36 +299,36 @@ StructLiteralField
   = field:IdName _ ":" _ value:Expr { return { name: field.name, value, location: field.location }; }
 
 Keyword
-  = ("fn" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "let" / "mut" / "ref"
+  = ("fn" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "let" / "mut" / "ref" / "move"
     / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is") ![a-zA-Z0-9_]
 
 IdName
   = !Keyword name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }
 
 Identifier
-  = node:IdName { return { type: "Identifier", name: node.name, location: node.location }; }
+  = node:IdName { return createNode("Identifier", { name: node.name, location: node.location }, location); }
 
 Number
   = "0x" digits:$([0-9a-fA-F] [0-9a-fA-F_]*) {
       const cleaned = digits.replace(/_/g, "");
-      return { type: "Number", value: parseInt(cleaned, 16), location: location() };
+      return createNode("Number", { value: parseInt(cleaned, 16) }, location);
     }
   / "0b" digits:$([01] [01_]*) {
       const cleaned = digits.replace(/_/g, "");
-      return { type: "Number", value: parseInt(cleaned, 2), location: location() };
+      return createNode("Number", { value: parseInt(cleaned, 2) }, location);
     }
   / digits:$([0-9] [0-9_]*) {
       const cleaned = digits.replace(/_/g, "");
-      return { type: "Number", value: parseInt(cleaned, 10), location: location() };
+      return createNode("Number", { value: parseInt(cleaned, 10) }, location);
     }
 
 Boolean
-  = "true" { return { type: "Boolean", value: true, location: location() }; }
-  / "false" { return { type: "Boolean", value: false, location: location() }; }
+  = "true" { return createNode("Boolean", { value: true }, location); }
+  / "false" { return createNode("Boolean", { value: false }, location); }
 
 String
   = "\"" chars:DoubleStringCharacter* "\"" {
-      return { type: "String", value: chars.join(""), location: location() };
+      return createNode("String", { value: chars.join("") }, location);
     }
 
 DoubleStringCharacter
@@ -351,8 +357,8 @@ MatchArm
   = pattern:MatchPattern _ "=>" _ body:Block _ ";"? { return { pattern, body, location: location() }; }
 
 MatchPattern
-  = "_" { return { type: "WildcardPattern", location: location() }; }
-  / qual:QualifiedVariant _ binds:MatchBindingList? { return { type: "EnumPattern", variant: qual.variant, enumName: qual.enumName, bindings: binds || [], location: qual.location }; }
+  = "_" { return createNode("WildcardPattern", {}, location); }
+  / qual:QualifiedVariant _ binds:MatchBindingList? { return createNode("EnumPattern", { variant: qual.variant, enumName: qual.enumName, bindings: binds || [], location: qual.location }, location); }
 
 QualifiedVariant
   = enumName:IdName _ "." _ variant:IdName { return { enumName: enumName.name, variant: variant.name, location: enumName.location }; }
@@ -367,7 +373,7 @@ MatchBinding
 
 MatchExpr
   = "match" _ value:Expr _ "{" _ arms:MatchExprArmList? _ "}" {
-      return { type: "MatchExpr", value, arms: arms || [], location: location() };
+      return createNode("MatchExpr", { value, arms: arms || [] }, location);
     }
 
 MatchExprArmList
@@ -378,23 +384,21 @@ MatchExprArm
 
 Member
   = base:Identifier tail:(_ "." _ IdName)* {
-      return tail.reduce((acc, t) => ({ type: "Member", object: acc, property: t[3].name, location: location() }), base);
+      return tail.reduce((acc, t) => createNode("Member", { object: acc, property: t[3].name }, location), base);
     }
 Call
   = callee:IdName _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" {
-      return { type: "Call", callee: { type: "Identifier", name: callee.name, location: callee.location }, args: args || [], typeArgs: targs || [], location: location() };
+      return createNode("Call", { callee: createNode("Identifier", { name: callee.name, location: callee.location }, location), args: args || [], typeArgs: targs || [] }, location);
     }
 
 QualifiedCall
   = enumName:IdName _ "." _ variant:IdName _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" {
-      return {
-        type: "Call",
-        callee: { type: "Identifier", name: variant.name, location: variant.location },
+      return createNode("Call", {
+        callee: createNode("Identifier", { name: variant.name, location: variant.location }, location),
         args: args || [],
         typeArgs: targs || [],
-        enumName: enumName.name,
-        location: location()
-      };
+        enumName: enumName.name
+      }, location);
     }
 
 
@@ -402,3 +406,7 @@ ArgList
   = head:Expr tail:(_ "," _ Expr)* { return [head].concat(tail.map(t => t[3])); }
 Visibility
   = "pub" { return "public"; }
+MoveExpr
+  = "move" __ target:(Member / Identifier) {
+      return createNode("Move", { target }, location);
+    }

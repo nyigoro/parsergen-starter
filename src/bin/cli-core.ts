@@ -11,7 +11,15 @@ import {
   CompiledGrammar,
 } from '../grammar/index.js';
 
-import { compileGrammar, analyzeLumina, lowerLumina, optimizeIR, generateJS } from '../index.js';
+import {
+  compileGrammar,
+  analyzeLumina,
+  lowerLumina,
+  optimizeIR,
+  generateJS,
+  inferProgram,
+  monomorphize,
+} from '../index.js';
 import { ensureRuntimeForOutput } from './runtime.js';
 
 import { parseInput, parseStream, ParserUtils } from '../parser/index.js';
@@ -594,7 +602,11 @@ export async function runParsergen(args: string[], options?: { deprecate?: boole
             log.error(`[${d.code ?? 'DIAG'}] ${d.message}`);
           });
         }
-        const lowered = lowerLumina(ast as never);
+        const hm = inferProgram(ast as never);
+        const monoAst = monomorphize(JSON.parse(JSON.stringify(ast)) as never, {
+          inferredCalls: hm.inferredCalls,
+        });
+        const lowered = lowerLumina(monoAst as never);
         const optimized = optimizeIR(lowered) ?? lowered;
         const out = generateJS(optimized, {
           target: config.luminaTarget ?? 'esm',

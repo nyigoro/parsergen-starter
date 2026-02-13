@@ -21,14 +21,33 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
 
   if (includeRuntime) {
     if (target === 'cjs') {
-      builder.append(`const { io, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");`, 'Runtime');
+      builder.append(
+        `const { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        'Runtime'
+      );
       builder.append('\n');
     } else {
-      builder.append(`import { io, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";`, 'Runtime');
+      builder.append(
+        `import { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";`,
+        'Runtime'
+      );
       builder.append('\n');
     }
   } else {
-    builder.append(`const io = { println: (...args) => console.log(...args), print: (...args) => console.log(...args) };`, 'Runtime');
+    builder.append(
+      `const io = { println: (...args) => console.log(...args), print: (...args) => console.log(...args), eprint: (...args) => console.error(...args), eprintln: (...args) => console.error(...args) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const str = { length: (value) => value.length, concat: (a, b) => a + b, split: (value, sep) => value.split(sep), trim: (value) => value.trim(), contains: (haystack, needle) => haystack.includes(needle) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const math = { abs: (value) => Math.trunc(Math.abs(value)), min: (a, b) => Math.trunc(Math.min(a, b)), max: (a, b) => Math.trunc(Math.max(a, b)), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };`,
+      'Runtime'
+    );
     builder.append('\n');
     builder.append(`function __set(obj, prop, value) { obj[prop] = value; return value; }`, 'Runtime');
     builder.append('\n');
@@ -39,15 +58,15 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   let code = builder.toString().trimEnd() + '\n';
   if (includeRuntime) {
     if (target === 'cjs') {
-      code += 'module.exports = { io, Result, Option, __set, formatValue, LuminaPanic };\n';
+      code += 'module.exports = { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic };\n';
     } else {
-      code += 'export { io, Result, Option, __set, formatValue, LuminaPanic };\n';
+      code += 'export { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {
-      code += 'module.exports = { io, __set };\n';
+      code += 'module.exports = { io, str, math, __set };\n';
     } else {
-      code += 'export { io, __set };\n';
+      code += 'export { io, str, math, __set };\n';
     }
   }
 

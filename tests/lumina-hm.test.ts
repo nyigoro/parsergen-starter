@@ -7,6 +7,64 @@ const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 
+const findOptionNone = (node: unknown): { id?: number } | null => {
+  if (!node) return null;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findOptionNone(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  if (
+    obj.type === 'Member' &&
+    (obj.object as { type?: string; name?: string } | undefined)?.type === 'Identifier' &&
+    (obj.object as { type?: string; name?: string } | undefined)?.name === 'Option' &&
+    obj.property === 'None'
+  ) {
+    return obj as { id?: number };
+  }
+  for (const value of Object.values(obj)) {
+    const found = findOptionNone(value);
+    if (found) return found;
+  }
+  return null;
+};
+
+const findMember = (
+  node: unknown,
+  property: string,
+  objectName?: string
+): { id?: number } | null => {
+  if (!node) return null;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findMember(child, property, objectName);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  if (obj.type === 'Member' && obj.property === property) {
+    if (objectName) {
+      const target = obj.object as { type?: string; name?: string } | undefined;
+      if (target?.type === 'Identifier' && target.name === objectName) {
+        return obj as { id?: number };
+      }
+    } else {
+      return obj as { id?: number };
+    }
+  }
+  for (const value of Object.values(obj)) {
+    const found = findMember(value, property, objectName);
+    if (found) return found;
+  }
+  return null;
+};
+
 describe('Lumina HM shadow inference', () => {
   test('infers simple function usage without diagnostics', () => {
     const program = `
@@ -159,5 +217,105 @@ describe('Lumina HM shadow inference', () => {
     const ast = parser.parse(program) as { type: string };
     const result = inferProgram(ast as never);
     expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('allows recursive types through Option wrapper', () => {
+    const program = `
+      enum Option<T> { Some(T), None }
+      struct Task {
+        id: int,
+        subtask: Option<Task>
+      }
+      fn main() {
+        let t = Task { id: 1, subtask: Option.Some(Task { id: 2, subtask: Option.None }) };
+        return t.id;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('infers Option.None in recursive struct literal using expected type', () => {
+    const program = `
+      enum Option<T> { Some(T), None }
+      struct Task {
+        id: int,
+        subtask: Option<Task>
+      }
+      fn main() {
+        let t = Task { id: 1, subtask: Option.None };
+        return t.id;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('records inferred Option.None type in expression map', () => {
+    const program = `
+      enum Option<T> { Some(T), None }
+      struct Task {
+        id: int,
+        subtask: Option<Task>
+      }
+      fn main() {
+        let t = Task { id: 1, subtask: Option.None };
+        return t.id;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+
+    const noneNode = findOptionNone(ast);
+    expect(typeof noneNode?.id).toBe('number');
+    if (typeof noneNode?.id !== 'number') {
+      throw new Error('Option.None id not found');
+    }
+    const inferred = result.inferredExprs.get(noneNode.id);
+    expect(inferred).toBeDefined();
+    expect(inferred).toMatchObject({ kind: 'adt', name: 'Option' });
+    expect(inferred && 'params' in inferred ? inferred.params[0] : null).toMatchObject({ kind: 'adt', name: 'Task' });
+  });
+
+  test('infers row-polymorphic field access for struct arguments', () => {
+    const program = `
+      struct User { id: int, name: string }
+      fn get_id(obj) { return obj.id; }
+      fn main() {
+        let u = User { id: 1, name: "Ada" };
+        return get_id(u);
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never, { useRowPolymorphism: true });
+    expect(result.diagnostics.length).toBe(0);
+    const member = findMember(ast, 'id', 'obj');
+    expect(member?.id).toBeDefined();
+    const inferred = member?.id != null ? result.inferredExprs.get(member.id) : null;
+    expect(inferred?.kind).toBe('primitive');
+    if (inferred?.kind === 'primitive') {
+      expect(inferred.name).toBe('int');
+    }
+  });
+
+  test('rejects recursive structs without wrapper in HM', () => {
+    const program = `
+      struct Node {
+        next: Node
+      }
+      fn main() { return 0; }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const codes = result.diagnostics.map(d => d.code);
+    expect(codes).toContain('RECURSIVE_TYPE_ERROR');
   });
 });

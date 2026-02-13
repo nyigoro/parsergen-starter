@@ -1,0 +1,5 @@
+import { add as internal_add } from "./math.lm";
+
+pub fn compute(x) {
+  return internal_add(x, 1);
+}

@@ -1,0 +1,50 @@
+import { parse } from "./parser.lm"
+import { stringify } from "./stringify.lm"
+import { Result, Option, ParseError } from "./types.lm"
+import { io, str } from "@std"
+
+pub fn main() -> void {
+  // Read all input from stdin
+  let input = read_all_input("")
+
+  if (str.eq(input, "")) {
+    io.eprintln("Error: No input provided")
+  } else {
+    process_json(input)
+  }
+}
+
+fn read_all_input(acc: string) -> string {
+  match io.readLine() {
+    Option.Some(line) => { return read_all_input(str.concat(str.concat(acc, line), "\n")) },
+    Option.None => { return acc }
+  }
+}
+
+fn process_json(input: string) -> void {
+  match parse(input) {
+    Result.Ok(value) => {
+      io.println(stringify(value))
+    },
+    Result.Err(error) => {
+      io.eprintln("Parse error:")
+      io.eprintln(format_error(error))
+    }
+  }
+}
+
+fn format_error(error: ParseError) -> string {
+  match error {
+    ParseError.UnexpectedToken(tok, pos) => {
+      return str.concat("Unexpected token: ", str.concat(tok, str.concat(" at position ", str.from_int(pos))))
+    },
+    ParseError.UnexpectedEof => { return "Unexpected end of input" },
+    ParseError.InvalidNumber(s) => { return str.concat("Invalid number: ", s) },
+    ParseError.InvalidString(s) => { return str.concat("Invalid string: ", s) },
+    ParseError.UnexpectedChar(c, pos) => {
+      return str.concat("Unexpected character: ", str.concat(c, str.concat(" at position ", str.from_int(pos))))
+    }
+  }
+}
+
+main()

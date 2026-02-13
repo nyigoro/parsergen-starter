@@ -157,10 +157,134 @@ function toJsonString(value, pretty = true) {
   return JSON.stringify(normalized, null, pretty ? 2 : undefined);
 }
 
+ function renderArgs(args) {
+  return args.map((arg) => formatValue(arg)).join(' ');
+ }
+
+ function writeStdout(text, newline) {
+  if (typeof process !== 'undefined' && process.stdout && typeof process.stdout.write === 'function') {
+    process.stdout.write(text + (newline ? '\\n' : ''));
+    return;
+  }
+  console.log(text);
+ }
+
+ function writeStderr(text, newline) {
+  if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
+    process.stderr.write(text + (newline ? '\\n' : ''));
+    return;
+  }
+  console.error(text);
+ }
+
+ let stdinCache = null;
+ let stdinIndex = 0;
+
+ function readStdinLines() {
+  if (stdinCache) return stdinCache;
+  if (typeof globalThis !== 'undefined' && globalThis.__luminaStdin !== undefined) {
+    const raw = globalThis.__luminaStdin;
+    stdinCache = Array.isArray(raw) ? raw.map(String) : String(raw).split(/\\r?\\n/);
+    return stdinCache;
+  }
+  if (typeof process !== 'undefined' && process.stdin && typeof process.stdin.read === 'function') {
+    if (typeof process.stdin.setEncoding === 'function') process.stdin.setEncoding('utf8');
+    const chunk = process.stdin.read();
+    if (typeof chunk === 'string') {
+      stdinCache = chunk.split(/\\r?\\n/);
+      return stdinCache;
+    }
+    if (chunk && typeof chunk.toString === 'function') {
+      stdinCache = chunk.toString('utf8').split(/\\r?\\n/);
+      return stdinCache;
+    }
+  }
+  stdinCache = [];
+  return stdinCache;
+ }
+
 const io = {
-  println: (...args) => console.log(...args.map(formatValue)),
+  print: (...args) => writeStdout(renderArgs(args), false),
+  println: (...args) => writeStdout(renderArgs(args), true),
+  eprint: (...args) => writeStderr(renderArgs(args), false),
+  eprintln: (...args) => writeStderr(renderArgs(args), true),
+  readLine: () => {
+    if (typeof globalThis !== 'undefined' && typeof globalThis.__luminaReadLine === 'function') {
+      const value = globalThis.__luminaReadLine();
+      return value == null ? Option.None : Option.Some(value);
+    }
+    if (typeof globalThis !== 'undefined' && typeof globalThis.prompt === 'function') {
+      const value = globalThis.prompt();
+      return value == null ? Option.None : Option.Some(value);
+    }
+    const lines = readStdinLines();
+    if (stdinIndex >= lines.length) return Option.None;
+    const value = lines[stdinIndex++];
+    return Option.Some(value);
+  },
   printJson: (value, pretty = true) => console.log(toJsonString(value, pretty)),
-  print: (...args) => console.log(...args.map(formatValue)),
+ };
+
+const str = {
+  length: (value) => value.length,
+  concat: (a, b) => a + b,
+  split: (value, sep) => value.split(sep),
+  trim: (value) => value.trim(),
+  contains: (haystack, needle) => haystack.includes(needle),
+  eq: (a, b) => a === b,
+  char_at: (value, index) => {
+    if (Number.isNaN(index) || index < 0 || index >= value.length) return Option.None;
+    return Option.Some(value.charAt(index));
+  },
+  is_whitespace: (value) => value === ' ' || value === '\\n' || value === '\\t' || value === '\\r',
+  is_digit: (value) => {
+    if (!value || value.length === 0) return false;
+    const code = value.charCodeAt(0);
+    return code >= 48 && code <= 57;
+  },
+  to_int: (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? Result.Err('Invalid int: ' + value) : Result.Ok(parsed);
+  },
+  to_float: (value) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isNaN(parsed) ? Result.Err('Invalid float: ' + value) : Result.Ok(parsed);
+  },
+  from_int: (value) => String(Math.trunc(value)),
+  from_float: (value) => String(value),
+};
+
+const math = {
+  abs: (value) => Math.trunc(Math.abs(value)),
+  min: (a, b) => Math.trunc(Math.min(a, b)),
+  max: (a, b) => Math.trunc(Math.max(a, b)),
+  absf: (value) => Math.abs(value),
+  minf: (a, b) => Math.min(a, b),
+  maxf: (a, b) => Math.max(a, b),
+  sqrt: (value) => Math.sqrt(value),
+  pow: (base, exp) => Math.pow(base, exp),
+  floor: (value) => Math.floor(value),
+  ceil: (value) => Math.ceil(value),
+  round: (value) => Math.round(value),
+  pi: Math.PI,
+  e: Math.E,
+};
+
+const list = {
+  map: (f, xs) => xs.map(f),
+  filter: (pred, xs) => xs.filter(pred),
+  fold: (f, init, xs) => xs.reduce((acc, val) => f(acc, val), init),
+  reverse: (xs) => xs.slice().reverse(),
+  length: (xs) => xs.length,
+  append: (xs, ys) => xs.concat(ys),
+  take: (n, xs) => xs.slice(0, Math.max(0, n)),
+  drop: (n, xs) => xs.slice(Math.max(0, n)),
+  find: (pred, xs) => {
+    const found = xs.find(pred);
+    return found === undefined ? Option.None : Option.Some(found);
+  },
+  any: (pred, xs) => xs.some(pred),
+  all: (pred, xs) => xs.every(pred),
 };
 
 class LuminaPanic extends Error {
@@ -177,15 +301,33 @@ class LuminaPanic extends Error {
 const Option = {
   Some: (value) => ({ $tag: 'Some', $payload: value }),
   None: { $tag: 'None' },
-  map: (opt, fn) => {
+  map: (fn, opt) => {
     const tag = opt && (opt.$tag || opt.tag);
     if (tag === 'Some') return Option.Some(fn(getEnumPayload(opt)));
     return Option.None;
   },
-  and_then: (opt, fn) => {
+  and_then: (fn, opt) => {
     const tag = opt && (opt.$tag || opt.tag);
     if (tag === 'Some') return fn(getEnumPayload(opt));
     return Option.None;
+  },
+  or_else: (fallback, opt) => {
+    const tag = opt && (opt.$tag || opt.tag);
+    if (tag === 'Some') return opt;
+    return fallback();
+  },
+  unwrap_or: (fallback, opt) => {
+    const tag = opt && (opt.$tag || opt.tag);
+    if (tag === 'Some') return getEnumPayload(opt);
+    return fallback;
+  },
+  is_some: (opt) => {
+    const tag = opt && (opt.$tag || opt.tag);
+    return tag === 'Some';
+  },
+  is_none: (opt) => {
+    const tag = opt && (opt.$tag || opt.tag);
+    return tag !== 'Some';
   },
   unwrap: (opt, message) => {
     const tag = opt && (opt.$tag || opt.tag);
@@ -202,20 +344,33 @@ const Option = {
 const Result = {
   Ok: (value) => ({ $tag: 'Ok', $payload: value }),
   Err: (error) => ({ $tag: 'Err', $payload: error }),
-  map: (res, fn) => {
+  map: (fn, res) => {
     const tag = res && (res.$tag || res.tag);
     if (tag === 'Ok') return Result.Ok(fn(getEnumPayload(res)));
     return res;
   },
-  and_then: (res, fn) => {
+  and_then: (fn, res) => {
     const tag = res && (res.$tag || res.tag);
     if (tag === 'Ok') return fn(getEnumPayload(res));
     return res;
   },
-  unwrap_or: (res, fallback) => {
+  or_else: (fn, res) => {
+    const tag = res && (res.$tag || res.tag);
+    if (tag === 'Ok') return res;
+    return fn(getEnumPayload(res));
+  },
+  unwrap_or: (fallback, res) => {
     const tag = res && (res.$tag || res.tag);
     if (tag === 'Ok') return getEnumPayload(res);
     return fallback;
+  },
+  is_ok: (res) => {
+    const tag = res && (res.$tag || res.tag);
+    return tag === 'Ok';
+  },
+  is_err: (res) => {
+    const tag = res && (res.$tag || res.tag);
+    return tag !== 'Ok';
   },
 };
 
@@ -229,13 +384,13 @@ function __set(obj, prop, value) {
 function runtimeFallbackEsm(): string {
   return `${runtimeFallbackBody()}
 
-export { io, Option, Result, __set, formatValue, LuminaPanic };
+export { io, str, math, list, Option, Result, __set, formatValue, LuminaPanic };
 `;
 }
 
 function runtimeFallbackCjs(): string {
   return `${runtimeFallbackBody()}
 
-module.exports = { io, Option, Result, __set, formatValue, LuminaPanic };
+module.exports = { io, str, math, list, Option, Result, __set, formatValue, LuminaPanic };
 `;
 }

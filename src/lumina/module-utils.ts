@@ -68,16 +68,22 @@ export function buildModuleFunctionFromSymbol(sym: SymbolInfo): ModuleFunction |
     returnType,
     paramNames: sym.paramNames,
     hmType,
+    moduleId: sym.uri ?? sym.externModule ?? 'file://unknown',
+    exportName: sym.name,
   };
 }
 
-export function buildModuleNamespaceFromSymbols(name: string, symbols: SymbolInfo[]): ModuleNamespace {
+export function buildModuleNamespaceFromSymbols(
+  name: string,
+  symbols: SymbolInfo[],
+  moduleId: string = name
+): ModuleNamespace {
   const exports = new Map<string, ModuleExport>();
   for (const sym of symbols) {
     if (sym.kind !== 'function') continue;
     if (sym.visibility === 'private') continue;
     const fn = buildModuleFunctionFromSymbol(sym);
-    if (fn) exports.set(sym.name, fn);
+    if (fn) exports.set(sym.name, { ...fn, moduleId, exportName: fn.exportName ?? fn.name });
   }
-  return { kind: 'module', name, exports };
+  return { kind: 'module', name, moduleId, exports };
 }

@@ -25,6 +25,7 @@ export interface BrowserSourceDocument {
   signatures?: Map<string, string>;
   functionHashes?: Map<string, string>;
   inferredReturns?: Map<string, LuminaType>;
+  hmCallSignatures?: Map<number, { args: LuminaType[]; returnType: LuminaType }>;
 }
 
 type ImportBinding = {
@@ -126,6 +127,7 @@ export class BrowserProjectContext {
     doc.importAliases = undefined;
     doc.importNameMap = undefined;
     doc.moduleBindings = undefined;
+    doc.hmCallSignatures = undefined;
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
       const payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
@@ -164,6 +166,7 @@ export class BrowserProjectContext {
           moduleBindings,
         });
         doc.symbols = analysis.symbols;
+        doc.hmCallSignatures = analysis.hmCallSignatures;
         doc.inferredReturns = new Map<string, LuminaType>();
         for (const sym of analysis.symbols.list()) {
           if (sym.kind === 'function' && sym.type) {
@@ -201,12 +204,14 @@ export class BrowserProjectContext {
   ): Map<string, ModuleExport> {
     const bindingsMap = resolveModuleBindings(program as never, this.moduleRegistry);
     const modulesBySource = new Map<string, ModuleNamespace>();
+    const aliasModule = (mod: ModuleNamespace, alias: string): ModuleNamespace =>
+      mod.name === alias ? mod : { ...mod, name: alias };
     for (const binding of bindings) {
       if (bindingsMap.has(binding.local)) continue;
       const registryModule = this.moduleRegistry.get(binding.source);
       if (registryModule) {
         if (binding.namespace) {
-          bindingsMap.set(binding.local, registryModule as ModuleNamespace);
+          bindingsMap.set(binding.local, aliasModule(registryModule as ModuleNamespace, binding.local));
         } else {
           const exp = registryModule.exports.get(binding.original);
           if (exp) {
@@ -218,17 +223,17 @@ export class BrowserProjectContext {
         }
         continue;
       }
-      let module = modulesBySource.get(binding.source);
+      const resolved = this.resolveImport('', binding.source);
+      let module = modulesBySource.get(resolved);
       if (!module) {
-        const resolved = this.resolveImport('', binding.source);
         this.ensureDocumentLoaded(resolved);
         const doc = this.documents.get(this.toVirtualUri(resolved));
         if (!doc?.symbols) continue;
-        module = buildModuleNamespaceFromSymbols(binding.source, doc.symbols.list());
-        modulesBySource.set(binding.source, module);
+        module = buildModuleNamespaceFromSymbols(binding.source, doc.symbols.list(), this.toVirtualUri(resolved));
+        modulesBySource.set(resolved, module);
       }
       if (binding.namespace) {
-        bindingsMap.set(binding.local, module);
+        bindingsMap.set(binding.local, aliasModule(module, binding.local));
       } else {
         const exp = module.exports.get(binding.original);
         if (exp) {
@@ -289,6 +294,38 @@ export class BrowserProjectContext {
       return { ...sym, name } as SymbolInfo;
     }
     return undefined;
+  }
+
+  resolveImportedMember(base: string, member: string, uri: string): SymbolInfo | undefined {
+    const normalized = this.toVirtualUri(uri);
+    const doc = this.documents.get(normalized);
+    const binding = doc?.importNameMap?.get(base);
+    if (!binding || !binding.namespace) return undefined;
+
+    const registryModule = this.moduleRegistry.get(binding.source);
+    if (registryModule) {
+      const exp = registryModule.exports.get(member);
+      if (exp?.kind === 'function') {
+        return {
+          name: member,
+          kind: 'function',
+          type: exp.returnType,
+          paramTypes: exp.paramTypes,
+          paramNames: exp.paramNames,
+          visibility: 'public',
+          extern: true,
+          uri: exp.moduleId,
+        };
+      }
+      return undefined;
+    }
+
+    const resolved = this.resolveImport(normalized, binding.source);
+    const target = this.documents.get(this.toVirtualUri(resolved));
+    const sym = target?.symbols?.get(member);
+    if (!sym) return undefined;
+    if (sym.visibility === 'private' && this.toVirtualUri(resolved) !== normalized) return undefined;
+    return { ...sym, name: member } as SymbolInfo;
   }
 
   private getExternalSymbols(names: Set<string>, currentUri: string): SymbolInfo[] {

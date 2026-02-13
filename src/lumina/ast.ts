@@ -2,13 +2,24 @@ import type { Location } from '../utils/index.js';
 
 export type LuminaType = 'int' | 'string' | 'bool' | 'void' | string;
 
-export interface LuminaProgram {
+export interface LuminaTypeHole {
+  kind: 'TypeHole';
+  location?: Location;
+}
+
+export type LuminaTypeExpr = LuminaType | LuminaTypeHole;
+
+export interface LuminaNode {
+  id?: number;
+}
+
+export interface LuminaProgram extends LuminaNode {
   type: 'Program';
   body: LuminaStatement[];
   location?: Location;
 }
 
-export type LuminaStatement =
+export type LuminaStatement = (
   | LuminaImport
   | LuminaTypeDecl
   | LuminaStructDecl
@@ -22,7 +33,8 @@ export type LuminaStatement =
   | LuminaMatchStmt
   | LuminaExprStmt
   | LuminaBlock
-  | LuminaErrorNode;
+  | LuminaErrorNode
+) & LuminaNode;
 
 export interface LuminaImportSpec {
   name: string;
@@ -43,7 +55,7 @@ export interface LuminaTypeDecl {
   name: string;
   body: LuminaTypeField[];
   visibility?: 'public' | 'private';
-  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   extern?: boolean;
   externModule?: string;
   location?: Location;
@@ -54,7 +66,7 @@ export interface LuminaStructDecl {
   name: string;
   body: LuminaTypeField[];
   visibility?: 'public' | 'private';
-  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   location?: Location;
 }
 
@@ -63,19 +75,19 @@ export interface LuminaEnumDecl {
   name: string;
   variants: LuminaEnumVariant[];
   visibility?: 'public' | 'private';
-  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   location?: Location;
 }
 
 export interface LuminaEnumVariant {
   name: string;
-  params: LuminaType[];
+  params: LuminaTypeExpr[];
   location?: Location;
 }
 
 export interface LuminaTypeField {
   name: string;
-  typeName: LuminaType;
+  typeName: LuminaTypeExpr;
   location?: Location;
 }
 
@@ -83,18 +95,18 @@ export interface LuminaFnDecl {
   type: 'FnDecl';
   name: string;
   params: LuminaParam[];
-  returnType: LuminaType | null;
+  returnType: LuminaTypeExpr | null;
   body: LuminaBlock;
   visibility?: 'public' | 'private';
   extern?: boolean;
-  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   externModule?: string;
   location?: Location;
 }
 
 export interface LuminaParam {
   name: string;
-  typeName: LuminaType | null;
+  typeName: LuminaTypeExpr | null;
   ref?: boolean;
   refMut?: boolean;
   location?: Location;
@@ -116,7 +128,7 @@ export interface LuminaErrorNode {
 export interface LuminaLet {
   type: 'Let';
   name: string;
-  typeName: LuminaType | null;
+  typeName: LuminaTypeExpr | null;
   value: LuminaExpr;
   mutable?: boolean;
   location?: Location;
@@ -165,7 +177,7 @@ export interface LuminaMatchStmt {
   location?: Location;
 }
 
-export type LuminaMatchPattern = LuminaEnumPattern | LuminaWildcardPattern;
+export type LuminaMatchPattern = (LuminaEnumPattern | LuminaWildcardPattern) & LuminaNode;
 
 export interface LuminaEnumPattern {
   type: 'EnumPattern';
@@ -199,17 +211,19 @@ export interface LuminaMatchArmExpr {
   location?: Location;
 }
 
-export type LuminaExpr =
+export type LuminaExpr = (
   | LuminaBinary
   | LuminaMember
   | LuminaCall
+  | LuminaMove
   | LuminaStructLiteral
   | LuminaIsExpr
   | LuminaNumber
   | LuminaString
   | LuminaBoolean
   | LuminaIdentifier
-  | LuminaMatchExpr;
+  | LuminaMatchExpr
+) & LuminaNode;
 
 export interface LuminaBinary {
   type: 'Binary';
@@ -247,6 +261,12 @@ export interface LuminaMember {
   type: 'Member';
   object: LuminaExpr;
   property: string;
+  location?: Location;
+}
+
+export interface LuminaMove {
+  type: 'Move';
+  target: LuminaIdentifier | LuminaMember;
   location?: Location;
 }
 

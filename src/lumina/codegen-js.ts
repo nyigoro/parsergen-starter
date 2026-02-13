@@ -37,12 +37,20 @@ class JSGenerator {
   emitProgram(node: LuminaProgram): void {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
-        this.builder.append('const { io, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");');
+        this.builder.append(
+          'const { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
+        );
       } else {
-        this.builder.append('import { io, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";');
+        this.builder.append(
+          'import { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
+        );
       }
     } else {
-      this.builder.append('const io = { println: (...args) => console.log(...args), print: (...args) => console.log(...args) };');
+      this.builder.append('const io = { println: (...args) => console.log(...args), print: (...args) => console.log(...args), eprint: (...args) => console.error(...args), eprintln: (...args) => console.error(...args) };');
+      this.builder.append('\n');
+      this.builder.append('const str = { length: (value) => value.length, concat: (a, b) => a + b, split: (value, sep) => value.split(sep), trim: (value) => value.trim(), contains: (haystack, needle) => haystack.includes(needle) };');
+      this.builder.append('\n');
+      this.builder.append('const math = { abs: (value) => Math.trunc(Math.abs(value)), min: (a, b) => Math.trunc(Math.min(a, b)), max: (a, b) => Math.trunc(Math.max(a, b)), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };');
       this.builder.append('\n');
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
     }
@@ -54,15 +62,15 @@ class JSGenerator {
 
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('module.exports = { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic };');
       } else {
-        this.builder.append('export { io, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('export { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic };');
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, __set };');
+        this.builder.append('module.exports = { io, str, math, __set };');
       } else {
-        this.builder.append('export { io, __set };');
+        this.builder.append('export { io, str, math, __set };');
       }
     }
     this.builder.append('\n');
@@ -83,8 +91,9 @@ class JSGenerator {
         return;
       }
       case 'Let': {
+        const keyword = stmt.mutable ? 'let' : 'const';
         this.builder.append(
-          `${pad}const ${stmt.name} = `,
+          `${pad}${keyword} ${stmt.name} = `,
           stmt.type,
           stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
         );
@@ -291,11 +300,16 @@ class JSGenerator {
         return withBase({ code: JSON.stringify(expr.value), mappings: [] });
       case 'Identifier':
         return withBase({ code: expr.name, mappings: [] });
+      case 'Move':
+        return withBase(this.emitExpr(expr.target));
       case 'Binary':
         return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));
       case 'Call': {
-        if (expr.enumName) return this.emitEnumConstruct(expr.enumName, expr.callee.name, expr.args, baseLoc);
-        const parts: Array<string | EmitResult> = [`${expr.callee.name}(`];
+        if (expr.enumName && isUpperIdent(expr.enumName)) {
+          return this.emitEnumConstruct(expr.enumName, expr.callee.name, expr.args, baseLoc);
+        }
+        const calleeName = expr.enumName ? `${expr.enumName}.${expr.callee.name}` : expr.callee.name;
+        const parts: Array<string | EmitResult> = [`${calleeName}(`];
         expr.args.forEach((arg, idx) => {
           if (idx > 0) parts.push(', ');
           parts.push(this.emitExpr(arg));

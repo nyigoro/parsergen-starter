@@ -16,7 +16,6 @@ import {
   SemanticTokensBuilder,
   SemanticTokensLegend,
   CodeAction,
-  CodeActionKind,
   TextEdit,
   WorkspaceEdit,
   RenameParams,
@@ -47,6 +46,7 @@ import {
   type ModuleExport,
 } from '../lumina/module-registry.js';
 import { getWordAt, resolveHoverLabel, resolveSignatureHelp } from './hover-signature.js';
+import { getCodeActionsForDiagnostics } from './code-actions.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -129,6 +129,7 @@ function locationToRange(location: { start: { line: number; column: number }; en
   };
 }
 
+
 function summarizeWorkspaceEdit(edit: WorkspaceEdit): { files: number; edits: number } {
   const changes = edit.changes ?? {};
   const fileUris = Object.keys(changes);
@@ -169,6 +170,7 @@ function publishDiagnostics(uri: string) {
             : DiagnosticSeverity.Hint,
     message: d.message,
     source: d.source ?? 'lumina',
+    code: d.code,
     range: {
       start: { line: d.location.start.line - 1, character: d.location.start.column - 1 },
       end: { line: d.location.end.line - 1, character: d.location.end.column - 1 },
@@ -340,13 +342,20 @@ connection.onHover((params): Hover | null => {
   if (!doc) return null;
   const symbols = project?.getSymbols(params.textDocument.uri);
   const moduleBindings = project?.getModuleBindings(params.textDocument.uri) ?? new Map<string, ModuleExport>();
+  const ast = project?.getDocumentAst(params.textDocument.uri);
+  const hmCallSignatures = project?.getHmCallSignatures(params.textDocument.uri);
+  const hmExprTypes = project?.getHmExprTypes(params.textDocument.uri);
   const label = resolveHoverLabel({
     doc,
     position: params.position,
     symbols,
     moduleBindings,
+    ast,
+    hmCallSignatures,
+    hmExprTypes,
     preludeExportMap,
     resolveImportedSymbol: (name) => findImportedSymbolInfo(name, params.textDocument.uri),
+    resolveImportedMember: (base, member) => project?.resolveImportedMember(base, member, params.textDocument.uri),
   });
   if (!label) return null;
   return { contents: { kind: MarkupKind.Markdown, value: `\`${label}\`` } };
@@ -358,13 +367,18 @@ connection.onSignatureHelp((params): SignatureHelp | null => {
 
   const symbols = project?.getSymbols(params.textDocument.uri);
   const moduleBindings = project?.getModuleBindings(params.textDocument.uri) ?? new Map<string, ModuleExport>();
+  const ast = project?.getDocumentAst(params.textDocument.uri);
+  const hmCallSignatures = project?.getHmCallSignatures(params.textDocument.uri);
   const resolved = resolveSignatureHelp({
     doc,
     position: params.position,
     symbols,
     moduleBindings,
+    ast,
+    hmCallSignatures,
     preludeExportMap,
     resolveImportedSymbol: (name) => findImportedSymbolInfo(name, params.textDocument.uri),
+    resolveImportedMember: (base, member) => project?.resolveImportedMember(base, member, params.textDocument.uri),
   });
   if (!resolved) return null;
   const parameters = resolved.signature.parameters.map((label) => ParameterInformation.create(label));
@@ -517,173 +531,7 @@ connection.onRenameRequest((params: RenameParams): WorkspaceEdit | null => {
 connection.onCodeAction((params): CodeAction[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  const text = doc.getText();
-  const lines = text.split(/\r?\n/);
-  let insertLine = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*import\s+/.test(lines[i])) insertLine = i + 1;
-  }
-
-  const actions: CodeAction[] = [];
-
-  for (const diag of params.context.diagnostics) {
-    const unknownIdMatch = /Unknown identifier '([^']+)'/.exec(diag.message);
-    if (unknownIdMatch) {
-      const name = unknownIdMatch[1];
-      const edit: WorkspaceEdit = {
-        changes: {
-          [params.textDocument.uri]: [
-            TextEdit.insert({ line: insertLine, character: 0 }, `let ${name}: int = 0;\n`),
-          ],
-        },
-      };
-      actions.push({
-        title: `Declare '${name}' at top of file`,
-        kind: CodeActionKind.QuickFix,
-        diagnostics: [diag],
-        edit,
-      });
-      const suggestion = diag.relatedInformation?.find((info) => info.message.startsWith('Did you mean'));
-      if (suggestion) {
-        const match = /'([^']+)'/.exec(suggestion.message);
-        const replacement = match?.[1];
-        if (replacement) {
-          const replaceEdit: WorkspaceEdit = {
-            changes: {
-              [params.textDocument.uri]: [TextEdit.replace(diag.range, replacement)],
-            },
-          };
-          actions.push({
-            title: `Replace with '${replacement}'`,
-            kind: CodeActionKind.QuickFix,
-            diagnostics: [diag],
-            edit: replaceEdit,
-          });
-        }
-      }
-      continue;
-    }
-
-    const unknownTypeMatch = /Unknown type '([^']+)'/.exec(diag.message);
-    if (unknownTypeMatch) {
-      const typeName = unknownTypeMatch[1];
-      const edit: WorkspaceEdit = {
-        changes: {
-          [params.textDocument.uri]: [
-            TextEdit.insert({ line: insertLine, character: 0 }, `type ${typeName} = {};\n`),
-          ],
-        },
-      };
-      actions.push({
-        title: `Declare type '${typeName}' at top of file`,
-        kind: CodeActionKind.QuickFix,
-        diagnostics: [diag],
-        edit,
-      });
-      const suggestion = diag.relatedInformation?.find((info) => info.message.startsWith('Did you mean'));
-      if (suggestion) {
-        const match = /'([^']+)'/.exec(suggestion.message);
-        const replacement = match?.[1];
-        if (replacement) {
-          const replaceEdit: WorkspaceEdit = {
-            changes: {
-              [params.textDocument.uri]: [TextEdit.replace(diag.range, replacement)],
-            },
-          };
-          actions.push({
-            title: `Replace with '${replacement}'`,
-            kind: CodeActionKind.QuickFix,
-            diagnostics: [diag],
-            edit: replaceEdit,
-          });
-        }
-      }
-      continue;
-    }
-
-    const unknownFuncMatch = /Unknown function '([^']+)'/.exec(diag.message);
-    if (unknownFuncMatch) {
-      const suggestion = diag.relatedInformation?.find((info) => info.message.startsWith('Did you mean'));
-      if (suggestion) {
-        const match = /'([^']+)'/.exec(suggestion.message);
-        const replacement = match?.[1];
-        if (replacement) {
-          const replaceEdit: WorkspaceEdit = {
-            changes: {
-              [params.textDocument.uri]: [TextEdit.replace(diag.range, replacement)],
-            },
-          };
-          actions.push({
-            title: `Replace with '${replacement}'`,
-            kind: CodeActionKind.QuickFix,
-            diagnostics: [diag],
-            edit: replaceEdit,
-          });
-        }
-      }
-      continue;
-    }
-
-    if (diag.code === 'MISSING_SEMICOLON' || /Missing semicolon/i.test(diag.message)) {
-      const range = diag.range;
-      const edit: WorkspaceEdit = {
-        changes: {
-          [params.textDocument.uri]: [TextEdit.insert(range.end, ';')],
-        },
-      };
-      actions.push({
-        title: 'Insert missing semicolon',
-        kind: CodeActionKind.QuickFix,
-        diagnostics: [diag],
-        edit,
-      });
-      continue;
-    }
-
-    const unusedMatch = /Unused binding '([^']+)'/.exec(diag.message);
-    if (unusedMatch) {
-      const name = unusedMatch[1];
-      const edit: WorkspaceEdit = {
-        changes: {
-          [params.textDocument.uri]: [
-            TextEdit.replace(diag.range, `_${name}`),
-          ],
-        },
-      };
-      actions.push({
-        title: `Prefix '${name}' with '_'`,
-        kind: CodeActionKind.QuickFix,
-        diagnostics: [diag],
-        edit,
-      });
-      const line = diag.range.start.line;
-      const lineText = lines[line] ?? '';
-      if (/^\s*let\b/.test(lineText)) {
-        let endLine = line + 1;
-        if (endLine < lines.length) {
-          const nextLine = lines[endLine];
-          if (nextLine.trim() === '') endLine += 1;
-        }
-        const removeRange = {
-          start: { line, character: 0 },
-          end: { line: Math.min(endLine, lines.length), character: 0 },
-        };
-        const removeEdit: WorkspaceEdit = {
-          changes: {
-            [params.textDocument.uri]: [TextEdit.del(removeRange)],
-          },
-        };
-        actions.push({
-          title: `Remove unused let '${name}'`,
-          kind: CodeActionKind.QuickFix,
-          diagnostics: [diag],
-          edit: removeEdit,
-        });
-      }
-    }
-  }
-
-  return actions;
+  return getCodeActionsForDiagnostics(doc.getText(), params.textDocument.uri, params.context.diagnostics);
 });
 
 connection.languages.semanticTokens.on((params) => {

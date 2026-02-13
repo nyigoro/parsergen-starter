@@ -1,0 +1,6 @@
+import { compute } from "./utils.lm";
+
+fn main() {
+  let res = compute(10);
+  return res;
+}
