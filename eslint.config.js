@@ -199,6 +199,12 @@ export default [
       'examples/json-parser/*.mjs',
       'examples/json-parser/*.cjs',
       'examples/json-parser/lumina-runtime.*',
+      'examples/**/*.js',
+      'examples/**/*.cjs',
+      'examples/**/*.mjs',
+      'lumina-runtime.js',
+      'lumina.out.js',
+      '*.generated.js',
     ],
   },
 ];

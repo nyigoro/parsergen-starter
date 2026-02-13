@@ -35,8 +35,10 @@ This document tracks the current state of the Lumina language/tooling and near�
 |---|---|---|
 | Structured diagnostics | Stable | Error / warning severity |
 | HM type formatting | Stable | Pretty formatting for errors |
-| LSP hover (HM‑backed) | Beta | Uses HM inferred types |
+| LSP hover (HM‑backed) | Stable | Uses HM inferred types + cross‑file source info |
 | LSP signature help | Beta | NodeID‑based mapping |
+| LSP cross‑file definition | Stable | Aliases + namespace imports supported |
+| Canonical module IDs + alias‑aware hover | Stable | Cross‑file hover & definition via module graph |
 | LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010; **range precision for nested generics deferred** |
 | Diagnostic deduplication | Stable | HM + semantic merged |
 
@@ -67,8 +69,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 - Real‑world utility: working JSON parser
 
 ## Near‑Term Roadmap (Next 3–5)
-1. **Canonical module IDs + alias‑aware hover** (cross‑file LSP resolution)
-2. **Move/borrow safety polish** (borrow checks + branch merge rules)
-3. **Function overloading** (abs/absf → abs)
-4. **Topological module compilation** (dependency graph + per‑file codegen)
-5. **Structured type AST for precise hole ranges** (deferred; enables nested generic highlights)
+1. **Move/borrow safety polish** (borrow checks + branch merge rules)
+2. **Function overloading** (abs/absf → abs)
+3. **Topological module compilation** (dependency graph + per‑file codegen)
+4. **Structured type AST for precise hole ranges** (deferred; enables nested generic highlights)

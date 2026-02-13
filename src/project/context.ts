@@ -33,7 +33,7 @@ export interface SourceDocument {
   hmExprTypes?: Map<number, string>;
 }
 
-type ImportBinding = {
+export type ImportBinding = {
   local: string;
   original: string;
   source: string;
@@ -320,6 +320,17 @@ export class ProjectContext {
   getImportAliases(uri: string): Map<string, string> {
     const normalized = this.toUri(this.toFsPath(uri));
     return this.documents.get(normalized)?.importAliases ?? new Map();
+  }
+
+  getImportBindings(uri: string): ImportBinding[] {
+    const normalized = this.toUri(this.toFsPath(uri));
+    const map = this.documents.get(normalized)?.importNameMap;
+    if (!map) return [];
+    return Array.from(map.values());
+  }
+
+  resolveImportUri(fromUri: string, source: string): string {
+    return this.resolveImport(this.toFsPath(fromUri), source);
   }
 
   resolveImportedSymbol(name: string, uri: string): SymbolInfo | undefined {

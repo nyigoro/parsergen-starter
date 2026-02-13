@@ -45,8 +45,10 @@ import {
   getPreludeExports,
   type ModuleExport,
 } from '../lumina/module-registry.js';
-import { getWordAt, resolveHoverLabel, resolveSignatureHelp } from './hover-signature.js';
+import { findMemberAt, getWordAt, resolveHoverLabel, resolveSignatureHelp } from './hover-signature.js';
 import { getCodeActionsForDiagnostics } from './code-actions.js';
+import { buildModuleGraph, resolveSymbol, type ModuleGraph } from './module-graph.js';
+import { formatHoverContents } from './hover-format.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -55,6 +57,7 @@ let workspaceRoot: string | null = null;
 let workspaceRoots: string[] = [];
 let settings: LuminaLspSettings = { ...defaultSettings };
 let project: ProjectContext | null = null;
+let moduleGraph: ModuleGraph | null = null;
 const diagnosticsDebounce = new Map<string, NodeJS.Timeout>();
 const debounceMs = 120;
 const moduleRegistry = createStdModuleRegistry();
@@ -104,6 +107,7 @@ function initProjectContext() {
   project = new ProjectContext(parser, undefined, undefined, {
     useHmDiagnostics: settings.useHmDiagnostics ?? false,
   });
+  moduleGraph = null;
   connection.console.info(`Lumina grammar loaded: ${grammarPath}`);
 }
 
@@ -189,6 +193,11 @@ function publishDiagnostics(uri: string) {
   connection.sendDiagnostics({ uri, diagnostics: lspDiagnostics });
 }
 
+function rebuildModuleGraph() {
+  if (!project) return;
+  moduleGraph = buildModuleGraph(project);
+}
+
 function refreshDependents(uri: string, changedSymbols: string[] = []) {
   if (!project) return;
   const dependents = project.getDependentsForSymbols(uri, changedSymbols);
@@ -205,6 +214,7 @@ function refreshFromDisk(uri: string) {
   const text = fs.readFileSync(fsPath, 'utf-8');
   const result = project.addOrUpdateDocument(uri, text, 1);
   publishDiagnostics(uri);
+  rebuildModuleGraph();
   if (result.signatureChanged) {
     refreshDependents(uri, result.changedSymbols);
   }
@@ -258,6 +268,7 @@ function indexWorkspaceFiles() {
       publishDiagnostics(uri);
     }
   }
+  rebuildModuleGraph();
 }
 
 connection.onInitialize((params: InitializeParams) => {
@@ -306,6 +317,7 @@ connection.onDidChangeConfiguration((change) => {
     publishDiagnostics(doc.uri);
   });
   indexWorkspaceFiles();
+  rebuildModuleGraph();
 });
 
 function scheduleDiagnostics(uri: string, text: string, version: number) {
@@ -317,6 +329,7 @@ function scheduleDiagnostics(uri: string, text: string, version: number) {
       diagnosticsDebounce.delete(uri);
       const result = project?.addOrUpdateDocument(uri, text, version);
       publishDiagnostics(uri);
+      rebuildModuleGraph();
       if (result?.signatureChanged) {
         refreshDependents(uri, result.changedSymbols);
       }
@@ -345,6 +358,7 @@ connection.onHover((params): Hover | null => {
   const ast = project?.getDocumentAst(params.textDocument.uri);
   const hmCallSignatures = project?.getHmCallSignatures(params.textDocument.uri);
   const hmExprTypes = project?.getHmExprTypes(params.textDocument.uri);
+  const graph = project ? (moduleGraph ?? buildModuleGraph(project)) : null;
   const label = resolveHoverLabel({
     doc,
     position: params.position,
@@ -358,7 +372,24 @@ connection.onHover((params): Hover | null => {
     resolveImportedMember: (base, member) => project?.resolveImportedMember(base, member, params.textDocument.uri),
   });
   if (!label) return null;
-  return { contents: { kind: MarkupKind.Markdown, value: `\`${label}\`` } };
+  let definition = null;
+  if (graph) {
+    const member = findMemberAt(doc, params.position.line, params.position.character);
+    if (member) {
+      const localSym = symbols?.get(member.base);
+      if (!localSym || localSym.kind === 'type') {
+        definition = resolveSymbol(graph, params.textDocument.uri, member.base, member.member);
+      }
+    }
+    if (!definition) {
+      const word = getWordAt(doc, params.position.line, params.position.character);
+      if (word) {
+        definition = resolveSymbol(graph, params.textDocument.uri, word);
+      }
+    }
+  }
+  const contents = formatHoverContents(label, definition);
+  return { contents: { kind: MarkupKind.Markdown, value: contents } };
 });
 
 connection.onSignatureHelp((params): SignatureHelp | null => {
@@ -406,8 +437,29 @@ connection.onDefinition((params: DefinitionParams): Location[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
   const word = getWordAt(doc, params.position.line, params.position.character);
-  if (!word) return [];
-  const found = project.findSymbolLocation(word, params.textDocument.uri);
+  const member = findMemberAt(doc, params.position.line, params.position.character);
+  const symbols = project.getSymbols(params.textDocument.uri);
+  const graph = moduleGraph ?? buildModuleGraph(project);
+
+  let found: { uri: string; location: { start: { line: number; column: number }; end: { line: number; column: number } } } | null = null;
+  if (member) {
+    const localSym = symbols?.get(member.base);
+    if (!localSym || localSym.kind === 'type') {
+      const resolved = resolveSymbol(graph, params.textDocument.uri, member.base, member.member);
+      if (resolved) {
+        found = { uri: resolved.uri, location: resolved.location };
+      }
+    }
+  }
+  if (!found && word) {
+    const resolved = resolveSymbol(graph, params.textDocument.uri, word);
+    if (resolved) {
+      found = { uri: resolved.uri, location: resolved.location };
+    }
+  }
+  if (!found && word) {
+    found = project.findSymbolLocation(word, params.textDocument.uri);
+  }
   if (!found) return [];
   return [
     {
