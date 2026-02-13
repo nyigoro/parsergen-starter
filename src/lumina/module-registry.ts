@@ -1,5 +1,5 @@
 import { type LuminaProgram, type LuminaImport, type LuminaType } from './ast.js';
-import { type Type, type TypeScheme, freshTypeVar } from './types.js';
+import { type Type, type TypeScheme, freshTypeVar, promiseType } from './types.js';
 
 export interface ModuleFunction {
   kind: 'function';
@@ -189,6 +189,18 @@ export function createStdModuleRegistry(): ModuleRegistry {
         ),
       ],
       [
+        'readLineAsync',
+        moduleFunction(
+          'readLineAsync',
+          [],
+          'Promise<Option<string>>',
+          [],
+          promiseType(adt('Option', [primitive('string')])),
+          [],
+          'std://io'
+        ),
+      ],
+      [
         'read_file',
         moduleFunction(
           'read_file',
@@ -210,6 +222,38 @@ export function createStdModuleRegistry(): ModuleRegistry {
           adt('Result', [primitive('void'), primitive('string')]),
           ['path', 'content'],
           'std://io'
+        ),
+      ],
+    ]),
+  };
+
+  const fsModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'fs',
+    moduleId: 'std://fs',
+    exports: new Map<string, ModuleExport>([
+      [
+        'readFile',
+        moduleFunction(
+          'readFile',
+          ['string'],
+          'Promise<Result<string,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [primitive('string'), primitive('string')])),
+          ['path'],
+          'std://fs'
+        ),
+      ],
+      [
+        'writeFile',
+        moduleFunction(
+          'writeFile',
+          ['string', 'string'],
+          'Promise<Result<void,string>>',
+          [primitive('string'), primitive('string')],
+          promiseType(adt('Result', [primitive('void'), primitive('string')])),
+          ['path', 'content'],
+          'std://fs'
         ),
       ],
     ]),
@@ -967,11 +1011,13 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['str', strModule],
       ['math', mathModule],
       ['list', listModule],
+      ['fs', fsModule],
     ]),
   };
 
   registry.set('@std', stdModule);
   registry.set('@std/io', ioModule);
+  registry.set('@std/fs', fsModule);
   registry.set('@std/Option', optionModule);
   registry.set('@std/Result', resultModule);
   registry.set('@std/str', strModule);

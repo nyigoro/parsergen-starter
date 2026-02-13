@@ -25,6 +25,7 @@ export interface SymbolInfo {
   kind: SymbolKind;
   type?: LuminaType;
   pendingReturn?: boolean;
+  async?: boolean;
   location?: Location;
   mutable?: boolean;
   ref?: boolean;
@@ -264,10 +265,18 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         name: param.name,
         bound: (param.bound ?? []).map((bound) => resolveTypeExpr(bound) ?? 'any'),
       }));
+      let resolvedReturn = resolveTypeExpr(stmt.returnType) ?? cachedReturn ?? hmReturn ?? undefined;
+      if (resolvedReturn && stmt.async) {
+        const parsed = parseTypeName(resolvedReturn);
+        if (!(parsed && parsed.base === 'Promise' && parsed.args.length === 1)) {
+          resolvedReturn = `Promise<${resolvedReturn}>`;
+        }
+      }
       symbols.define({
         name: stmt.name,
         kind: 'function',
-        type: resolveTypeExpr(stmt.returnType) ?? cachedReturn ?? hmReturn ?? undefined,
+        async: !!stmt.async,
+        type: resolvedReturn,
         pendingReturn: resolveTypeExpr(stmt.returnType) == null && cachedReturn == null && hmReturn == null,
         location: stmt.location,
         visibility: stmt.visibility ?? 'private',
@@ -445,8 +454,24 @@ function resolveFunctionBody(
     if (cached) return cached;
     return resolveTypeExpr(stmt.returnType) ?? null;
   }
+  const isAsync = !!stmt.async;
   const hmReturn = options?.hmInferred?.fnByName.get(stmt.name) ?? null;
-  const ret = resolveTypeExpr(stmt.returnType) ?? hmReturn ?? (options?.useHm ? 'any' : null);
+  const resolvedReturn = resolveTypeExpr(stmt.returnType) ?? hmReturn ?? (options?.useHm ? 'any' : null);
+  let signatureReturn: LuminaType | null = resolvedReturn;
+  let bodyReturn: LuminaType | null = resolvedReturn;
+  if (isAsync && resolvedReturn) {
+    const parsed = parseTypeName(resolvedReturn);
+    if (parsed && parsed.base === 'Promise' && parsed.args.length === 1) {
+      bodyReturn = parsed.args[0];
+      signatureReturn = resolvedReturn;
+    } else {
+      bodyReturn = resolvedReturn;
+      signatureReturn = `Promise<${resolvedReturn}>`;
+    }
+  } else if (isAsync) {
+    signatureReturn = null;
+    bodyReturn = null;
+  }
   const local = new SymbolTable();
   for (const sym of symbols.list()) {
     local.define(sym);
@@ -500,26 +525,38 @@ function resolveFunctionBody(
     fnScope.define(param.name, param.location ?? stmt.location);
   });
   if (stmt.extern) {
-    return ret ?? null;
+    return signatureReturn ?? resolvedReturn ?? null;
   }
   if (options?.diDebug && diGraphs) {
     diGraphs.set(stmt.name, buildCfgDot(stmt.name, stmt.body.body));
   }
-  const collector = ret ? undefined : { types: [] as LuminaType[] };
+  const collector = bodyReturn ? undefined : { types: [] as LuminaType[] };
   const di = new DefiniteAssignment();
   for (const param of stmt.params) {
     di.define(fnScope, param.name, true);
   }
   for (const bodyStmt of stmt.body.body) {
-    typeCheckStatement(bodyStmt, local, diagnostics, ret, fnScope, { ...options, typeParams }, collector, resolving, pendingDeps, stmt.name, di);
+    typeCheckStatement(
+      bodyStmt,
+      local,
+      diagnostics,
+      bodyReturn,
+      fnScope,
+      { ...options, typeParams },
+      collector,
+      resolving,
+      pendingDeps,
+      stmt.name,
+      di
+    );
   }
   collectUnusedBindings(fnScope, diagnostics, stmt.location);
-  if (ret) return ret;
+  if (bodyReturn) return signatureReturn ?? bodyReturn;
   const hasReturn = blockHasReturn(stmt.body);
   if (pendingDeps.get(stmt.name)?.size) {
     if (collector && collector.types.length === 0 && !hasReturn) {
       pendingDeps.delete(stmt.name);
-      return 'void';
+      return isAsync ? 'Promise<void>' : 'void';
     }
     return null;
   }
@@ -530,9 +567,9 @@ function resolveFunctionBody(
       diagnostics.push(diagAt(`Inconsistent return types for '${stmt.name}'`, stmt.location));
       return null;
     }
-    return first;
+    return isAsync ? `Promise<${first}>` : first;
   }
-  return 'void';
+  return isAsync ? 'Promise<void>' : 'void';
 }
 
 function blockHasReturn(block: { body: LuminaStatement[] }): boolean {
@@ -1523,6 +1560,36 @@ function typeCheckExpr(
           )
         : null;
     return targetType ?? narrowed ?? hmType ?? sym.type ?? null;
+  }
+  if (expr.type === 'Await') {
+    const fnSym = currentFunction ? symbols.get(currentFunction) : undefined;
+    const isAsync = !!fnSym?.async;
+    if (!isAsync) {
+      diagnostics.push(
+        diagAt(`'await' can only be used inside async functions`, expr.location, 'error', 'AWAIT_OUTSIDE_ASYNC')
+      );
+    }
+    const valueType = typeCheckExpr(
+      expr.value,
+      symbols,
+      diagnostics,
+      scope,
+      options,
+      undefined,
+      resolving,
+      pendingDeps,
+      currentFunction,
+      di,
+      pipedArgType,
+      allowPartialMoveBase,
+      skipMoveChecks
+    );
+    if (!valueType) return null;
+    const parsed = parseTypeName(valueType);
+    if (parsed && parsed.base === 'Promise' && parsed.args.length === 1) {
+      return parsed.args[0];
+    }
+    return valueType;
   }
   if (expr.type === 'Binary') {
     if (expr.op === '|>') {
@@ -2763,6 +2830,10 @@ function isKnownType(typeName: LuminaType, symbols: SymbolTable, typeParams: Set
   if (typeParams.has(typeName)) return true;
   const parsed = parseTypeName(typeName);
   if (!parsed) return false;
+  if (parsed.base === 'Promise') {
+    if (parsed.args.length !== 1) return false;
+    return isKnownType(parsed.args[0], symbols, typeParams);
+  }
   if (typeParams.has(parsed.base)) return true;
   const sym = symbols.get(parsed.base);
   if (sym?.kind !== 'type') return false;
@@ -2801,6 +2872,10 @@ function hmKey(location?: Location): string | null {
 
 function hmTypeToLuminaType(type: import('./types.js').Type): LuminaType | null {
   if (type.kind === 'primitive') return type.name;
+  if (type.kind === 'promise') {
+    const inner = hmTypeToLuminaType(type.inner) ?? 'any';
+    return `Promise<${inner}>`;
+  }
   if (type.kind === 'adt') {
     if (!type.params.length) return type.name;
     const args = type.params.map((param) => hmTypeToLuminaType(param) ?? 'any');
@@ -2818,6 +2893,9 @@ function hmTypeToLuminaType(type: import('./types.js').Type): LuminaType | null 
 function hmTypeToDisplay(type: import('./types.js').Type): string {
   if (type.kind === 'primitive') return type.name;
   if (type.kind === 'variable') return `T${type.id}`;
+  if (type.kind === 'promise') {
+    return `Promise<${hmTypeToDisplay(type.inner)}>`;
+  }
   if (type.kind === 'adt') {
     if (!type.params.length) return type.name;
     const args = type.params.map((param) => hmTypeToDisplay(param)).join(', ');

@@ -18,6 +18,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 | `ref` / `ref mut` | Beta | Grammar + semantic checks |
 | Move expressions (`move x`) | Stable | **Partial moves** supported with path tracking + tests |
 | Type holes (`_`) in annotations | Stable | **HM validation** + LUM‑010 |
+| Async/await | Stable | `async fn`, `await`, Promise<T> |
 
 ## Type System (HM)
 | Feature | Status | Notes |
@@ -48,6 +49,8 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Prelude enums (Option/Result) | Stable | Registry + prelude |
 | Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list` |
 | Runtime Option/Result | Stable | JS runtime + helpers |
+| Async I/O | Stable | `io.readLineAsync()` |
+| File system | Stable | `fs.readFile`, `fs.writeFile` |
 
 ## Tooling & Codegen
 | Feature | Status | Notes |
@@ -69,7 +72,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 - Real‑world utility: working JSON parser
 
 ## Near‑Term Roadmap (Next 3–5)
-1. **Move/borrow safety polish** (borrow checks + branch merge rules)
-2. **Function overloading** (abs/absf → abs)
-3. **Topological module compilation** (dependency graph + per‑file codegen)
-4. **Structured type AST for precise hole ranges** (deferred; enables nested generic highlights)
+1. **Package management** (dependency resolution, library ecosystem)
+2. **Stdlib Phase 2** (advanced string operations)
+3. **Move/borrow safety polish** (borrow checks + branch merge rules)
+4. **Function overloading** (abs/absf → abs, clean API surface)

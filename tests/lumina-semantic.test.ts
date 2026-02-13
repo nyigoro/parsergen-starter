@@ -178,6 +178,21 @@ describe('Lumina semantic analysis', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('rejects await outside async functions', () => {
+    const program = `
+      fn main() {
+        let x = await get_value();
+        return x;
+      }
+      async fn get_value() { return 1; }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const codes = analysis.diagnostics.map(d => d.code);
+    expect(codes).toContain('AWAIT_OUTSIDE_ASYNC');
+  });
+
   test('supports ADT type syntax sugar with generics', () => {
     const program = `
       type Option<T> = Some(T) | None;

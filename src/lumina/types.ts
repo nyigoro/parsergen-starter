@@ -8,7 +8,8 @@ export type Type =
   | { kind: 'variable'; id: number }
   | { kind: 'adt'; name: string; params: Type[] }
   | { kind: 'row'; fields: Map<string, Type>; tail: Type | null }
-  | { kind: 'hole'; location?: Location };
+  | { kind: 'hole'; location?: Location }
+  | { kind: 'promise'; inner: Type };
 
 export interface TypeScheme {
   kind: 'scheme';
@@ -67,6 +68,14 @@ export function resetTypeVarCounter() {
   nextTypeVarId = 0;
 }
 
+export function promiseType(inner: Type): Type {
+  return { kind: 'promise', inner };
+}
+
+export function isPromiseType(type: Type): type is { kind: 'promise'; inner: Type } {
+  return type.kind === 'promise';
+}
+
 export function prune(type: Type, subst: Subst): Type {
   if (type.kind !== 'variable') return type;
   const replacement = subst.get(type.id);
@@ -84,6 +93,9 @@ export function occursIn(target: Type, type: Type, subst: Subst): boolean {
   }
   if (t.kind === 'function') {
     return t.args.some(arg => occursIn(target, arg, subst)) || occursIn(target, t.returnType, subst);
+  }
+  if (t.kind === 'promise') {
+    return occursIn(target, t.inner, subst);
   }
   if (t.kind === 'adt') {
     return t.params.some(param => occursIn(target, param, subst));
@@ -115,6 +127,8 @@ export function normalizeTypeName(type: Type): string {
       const ret = normalizeTypeName(type.returnType);
       return `Fn_${args}_${ret}`;
     }
+    case 'promise':
+      return `Promise_${normalizeTypeName(type.inner)}`;
     case 'variable':
       return `T${type.id}`;
     case 'row': {
@@ -148,6 +162,9 @@ function occursInWithBarrier(
       t.args.some(arg => occursInWithBarrier(target, arg, subst, passedBarrier, wrapperSet)) ||
       occursInWithBarrier(target, t.returnType, subst, passedBarrier, wrapperSet)
     );
+  }
+  if (t.kind === 'promise') {
+    return occursInWithBarrier(target, t.inner, subst, passedBarrier, wrapperSet);
   }
   if (t.kind === 'adt') {
     const nextBarrier = passedBarrier || wrapperSet.has(t.name);
@@ -219,6 +236,11 @@ export function unify(
     return;
   }
 
+  if (left.kind === 'promise' && right.kind === 'promise') {
+    unify(left.inner, right.inner, subst, wrappers, trace, rowResolver);
+    return;
+  }
+
   if (left.kind === 'adt' && right.kind === 'adt') {
     if (left.name !== right.name || left.params.length !== right.params.length) {
       throw new UnificationError('mismatch', left, right, trace);
@@ -284,6 +306,10 @@ export function freeTypeVars(type: Type, subst: Subst, acc = new Set<number>()):
   if (t.kind === 'function') {
     t.args.forEach(arg => freeTypeVars(arg, subst, acc));
     freeTypeVars(t.returnType, subst, acc);
+    return acc;
+  }
+  if (t.kind === 'promise') {
+    freeTypeVars(t.inner, subst, acc);
     return acc;
   }
   if (t.kind === 'adt') {

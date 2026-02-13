@@ -94,6 +94,7 @@ export interface LuminaTypeField {
 export interface LuminaFnDecl {
   type: 'FnDecl';
   name: string;
+  async?: boolean;
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
   body: LuminaBlock;
@@ -216,6 +217,7 @@ export type LuminaExpr = (
   | LuminaMember
   | LuminaCall
   | LuminaMove
+  | LuminaAwait
   | LuminaStructLiteral
   | LuminaIsExpr
   | LuminaNumber
@@ -267,6 +269,12 @@ export interface LuminaMember {
 export interface LuminaMove {
   type: 'Move';
   target: LuminaIdentifier | LuminaMember;
+  location?: Location;
+}
+
+export interface LuminaAwait {
+  type: 'Await';
+  value: LuminaExpr;
   location?: Location;
 }
 

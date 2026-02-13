@@ -4,6 +4,7 @@ import {
   type TypeScheme,
   type Subst,
   freshTypeVar,
+  promiseType,
   prune,
   unify,
   freeTypeVars,
@@ -140,7 +141,8 @@ export function inferProgram(
     if (stmt.type !== 'FnDecl') continue;
     const signature = buildFunctionSignature(stmt, holeInfoByVar);
     hoistedFns.set(stmt.name, signature);
-    const fnType: Type = { kind: 'function', args: signature.paramTypes, returnType: signature.returnType };
+    const returnType = stmt.async ? promiseType(signature.returnType) : signature.returnType;
+    const fnType: Type = { kind: 'function', args: signature.paramTypes, returnType };
     env.extend(stmt.name, { kind: 'scheme', variables: signature.typeParamIds, type: fnType });
   }
 
@@ -308,6 +310,7 @@ function inferFunctionBody(
 ): Type | null {
   const signature = hoistedFns.get(stmt.name) ?? buildFunctionSignature(stmt, holeInfoByVar);
   const fnEnv = env.child();
+  const isAsync = !!stmt.async;
   signature.paramTypes.forEach((t, idx) => {
     const param = stmt.params[idx];
     if (param) {
@@ -329,16 +332,19 @@ function inferFunctionBody(
       structRegistry,
       holeInfoByVar,
       moduleBindings,
-      inferredCalls
+      inferredCalls,
+      undefined,
+      isAsync
     );
   }
-  const prunedReturn = prune(signature.returnType, subst);
+  const effectiveReturn = isAsync ? promiseType(signature.returnType) : signature.returnType;
+  const prunedReturn = normalizeType(effectiveReturn, subst);
   if (stmt.location?.start) {
     inferredFnReturns.set(keyFromLocation(stmt.location), prunedReturn);
   }
   inferredFnByName.set(stmt.name, prunedReturn);
   inferredFnParams.set(stmt.name, signature.paramTypes.map((param) => prune(param, subst)));
-  return { kind: 'function', args: signature.paramTypes, returnType: signature.returnType };
+  return { kind: 'function', args: signature.paramTypes, returnType: effectiveReturn };
 }
 
 function inferStatement(
@@ -356,11 +362,13 @@ function inferStatement(
   holeInfoByVar?: Map<number, HoleInfo>,
   moduleBindings?: Map<string, ModuleExport>,
   inferredCalls?: Map<number, { args: Type[]; returnType: Type }>,
-  expectedType?: Type
+  expectedType?: Type,
+  inAsync: boolean = false
 ): Type | null {
   switch (stmt.type) {
     case 'FnDecl': {
       const fnEnv = env.child();
+      const isAsync = !!stmt.async;
       const signature = buildFunctionSignature(stmt, holeInfoByVar);
       signature.paramTypes.forEach((t, idx) => {
         const param = stmt.params[idx];
@@ -384,14 +392,17 @@ function inferStatement(
           structRegistry,
           holeInfoByVar,
           moduleBindings,
-          inferredCalls
+          inferredCalls,
+          undefined,
+          isAsync
         );
       }
-      const fnType: Type = { kind: 'function', args: paramTypes, returnType };
+      const effectiveReturn = isAsync ? promiseType(returnType) : returnType;
+      const fnType: Type = { kind: 'function', args: paramTypes, returnType: effectiveReturn };
       if (!env.lookup(stmt.name)) {
         env.extend(stmt.name, { kind: 'scheme', variables: typeParamIds, type: fnType });
       }
-      const prunedReturn = prune(returnType, subst);
+      const prunedReturn = normalizeType(effectiveReturn, subst);
       if (stmt.location?.start) {
         inferredFnReturns?.set(keyFromLocation(stmt.location), prunedReturn);
       }
@@ -416,7 +427,8 @@ function inferStatement(
         structRegistry,
         moduleBindings,
         inferredCalls,
-        expected
+        expected,
+        inAsync
       );
       if (!valueType) return null;
       if (expected) {
@@ -442,7 +454,8 @@ function inferStatement(
         structRegistry,
         moduleBindings,
         inferredCalls,
-        currentReturn
+        currentReturn,
+        inAsync
       );
       if (!valueType) return null;
       tryUnify(currentReturn, valueType, subst, diagnostics, {
@@ -461,7 +474,8 @@ function inferStatement(
         structRegistry,
         moduleBindings,
         inferredCalls,
-        expectedType
+        expectedType,
+        inAsync
       );
     }
     case 'If': {
@@ -473,7 +487,9 @@ function inferStatement(
         enumRegistry,
         structRegistry,
         moduleBindings,
-        inferredCalls
+        inferredCalls,
+        undefined,
+        inAsync
       );
       if (condType) {
         tryUnify(condType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
@@ -483,7 +499,15 @@ function inferStatement(
       }
       const thenEnv = env.child();
       if (stmt.condition.type === 'IsExpr') {
-        const narrowing = getIsNarrowing(stmt.condition, env, subst, diagnostics, enumRegistry, moduleBindings);
+        const narrowing = getIsNarrowing(
+          stmt.condition,
+          env,
+          subst,
+          diagnostics,
+          enumRegistry,
+          moduleBindings,
+          inAsync
+        );
         if (narrowing) {
           thenEnv.extend(narrowing.name, { kind: 'scheme', variables: [], type: narrowing.type });
         }
@@ -503,13 +527,23 @@ function inferStatement(
           structRegistry,
           holeInfoByVar,
           moduleBindings,
-          inferredCalls
+          inferredCalls,
+          undefined,
+          inAsync
         );
       }
       if (stmt.elseBlock) {
         const elseEnv = env.child();
         if (stmt.condition.type === 'IsExpr') {
-          const narrowing = getIsElseNarrowing(stmt.condition, env, subst, diagnostics, enumRegistry, moduleBindings);
+          const narrowing = getIsElseNarrowing(
+            stmt.condition,
+            env,
+            subst,
+            diagnostics,
+            enumRegistry,
+            moduleBindings,
+            inAsync
+          );
           if (narrowing) {
             elseEnv.extend(narrowing.name, { kind: 'scheme', variables: [], type: narrowing.type });
           }
@@ -529,7 +563,9 @@ function inferStatement(
             structRegistry,
             holeInfoByVar,
             moduleBindings,
-            inferredCalls
+            inferredCalls,
+            undefined,
+            inAsync
           );
         }
       }
@@ -544,7 +580,9 @@ function inferStatement(
         enumRegistry,
         structRegistry,
         moduleBindings,
-        inferredCalls
+        inferredCalls,
+        undefined,
+        inAsync
       );
       if (condType) {
         tryUnify(condType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
@@ -568,7 +606,9 @@ function inferStatement(
           structRegistry,
           holeInfoByVar,
           moduleBindings,
-          inferredCalls
+          inferredCalls,
+          undefined,
+          inAsync
         );
       }
       return null;
@@ -582,7 +622,9 @@ function inferStatement(
         enumRegistry,
         structRegistry,
         moduleBindings,
-        inferredCalls
+        inferredCalls,
+        undefined,
+        inAsync
       );
       for (const arm of stmt.arms) {
         const armEnv = env.child();
@@ -604,7 +646,9 @@ function inferStatement(
             structRegistry,
             holeInfoByVar,
             moduleBindings,
-            inferredCalls
+            inferredCalls,
+            undefined,
+            inAsync
           );
         }
       }
@@ -630,7 +674,9 @@ function inferStatement(
           structRegistry,
           holeInfoByVar,
           moduleBindings,
-          inferredCalls
+          inferredCalls,
+          undefined,
+          inAsync
         );
       }
       return null;
@@ -649,8 +695,22 @@ function inferExpr(
   structRegistry?: Map<string, StructInfo>,
   moduleBindings?: Map<string, ModuleExport>,
   inferredCalls?: Map<number, { args: Type[]; returnType: Type }>,
-  expectedType?: Type
+  expectedType?: Type,
+  inAsync: boolean = false
 ): Type | null {
+  const inferChild = (node: LuminaExpr, expected?: Type): Type | null =>
+    inferExpr(
+      node,
+      env,
+      subst,
+      diagnostics,
+      enumRegistry,
+      structRegistry,
+      moduleBindings,
+      inferredCalls,
+      expected,
+      inAsync
+    );
   switch (expr.type) {
     case 'Number':
       return recordExprType(expr, { kind: 'primitive', name: 'int' }, subst);
@@ -658,47 +718,38 @@ function inferExpr(
       return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
     case 'Boolean':
       return recordExprType(expr, { kind: 'primitive', name: 'bool' }, subst);
+    case 'Await': {
+      if (!inAsync) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'AWAIT_OUTSIDE_ASYNC',
+          message: `'await' can only be used inside async functions`,
+          source: 'lumina',
+          location: diagLocation(expr.location),
+        });
+      }
+      const valueType = inferChild(expr.value);
+      if (!valueType) return null;
+      const innerType = freshTypeVar();
+      tryUnify(valueType, promiseType(innerType), subst, diagnostics, {
+        location: expr.location,
+        note: `Await expects a Promise value`,
+      });
+      return recordExprType(expr, innerType, subst);
+    }
     case 'Identifier': {
       const scheme = env.lookup(expr.name);
       if (!scheme) return null;
       return recordExprType(expr, instantiate(scheme), subst);
     }
     case 'Move': {
-      const valueType = inferExpr(
-        expr.target,
-        env,
-        subst,
-        diagnostics,
-        enumRegistry,
-        structRegistry,
-        moduleBindings,
-        inferredCalls,
-        expectedType
-      );
+      const valueType = inferChild(expr.target, expectedType);
       if (!valueType) return null;
       return recordExprType(expr, valueType, subst);
     }
     case 'Binary': {
-      const left = inferExpr(
-        expr.left,
-        env,
-        subst,
-        diagnostics,
-        enumRegistry,
-        structRegistry,
-        moduleBindings,
-        inferredCalls
-      );
-      const right = inferExpr(
-        expr.right,
-        env,
-        subst,
-        diagnostics,
-        enumRegistry,
-        structRegistry,
-        moduleBindings,
-        inferredCalls
-      );
+      const left = inferChild(expr.left);
+      const right = inferChild(expr.right);
       if (!left || !right) return null;
       if (expr.op === '==' || expr.op === '!=') {
         tryUnify(left, right, subst, diagnostics, {
@@ -742,19 +793,7 @@ function inferExpr(
             return null;
           }
           const calleeType = instantiate(member.hmType);
-          const argTypes = expr.args.map(
-            (arg) =>
-              inferExpr(
-                arg,
-                env,
-                subst,
-                diagnostics,
-                enumRegistry,
-                structRegistry,
-                moduleBindings,
-                inferredCalls
-              ) ?? freshTypeVar()
-          );
+          const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
           const resultType = freshTypeVar();
           const fnType: Type = { kind: 'function', args: argTypes, returnType: resultType };
           tryUnify(calleeType, fnType, subst, diagnostics, {
@@ -781,26 +820,15 @@ function inferExpr(
           structRegistry,
           moduleBindings,
           inferredCalls,
-          expectedType
+          expectedType,
+          inAsync
         );
         if (constructorType) return recordExprType(expr, constructorType, subst);
       }
       const calleeScheme = env.lookup(expr.callee.name);
       if (!calleeScheme) return null;
       const calleeType = instantiate(calleeScheme);
-      const argTypes = expr.args.map(
-        (arg) =>
-          inferExpr(
-            arg,
-            env,
-            subst,
-            diagnostics,
-            enumRegistry,
-            structRegistry,
-            moduleBindings,
-            inferredCalls
-          ) ?? freshTypeVar()
-      );
+      const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
       const resultType = freshTypeVar();
       const fnType: Type = { kind: 'function', args: argTypes, returnType: resultType };
       tryUnify(calleeType, fnType, subst, diagnostics, {
@@ -868,16 +896,7 @@ function inferExpr(
           return recordExprType(expr, enumType, subst);
         }
       }
-      const objectType = inferExpr(
-        expr.object,
-        env,
-        subst,
-        diagnostics,
-        enumRegistry,
-        structRegistry,
-        moduleBindings,
-        inferredCalls
-      );
+      const objectType = inferChild(expr.object);
       if (!objectType) return null;
       if (structRegistry) {
         const fieldType = resolveStructFieldType(objectType, expr.property, structRegistry, subst);
@@ -908,20 +927,11 @@ function inferExpr(
       return null;
     }
     case 'IsExpr': {
-      const isType = inferIsExpr(expr, env, subst, diagnostics, enumRegistry, moduleBindings);
+      const isType = inferIsExpr(expr, env, subst, diagnostics, enumRegistry, moduleBindings, inAsync);
       return isType ? recordExprType(expr, isType, subst) : null;
     }
     case 'MatchExpr': {
-      const scrutineeType = inferExpr(
-        expr.value,
-        env,
-        subst,
-        diagnostics,
-        enumRegistry,
-        structRegistry,
-        moduleBindings,
-        inferredCalls
-      );
+      const scrutineeType = inferChild(expr.value);
       if (!scrutineeType) return null;
       let resultType: Type | null = null;
       for (const arm of expr.arms) {
@@ -936,7 +946,8 @@ function inferExpr(
           structRegistry,
           moduleBindings,
           inferredCalls,
-          expectedType ?? undefined
+          expectedType ?? undefined,
+          inAsync
         );
         if (!armType) continue;
         if (!resultType) {
@@ -993,17 +1004,7 @@ function inferExpr(
         const fieldTypeName = info.fields.get(field.name);
         if (!fieldTypeName) continue;
         const expectedFieldType = parseTypeNameWithEnv(fieldTypeName, typeParamMap);
-        const actualFieldType = inferExpr(
-          field.value,
-          env,
-          subst,
-          diagnostics,
-          enumRegistry,
-          structRegistry,
-          moduleBindings,
-          inferredCalls,
-          expectedFieldType
-        );
+        const actualFieldType = inferChild(field.value, expectedFieldType);
         if (actualFieldType) {
           tryUnify(expectedFieldType, actualFieldType, subst, diagnostics, {
             location: field.location ?? expr.location,
@@ -1037,6 +1038,9 @@ function substituteVars(type: Type, mapping: Map<number, Type>): Type {
       args: type.args.map(arg => substituteVars(arg, mapping)),
       returnType: substituteVars(type.returnType, mapping),
     };
+  }
+  if (type.kind === 'promise') {
+    return { kind: 'promise', inner: substituteVars(type.inner, mapping) };
   }
   if (type.kind === 'adt') {
     return { kind: 'adt', name: type.name, params: type.params.map(p => substituteVars(p, mapping)) };
@@ -1089,6 +1093,9 @@ function parseTypeName(
   const base = typeName.slice(0, idx);
   const inner = typeName.slice(idx + 1, -1);
   const args = splitTypeArgs(inner).map((arg) => parseTypeName(arg, holeInfoByVar, holeInfo, defaultLocation));
+  if (base === 'Promise' && args.length === 1) {
+    return promiseType(args[0]);
+  }
   return { kind: 'adt', name: base, params: args };
 }
 
@@ -1284,6 +1291,9 @@ function normalizeType(type: Type, subst: Subst): Type {
   if (pruned.kind === 'adt') {
     return { kind: 'adt', name: pruned.name, params: pruned.params.map(param => normalizeType(param, subst)) };
   }
+  if (pruned.kind === 'promise') {
+    return { kind: 'promise', inner: normalizeType(pruned.inner, subst) };
+  }
   if (pruned.kind === 'row') {
     const fields = new Map<string, Type>();
     for (const [name, value] of pruned.fields) {
@@ -1343,7 +1353,8 @@ function inferEnumConstructor(
   structRegistry?: Map<string, StructInfo>,
   moduleBindings?: Map<string, ModuleExport>,
   inferredCalls?: Map<number, { args: Type[]; returnType: Type }>,
-  expectedType?: Type
+  expectedType?: Type,
+  inAsync: boolean = false
 ): Type | null {
   if (!expr.enumName) return null;
   const info = enumRegistry.get(expr.enumName);
@@ -1371,18 +1382,19 @@ function inferEnumConstructor(
     });
     return null;
   }
-  const argTypes = expr.args.map(
-    (arg) =>
-      inferExpr(
-        arg,
-        env,
-        subst,
-        diagnostics,
-        enumRegistry,
-        structRegistry,
-        moduleBindings,
-        inferredCalls
-      ) ?? freshTypeVar()
+  const argTypes = expr.args.map((arg) =>
+    inferExpr(
+      arg,
+      env,
+      subst,
+      diagnostics,
+      enumRegistry,
+      structRegistry,
+      moduleBindings,
+      inferredCalls,
+      undefined,
+      inAsync
+    ) ?? freshTypeVar()
   );
   for (let i = 0; i < argTypes.length && i < variantParams.length; i++) {
     const expected = parseTypeNameWithEnv(variantParams[i], enumParamMap);
@@ -1447,7 +1459,8 @@ function getIsNarrowing(
   subst: Subst,
   diagnostics: Diagnostic[],
   enumRegistry?: Map<string, EnumInfo>,
-  moduleBindings?: Map<string, ModuleExport>
+  moduleBindings?: Map<string, ModuleExport>,
+  inAsync: boolean = false
 ): { name: string; type: Type } | null {
   if (!enumRegistry) return null;
   if (expr.value.type !== 'Identifier') return null;
@@ -1457,7 +1470,18 @@ function getIsNarrowing(
   if (!info) return null;
   const paramTypes = info.typeParams.map(() => freshTypeVar());
   const expectedEnumType: Type = { kind: 'adt', name: enumName, params: paramTypes };
-  const current = inferExpr(expr.value, env, subst, diagnostics, enumRegistry, undefined, moduleBindings);
+  const current = inferExpr(
+    expr.value,
+    env,
+    subst,
+    diagnostics,
+    enumRegistry,
+    undefined,
+    moduleBindings,
+    undefined,
+    undefined,
+    inAsync
+  );
   if (current) {
     tryUnify(current, expectedEnumType, subst, diagnostics);
   }
@@ -1470,7 +1494,8 @@ function getIsElseNarrowing(
   subst: Subst,
   diagnostics: Diagnostic[],
   enumRegistry?: Map<string, EnumInfo>,
-  moduleBindings?: Map<string, ModuleExport>
+  moduleBindings?: Map<string, ModuleExport>,
+  inAsync: boolean = false
 ): { name: string; type: Type } | null {
   if (!enumRegistry) return null;
   if (expr.value.type !== 'Identifier') return null;
@@ -1480,7 +1505,18 @@ function getIsElseNarrowing(
   if (!info || info.variants.size !== 2) return null;
   const paramTypes = info.typeParams.map(() => freshTypeVar());
   const expectedEnumType: Type = { kind: 'adt', name: enumName, params: paramTypes };
-  const current = inferExpr(expr.value, env, subst, diagnostics, enumRegistry, undefined, moduleBindings);
+  const current = inferExpr(
+    expr.value,
+    env,
+    subst,
+    diagnostics,
+    enumRegistry,
+    undefined,
+    moduleBindings,
+    undefined,
+    undefined,
+    inAsync
+  );
   if (current) {
     tryUnify(current, expectedEnumType, subst, diagnostics);
   }
@@ -1493,9 +1529,21 @@ function inferIsExpr(
   subst: Subst,
   diagnostics: Diagnostic[],
   enumRegistry?: Map<string, EnumInfo>,
-  moduleBindings?: Map<string, ModuleExport>
+  moduleBindings?: Map<string, ModuleExport>,
+  inAsync: boolean = false
 ): Type | null {
-  const condType = inferExpr(expr.value, env, subst, diagnostics, enumRegistry, undefined, moduleBindings);
+  const condType = inferExpr(
+    expr.value,
+    env,
+    subst,
+    diagnostics,
+    enumRegistry,
+    undefined,
+    moduleBindings,
+    undefined,
+    undefined,
+    inAsync
+  );
   if (!enumRegistry) return { kind: 'primitive', name: 'bool' };
   const enumName = resolveEnumName(expr.enumName, expr.variant, enumRegistry);
   if (!enumName) {
@@ -1569,6 +1617,9 @@ function parseTypeNameWithEnv(
   }
   const inner = typeName.slice(baseIdx + 1, -1);
   const args = splitTypeArgs(inner).map(arg => parseTypeNameWithEnv(arg, typeParams, holeInfoByVar, holeInfo, defaultLocation));
+  if (base === 'Promise' && args.length === 1) {
+    return promiseType(args[0]);
+  }
   return { kind: 'adt', name: base, params: args };
 }
 
@@ -1627,6 +1678,8 @@ function formatType(type: Type, subst: Subst): string {
     case 'adt':
       if (pruned.params.length === 0) return pruned.name;
       return `${pruned.name}<${pruned.params.map((param) => formatType(param, subst)).join(', ')}>`;
+    case 'promise':
+      return `Promise<${formatType(pruned.inner, subst)}>`;
     case 'row': {
       const fields = Array.from(pruned.fields.entries()).map(
         ([name, value]) => `${name}: ${formatType(value, subst)}`

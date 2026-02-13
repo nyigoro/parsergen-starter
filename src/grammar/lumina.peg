@@ -7,7 +7,7 @@
 
   function expectedStatementTokens() {
     return [
-      "fn", "struct", "enum", "type", "extern", "import", "pub",
+      "fn", "async", "struct", "enum", "type", "extern", "import", "pub",
       "let", "if", "while", "match", "return",
       "identifier", "number", "string", "true", "false",
       "{", "}"
@@ -131,8 +131,8 @@ TypeName
     }
 
 FnDecl
-  = visibility:Visibility? _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
-      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
+  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
+      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 ExternFnDecl
@@ -276,6 +276,10 @@ Mul
     }
 
 Primary
+  = AwaitExpr
+  / PrimaryNoAwait
+
+PrimaryNoAwait
   = MatchExpr
   / StructLiteral
   / MoveExpr
@@ -299,7 +303,7 @@ StructLiteralField
   = field:IdName _ ":" _ value:Expr { return { name: field.name, value, location: field.location }; }
 
 Keyword
-  = ("fn" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "let" / "mut" / "ref" / "move"
+  = ("fn" / "async" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "let" / "mut" / "ref" / "move"
     / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is") ![a-zA-Z0-9_]
 
 IdName
@@ -409,4 +413,9 @@ Visibility
 MoveExpr
   = "move" __ target:(Member / Identifier) {
       return createNode("Move", { target }, location);
+    }
+
+AwaitExpr
+  = "await" __ value:PrimaryNoAwait {
+      return createNode("Await", { value }, location);
     }

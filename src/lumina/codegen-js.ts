@@ -38,11 +38,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -51,6 +51,8 @@ class JSGenerator {
       this.builder.append('const str = { length: (value) => value.length, concat: (a, b) => a + b, split: (value, sep) => value.split(sep), trim: (value) => value.trim(), contains: (haystack, needle) => haystack.includes(needle) };');
       this.builder.append('\n');
       this.builder.append('const math = { abs: (value) => Math.trunc(Math.abs(value)), min: (a, b) => Math.trunc(Math.min(a, b)), max: (a, b) => Math.trunc(Math.max(a, b)), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };');
+      this.builder.append('\n');
+      this.builder.append('const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };');
       this.builder.append('\n');
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
     }
@@ -62,15 +64,15 @@ class JSGenerator {
 
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('module.exports = { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic };');
       } else {
-        this.builder.append('export { io, str, math, list, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('export { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic };');
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, __set };');
+        this.builder.append('module.exports = { io, str, math, fs, __set };');
       } else {
-        this.builder.append('export { io, str, math, __set };');
+        this.builder.append('export { io, str, math, fs, __set };');
       }
     }
     this.builder.append('\n');
@@ -81,8 +83,9 @@ class JSGenerator {
     switch (stmt.type) {
       case 'FnDecl': {
         const params = stmt.params.map((p) => p.name).join(', ');
+        const asyncKeyword = stmt.async ? 'async ' : '';
         this.builder.append(
-          `${pad}function ${stmt.name}(${params}) `,
+          `${pad}${asyncKeyword}function ${stmt.name}(${params}) `,
           stmt.type,
           stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
         );
@@ -302,6 +305,10 @@ class JSGenerator {
         return withBase({ code: expr.name, mappings: [] });
       case 'Move':
         return withBase(this.emitExpr(expr.target));
+      case 'Await': {
+        const value = this.emitExpr(expr.value);
+        return withBase(concat('await ', value));
+      }
       case 'Binary':
         return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));
       case 'Call': {

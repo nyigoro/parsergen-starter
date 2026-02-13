@@ -24,13 +24,24 @@ Reads a line from standard input.
 - **Custom hosts**: Provide `globalThis.__luminaReadLine()` for blocking/async reads
 
 **Limitations:**
-- Currently synchronous and non-blocking in Node
-- For true blocking stdin, use host hooks or wait for async/await support
-- Future: Will become `readLine() -> Promise<Option<String>>` when async is added
+- Synchronous and non-blocking in Node
+- For blocking reads, use `readLineAsync()` or host hooks
 
 **Example:**
 ```lumina
 match io.readLine() {
+  Some(line) => io.println(line),
+  None => io.println("No input available")
+}
+```
+
+### readLineAsync() -> Promise<Option<String>>
+
+Async line read. Uses `__luminaStdin` hook first, then Node TTY readline, then browser `prompt()` if available.
+
+**Example:**
+```lumina
+match await io.readLineAsync() {
   Some(line) => io.println(line),
   None => io.println("No input available")
 }
@@ -102,3 +113,11 @@ Rounding helpers (return integers).
 ### pi: Float
 ### e: Float
 Math constants.
+
+## @std/fs
+
+### readFile(path: String) -> Promise<Result<String, String>>
+Reads a UTF-8 file (Node) or fetches text (browser).
+
+### writeFile(path: String, content: String) -> Promise<Result<Void, String>>
+Writes a UTF-8 file in Node. Returns an error in browsers.

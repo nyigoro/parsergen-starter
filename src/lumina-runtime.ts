@@ -258,6 +258,36 @@ export const io = {
     const value = lines[stdinIndex++];
     return Option.Some(value);
   },
+  readLineAsync: async () => {
+    const globalAny = globalThis as { __luminaStdin?: string | string[] };
+    if (globalAny.__luminaStdin !== undefined) {
+      const lines = readStdinLines();
+      if (stdinIndex >= lines.length) return Option.None;
+      const value = lines[stdinIndex++];
+      return Option.Some(value);
+    }
+    if (isNodeRuntime()) {
+      const stdin = (process as { stdin?: { isTTY?: boolean } }).stdin;
+      if (stdin?.isTTY) {
+        const readline = await import('node:readline');
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+        return await new Promise((resolve) => {
+          rl.question('', (answer) => {
+            rl.close();
+            resolve(Option.Some(answer));
+          });
+        });
+      }
+    }
+    if (typeof (globalThis as { prompt?: (message?: string) => string | null }).prompt === 'function') {
+      const value = (globalThis as { prompt?: (message?: string) => string | null }).prompt?.();
+      return value == null ? Option.None : Option.Some(value);
+    }
+    return Option.None;
+  },
   printJson: (value: unknown, pretty: boolean = true) => {
     // eslint-disable-next-line no-console -- runtime output
     console.log(toJsonString(value, pretty));
@@ -307,6 +337,41 @@ export const math = {
   round: (value: number) => Math.round(value),
   pi: Math.PI,
   e: Math.E,
+};
+
+export const fs = {
+  readFile: async (path: string) => {
+    try {
+      if (isNodeRuntime()) {
+        const fsPromises = await import('node:fs/promises');
+        const content = await fsPromises.readFile(path, 'utf8');
+        return Result.Ok(content);
+      }
+      if (typeof fetch !== 'undefined') {
+        const response = await fetch(path);
+        if (!response.ok) {
+          return Result.Err(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const content = await response.text();
+        return Result.Ok(content);
+      }
+      return Result.Err('No file system available');
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  writeFile: async (path: string, content: string) => {
+    try {
+      if (isNodeRuntime()) {
+        const fsPromises = await import('node:fs/promises');
+        await fsPromises.writeFile(path, content, 'utf8');
+        return Result.Ok(undefined);
+      }
+      return Result.Err('writeFile not supported in browser');
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
 };
 
 export const list = {

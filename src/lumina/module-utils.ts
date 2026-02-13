@@ -40,6 +40,9 @@ const parseLuminaType = (typeName: LuminaType, typeParams: Map<string, Type>): T
   const base = raw.slice(0, idx);
   const inner = raw.slice(idx + 1, -1);
   const args = splitTypeArgs(inner).map((arg) => parseLuminaType(arg, typeParams));
+  if (base === 'Promise' && args.length === 1) {
+    return { kind: 'promise', inner: args[0] };
+  }
   return { kind: 'adt', name: base, params: args };
 };
 

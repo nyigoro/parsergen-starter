@@ -1,0 +1,46 @@
+import { parse } from "../json-parser/parser.lm";
+import { ParseError, Result } from "../json-parser/types.lm";
+import { fs, io, str } from "@std";
+
+async fn validate_file(path: string) {
+  io.println(str.concat("Validating: ", path));
+
+  match await fs.readFile(path) {
+    Result.Ok(content) => {
+      let text: string = content;
+      match parse(text) {
+        Result.Ok(_) => {
+          io.println("OK: Valid JSON");
+        },
+        Result.Err(error) => {
+          io.println("ERROR: Invalid JSON");
+          io.println(format_error(error));
+        }
+      }
+    },
+    Result.Err(error) => {
+      let message: string = error;
+      io.eprintln(str.concat("File read error: ", message));
+    }
+  }
+}
+
+fn format_error(error: ParseError) -> string {
+  match error {
+    ParseError.UnexpectedToken(tok, pos) => {
+      return str.concat("Unexpected token: ", str.concat(tok, str.concat(" at position ", str.from_int(pos))))
+    },
+    ParseError.UnexpectedEof => { return "Unexpected end of input" },
+    ParseError.InvalidNumber(s) => { return str.concat("Invalid number: ", s) },
+    ParseError.InvalidString(s) => { return str.concat("Invalid string: ", s) },
+    ParseError.UnexpectedChar(c, pos) => {
+      return str.concat("Unexpected character: ", str.concat(c, str.concat(" at position ", str.from_int(pos))))
+    }
+  }
+}
+
+async fn main() {
+  await validate_file("test.json");
+}
+
+main()

@@ -191,6 +191,51 @@ describe('Lumina HM shadow inference', () => {
     expect(codes).not.toContain('LUM-003');
   });
 
+  test('infers async functions as Promise return types', () => {
+    const program = `
+      async fn fetch_data() {
+        return 1;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const fnReturn = result.inferredFnByName.get('fetch_data') as { kind?: string; inner?: { kind?: string; name?: string } } | undefined;
+    expect(fnReturn?.kind).toBe('promise');
+    expect(fnReturn?.inner?.kind).toBe('primitive');
+    expect(fnReturn?.inner?.name).toBe('int');
+  });
+
+  test('allows await inside async functions', () => {
+    const program = `
+      async fn get_value() { return 1; }
+      async fn main() {
+        let x = await get_value();
+        return x;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const codes = result.diagnostics.map(d => d.code);
+    expect(codes).not.toContain('AWAIT_OUTSIDE_ASYNC');
+  });
+
+  test('reports await outside async functions', () => {
+    const program = `
+      fn main() {
+        let x = await get_value();
+        return x;
+      }
+      async fn get_value() { return 1; }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const codes = result.diagnostics.map(d => d.code);
+    expect(codes).toContain('AWAIT_OUTSIDE_ASYNC');
+  });
+
   test('narrows with is in if condition', () => {
     const program = `
       enum Option<T> { Some(T), None }
