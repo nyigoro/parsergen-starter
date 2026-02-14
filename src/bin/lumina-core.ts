@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import fg from 'fast-glob';
 import { Worker } from 'node:worker_threads';
+import { execSync } from 'node:child_process';
 
 import { compileGrammar } from '../grammar/index.js';
 import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
@@ -19,6 +20,7 @@ import {
   inferProgram,
   monomorphize,
 } from '../index.js';
+import { loadWASM, callWASMFunction } from '../wasm-runtime.js';
 import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
 import { parseWithPanicRecovery } from '../project/panic.js';
@@ -949,16 +951,23 @@ async function compileLumina(
         formatDiagnosticsWithSnippet(source, analysis.diagnostics);
         return { ok: false };
       }
-      const monoAst = monomorphizeAst(bundle.program as never);
-      const wasm = generateWATFromAst(monoAst as never, { exportMain: true });
-      if (wasm.diagnostics.length > 0) {
-        formatDiagnosticsWithSnippet(source, wasm.diagnostics);
-        return { ok: false };
-      }
-      await fs.writeFile(outPath, wasm.wat, 'utf-8');
-      console.log(`Lumina compiled (wasm): ${outPath}`);
-      return { ok: true, map: undefined, ir: undefined };
+    const monoAst = monomorphizeAst(bundle.program as never);
+    const wasm = generateWATFromAst(monoAst as never, { exportMain: true });
+    if (wasm.diagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, wasm.diagnostics);
+      return { ok: false };
     }
+    await fs.writeFile(outPath, wasm.wat, 'utf-8');
+    const wasmPath = outPath.endsWith('.wat') ? outPath.replace(/\.wat$/, '.wasm') : `${outPath}.wasm`;
+    try {
+      execSync(`wat2wasm "${outPath}" -o "${wasmPath}"`, { stdio: 'inherit' });
+      console.log(`Compiled WASM: ${wasmPath}`);
+    } catch {
+      console.warn('wat2wasm not found. Install wabt to emit .wasm files.');
+    }
+    console.log(`Lumina compiled (wasm): ${outPath}`);
+    return { ok: true, map: undefined, ir: undefined };
+  }
 
     const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
     if (parseError) return { ok: false };
@@ -979,6 +988,13 @@ async function compileLumina(
       return { ok: false };
     }
     await fs.writeFile(outPath, wasm.wat, 'utf-8');
+    const wasmPath = outPath.endsWith('.wat') ? outPath.replace(/\.wat$/, '.wasm') : `${outPath}.wasm`;
+    try {
+      execSync(`wat2wasm "${outPath}" -o "${wasmPath}"`, { stdio: 'inherit' });
+      console.log(`Compiled WASM: ${wasmPath}`);
+    } catch {
+      console.warn('wat2wasm not found. Install wabt to emit .wasm files.');
+    }
     console.log(`Lumina compiled (wasm): ${outPath}`);
     return { ok: true, map: undefined, ir: undefined };
   }
@@ -1505,6 +1521,7 @@ Commands:
   compile <file>   Compile Lumina source to JS
   check <file>     Parse + analyze only (no emit)
   watch <file>     Watch and recompile on change
+  run-wasm <file>  Execute a .wasm file and print return value
   repl             Interactive REPL with Lumina grammar
   grammar          Parser generator tools (was parsergen)
   init             Initialize a parser project template
@@ -1684,6 +1701,26 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         }
       }
     }
+    return;
+  }
+
+  if (command === 'run-wasm') {
+    const argsList = process.argv.slice(2);
+    const wasmPath = file ? path.resolve(file) : argsList[1] ? path.resolve(argsList[1]) : '';
+    if (!wasmPath) {
+      throw new Error('Missing <file> for run-wasm');
+    }
+    const funcName = argsList[2] ?? 'main';
+    const funcArgs = argsList.slice(3).map((value) => {
+      const parsed = Number(value);
+      if (Number.isNaN(parsed)) {
+        throw new Error(`Invalid numeric argument: ${value}`);
+      }
+      return parsed;
+    });
+    const runtime = await loadWASM(wasmPath);
+    const result = callWASMFunction(runtime, funcName, ...funcArgs);
+    console.log(`Result: ${result}`);
     return;
   }
 

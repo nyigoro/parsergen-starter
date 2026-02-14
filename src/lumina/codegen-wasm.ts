@@ -31,6 +31,12 @@ export function generateWATFromAst(
   const functions = program.body.filter((stmt): stmt is LuminaFnDecl => stmt.type === 'FnDecl');
 
   builder.append('(module');
+  builder.append('  (import "env" "print_int" (func $print_int (param i32)))');
+  builder.append('  (import "env" "print_float" (func $print_float (param f64)))');
+  builder.append('  (import "env" "print_bool" (func $print_bool (param i32)))');
+  builder.append('  (import "env" "abs_int" (func $abs_int (param i32) (result i32)))');
+  builder.append('  (import "env" "abs_float" (func $abs_float (param f64) (result f64)))');
+  builder.append('  (memory (export "memory") 1)');
   for (const fn of functions) {
     builder.append(builder.emitFunction(fn));
   }
@@ -87,7 +93,7 @@ class WasmBuilder {
     const locals = this.collectLocals(fn);
     const localsDecl = locals.length > 0 ? `  ${locals.join(' ')}` : '';
 
-    const bodyLines = this.emitBlock(fn.body.body ?? [], locals);
+    const bodyLines = this.emitBlock(fn.body.body ?? []);
     const lines = [
       `  (func $${fn.name} ${params.join(' ')} ${resultSig}`.trimEnd(),
       localsDecl,
@@ -132,7 +138,7 @@ class WasmBuilder {
     return locals;
   }
 
-  private emitBlock(statements: LuminaStatement[], locals: string[]): string[] {
+  private emitBlock(statements: LuminaStatement[]): string[] {
     const lines: string[] = [];
     for (const stmt of statements) {
       switch (stmt.type) {
