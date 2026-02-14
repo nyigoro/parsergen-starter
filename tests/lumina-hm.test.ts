@@ -109,6 +109,33 @@ describe('Lumina HM shadow inference', () => {
     expect(codes).toContain('LUM-002');
   });
 
+  test('accepts sized integer literals with annotations', () => {
+    const program = `
+      fn main() {
+        let x: i64 = 42i64;
+        let y: u8 = 255u8;
+        return x;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
+  test('infers float literals as f64', () => {
+    const program = `
+      fn main() {
+        let x = 3.1415;
+        return x;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.length).toBe(0);
+  });
+
   test('handles mutually recursive functions without annotations', () => {
     const program = `
       fn is_even(n) {
@@ -203,7 +230,7 @@ describe('Lumina HM shadow inference', () => {
     const fnReturn = result.inferredFnByName.get('fetch_data') as { kind?: string; inner?: { kind?: string; name?: string } } | undefined;
     expect(fnReturn?.kind).toBe('promise');
     expect(fnReturn?.inner?.kind).toBe('primitive');
-    expect(fnReturn?.inner?.name).toBe('int');
+    expect(fnReturn?.inner?.name).toBe('i32');
   });
 
   test('allows await inside async functions', () => {

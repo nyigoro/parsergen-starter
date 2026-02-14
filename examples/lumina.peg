@@ -318,18 +318,37 @@ Identifier
   = node:IdName { return createNode("Identifier", { name: node.name, location: node.location }, location); }
 
 Number
-  = "0x" digits:$([0-9a-fA-F] [0-9a-fA-F_]*) {
+  = "0x" digits:$([0-9a-fA-F] [0-9a-fA-F_]*) suffix:NumericSuffix? {
       const cleaned = digits.replace(/_/g, "");
-      return createNode("Number", { value: parseInt(cleaned, 16) }, location);
+      const suffixValue = suffix ?? null;
+      const isFloat = typeof suffixValue === "string" && suffixValue.startsWith("f");
+      return createNode("Number", { value: parseInt(cleaned, 16), raw: `0x${cleaned}`, suffix: suffixValue, isFloat }, location);
     }
-  / "0b" digits:$([01] [01_]*) {
+  / "0b" digits:$([01] [01_]*) suffix:NumericSuffix? {
       const cleaned = digits.replace(/_/g, "");
-      return createNode("Number", { value: parseInt(cleaned, 2) }, location);
+      const suffixValue = suffix ?? null;
+      const isFloat = typeof suffixValue === "string" && suffixValue.startsWith("f");
+      return createNode("Number", { value: parseInt(cleaned, 2), raw: `0b${cleaned}`, suffix: suffixValue, isFloat }, location);
     }
-  / digits:$([0-9] [0-9_]*) {
-      const cleaned = digits.replace(/_/g, "");
-      return createNode("Number", { value: parseInt(cleaned, 10) }, location);
+  / int:$([0-9] [0-9_]*) frac:("." digits:$([0-9_]+))? exp:ExponentPart? suffix:NumericSuffix? {
+      const intPart = int.replace(/_/g, "");
+      const fracPart = frac ? frac[1].replace(/_/g, "") : "";
+      const expPart = exp ? exp.replace(/_/g, "") : "";
+      const suffixValue = suffix ?? null;
+      const hasFloat = !!frac || !!exp || (typeof suffixValue === "string" && suffixValue.startsWith("f"));
+      const raw = frac ? `${intPart}.${fracPart}` : intPart;
+      const rawWithExp = expPart ? `${raw}${expPart}` : raw;
+      const value = hasFloat ? parseFloat(rawWithExp) : parseInt(rawWithExp, 10);
+      return createNode("Number", { value, raw: rawWithExp, suffix: suffixValue, isFloat: hasFloat }, location);
     }
+
+ExponentPart
+  = [eE] sign:("+" / "-")? digits:$([0-9] [0-9_]*) { return `e${sign ?? ""}${digits}`; }
+
+NumericSuffix
+  = "i8" / "i16" / "i32" / "i64" / "i128"
+  / "u8" / "u16" / "u32" / "u64" / "u128"
+  / "f32" / "f64"
 
 Boolean
   = "true" { return createNode("Boolean", { value: true }, location); }

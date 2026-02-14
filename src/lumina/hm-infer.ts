@@ -3,6 +3,7 @@ import {
   type Type,
   type TypeScheme,
   type Subst,
+  type PrimitiveName,
   freshTypeVar,
   promiseType,
   prune,
@@ -11,6 +12,8 @@ import {
   generalize,
   UnificationError,
   type UnificationTraceEntry,
+  isNumericPrimitiveName,
+  normalizePrimitiveName,
 } from './types.js';
 import { type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
@@ -60,6 +63,22 @@ const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
 };
+
+const literalNumericSuffixes = new Set<PrimitiveName>([
+  'i8', 'i16', 'i32', 'i64', 'i128',
+  'u8', 'u16', 'u32', 'u64', 'u128',
+  'f32', 'f64',
+]);
+
+function inferNumberLiteralType(expr: { suffix?: string | null; raw?: string; isFloat?: boolean }): Type {
+  const suffix = expr.suffix ?? null;
+  if (suffix && literalNumericSuffixes.has(suffix as PrimitiveName)) {
+    return { kind: 'primitive', name: suffix as PrimitiveName };
+  }
+  const raw = expr.raw ?? '';
+  const isFloat = expr.isFloat || raw.includes('.') || raw.includes('e') || raw.includes('E');
+  return { kind: 'primitive', name: isFloat ? 'f64' : 'i32' };
+}
 
 type LooseLocation =
   | {
@@ -713,7 +732,7 @@ function inferExpr(
     );
   switch (expr.type) {
     case 'Number':
-      return recordExprType(expr, { kind: 'primitive', name: 'int' }, subst);
+      return recordExprType(expr, inferNumberLiteralType(expr), subst);
     case 'String':
       return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
     case 'Boolean':
@@ -759,19 +778,53 @@ function inferExpr(
         return recordExprType(expr, { kind: 'primitive', name: 'bool' }, subst);
       }
       if (['+', '-', '*', '/', '<', '>', '<=', '>='].includes(expr.op)) {
-        tryUnify(left, { kind: 'primitive', name: 'int' }, subst, diagnostics, {
-          location: expr.location,
-          note: `Left operand of '${expr.op}' must be int`,
-        });
-        tryUnify(right, { kind: 'primitive', name: 'int' }, subst, diagnostics, {
-          location: expr.location,
-          note: `Right operand of '${expr.op}' must be int`,
-        });
-        const resultType =
-          expr.op === '<' || expr.op === '>' || expr.op === '<=' || expr.op === '>='
-            ? ({ kind: 'primitive', name: 'bool' } as Type)
-            : ({ kind: 'primitive', name: 'int' } as Type);
-        return recordExprType(expr, resultType, subst);
+        const comparison = expr.op === '<' || expr.op === '>' || expr.op === '<=' || expr.op === '>=';
+        const leftResolved = prune(left, subst);
+        const rightResolved = prune(right, subst);
+
+        const fallback: Type = { kind: 'primitive', name: 'i32' };
+        const unifyWith = (expected: Type) => {
+          tryUnify(left, expected, subst, diagnostics, {
+            location: expr.location,
+            note: `Left operand of '${expr.op}' must be numeric`,
+          });
+          tryUnify(right, expected, subst, diagnostics, {
+            location: expr.location,
+            note: `Right operand of '${expr.op}' must be numeric`,
+          });
+        };
+
+        if (
+          leftResolved.kind === 'primitive' &&
+          isNumericPrimitiveName(normalizePrimitiveName(leftResolved.name))
+        ) {
+          tryUnify(right, leftResolved, subst, diagnostics, {
+            location: expr.location,
+            note: `Right operand of '${expr.op}' must match numeric type`,
+          });
+        } else if (
+          rightResolved.kind === 'primitive' &&
+          isNumericPrimitiveName(normalizePrimitiveName(rightResolved.name))
+        ) {
+          tryUnify(left, rightResolved, subst, diagnostics, {
+            location: expr.location,
+            note: `Left operand of '${expr.op}' must match numeric type`,
+          });
+        } else {
+          unifyWith(fallback);
+        }
+
+        const resolved = prune(left, subst);
+        const resultNumeric =
+          resolved.kind === 'primitive'
+            ? ({ kind: 'primitive', name: normalizePrimitiveName(resolved.name) } as Type)
+            : fallback;
+
+        return recordExprType(
+          expr,
+          comparison ? ({ kind: 'primitive', name: 'bool' } as Type) : resultNumeric,
+          subst
+        );
       }
       return null;
     }
@@ -1082,9 +1135,21 @@ function parseTypeName(
     typeName === 'string' ||
     typeName === 'bool' ||
     typeName === 'void' ||
-    typeName === 'any'
+    typeName === 'any' ||
+    typeName === 'i8' ||
+    typeName === 'i16' ||
+    typeName === 'i32' ||
+    typeName === 'i64' ||
+    typeName === 'i128' ||
+    typeName === 'u8' ||
+    typeName === 'u16' ||
+    typeName === 'u32' ||
+    typeName === 'u64' ||
+    typeName === 'u128' ||
+    typeName === 'f32' ||
+    typeName === 'f64'
   ) {
-    return { kind: 'primitive', name: typeName };
+    return { kind: 'primitive', name: typeName as PrimitiveName };
   }
   const idx = typeName.indexOf('<');
   if (idx === -1) {

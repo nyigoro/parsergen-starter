@@ -238,6 +238,9 @@ export interface LuminaBinary {
 export interface LuminaNumber {
   type: 'Number';
   value: number;
+  raw?: string;
+  suffix?: string | null;
+  isFloat?: boolean;
   location?: Location;
 }
 

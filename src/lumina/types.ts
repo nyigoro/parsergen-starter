@@ -1,4 +1,60 @@
-export type PrimitiveName = 'int' | 'float' | 'string' | 'bool' | 'void' | 'any';
+export type PrimitiveName =
+  | 'int'
+  | 'float'
+  | 'string'
+  | 'bool'
+  | 'void'
+  | 'any'
+  | 'i8'
+  | 'i16'
+  | 'i32'
+  | 'i64'
+  | 'i128'
+  | 'u8'
+  | 'u16'
+  | 'u32'
+  | 'u64'
+  | 'u128'
+  | 'f32'
+  | 'f64';
+
+const integerPrimList: PrimitiveName[] = [
+  'int',
+  'i8',
+  'i16',
+  'i32',
+  'i64',
+  'i128',
+  'u8',
+  'u16',
+  'u32',
+  'u64',
+  'u128',
+];
+
+const floatPrimList: PrimitiveName[] = ['float', 'f32', 'f64'];
+
+export const integerPrimitives = new Set<PrimitiveName>(integerPrimList);
+export const floatPrimitives = new Set<PrimitiveName>(floatPrimList);
+export const numericPrimitives = new Set<PrimitiveName>([...integerPrimList, ...floatPrimList]);
+
+export function normalizePrimitiveName(name: PrimitiveName): PrimitiveName {
+  if (name === 'int') return 'i32';
+  if (name === 'float') return 'f64';
+  return name;
+}
+
+export function isNumericPrimitiveName(name: PrimitiveName): boolean {
+  return numericPrimitives.has(name);
+}
+
+export function isIntegerPrimitiveName(name: PrimitiveName): boolean {
+  return integerPrimitives.has(name);
+}
+
+export function isFloatPrimitiveName(name: PrimitiveName): boolean {
+  return floatPrimitives.has(name);
+}
 
 import { type Location } from '../utils/index.js';
 
@@ -115,7 +171,7 @@ const sanitizeTypeSegment = (value: string): string =>
 export function normalizeTypeName(type: Type): string {
   switch (type.kind) {
     case 'primitive':
-      return sanitizeTypeSegment(type.name);
+      return sanitizeTypeSegment(normalizePrimitiveName(type.name));
     case 'adt': {
       const base = sanitizeTypeSegment(type.name);
       if (type.params.length === 0) return base;
@@ -219,7 +275,9 @@ export function unify(
   }
 
   if (left.kind === 'primitive' && right.kind === 'primitive') {
-    if (left.name !== right.name) {
+    const leftName = normalizePrimitiveName(left.name);
+    const rightName = normalizePrimitiveName(right.name);
+    if (leftName !== rightName) {
       throw new UnificationError('mismatch', left, right, trace);
     }
     return;

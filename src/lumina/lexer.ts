@@ -133,9 +133,9 @@ export function createLuminaLexer(): LuminaLexer {
       { match: /'(?:\\.|[^'\\])*'/, lineBreaks: false },
     ],
     number: [
-      { match: /0x[0-9a-fA-F_]+/ },
-      { match: /0b[01_]+/ },
-      { match: /[0-9][0-9_]*/ },
+      { match: /0x[0-9a-fA-F_]+(?:i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64)?/ },
+      { match: /0b[01_]+(?:i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64)?/ },
+      { match: /[0-9][0-9_]*(?:\.[0-9_]+)?(?:[eE][+-]?[0-9_]+)?(?:i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64)?/ },
     ],
     identifier: /[A-Za-z_][A-Za-z0-9_]*/,
   });
@@ -206,13 +206,18 @@ function kindFromType(type: TokenType): TokenKind {
 
 function parseNumber(text: string): number {
   const clean = text.replace(/_/g, '');
-  if (clean.startsWith('0x') || clean.startsWith('0X')) {
-    return Number.parseInt(clean.slice(2), 16);
+  const suffixMatch = clean.match(/^(.*?)(i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64)$/);
+  const numeric = suffixMatch ? suffixMatch[1] : clean;
+  if (numeric.startsWith('0x') || numeric.startsWith('0X')) {
+    return Number.parseInt(numeric.slice(2), 16);
   }
-  if (clean.startsWith('0b') || clean.startsWith('0B')) {
-    return Number.parseInt(clean.slice(2), 2);
+  if (numeric.startsWith('0b') || numeric.startsWith('0B')) {
+    return Number.parseInt(numeric.slice(2), 2);
   }
-  return Number.parseInt(clean, 10);
+  if (numeric.includes('.') || numeric.includes('e') || numeric.includes('E')) {
+    return Number.parseFloat(numeric);
+  }
+  return Number.parseInt(numeric, 10);
 }
 
 function unescapeString(text: string): string {

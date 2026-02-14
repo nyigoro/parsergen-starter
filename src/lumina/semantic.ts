@@ -1434,6 +1434,14 @@ function typeCheckExpr(
     );
   };
 
+  const inferNumberType = (expr: { suffix?: string | null; raw?: string; isFloat?: boolean }): LuminaType => {
+    const suffix = expr.suffix ?? null;
+    if (suffix) return suffix;
+    const raw = expr.raw ?? '';
+    const isFloat = expr.isFloat || raw.includes('.') || raw.includes('e') || raw.includes('E');
+    return isFloat ? 'f64' : 'i32';
+  };
+
   const seedTypeParamsFromExpected = (
     enumName: string,
     mapping: Map<string, LuminaType>,
@@ -1465,7 +1473,7 @@ function typeCheckExpr(
     }
     return null;
   };
-  if (expr.type === 'Number') return 'int';
+  if (expr.type === 'Number') return inferNumberType(expr);
   if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'String') return 'string';
   if (expr.type === 'Move') {

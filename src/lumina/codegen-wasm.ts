@@ -1,7 +1,7 @@
 import { type Diagnostic } from '../parser/index.js';
 import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaFnDecl } from './ast.js';
 import { inferProgram } from './hm-infer.js';
-import { prune, type Type } from './types.js';
+import { prune, type Type, normalizePrimitiveName } from './types.js';
 import { type Location } from '../utils/index.js';
 
 type WasmValType = 'i32' | 'f64';
@@ -307,9 +307,19 @@ class WasmBuilder {
     if (!type) return null;
     const pruned = prune(type, this.subst);
     if (pruned.kind === 'primitive') {
-      if (pruned.name === 'int' || pruned.name === 'bool') return 'i32';
-      if (pruned.name === 'float') return 'f64';
-      if (pruned.name === 'void') return null;
+      const normalized = normalizePrimitiveName(pruned.name);
+      if (normalized === 'bool') return 'i32';
+      if (normalized === 'i8' || normalized === 'i16' || normalized === 'i32' || normalized === 'u8' || normalized === 'u16' || normalized === 'u32') {
+        return 'i32';
+      }
+      if (normalized === 'f32' || normalized === 'f64') {
+        return 'f64';
+      }
+      if (normalized === 'i64' || normalized === 'u64' || normalized === 'i128' || normalized === 'u128') {
+        this.reportUnsupported(`type '${normalized}' (WASM i64 not yet supported)`, location);
+        return 'i32';
+      }
+      if (normalized === 'void') return null;
     }
     this.reportUnsupported(`type '${this.formatType(pruned)}'`, location);
     return null;
