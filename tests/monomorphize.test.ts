@@ -63,7 +63,7 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const names = collectFnNames(mono);
-      expect(names).toEqual(expect.arrayContaining(['identity', 'identity_int', 'identity_string']));
+      expect(names).toEqual(expect.arrayContaining(['identity', 'identity_i32', 'identity_string']));
     });
 
     it('handles multiple type parameters', () => {
@@ -78,7 +78,7 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const names = collectFnNames(mono);
-      expect(names).toContain('pair_int_string');
+      expect(names).toContain('pair_i32_string');
     });
 
     it('preserves original generic function', () => {
@@ -90,7 +90,7 @@ describe('Monomorphization', () => {
       const { mono } = monomorphizeSource(source);
       const names = collectFnNames(mono);
       expect(names).toContain('identity');
-      expect(names).toContain('identity_int');
+      expect(names).toContain('identity_i32');
     });
   });
 
@@ -106,7 +106,7 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const calls = collectCalls(mono).filter((call) => !call.enumName).map((call) => call.callee);
-      expect(calls).toContain('identity_int');
+      expect(calls).toContain('identity_i32');
       expect(calls).not.toContain('identity');
     });
 
@@ -122,7 +122,7 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const calls = collectCalls(mono).filter((call) => !call.enumName).map((call) => call.callee);
-      expect(calls).toContain('identity_int');
+      expect(calls).toContain('identity_i32');
       expect(calls).toContain('identity_string');
     });
 
@@ -159,7 +159,7 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const names = collectFnNames(mono);
-      expect(names).toContain('wrap_Option_int');
+      expect(names).toContain('wrap_Option_i32');
     });
 
     it('works with ADT type arguments', () => {
@@ -174,7 +174,7 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const names = collectFnNames(mono);
-      expect(names.some((name) => name.startsWith('ok_int'))).toBe(true);
+      expect(names.some((name) => name.startsWith('ok_i32'))).toBe(true);
     });
   });
 
@@ -187,9 +187,9 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const names = collectFnNames(mono);
-      expect(names).toContain('loop_int');
+      expect(names).toContain('loop_i32');
       const calls = collectCalls(mono).filter((call) => !call.enumName).map((call) => call.callee);
-      expect(calls).toContain('loop_int');
+      expect(calls).toContain('loop_i32');
     });
 
     it('handles unused type parameters', () => {
@@ -200,7 +200,7 @@ describe('Monomorphization', () => {
 
       const { mono } = monomorphizeSource(source);
       const names = collectFnNames(mono);
-      expect(names).toContain('id2_int');
+      expect(names).toContain('id2_i32');
     });
 
     it('handles generic functions with no calls (no specialization)', () => {
@@ -237,12 +237,12 @@ describe('Monomorphization', () => {
       `.trim() + '\n';
 
       const { mono } = monomorphizeSource(source);
-      const specialized = extractFunction(mono, 'identity_int');
+      const specialized = extractFunction(mono, 'identity_i32');
       expect(specialized).toBeDefined();
       if (!specialized) return;
       const paramType = specialized.params[0]?.typeName;
-      expect(paramType).toBe('int');
-      expect(specialized.returnType).toBe('int');
+      expect(paramType).toBe('i32');
+      expect(specialized.returnType).toBe('i32');
     });
   });
 });

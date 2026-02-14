@@ -962,6 +962,104 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const hashsetModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const setT = adt('HashSet', [t]);
+    const vecT = adt('Vec', [t]);
+    const newType: Type = fnType([], setT);
+    const insertType: Type = fnType([setT, t], primitive('bool'));
+    const containsType: Type = fnType([setT, t], primitive('bool'));
+    const removeType: Type = fnType([setT, t], primitive('bool'));
+    const lenType: Type = fnType([setT], primitive('int'));
+    const clearType: Type = fnType([setT], primitive('void'));
+    const valuesType: Type = fnType([setT], vecT);
+
+    return {
+      kind: 'module',
+      name: 'hashset',
+      moduleId: 'std://hashset',
+      exports: new Map([
+        [
+          'new',
+          moduleFunctionWithScheme(
+            'new',
+            [],
+            'HashSet<any>',
+            schemeFromVars(newType, [t]),
+            [],
+            'std://hashset'
+          ),
+        ],
+        [
+          'insert',
+          moduleFunctionWithScheme(
+            'insert',
+            ['HashSet<any>', 'any'],
+            'bool',
+            schemeFromVars(insertType, [t]),
+            ['set', 'value'],
+            'std://hashset'
+          ),
+        ],
+        [
+          'contains',
+          moduleFunctionWithScheme(
+            'contains',
+            ['HashSet<any>', 'any'],
+            'bool',
+            schemeFromVars(containsType, [t]),
+            ['set', 'value'],
+            'std://hashset'
+          ),
+        ],
+        [
+          'remove',
+          moduleFunctionWithScheme(
+            'remove',
+            ['HashSet<any>', 'any'],
+            'bool',
+            schemeFromVars(removeType, [t]),
+            ['set', 'value'],
+            'std://hashset'
+          ),
+        ],
+        [
+          'len',
+          moduleFunctionWithScheme(
+            'len',
+            ['HashSet<any>'],
+            'int',
+            schemeFromVars(lenType, [t]),
+            ['set'],
+            'std://hashset'
+          ),
+        ],
+        [
+          'clear',
+          moduleFunctionWithScheme(
+            'clear',
+            ['HashSet<any>'],
+            'void',
+            schemeFromVars(clearType, [t]),
+            ['set'],
+            'std://hashset'
+          ),
+        ],
+        [
+          'values',
+          moduleFunctionWithScheme(
+            'values',
+            ['HashSet<any>'],
+            'Vec<any>',
+            schemeFromVars(valuesType, [t]),
+            ['set'],
+            'std://hashset'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const optionModule: ModuleNamespace = (() => {
     const t = freshTypeVar();
     const u = freshTypeVar();
@@ -1256,6 +1354,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['list', listModule],
       ['vec', vecModule],
       ['hashmap', hashmapModule],
+      ['hashset', hashsetModule],
       ['fs', fsModule],
       ['http', httpModule],
     ]),
@@ -1272,6 +1371,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/list', listModule);
   registry.set('@std/vec', vecModule);
   registry.set('@std/hashmap', hashmapModule);
+  registry.set('@std/hashset', hashsetModule);
   registry.set('@prelude', preludeModule);
   return registry;
 }

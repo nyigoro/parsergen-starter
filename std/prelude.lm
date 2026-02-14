@@ -7,6 +7,7 @@ extern fn upper(value: string) -> string from "string";
 type List<T> = { length: int };
 extern type Vec<T> from "@std/vec";
 extern type HashMap<K, V> from "@std/hashmap";
+extern type HashSet<T> from "@std/hashset";
 type Map<K, V> = { size: int };
 enum Option<T> { Some(T), None }
 enum Result<T, E> { Ok(T), Err(E) }

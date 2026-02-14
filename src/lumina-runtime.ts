@@ -588,6 +588,54 @@ export const hashmap = {
   values: <K, V>(m: HashMap<K, V>) => m.values(),
 };
 
+export class HashSet<T> {
+  private map: HashMap<T, undefined>;
+
+  constructor() {
+    this.map = HashMap.new<T, undefined>();
+  }
+
+  static new<T>(): HashSet<T> {
+    return new HashSet<T>();
+  }
+
+  insert(value: T): boolean {
+    const result = this.map.insert(value, undefined);
+    return result === Option.None;
+  }
+
+  contains(value: T): boolean {
+    return this.map.contains_key(value);
+  }
+
+  remove(value: T): boolean {
+    const result = this.map.remove(value);
+    return result !== Option.None;
+  }
+
+  len(): number {
+    return this.map.len();
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+
+  values(): Vec<T> {
+    return this.map.keys();
+  }
+}
+
+export const hashset = {
+  new: <T>() => HashSet.new<T>(),
+  insert: <T>(s: HashSet<T>, v: T) => s.insert(v),
+  contains: <T>(s: HashSet<T>, v: T) => s.contains(v),
+  remove: <T>(s: HashSet<T>, v: T) => s.remove(v),
+  len: <T>(s: HashSet<T>) => s.len(),
+  clear: <T>(s: HashSet<T>) => s.clear(),
+  values: <T>(s: HashSet<T>) => s.values(),
+};
+
 export class LuminaPanic extends Error {
   value?: unknown;
   constructor(message: string, value?: unknown) {

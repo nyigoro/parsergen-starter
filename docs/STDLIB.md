@@ -177,3 +177,26 @@ Returns a vector of keys.
 
 ### values<K, V>(map: HashMap<K, V>) -> Vec<V>
 Returns a vector of values.
+
+## @std/hashset
+
+### new<T>() -> HashSet<T>
+Creates an empty set.
+
+### insert<T>(set: HashSet<T>, value: T) -> Bool
+Inserts a value and returns true if it was newly added.
+
+### contains<T>(set: HashSet<T>, value: T) -> Bool
+Checks whether the set contains a value.
+
+### remove<T>(set: HashSet<T>, value: T) -> Bool
+Removes a value and returns true if it existed.
+
+### len<T>(set: HashSet<T>) -> Int
+Returns the number of values.
+
+### clear<T>(set: HashSet<T>) -> Void
+Removes all values from the set.
+
+### values<T>(set: HashSet<T>) -> Vec<T>
+Returns a vector of all values.

@@ -45,7 +45,7 @@ fn main() {
       ast,
       hmCallSignatures,
     });
-    expect(label).toBe('identity(x: int) -> int');
+    expect(label).toBe('identity(x: i32) -> i32');
   });
 
   test('identity call infers string at call site', () => {
@@ -91,7 +91,7 @@ describe('LSP cross-file hover follows alias chains', () => {
       hmCallSignatures,
       resolveImportedSymbol: (name) => project.resolveImportedSymbol(name, mainUri),
     });
-    expect(label).toBe('compute(x: int) -> int');
+    expect(label).toBe('compute(x: i32) -> any');
   });
 });
 
@@ -127,7 +127,7 @@ describe('LSP namespace hover for module aliases', () => {
       resolveImportedSymbol: (name) => project.resolveImportedSymbol(name, mainUri),
       resolveImportedMember: (base, member) => project.resolveImportedMember(base, member, mainUri),
     });
-    expect(label).toBe('add(a: int, b: int) -> int');
+    expect(label).toBe('add(a: i32, b: i32) -> any');
   });
 
   test('hover resolves multiple namespace aliases to same module', () => {
@@ -158,7 +158,7 @@ describe('LSP namespace hover for module aliases', () => {
       resolveImportedSymbol: (name) => project.resolveImportedSymbol(name, mainUri),
       resolveImportedMember: (base, member) => project.resolveImportedMember(base, member, mainUri),
     });
-    expect(label).toBe('add(a: int, b: int) -> int');
+    expect(label).toBe('add(a: i32, b: i32) -> any');
   });
 
   test('shadowed namespace does not resolve to module hover', () => {
@@ -232,6 +232,6 @@ fn main() {
       hmCallSignatures,
       hmExprTypes,
     });
-    expect(label).toBe('Option<int>');
+    expect(label).toBe('Option<i32>');
   });
 });

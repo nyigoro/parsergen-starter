@@ -48,7 +48,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Feature | Status | Notes |
 |---|---|---|
 | Prelude enums (Option/Result) | Stable | Registry + prelude |
-| Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list`, `vec`, `hashmap`, `fs`, `http` |
+| Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list`, `vec`, `hashmap`, `hashset`, `fs`, `http` |
 | Runtime Option/Result | Stable | JS runtime + helpers |
 | Async I/O | Stable | `io.readLineAsync()` |
 | File system | Stable | `fs.readFile`, `fs.writeFile` |
