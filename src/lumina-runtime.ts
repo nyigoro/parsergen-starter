@@ -515,6 +515,32 @@ export const vec = {
   len: <T>(v: Vec<T>) => v.len(),
   pop: <T>(v: Vec<T>) => v.pop(),
   clear: <T>(v: Vec<T>) => v.clear(),
+  map: <T, U>(v: Vec<T>, f: (value: T) => U) => {
+    const out = Vec.new<U>();
+    for (const item of v) {
+      out.push(f(item));
+    }
+    return out;
+  },
+  filter: <T>(v: Vec<T>, pred: (value: T) => boolean) => {
+    const out = Vec.new<T>();
+    for (const item of v) {
+      if (pred(item)) out.push(item);
+    }
+    return out;
+  },
+  fold: <T, U>(v: Vec<T>, init: U, f: (acc: U, value: T) => U) => {
+    let acc = init;
+    for (const item of v) {
+      acc = f(acc, item);
+    }
+    return acc;
+  },
+  for_each: <T>(v: Vec<T>, f: (value: T) => void) => {
+    for (const item of v) {
+      f(item);
+    }
+  },
 };
 
 export class HashMap<K, V> {

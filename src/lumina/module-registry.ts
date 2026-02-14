@@ -753,7 +753,9 @@ export function createStdModuleRegistry(): ModuleRegistry {
 
   const vecModule: ModuleNamespace = (() => {
     const t = freshTypeVar();
+    const u = freshTypeVar();
     const vecT = adt('Vec', [t]);
+    const vecU = adt('Vec', [u]);
     const optionT = adt('Option', [t]);
     const newType: Type = fnType([], vecT);
     const pushType: Type = fnType([vecT, t], primitive('void'));
@@ -761,6 +763,10 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const lenType: Type = fnType([vecT], primitive('int'));
     const popType: Type = fnType([vecT], optionT);
     const clearType: Type = fnType([vecT], primitive('void'));
+    const mapType: Type = fnType([vecT, fnType([t], u)], vecU);
+    const filterType: Type = fnType([vecT, fnType([t], primitive('bool'))], vecT);
+    const foldType: Type = fnType([vecT, u, fnType([u, t], u)], u);
+    const forEachType: Type = fnType([vecT, fnType([t], primitive('void'))], primitive('void'));
 
     return {
       kind: 'module',
@@ -830,6 +836,50 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'void',
             schemeFromVars(clearType, [t]),
             ['vec'],
+            'std://vec'
+          ),
+        ],
+        [
+          'map',
+          moduleFunctionWithScheme(
+            'map',
+            ['Vec<any>', 'any'],
+            'Vec<any>',
+            schemeFromVars(mapType, [t, u]),
+            ['values', 'mapper'],
+            'std://vec'
+          ),
+        ],
+        [
+          'filter',
+          moduleFunctionWithScheme(
+            'filter',
+            ['Vec<any>', 'any'],
+            'Vec<any>',
+            schemeFromVars(filterType, [t]),
+            ['values', 'predicate'],
+            'std://vec'
+          ),
+        ],
+        [
+          'fold',
+          moduleFunctionWithScheme(
+            'fold',
+            ['Vec<any>', 'any', 'any'],
+            'any',
+            schemeFromVars(foldType, [t, u]),
+            ['values', 'init', 'folder'],
+            'std://vec'
+          ),
+        ],
+        [
+          'for_each',
+          moduleFunctionWithScheme(
+            'for_each',
+            ['Vec<any>', 'any'],
+            'void',
+            schemeFromVars(forEachType, [t]),
+            ['values', 'action'],
             'std://vec'
           ),
         ],

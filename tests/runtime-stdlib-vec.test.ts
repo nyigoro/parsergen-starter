@@ -35,4 +35,30 @@ describe('runtime vec helpers', () => {
     const empty = vec.pop(v);
     expect(empty).toBe(Option.None);
   });
+
+  test('map/filter/fold/for_each', () => {
+    const v = vec.new<number>();
+    vec.push(v, 1);
+    vec.push(v, 2);
+    vec.push(v, 3);
+    vec.push(v, 4);
+
+    const doubled = vec.map(v, (value) => value * 2);
+    expect(vec.len(doubled)).toBe(4);
+    expect(unwrapOption(vec.get(doubled, 2)).$payload).toBe(6);
+
+    const evens = vec.filter(doubled, (value) => value % 4 === 0);
+    expect(vec.len(evens)).toBe(2);
+    expect(unwrapOption(vec.get(evens, 0)).$payload).toBe(4);
+    expect(unwrapOption(vec.get(evens, 1)).$payload).toBe(8);
+
+    const sum = vec.fold(doubled, 0, (acc, value) => acc + value);
+    expect(sum).toBe(20);
+
+    let count = 0;
+    vec.for_each(doubled, (value) => {
+      if (value > 0) count += 1;
+    });
+    expect(count).toBe(4);
+  });
 });

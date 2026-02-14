@@ -149,6 +149,18 @@ Removes the last element and returns it, or `None` if empty.
 ### clear<T>(vec: Vec<T>) -> Void
 Removes all elements from the vector.
 
+### map<T, U>(vec: Vec<T>, mapper: fn(T) -> U) -> Vec<U>
+Transforms each element with `mapper` and returns a new vector.
+
+### filter<T>(vec: Vec<T>, predicate: fn(T) -> Bool) -> Vec<T>
+Returns a new vector containing only elements that satisfy `predicate`.
+
+### fold<T, U>(vec: Vec<T>, init: U, folder: fn(U, T) -> U) -> U
+Reduces the vector into a single value.
+
+### for_each<T>(vec: Vec<T>, action: fn(T) -> Void) -> Void
+Applies `action` to every element.
+
 ## @std/hashmap
 
 ### new<K, V>() -> HashMap<K, V>
