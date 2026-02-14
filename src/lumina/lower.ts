@@ -282,7 +282,7 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       if (expr.parts.length === 0) {
         return { kind: 'String', value: '', location: expr.location } as IRString;
       }
-      const loweredParts = expr.parts.map((part) => {
+      const loweredParts: IRNode[] = expr.parts.map((part) => {
         if (typeof part === 'string') {
           return { kind: 'String', value: part, location: expr.location } as IRString;
         }
@@ -293,7 +293,7 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
           location: part.location ?? expr.location,
         } as IRCall;
       });
-      let current = loweredParts[0];
+      let current: IRNode = loweredParts[0];
       for (let i = 1; i < loweredParts.length; i += 1) {
         current = {
           kind: 'Binary',

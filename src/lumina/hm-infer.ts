@@ -846,7 +846,7 @@ function inferExpr(
       if (objectType && objectType.kind === 'adt' && objectType.name === 'Vec' && objectType.params.length === 1) {
         return recordExprType(expr, objectType.params[0], subst);
       }
-      if (objectType && objectType.kind === 'var') {
+      if (objectType && objectType.kind === 'variable') {
         const elemType = freshTypeVar();
         const vecType: Type = { kind: 'adt', name: 'Vec', params: [elemType] };
         tryUnify(objectType, vecType, subst, diagnostics, {
