@@ -1596,6 +1596,26 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     return;
   }
 
+  if (command === 'run-wasm') {
+    const argsList = process.argv.slice(2);
+    const wasmPath = file ? path.resolve(file) : argsList[1] ? path.resolve(argsList[1]) : '';
+    if (!wasmPath) {
+      throw new Error('Missing <file> for run-wasm');
+    }
+    const funcName = argsList[2] ?? 'main';
+    const funcArgs = argsList.slice(3).map((value) => {
+      const parsed = Number(value);
+      if (Number.isNaN(parsed)) {
+        throw new Error(`Invalid numeric argument: ${value}`);
+      }
+      return parsed;
+    });
+    const runtime = await loadWASM(wasmPath);
+    const result = callWASMFunction(runtime, funcName, ...funcArgs);
+    console.log(`Result: ${result}`);
+    return;
+  }
+
   const config = loadConfig() ?? {};
   const grammarPath = resolveGrammarPath(
     typeof args.get('--grammar') === 'string'
@@ -1701,26 +1721,6 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         }
       }
     }
-    return;
-  }
-
-  if (command === 'run-wasm') {
-    const argsList = process.argv.slice(2);
-    const wasmPath = file ? path.resolve(file) : argsList[1] ? path.resolve(argsList[1]) : '';
-    if (!wasmPath) {
-      throw new Error('Missing <file> for run-wasm');
-    }
-    const funcName = argsList[2] ?? 'main';
-    const funcArgs = argsList.slice(3).map((value) => {
-      const parsed = Number(value);
-      if (Number.isNaN(parsed)) {
-        throw new Error(`Invalid numeric argument: ${value}`);
-      }
-      return parsed;
-    });
-    const runtime = await loadWASM(wasmPath);
-    const result = callWASMFunction(runtime, funcName, ...funcArgs);
-    console.log(`Result: ${result}`);
     return;
   }
 

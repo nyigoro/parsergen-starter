@@ -41,9 +41,8 @@ export function generateWATFromAst(
     builder.append(builder.emitFunction(fn));
   }
   if (options.exportMain !== false) {
-    const hasMain = functions.some((fn) => fn.name === 'main');
-    if (hasMain) {
-      builder.append(`  (export "main" (func $main))`);
+    for (const fn of functions) {
+      builder.append(`  (export "${fn.name}" (func $${fn.name}))`);
     }
   }
   builder.append(')');
@@ -174,6 +173,8 @@ class WasmBuilder {
           break;
         }
         case 'If':
+          lines.push(...this.emitIf(stmt));
+          break;
         case 'While':
         case 'MatchStmt':
         case 'StructDecl':
@@ -188,6 +189,32 @@ class WasmBuilder {
           break;
       }
     }
+    return lines;
+  }
+
+  private emitIf(stmt: {
+    condition: LuminaExpr;
+    thenBlock: { body?: LuminaStatement[] };
+    elseBlock?: { body?: LuminaStatement[] } | null;
+  }): string[] {
+    const lines: string[] = [];
+    lines.push(...this.emitExpr(stmt.condition));
+    lines.push('(if');
+    lines.push('  (then');
+    const thenLines = this.emitBlock(stmt.thenBlock?.body ?? []);
+    for (const line of thenLines) {
+      lines.push(`    ${line}`);
+    }
+    lines.push('  )');
+    if (stmt.elseBlock) {
+      lines.push('  (else');
+      const elseLines = this.emitBlock(stmt.elseBlock.body ?? []);
+      for (const line of elseLines) {
+        lines.push(`    ${line}`);
+      }
+      lines.push('  )');
+    }
+    lines.push(')');
     return lines;
   }
 

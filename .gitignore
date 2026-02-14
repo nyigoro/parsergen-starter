@@ -13,3 +13,8 @@ pnpm-debug.log*
 /transform.js
 /codegen.js
 /.parsergenrc
+.lumina-cache/
+examples/wasm-hello/*.wat
+examples/wasm-hello/*.wasm
+examples/wasm-hello/*.cjs
+examples/wasm-hello/lumina-runtime.cjs

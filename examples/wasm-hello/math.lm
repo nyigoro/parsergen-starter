@@ -1,0 +1,36 @@
+fn add(a: int, b: int) -> int {
+  return a + b;
+}
+
+fn multiply(a: int, b: int) -> int {
+  return a * b;
+}
+
+fn factorial(n: int) -> int {
+  let mut result = 0;
+  if (n <= 1) {
+    result = 1;
+  } else {
+    result = n * factorial(n - 1);
+  }
+  return result;
+}
+
+fn fibonacci(n: int) -> int {
+  let mut result = 0;
+  if (n <= 1) {
+    result = n;
+  } else {
+    result = fibonacci(n - 1) + fibonacci(n - 2);
+  }
+  return result;
+}
+
+fn main() -> int {
+  let sum = add(10, 20);
+  let product = multiply(5, 7);
+  let fact = factorial(5);
+  let fib = fibonacci(10);
+
+  return sum + product + fact + fib;
+}

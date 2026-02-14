@@ -233,6 +233,7 @@ export default [
       '*.generated.js',
       'demo.js',
       'test-lumina-pkg/**',
+      'examples/wasm-hello/benchmark.ts',
     ],
   },
 ];
