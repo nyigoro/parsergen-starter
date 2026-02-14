@@ -90,6 +90,7 @@ export { analyzeLumina, SymbolTable as LuminaSymbolTable } from './lumina/semant
 export { lowerLumina } from './lumina/lower';
 export { generateJS } from './lumina/codegen';
 export { generateJSFromAst } from './lumina/codegen-js';
+export { generateWATFromAst } from './lumina/codegen-wasm';
 export type { IRNode } from './lumina/ir';
 export { optimizeIR } from './lumina/optimize';
 export { irToDot } from './lumina/ir-dot';

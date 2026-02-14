@@ -14,6 +14,7 @@ import {
   optimizeIR,
   generateJS,
   generateJSFromAst,
+  generateWATFromAst,
   irToDot,
   inferProgram,
   monomorphize,
@@ -33,7 +34,7 @@ import {
   listPackages,
 } from '../commands/package.js';
 
-type Target = 'cjs' | 'esm';
+type Target = 'cjs' | 'esm' | 'wasm';
 
 const DEFAULT_GRAMMAR_PATHS = [
   path.resolve('src/grammar/lumina.peg'),
@@ -72,8 +73,8 @@ function validateConfig(raw: LuminaConfig): LuminaConfig {
     else errors.push('outDir must be a string');
   }
   if (raw.target !== undefined) {
-    if (raw.target === 'cjs' || raw.target === 'esm') normalized.target = raw.target;
-    else errors.push('target must be "cjs" or "esm"');
+    if (raw.target === 'cjs' || raw.target === 'esm' || raw.target === 'wasm') normalized.target = raw.target;
+    else errors.push('target must be "cjs", "esm", or "wasm"');
   }
 
   const normalizeList = (value: unknown, key: string): string[] | undefined => {
@@ -148,14 +149,20 @@ function parseBooleanFlag(args: Map<string, string | boolean>, key: string): boo
 
 function resolveTarget(value: string | undefined): Target | null {
   if (!value) return null;
-  return value === 'cjs' || value === 'esm' ? value : null;
+  return value === 'cjs' || value === 'esm' || value === 'wasm' ? value : null;
 }
 
-function resolveOutPath(sourcePath: string, outPathArg: string | undefined, outDir: string | undefined): string {
+function resolveOutPath(
+  sourcePath: string,
+  outPathArg: string | undefined,
+  outDir: string | undefined,
+  target?: Target
+): string {
   if (outPathArg) return path.resolve(outPathArg);
-  const base = path.basename(sourcePath, path.extname(sourcePath)) + '.js';
+  const ext = target === 'wasm' ? '.wat' : '.js';
+  const base = path.basename(sourcePath, path.extname(sourcePath)) + ext;
   if (outDir) return path.resolve(outDir, base);
-  return path.resolve('lumina.out.js');
+  return path.resolve(target === 'wasm' ? 'lumina.out.wat' : 'lumina.out.js');
 }
 
 type BuildConfig = {
@@ -926,6 +933,55 @@ async function compileLumina(
   const lockfileRoot = findLockfileRoot(sourcePath);
   await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath, lockfileRoot);
   const hasProjectImports = extractImports(source).some((imp) => !imp.startsWith('@std/'));
+  if (target === 'wasm') {
+    if (hasProjectImports) {
+      const bundle = await bundleProgram(
+        sourcePath,
+        parser,
+        useRecovery,
+        configFileExtensions,
+        configStdPath,
+        lockfileRoot
+      );
+      if (!bundle) return { ok: false };
+      const analysis = analyzeLumina(bundle.program as never, { diDebug: diCfg });
+      if (analysis.diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+        return { ok: false };
+      }
+      const monoAst = monomorphizeAst(bundle.program as never);
+      const wasm = generateWATFromAst(monoAst as never, { exportMain: true });
+      if (wasm.diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(source, wasm.diagnostics);
+        return { ok: false };
+      }
+      await fs.writeFile(outPath, wasm.wat, 'utf-8');
+      console.log(`Lumina compiled (wasm): ${outPath}`);
+      return { ok: true, map: undefined, ir: undefined };
+    }
+
+    const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+    if (parseError) return { ok: false };
+    if (parseDiagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, parseDiagnostics);
+      return { ok: false };
+    }
+    if (!ast) return { ok: false };
+    const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
+    if (analysis.diagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+      return { ok: false };
+    }
+    const monoAst = monomorphizeAst(ast as never);
+    const wasm = generateWATFromAst(monoAst as never, { exportMain: true });
+    if (wasm.diagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, wasm.diagnostics);
+      return { ok: false };
+    }
+    await fs.writeFile(outPath, wasm.wat, 'utf-8');
+    console.log(`Lumina compiled (wasm): ${outPath}`);
+    return { ok: true, map: undefined, ir: undefined };
+  }
   if (hasProjectImports) {
     const bundle = await bundleProgram(
       sourcePath,
@@ -1330,12 +1386,12 @@ async function watchLumina(
   };
   const onChange = async (filePath: string) => {
     try {
-      const outPath = resolveOutPath(filePath, outPathArg, outDir);
+      const outPath = resolveOutPath(filePath, outPathArg, outDir, target);
       await runCompile(filePath, outPath);
       const graph = buildDepGraph();
       const dependents = getDependents(graph, filePath);
       for (const dep of dependents) {
-        const depOut = resolveOutPath(dep, outPathArg, outDir);
+        const depOut = resolveOutPath(dep, outPathArg, outDir, target);
         await runCompile(dep, depOut);
       }
     } catch (err) {
@@ -1344,7 +1400,7 @@ async function watchLumina(
   };
 
   for (const sourcePath of expandedSources) {
-    const outPath = resolveOutPath(sourcePath, outPathArg, outDir);
+    const outPath = resolveOutPath(sourcePath, outPathArg, outDir, target);
     await runCompile(sourcePath, outPath);
   }
 
@@ -1455,7 +1511,7 @@ Commands:
 
 Options:
   --out <file>         Output JS file (default: lumina.out.js)
-  --target <cjs|esm>   Output module format (default: esm)
+  --target <cjs|esm|wasm>   Output module format (default: esm)
   --grammar <path>     Override grammar path
   --dry-run            Parse and analyze only (compile command)
   --recovery           Enable resilient parsing (panic mode)
@@ -1596,7 +1652,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     if (entries.length === 0) throw new Error('Missing <file> for compile');
     for (const entry of entries) {
       const sourcePath = path.resolve(entry);
-      const outPath = resolveOutPath(sourcePath, outArg, outDir);
+      const outPath = resolveOutPath(sourcePath, outArg, outDir, target);
       if (dryRun) {
         const result = await checkLumina(sourcePath, grammarPath, useRecovery, diCfg);
         if (!result.ok) process.exit(1);

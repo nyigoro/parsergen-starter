@@ -16,7 +16,7 @@ type CompileMessage = {
   payload: {
     sourcePath: string;
     outPath: string;
-    target: 'cjs' | 'esm';
+    target: 'cjs' | 'esm' | 'wasm';
     grammarPath: string;
     useRecovery: boolean;
     diCfg?: boolean;
