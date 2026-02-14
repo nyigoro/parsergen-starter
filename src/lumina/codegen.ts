@@ -22,13 +22,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -59,9 +59,9 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   let code = builder.toString().trimEnd() + '\n';
   if (includeRuntime) {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, list, vec, Result, Option, __set, formatValue, LuminaPanic };\n';
+      code += 'module.exports = { io, str, math, list, vec, hashmap, Result, Option, __set, formatValue, LuminaPanic };\n';
     } else {
-      code += 'export { io, str, math, list, vec, Result, Option, __set, formatValue, LuminaPanic };\n';
+      code += 'export { io, str, math, list, vec, hashmap, Result, Option, __set, formatValue, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {

@@ -837,6 +837,131 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const hashmapModule: ModuleNamespace = (() => {
+    const k = freshTypeVar();
+    const v = freshTypeVar();
+    const mapT = adt('HashMap', [k, v]);
+    const optionV = adt('Option', [v]);
+    const vecK = adt('Vec', [k]);
+    const vecV = adt('Vec', [v]);
+    const newType: Type = fnType([], mapT);
+    const insertType: Type = fnType([mapT, k, v], optionV);
+    const getType: Type = fnType([mapT, k], optionV);
+    const removeType: Type = fnType([mapT, k], optionV);
+    const containsType: Type = fnType([mapT, k], primitive('bool'));
+    const lenType: Type = fnType([mapT], primitive('int'));
+    const clearType: Type = fnType([mapT], primitive('void'));
+    const keysType: Type = fnType([mapT], vecK);
+    const valuesType: Type = fnType([mapT], vecV);
+
+    return {
+      kind: 'module',
+      name: 'hashmap',
+      moduleId: 'std://hashmap',
+      exports: new Map([
+        [
+          'new',
+          moduleFunctionWithScheme(
+            'new',
+            [],
+            'HashMap<any, any>',
+            schemeFromVars(newType, [k, v]),
+            [],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'insert',
+          moduleFunctionWithScheme(
+            'insert',
+            ['HashMap<any, any>', 'any', 'any'],
+            'Option<any>',
+            schemeFromVars(insertType, [k, v]),
+            ['map', 'key', 'value'],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'get',
+          moduleFunctionWithScheme(
+            'get',
+            ['HashMap<any, any>', 'any'],
+            'Option<any>',
+            schemeFromVars(getType, [k, v]),
+            ['map', 'key'],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'remove',
+          moduleFunctionWithScheme(
+            'remove',
+            ['HashMap<any, any>', 'any'],
+            'Option<any>',
+            schemeFromVars(removeType, [k, v]),
+            ['map', 'key'],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'contains_key',
+          moduleFunctionWithScheme(
+            'contains_key',
+            ['HashMap<any, any>', 'any'],
+            'bool',
+            schemeFromVars(containsType, [k, v]),
+            ['map', 'key'],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'len',
+          moduleFunctionWithScheme(
+            'len',
+            ['HashMap<any, any>'],
+            'int',
+            schemeFromVars(lenType, [k, v]),
+            ['map'],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'clear',
+          moduleFunctionWithScheme(
+            'clear',
+            ['HashMap<any, any>'],
+            'void',
+            schemeFromVars(clearType, [k, v]),
+            ['map'],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'keys',
+          moduleFunctionWithScheme(
+            'keys',
+            ['HashMap<any, any>'],
+            'Vec<any>',
+            schemeFromVars(keysType, [k, v]),
+            ['map'],
+            'std://hashmap'
+          ),
+        ],
+        [
+          'values',
+          moduleFunctionWithScheme(
+            'values',
+            ['HashMap<any, any>'],
+            'Vec<any>',
+            schemeFromVars(valuesType, [k, v]),
+            ['map'],
+            'std://hashmap'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const optionModule: ModuleNamespace = (() => {
     const t = freshTypeVar();
     const u = freshTypeVar();
@@ -1130,6 +1255,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['math', mathModule],
       ['list', listModule],
       ['vec', vecModule],
+      ['hashmap', hashmapModule],
       ['fs', fsModule],
       ['http', httpModule],
     ]),
@@ -1145,6 +1271,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/math', mathModule);
   registry.set('@std/list', listModule);
   registry.set('@std/vec', vecModule);
+  registry.set('@std/hashmap', hashmapModule);
   registry.set('@prelude', preludeModule);
   return registry;
 }

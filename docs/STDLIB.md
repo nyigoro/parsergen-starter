@@ -148,3 +148,32 @@ Removes the last element and returns it, or `None` if empty.
 
 ### clear<T>(vec: Vec<T>) -> Void
 Removes all elements from the vector.
+
+## @std/hashmap
+
+### new<K, V>() -> HashMap<K, V>
+Creates an empty hash map.
+
+### insert<K, V>(map: HashMap<K, V>, key: K, value: V) -> Option<V>
+Inserts a key/value pair and returns the previous value if present.
+
+### get<K, V>(map: HashMap<K, V>, key: K) -> Option<V>
+Returns the value for a key, or `None` when missing.
+
+### remove<K, V>(map: HashMap<K, V>, key: K) -> Option<V>
+Removes a key and returns its value, or `None` when missing.
+
+### contains_key<K, V>(map: HashMap<K, V>, key: K) -> Bool
+Checks if the map contains the key.
+
+### len<K, V>(map: HashMap<K, V>) -> Int
+Returns the number of entries.
+
+### clear<K, V>(map: HashMap<K, V>) -> Void
+Removes all entries from the map.
+
+### keys<K, V>(map: HashMap<K, V>) -> Vec<K>
+Returns a vector of keys.
+
+### values<K, V>(map: HashMap<K, V>) -> Vec<V>
+Returns a vector of values.

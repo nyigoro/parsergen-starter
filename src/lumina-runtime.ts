@@ -517,6 +517,77 @@ export const vec = {
   clear: <T>(v: Vec<T>) => v.clear(),
 };
 
+export class HashMap<K, V> {
+  private map: Map<K, V>;
+
+  constructor() {
+    this.map = new Map();
+  }
+
+  static new<K, V>(): HashMap<K, V> {
+    return new HashMap<K, V>();
+  }
+
+  insert(key: K, value: V) {
+    const had = this.map.has(key);
+    const old = this.map.get(key);
+    this.map.set(key, value);
+    return had ? Option.Some(old as V) : Option.None;
+  }
+
+  get(key: K) {
+    if (!this.map.has(key)) return Option.None;
+    return Option.Some(this.map.get(key) as V);
+  }
+
+  remove(key: K) {
+    if (!this.map.has(key)) return Option.None;
+    const value = this.map.get(key) as V;
+    this.map.delete(key);
+    return Option.Some(value);
+  }
+
+  contains_key(key: K): boolean {
+    return this.map.has(key);
+  }
+
+  len(): number {
+    return this.map.size;
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+
+  keys(): Vec<K> {
+    const v = Vec.new<K>();
+    for (const key of this.map.keys()) {
+      v.push(key);
+    }
+    return v;
+  }
+
+  values(): Vec<V> {
+    const v = Vec.new<V>();
+    for (const value of this.map.values()) {
+      v.push(value);
+    }
+    return v;
+  }
+}
+
+export const hashmap = {
+  new: <K, V>() => HashMap.new<K, V>(),
+  insert: <K, V>(m: HashMap<K, V>, k: K, v: V) => m.insert(k, v),
+  get: <K, V>(m: HashMap<K, V>, k: K) => m.get(k),
+  remove: <K, V>(m: HashMap<K, V>, k: K) => m.remove(k),
+  contains_key: <K, V>(m: HashMap<K, V>, k: K) => m.contains_key(k),
+  len: <K, V>(m: HashMap<K, V>) => m.len(),
+  clear: <K, V>(m: HashMap<K, V>) => m.clear(),
+  keys: <K, V>(m: HashMap<K, V>) => m.keys(),
+  values: <K, V>(m: HashMap<K, V>) => m.values(),
+};
+
 export class LuminaPanic extends Error {
   value?: unknown;
   constructor(message: string, value?: unknown) {

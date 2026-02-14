@@ -85,6 +85,7 @@ const builtinTypes: Set<LuminaType> = new Set([
   'f32',
   'f64',
   'Vec',
+  'HashMap',
 ]);
 
 const numericTypes: Set<LuminaType> = new Set([
