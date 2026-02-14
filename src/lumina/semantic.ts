@@ -1650,6 +1650,37 @@ function typeCheckExpr(
   if (expr.type === 'Number') return inferNumberType(expr);
   if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'String') return 'string';
+  if (expr.type === 'InterpolatedString') {
+    for (const part of expr.parts) {
+      if (typeof part === 'string') continue;
+      const partType = typeCheckExpr(
+        part,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      );
+      if (partType && normalizeTypeForComparison(partType) === 'void') {
+        diagnostics.push(
+          diagAt(
+            `Cannot interpolate void value`,
+            part.location ?? expr.location,
+            'error',
+            'STRING_INTERP_VOID'
+          )
+        );
+      }
+    }
+    return 'string';
+  }
   if (expr.type === 'Cast') {
     const valueType = typeCheckExpr(
       expr.expr,

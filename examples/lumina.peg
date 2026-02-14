@@ -433,17 +433,42 @@ Boolean
   / "false" { return createNode("Boolean", { value: false }, location); }
 
 String
-  = "\"" chars:DoubleStringCharacter* "\"" {
-      return createNode("String", { value: chars.join("") }, location);
+  = "\"" parts:InterpolatedPart* "\"" {
+      const hasExpr = parts.some(part => part && part.kind === "expr");
+      if (!hasExpr) {
+        const text = parts.map(part => part.value).join("");
+        return createNode("String", { value: text }, location);
+      }
+      const normalized = [];
+      for (const part of parts) {
+        if (!part) continue;
+        if (part.kind === "text") {
+          if (part.value.length > 0) normalized.push(part.value);
+        } else {
+          normalized.push(part.value);
+        }
+      }
+      return createNode("InterpolatedString", { parts: normalized }, location);
     }
 
-DoubleStringCharacter
-  = !("\"" / "\\") char:. { return char; }
+InterpolatedPart
+  = InterpolatedExpr / InterpolatedText
+
+InterpolatedExpr
+  = "{" _ expr:Expr _ "}" { return { kind: "expr", value: expr }; }
+
+InterpolatedText
+  = chars:InterpolatedChar+ { return { kind: "text", value: chars.join("") }; }
+
+InterpolatedChar
+  = !("\"" / "\\" / "{") char:. { return char; }
   / "\\" seq:EscapeSequence { return seq; }
 
 EscapeSequence
   = "\"" { return "\""; }
   / "\\" { return "\\"; }
+  / "{" { return String.fromCharCode(123); }
+  / "}" { return String.fromCharCode(125); }
   / "n" { return "\n"; }
   / "r" { return "\r"; }
   / "t" { return "\t"; }

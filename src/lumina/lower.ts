@@ -278,6 +278,33 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       const str: IRString = { kind: 'String', value: expr.value, location: expr.location };
       return str;
     }
+    case 'InterpolatedString': {
+      if (expr.parts.length === 0) {
+        return { kind: 'String', value: '', location: expr.location } as IRString;
+      }
+      const loweredParts = expr.parts.map((part) => {
+        if (typeof part === 'string') {
+          return { kind: 'String', value: part, location: expr.location } as IRString;
+        }
+        return {
+          kind: 'Call',
+          callee: '__lumina_stringify',
+          args: [lowerExpr(part, ctx)],
+          location: part.location ?? expr.location,
+        } as IRCall;
+      });
+      let current = loweredParts[0];
+      for (let i = 1; i < loweredParts.length; i += 1) {
+        current = {
+          kind: 'Binary',
+          op: '+',
+          left: current,
+          right: loweredParts[i],
+          location: expr.location,
+        } as IRBinary;
+      }
+      return current;
+    }
     case 'Identifier': {
       const id: IRIdentifier = { kind: 'Identifier', name: expr.name, location: expr.location };
       return id;

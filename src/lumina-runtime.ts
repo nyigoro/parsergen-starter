@@ -134,6 +134,8 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
   return format(value, 0);
 }
 
+export const __lumina_stringify = (value: unknown): string => formatValue(value, { color: false });
+
 const toJsonValue = (value: unknown, seen: WeakSet<object>): unknown => {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {

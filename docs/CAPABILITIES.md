@@ -21,6 +21,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Type holes (`_`) in annotations | Stable | **HM validation** + LUMâ€‘010 |
 | Async/await | Stable | `async fn`, `await`, Promise<T> |
 | Error handling (`?`) | Stable | Rust-style Result propagation |
+| String interpolation | Stable | `"Hello {name}"` |
 
 ## Type System (HM)
 | Feature | Status | Notes |

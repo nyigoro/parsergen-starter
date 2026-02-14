@@ -198,6 +198,12 @@ const visitExpr = (
     case 'Move':
       visitExpr(expr.target, ctx, genericFns, hm);
       return;
+    case 'InterpolatedString':
+      for (const part of expr.parts) {
+        if (typeof part === 'string') continue;
+        visitExpr(part, ctx, genericFns, hm);
+      }
+      return;
     default:
       return;
   }
@@ -315,6 +321,12 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
       return;
     case 'Move':
       substituteTypesInExpr(expr.target, mapping);
+      return;
+    case 'InterpolatedString':
+      for (const part of expr.parts) {
+        if (typeof part === 'string') continue;
+        substituteTypesInExpr(part, mapping);
+      }
       return;
     default:
       return;

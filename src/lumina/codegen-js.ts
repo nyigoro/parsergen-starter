@@ -74,11 +74,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -93,6 +93,8 @@ class JSGenerator {
       this.builder.append('const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };');
       this.builder.append('\n');
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_stringify(value) { return String(value); }');
     }
     if (this.usesTryHelper) {
       this.builder.append(tryHelperSource());
@@ -106,15 +108,19 @@ class JSGenerator {
 
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append(
+          'module.exports = { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };'
+        );
       } else {
-        this.builder.append('export { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append(
+          'export { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };'
+        );
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, fs, http, __set };');
+        this.builder.append('module.exports = { io, str, math, fs, http, __set, __lumina_stringify };');
       } else {
-        this.builder.append('export { io, str, math, fs, http, __set };');
+        this.builder.append('export { io, str, math, fs, http, __set, __lumina_stringify };');
       }
     }
     this.builder.append('\n');
@@ -420,6 +426,25 @@ class JSGenerator {
         return withBase({ code: expr.value ? 'true' : 'false', mappings: [] });
       case 'String':
         return withBase({ code: JSON.stringify(expr.value), mappings: [] });
+      case 'InterpolatedString': {
+        if (expr.parts.length === 0) {
+          return withBase({ code: '""', mappings: [] });
+        }
+        const rendered = expr.parts.map((part) => {
+          if (typeof part === 'string') {
+            return { code: JSON.stringify(part), mappings: [] };
+          }
+          const inner = this.emitExpr(part);
+          return concat('__lumina_stringify(', inner, ')');
+        });
+        const pieces: Array<string | EmitResult> = ['('];
+        rendered.forEach((part, idx) => {
+          if (idx > 0) pieces.push(' + ');
+          pieces.push(part);
+        });
+        pieces.push(')');
+        return withBase(concat(...pieces));
+      }
       case 'Identifier':
         return withBase({ code: expr.name, mappings: [] });
       case 'Move':
@@ -729,6 +754,8 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
       return exprUsesTry(expr.value) || expr.arms.some((arm) => exprUsesTry(arm.body));
     case 'Move':
       return exprUsesTry(expr.target);
+    case 'InterpolatedString':
+      return expr.parts.some((part) => typeof part !== 'string' && exprUsesTry(part));
     default:
       return false;
   }

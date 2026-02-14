@@ -802,6 +802,13 @@ function inferExpr(
       return recordExprType(expr, inferNumberLiteralType(expr), subst);
     case 'String':
       return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
+    case 'InterpolatedString': {
+      for (const part of expr.parts) {
+        if (typeof part === 'string') continue;
+        inferChild(part);
+      }
+      return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
+    }
     case 'Boolean':
       return recordExprType(expr, { kind: 'primitive', name: 'bool' }, subst);
     case 'Await': {

@@ -271,6 +271,7 @@ export type LuminaExpr = (
   | LuminaIsExpr
   | LuminaNumber
   | LuminaString
+  | LuminaInterpolatedString
   | LuminaBoolean
   | LuminaIdentifier
   | LuminaMatchExpr
@@ -302,6 +303,12 @@ export interface LuminaBoolean {
 export interface LuminaString {
   type: 'String';
   value: string;
+  location?: Location;
+}
+
+export interface LuminaInterpolatedString {
+  type: 'InterpolatedString';
+  parts: Array<string | LuminaExpr>;
   location?: Location;
 }
 

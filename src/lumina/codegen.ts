@@ -24,13 +24,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -53,6 +53,8 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append('\n');
     builder.append(`function __set(obj, prop, value) { obj[prop] = value; return value; }`, 'Runtime');
     builder.append('\n');
+    builder.append(`function __lumina_stringify(value) { return String(value); }`, 'Runtime');
+    builder.append('\n');
   }
   if (usesTry) {
     builder.append(tryHelperSource(), 'Runtime');
@@ -65,15 +67,17 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   let code = builder.toString().trimEnd() + '\n';
   if (includeRuntime) {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, LuminaPanic };\n';
+      code +=
+        'module.exports = { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };\n';
     } else {
-      code += 'export { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, LuminaPanic };\n';
+      code +=
+        'export { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, __set };\n';
+      code += 'module.exports = { io, str, math, __set, __lumina_stringify };\n';
     } else {
-      code += 'export { io, str, math, __set };\n';
+      code += 'export { io, str, math, __set, __lumina_stringify };\n';
     }
   }
 
