@@ -809,6 +809,54 @@ function inferExpr(
       }
       return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
     }
+    case 'Range': {
+      const isIntegerPrimitive = (name: PrimitiveName): boolean => {
+        const normalized = normalizePrimitiveName(name);
+        return normalized.startsWith('i') || normalized.startsWith('u');
+      };
+      const checkPart = (part: LuminaExpr | null, label: string) => {
+        if (!part) return;
+        const partType = inferChild(part);
+        if (partType && partType.kind === 'primitive' && !isIntegerPrimitive(partType.name)) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'RANGE_TYPE',
+            message: `Range ${label} must be an integer`,
+            source: 'lumina',
+            location: diagLocation(part.location),
+          });
+        }
+      };
+      checkPart(expr.start, 'start');
+      checkPart(expr.end, 'end');
+      return recordExprType(expr, { kind: 'adt', name: 'Range', params: [] }, subst);
+    }
+    case 'Index': {
+      const objectType = inferChild(expr.object);
+      const indexType = inferChild(expr.index);
+      if (indexType && indexType.kind === 'adt' && indexType.name === 'Range') {
+        if (objectType) {
+          tryUnify(objectType, { kind: 'primitive', name: 'string' }, subst, diagnostics, {
+            location: expr.location,
+            note: `Range indexing expects a string`,
+          });
+        }
+        return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
+      }
+      if (objectType && objectType.kind === 'adt' && objectType.name === 'Vec' && objectType.params.length === 1) {
+        return recordExprType(expr, objectType.params[0], subst);
+      }
+      if (objectType && objectType.kind === 'var') {
+        const elemType = freshTypeVar();
+        const vecType: Type = { kind: 'adt', name: 'Vec', params: [elemType] };
+        tryUnify(objectType, vecType, subst, diagnostics, {
+          location: expr.location,
+          note: `Indexing expects a Vec`,
+        });
+        return recordExprType(expr, elemType, subst);
+      }
+      return recordExprType(expr, freshTypeVar(), subst);
+    }
     case 'Boolean':
       return recordExprType(expr, { kind: 'primitive', name: 'bool' }, subst);
     case 'Await': {
@@ -956,6 +1004,19 @@ function inferExpr(
       return null;
     }
     case 'Call': {
+      if (expr.receiver) {
+        inferChild(expr.receiver);
+        const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
+        const resultType = freshTypeVar();
+        if (expectedType) {
+          tryUnify(resultType, expectedType, subst, diagnostics, {
+            location: expr.location,
+            note: `Call result must match expected type`,
+          });
+        }
+        recordCallSignature(expr, argTypes, resultType, subst, inferredCalls);
+        return recordExprType(expr, resultType, subst);
+      }
       const enumName = expr.enumName;
       const isShadowed = enumName ? env.lookup(enumName) : undefined;
       if (enumName && !isShadowed && moduleBindings) {

@@ -268,6 +268,8 @@ export type LuminaExpr = (
   | LuminaTry
   | LuminaCast
   | LuminaStructLiteral
+  | LuminaRange
+  | LuminaIndex
   | LuminaIsExpr
   | LuminaNumber
   | LuminaString
@@ -309,6 +311,21 @@ export interface LuminaString {
 export interface LuminaInterpolatedString {
   type: 'InterpolatedString';
   parts: Array<string | LuminaExpr>;
+  location?: Location;
+}
+
+export interface LuminaRange {
+  type: 'Range';
+  start: LuminaExpr | null;
+  end: LuminaExpr | null;
+  inclusive: boolean;
+  location?: Location;
+}
+
+export interface LuminaIndex {
+  type: 'Index';
+  object: LuminaExpr;
+  index: LuminaExpr;
   location?: Location;
 }
 
@@ -356,6 +373,7 @@ export interface LuminaCall {
   args: LuminaExpr[];
   typeArgs?: string[];
   enumName?: string | null;
+  receiver?: LuminaExpr | null;
   location?: Location;
 }
 

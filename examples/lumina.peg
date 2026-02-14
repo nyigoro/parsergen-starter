@@ -330,9 +330,30 @@ IsExpr
   / Relational
 
 Relational
-  = head:Add tail:(_ ("<=" / ">=" / "<" / ">") _ Add)* {
+  = head:Range tail:(_ ("<=" / ">=" / "<" / ">") _ Range)* {
       return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3] }, location), head);
     }
+
+Range
+  = start:Add _ "..=" _ end:Add {
+      return createNode("Range", { start, end, inclusive: true }, location);
+    }
+  / "..=" _ end:Add {
+      return createNode("Range", { start: null, end, inclusive: true }, location);
+    }
+  / start:Add _ ".." _ end:Add {
+      return createNode("Range", { start, end, inclusive: false }, location);
+    }
+  / ".." _ end:Add {
+      return createNode("Range", { start: null, end, inclusive: false }, location);
+    }
+  / start:Add _ ".." {
+      return createNode("Range", { start, end: null, inclusive: false }, location);
+    }
+  / ".." {
+      return createNode("Range", { start: null, end: null, inclusive: false }, location);
+    }
+  / Add
 
 Add
   = head:Mul tail:(_ ("+" / "-") _ Mul)* {
@@ -358,14 +379,45 @@ TryExpr
     }
 
 PrimaryNoAwait
+  = Postfix
+
+Postfix
+  = head:PrimaryAtom tail:PostfixPart* {
+      return tail.reduce((acc, part) => {
+        if (part.kind === "member") {
+          return createNode("Member", { object: acc, property: part.name }, location);
+        }
+        if (part.kind === "index") {
+          return createNode("Index", { object: acc, index: part.index }, location);
+        }
+        if (part.kind === "call") {
+          if (acc.type === "Identifier") {
+            return createNode("Call", { callee: acc, args: part.args, typeArgs: part.typeArgs }, location);
+          }
+          if (acc.type === "Member") {
+            const callee = createNode("Identifier", { name: acc.property, location: acc.location }, location);
+            return createNode("Call", { callee, args: part.args, typeArgs: part.typeArgs, receiver: acc.object }, location);
+          }
+          return createNode("Call", { callee: createNode("Identifier", { name: "__invalid__", location: location() }, location), args: part.args, typeArgs: part.typeArgs }, location);
+        }
+        return acc;
+      }, head);
+    }
+
+PostfixPart
+  = _ "." _ name:IdName { return { kind: "member", name: name.name }; }
+  / _ "[" _ index:Expr _ "]" { return { kind: "index", index }; }
+  / _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" { return { kind: "call", args: args || [], typeArgs: targs || [] }; }
+
+PrimaryAtom
   = MatchExpr
   / StructLiteral
   / MoveExpr
   / QualifiedCall
   / Call
-  / Member
-  / Number
   / String
+  / Identifier
+  / Number
   / Boolean
   / "(" _ expr:Expr _ ")" { return expr; }
 
@@ -433,6 +485,46 @@ Boolean
   / "false" { return createNode("Boolean", { value: false }, location); }
 
 String
+  = RawString / TripleString / NormalString
+
+RawString
+  = "r\"" chars:RawChar* "\"" {
+      return createNode("String", { value: chars.join("") }, location);
+    }
+
+RawChar
+  = !"\"" char:. { return char; }
+
+TripleString
+  = "\"\"\"" parts:TriplePart* "\"\"\"" {
+      const hasExpr = parts.some(part => part && part.kind === "expr");
+      if (!hasExpr) {
+        const text = parts.map(part => part.value).join("");
+        return createNode("String", { value: text }, location);
+      }
+      const normalized = [];
+      for (const part of parts) {
+        if (!part) continue;
+        if (part.kind === "text") {
+          if (part.value.length > 0) normalized.push(part.value);
+        } else {
+          normalized.push(part.value);
+        }
+      }
+      return createNode("InterpolatedString", { parts: normalized }, location);
+    }
+
+TriplePart
+  = InterpolatedExpr / TripleText
+
+TripleText
+  = chars:TripleChar+ { return { kind: "text", value: chars.join("") }; }
+
+TripleChar
+  = !("\"\"\"" / "\\" / "{") char:. { return char; }
+  / "\\" seq:EscapeSequence { return seq; }
+
+NormalString
   = "\"" parts:InterpolatedPart* "\"" {
       const hasExpr = parts.some(part => part && part.kind === "expr");
       if (!hasExpr) {
@@ -469,11 +561,20 @@ EscapeSequence
   / "\\" { return "\\"; }
   / "{" { return String.fromCharCode(123); }
   / "}" { return String.fromCharCode(125); }
+  / "b" { return "\b"; }
+  / "f" { return "\f"; }
+  / "v" { return "\v"; }
+  / "e" { return "\x1B"; }
   / "n" { return "\n"; }
   / "r" { return "\r"; }
   / "t" { return "\t"; }
   / "0" { return "\0"; }
-  / "u" hex:$([0-9a-fA-F]{4}) { return String.fromCharCode(parseInt(hex, 16)); }
+  / "x" hex:$([0-9a-fA-F] [0-9a-fA-F]) { return String.fromCharCode(parseInt(hex.replace(/\s+/g, ""), 16)); }
+  / "u" "{" hex:$([0-9a-fA-F]+) "}" {
+      if (hex.length > 6) throw new Error("Invalid unicode escape");
+      return String.fromCodePoint(parseInt(hex, 16));
+    }
+  / "u" hex:$([0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]) { return String.fromCharCode(parseInt(hex.replace(/\s+/g, ""), 16)); }
 
 _ = (WS / Comment)*
 __ = (WS / Comment)+

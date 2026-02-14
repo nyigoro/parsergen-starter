@@ -1,5 +1,35 @@
 # Lumina Standard Library
 
+## String Literals
+
+Lumina supports several string literal forms:
+
+### Regular strings
+```lumina
+let s = "hello\nworld";
+```
+
+Supports escape sequences like `\\n`, `\\t`, `\\r`, `\\uXXXX`, `\\u{1F600}`, `\\x41`.
+
+### Raw strings
+```lumina
+let path = r"C:\path\to\file";
+```
+
+Raw strings do **not** process escape sequences or interpolation.
+
+### Multi-line strings
+```lumina
+let m = """Hello
+World""";
+```
+
+Triple-quoted strings can span multiple lines and support interpolation:
+```lumina
+let name = "Ada";
+let msg = """Hello {name}""";
+```
+
 ## @std/io
 
 ### print(s: String) -> Unit

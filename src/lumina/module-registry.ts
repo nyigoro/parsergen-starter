@@ -321,6 +321,18 @@ export function createStdModuleRegistry(): ModuleRegistry {
         ),
       ],
       [
+        'slice',
+        moduleFunction(
+          'slice',
+          ['string', 'Range'],
+          'string',
+          [primitive('string'), adt('Range')],
+          primitive('string'),
+          ['value', 'range'],
+          'std://str'
+        ),
+      ],
+      [
         'split',
         moduleFunction(
           'split',

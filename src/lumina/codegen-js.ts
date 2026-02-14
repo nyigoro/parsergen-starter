@@ -50,6 +50,7 @@ class JSGenerator {
   private readonly target: 'esm' | 'cjs';
   private readonly includeRuntime: boolean;
   private matchCounter = 0;
+  private tempCounter = 0;
   private usesTryHelper = false;
   private readonly traitMethodResolutions: Map<number, TraitMethodResolution>;
   private readonly traitDecls = new Map<string, LuminaTraitDecl>();
@@ -74,11 +75,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -95,6 +96,16 @@ class JSGenerator {
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
       this.builder.append('\n');
       this.builder.append('function __lumina_stringify(value) { return String(value); }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_range(start, end, inclusive, hasStart, hasEnd) { return { start: hasStart ? Number(start) : null, end: hasEnd ? Number(end) : null, inclusive: !!inclusive }; }');
+      this.builder.append('\n');
+      this.builder.append(
+        'function __lumina_slice(str, start, end, inclusive) { const actualStart = start ?? 0; const actualEnd = end ?? str.length; const finalEnd = inclusive ? actualEnd + 1 : actualEnd; if (actualStart < 0 || actualStart > str.length) { throw new Error(`String slice start index ${actualStart} out of bounds`); } if (finalEnd < 0 || finalEnd > str.length) { throw new Error(`String slice end index ${finalEnd} out of bounds`); } return str.substring(actualStart, finalEnd); }'
+      );
+      this.builder.append('\n');
+      this.builder.append(
+        'function __lumina_index(target, index) { if (typeof target === "string" && index && typeof index === "object" && "start" in index) { const start = index.start == null ? 0 : Math.max(0, index.start); const endBase = index.end == null ? target.length : Math.max(0, index.end); return __lumina_slice(target, start, endBase, index.inclusive); } return target ? target[index] : undefined; }'
+      );
     }
     if (this.usesTryHelper) {
       this.builder.append(tryHelperSource());
@@ -109,18 +120,18 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'module.exports = { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };'
+          'module.exports = { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
         );
       } else {
         this.builder.append(
-          'export { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };'
+          'export { io, str, math, list, vec, hashmap, hashset, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
         );
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, fs, http, __set, __lumina_stringify };');
+        this.builder.append('module.exports = { io, str, math, fs, http, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
       } else {
-        this.builder.append('export { io, str, math, fs, http, __set, __lumina_stringify };');
+        this.builder.append('export { io, str, math, fs, http, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
       }
     }
     this.builder.append('\n');
@@ -445,6 +456,56 @@ class JSGenerator {
         pieces.push(')');
         return withBase(concat(...pieces));
       }
+      case 'Range': {
+        const start = expr.start ? this.emitExpr(expr.start) : { code: '0', mappings: [] };
+        const end = expr.end ? this.emitExpr(expr.end) : { code: '0', mappings: [] };
+        const hasStart = expr.start ? 'true' : 'false';
+        const hasEnd = expr.end ? 'true' : 'false';
+        const inclusive = expr.inclusive ? 'true' : 'false';
+        return withBase(
+          concat(
+            '__lumina_range(',
+            start,
+            ', ',
+            end,
+            ', ',
+            inclusive,
+            ', ',
+            hasStart,
+            ', ',
+            hasEnd,
+            ')'
+          )
+        );
+      }
+      case 'Index': {
+        const object = this.emitExpr(expr.object);
+        if (expr.index.type === 'Range') {
+          const range = expr.index;
+          const start = range.start ? this.emitExpr(range.start) : { code: '0', mappings: [] };
+          const end = range.end ? this.emitExpr(range.end) : null;
+          const tempName = `__lumina_tmp_${this.tempCounter++}`;
+          return withBase(
+            concat(
+              '(() => { const ',
+              tempName,
+              ' = ',
+              object,
+              '; return __lumina_slice(',
+              tempName,
+              ', ',
+              start,
+              ', ',
+              end ?? 'undefined',
+              ', ',
+              range.inclusive ? 'true' : 'false',
+              '); })()'
+            )
+          );
+        }
+        const index = this.emitExpr(expr.index);
+        return withBase(concat('__lumina_index(', object, ', ', index, ')'));
+      }
       case 'Identifier':
         return withBase({ code: expr.name, mappings: [] });
       case 'Move':
@@ -492,8 +553,12 @@ class JSGenerator {
         return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));
       case 'Call': {
         const resolution = expr.id != null ? this.traitMethodResolutions.get(expr.id) : undefined;
-        if (resolution && expr.enumName) {
-          const receiverExpr: LuminaExpr = { type: 'Identifier', name: expr.enumName, location: expr.location };
+        if (resolution && (expr.enumName || expr.receiver)) {
+          const receiverExpr: LuminaExpr = expr.receiver ?? {
+            type: 'Identifier',
+            name: expr.enumName as string,
+            location: expr.location,
+          };
           const parts: Array<string | EmitResult> = [`${resolution.mangledName}(`, this.emitExpr(receiverExpr)];
           expr.args.forEach((arg) => {
             parts.push(', ');
@@ -756,6 +821,10 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
       return exprUsesTry(expr.target);
     case 'InterpolatedString':
       return expr.parts.some((part) => typeof part !== 'string' && exprUsesTry(part));
+    case 'Range':
+      return (expr.start ? exprUsesTry(expr.start) : false) || (expr.end ? exprUsesTry(expr.end) : false);
+    case 'Index':
+      return exprUsesTry(expr.object) || exprUsesTry(expr.index);
     default:
       return false;
   }

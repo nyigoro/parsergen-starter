@@ -136,6 +136,75 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
 
 export const __lumina_stringify = (value: unknown): string => formatValue(value, { color: false });
 
+export const __lumina_range = (
+  start: unknown,
+  end: unknown,
+  inclusive: boolean,
+  hasStart: boolean,
+  hasEnd: boolean
+): { start: number | null; end: number | null; inclusive: boolean } => {
+  const startValue = hasStart ? Number(start) : null;
+  const endValue = hasEnd ? Number(end) : null;
+  return { start: startValue, end: endValue, inclusive: !!inclusive };
+};
+
+export const __lumina_slice = (
+  str: string,
+  start: number | undefined,
+  end: number | undefined,
+  inclusive: boolean
+): string => {
+  const actualStart = start ?? 0;
+  const actualEnd = end ?? str.length;
+  const finalEnd = inclusive ? actualEnd + 1 : actualEnd;
+
+  if (actualStart < 0 || actualStart > str.length) {
+    throw new Error(`String slice start index ${actualStart} out of bounds`);
+  }
+  if (finalEnd < 0 || finalEnd > str.length) {
+    throw new Error(`String slice end index ${finalEnd} out of bounds`);
+  }
+
+  return str.substring(actualStart, finalEnd);
+};
+
+const isRangeValue = (
+  value: unknown
+): value is { start: number | null; end: number | null; inclusive: boolean } =>
+  !!value && typeof value === 'object' && 'start' in value && 'end' in value && 'inclusive' in value;
+
+const clampIndex = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+
+export const __lumina_index = (target: unknown, index: unknown): unknown => {
+  if (typeof target === 'string' && isRangeValue(index)) {
+    const length = target.length;
+    const start = index.start == null ? 0 : clampIndex(Math.trunc(index.start), 0, length);
+    const endBase = index.end == null ? length : clampIndex(Math.trunc(index.end), 0, length);
+    return __lumina_slice(target, start, endBase, index.inclusive);
+  }
+
+  if (target && typeof (target as { get?: (idx: number) => unknown }).get === 'function') {
+    const result = (target as { get: (idx: number) => unknown }).get(Math.trunc(Number(index)));
+    const tag = result && typeof result === 'object' && isEnumLike(result) ? getEnumTag(result) : '';
+    if (tag === 'Some') return getEnumPayload(result);
+    const err = new LuminaPanic('Index out of bounds', result);
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(err, __lumina_index);
+    }
+    throw err;
+  }
+
+  if (Array.isArray(target)) {
+    return target[Math.trunc(Number(index))];
+  }
+
+  if (target && typeof target === 'object') {
+    return (target as Record<string, unknown>)[String(index)];
+  }
+
+  return undefined;
+};
+
 const toJsonValue = (value: unknown, seen: WeakSet<object>): unknown => {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -318,6 +387,14 @@ export const str = {
     const safeStart = Math.max(0, Math.trunc(start));
     const safeEnd = Math.max(safeStart, Math.trunc(end));
     return value.substring(safeStart, safeEnd);
+  },
+  slice: (
+    value: string,
+    range: { start: number | null; end: number | null; inclusive: boolean }
+  ) => {
+    const start = range?.start ?? undefined;
+    const end = range?.end ?? undefined;
+    return __lumina_slice(value, start ?? undefined, end ?? undefined, !!range?.inclusive);
   },
   split: (value: string, sep: string) => value.split(sep),
   trim: (value: string) => value.trim(),

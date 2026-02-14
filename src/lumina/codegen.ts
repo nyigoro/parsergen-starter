@@ -24,13 +24,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -55,6 +55,21 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append('\n');
     builder.append(`function __lumina_stringify(value) { return String(value); }`, 'Runtime');
     builder.append('\n');
+    builder.append(
+      `function __lumina_range(start, end, inclusive, hasStart, hasEnd) { return { start: hasStart ? Number(start) : null, end: hasEnd ? Number(end) : null, inclusive: !!inclusive }; }`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `function __lumina_slice(str, start, end, inclusive) { const actualStart = start ?? 0; const actualEnd = end ?? str.length; const finalEnd = inclusive ? actualEnd + 1 : actualEnd; if (actualStart < 0 || actualStart > str.length) { throw new Error(\`String slice start index \${actualStart} out of bounds\`); } if (finalEnd < 0 || finalEnd > str.length) { throw new Error(\`String slice end index \${finalEnd} out of bounds\`); } return str.substring(actualStart, finalEnd); }`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `function __lumina_index(target, index) { if (typeof target === "string" && index && typeof index === "object" && "start" in index) { const start = index.start == null ? 0 : Math.max(0, index.start); const endBase = index.end == null ? target.length : Math.max(0, index.end); return __lumina_slice(target, start, endBase, index.inclusive); } return target ? target[index] : undefined; }`,
+      'Runtime'
+    );
+    builder.append('\n');
   }
   if (usesTry) {
     builder.append(tryHelperSource(), 'Runtime');
@@ -68,16 +83,16 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       code +=
-        'module.exports = { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };\n';
+        'module.exports = { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
     } else {
       code +=
-        'export { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, LuminaPanic };\n';
+        'export { io, str, math, list, vec, hashmap, hashset, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, __set, __lumina_stringify };\n';
+      code += 'module.exports = { io, str, math, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
     } else {
-      code += 'export { io, str, math, __set, __lumina_stringify };\n';
+      code += 'export { io, str, math, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
     }
   }
 

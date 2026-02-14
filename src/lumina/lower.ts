@@ -305,6 +305,39 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       }
       return current;
     }
+    case 'Range': {
+      const startExpr = expr.start ? lowerExpr(expr.start, ctx) : ({ kind: 'Number', value: 0 } as IRNumber);
+      const endExpr = expr.end ? lowerExpr(expr.end, ctx) : ({ kind: 'Number', value: 0 } as IRNumber);
+      const inclusive: IRBoolean = { kind: 'Boolean', value: !!expr.inclusive };
+      const hasStart: IRBoolean = { kind: 'Boolean', value: !!expr.start };
+      const hasEnd: IRBoolean = { kind: 'Boolean', value: !!expr.end };
+      const call: IRCall = {
+        kind: 'Call',
+        callee: '__lumina_range',
+        args: [startExpr, endExpr, inclusive, hasStart, hasEnd],
+        location: expr.location,
+      };
+      return call;
+    }
+    case 'Index': {
+      const indexExpr = lowerExpr(expr.index, ctx);
+      if (expr.index.type === 'Range') {
+        const call: IRCall = {
+          kind: 'Call',
+          callee: 'str.slice',
+          args: [lowerExpr(expr.object, ctx), indexExpr],
+          location: expr.location,
+        };
+        return call;
+      }
+      const call: IRCall = {
+        kind: 'Call',
+        callee: '__lumina_index',
+        args: [lowerExpr(expr.object, ctx), indexExpr],
+        location: expr.location,
+      };
+      return call;
+    }
     case 'Identifier': {
       const id: IRIdentifier = { kind: 'Identifier', name: expr.name, location: expr.location };
       return id;

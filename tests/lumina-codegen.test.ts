@@ -65,6 +65,21 @@ describe('Lumina codegen', () => {
     expect(out).toMatch(/return 1/);
   });
 
+  test('lowers string slicing to str.slice', () => {
+    const program = `
+      fn main() -> string {
+        let s = "Hello";
+        return s[0..2];
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program);
+    const ir = optimizeIR(lowerLumina(ast as never))!;
+    const out = generateJS(ir, { target: 'esm' }).code;
+
+    expect(out).toContain('str.slice');
+  });
+
   test('generates while loops and assignment', () => {
     const program = `
       fn main() {

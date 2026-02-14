@@ -36,4 +36,20 @@ describe('Lumina parse wrapper', () => {
       expect(error.message).toMatch(/example\.lm/);
     }
   });
+
+  test('parses chained method calls and member access', () => {
+    const program = `
+      fn main() {
+        let x = obj.child.method();
+        let y = obj.method().field;
+        let w = obj.method()[0];
+        let r = obj.method()[0..2];
+        let z = obj.method().child.method();
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const ast = parseLumina(parser, program);
+    expect(ast.type).toBe('Program');
+  });
 });

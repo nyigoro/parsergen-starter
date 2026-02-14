@@ -119,6 +119,66 @@ describe('Trait Method Resolution', () => {
     expect(js).toMatch(/Formatter\$User\$format\([^,]+,\s*[^)]+\)/);
   });
 
+  it('resolves method calls on member chains', () => {
+    const source = `
+      trait Printable {
+        fn print(self: Self) -> void;
+      }
+
+      struct Profile { name: string }
+
+      impl Printable for Profile {
+        fn print(self: Self) -> void {
+          io.println(self.name);
+        }
+      }
+
+      struct User { profile: Profile }
+
+      fn main() -> void {
+        let u = User { profile: Profile { name: "Alice" } };
+        u.profile.print();
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const { diagnostics, traitMethodResolutions } = analyzeLumina(ast);
+    const errors = diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    const js = generateJSFromAst(ast, { traitMethodResolutions }).code;
+    expect(js).toContain('Printable$Profile$print(u.profile)');
+  });
+
+  it('supports chaining after method calls', () => {
+    const source = `
+      trait Builder {
+        fn build(self: Self) -> Config;
+      }
+
+      struct Config { value: string }
+
+      struct User { name: string }
+
+      impl Builder for User {
+        fn build(self: Self) -> Config {
+          Config { value: self.name }
+        }
+      }
+
+      fn main() -> string {
+        let u = User { name: "Alice" };
+        u.build().value
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const { diagnostics, traitMethodResolutions } = analyzeLumina(ast);
+    const errors = diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    const js = generateJSFromAst(ast, { traitMethodResolutions }).code;
+    expect(js).toContain('Builder$User$build(u).value');
+  });
+
   it('reports error for missing trait method', () => {
     const source = `
       struct User { name: string }

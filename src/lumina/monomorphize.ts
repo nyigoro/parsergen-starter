@@ -204,6 +204,14 @@ const visitExpr = (
         visitExpr(part, ctx, genericFns, hm);
       }
       return;
+    case 'Range':
+      if (expr.start) visitExpr(expr.start, ctx, genericFns, hm);
+      if (expr.end) visitExpr(expr.end, ctx, genericFns, hm);
+      return;
+    case 'Index':
+      visitExpr(expr.object, ctx, genericFns, hm);
+      visitExpr(expr.index, ctx, genericFns, hm);
+      return;
     default:
       return;
   }
@@ -327,6 +335,10 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
         if (typeof part === 'string') continue;
         substituteTypesInExpr(part, mapping);
       }
+      return;
+    case 'Range':
+      if (expr.start) substituteTypesInExpr(expr.start, mapping);
+      if (expr.end) substituteTypesInExpr(expr.end, mapping);
       return;
     default:
       return;
