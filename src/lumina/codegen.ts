@@ -111,6 +111,9 @@ function collectSsaNames(nodes: IRNode[], out: Set<string>): void {
       case 'Binary':
         collectSsaNames([node.left, node.right], out);
         break;
+      case 'Cast':
+        collectSsaNames([node.expr], out);
+        break;
       case 'Call':
         collectSsaNames(node.args, out);
         break;
@@ -314,6 +317,17 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
 type EmitMapping = { offset: number; source: { line: number; column: number } };
 type EmitResult = { code: string; mappings: EmitMapping[] };
 
+const normalizeNumericTypeName = (typeName: string): string => {
+  if (typeName === 'int') return 'i32';
+  if (typeName === 'float') return 'f64';
+  return typeName;
+};
+
+const isIntegerTypeName = (typeName: string): boolean =>
+  typeName === 'int' || typeName.startsWith('i') || typeName.startsWith('u');
+
+const isFloatTypeName = (typeName: string): boolean => typeName === 'f32' || typeName === 'f64' || typeName === 'float';
+
 function emitExpr(node: IRNode): EmitResult {
   const baseLoc = node.location?.start
     ? { line: node.location.start.line, column: node.location.start.column }
@@ -338,13 +352,13 @@ function emitExpr(node: IRNode): EmitResult {
     return { code, mappings };
   };
 
-  switch (node.kind) {
-    case 'Binary':
+    switch (node.kind) {
+      case 'Binary':
       if (node.op === '+' && (node.left.kind === 'String' || node.right.kind === 'String')) {
         return withBase(concat('(', emitExpr(node.left), ' + ', emitExpr(node.right), ')'));
       }
       return withBase(concat('(', emitExpr(node.left), ` ${node.op} `, emitExpr(node.right), ')'));
-    case 'Call': {
+      case 'Call': {
       const parts: Array<string | EmitResult> = [`${node.callee}(`];
       node.args.forEach((arg, idx) => {
         if (idx > 0) parts.push(', ');
@@ -376,7 +390,7 @@ function emitExpr(node: IRNode): EmitResult {
       parts.push(' }');
       return withBase(concat(...parts));
     }
-    case 'MatchExpr': {
+      case 'MatchExpr': {
       const tempName = `__match_expr_${Math.random().toString(36).slice(2, 8)}`;
       const result: EmitResult = { code: '', mappings: [] };
       const add = (piece: string | EmitResult) => {
@@ -411,9 +425,40 @@ function emitExpr(node: IRNode): EmitResult {
       });
       add('\n})()');
       return withBase(result);
-    }
-    case 'Number':
-      return withBase({ code: String(node.value), mappings: [] });
+      }
+      case 'Cast': {
+        const value = emitExpr(node.expr);
+        const target = normalizeNumericTypeName(node.targetType);
+        const concatCast = (prefix: string, suffix: string = ''): EmitResult => concat(prefix, value, suffix);
+
+        if (isFloatTypeName(target)) {
+          if (target === 'f32') return withBase(concatCast('Math.fround(', ')'));
+          return withBase(value);
+        }
+
+        if (isIntegerTypeName(target)) {
+          const base = concatCast('Math.trunc(', ')');
+          switch (target) {
+            case 'i8':
+              return withBase(concat('(', base, ' << 24) >> 24'));
+            case 'u8':
+              return withBase(concat('(', base, ' & 0xFF)'));
+            case 'i16':
+              return withBase(concat('(', base, ' << 16) >> 16'));
+            case 'u16':
+              return withBase(concat('(', base, ' & 0xFFFF)'));
+            case 'u32':
+              return withBase(concat('(', base, ' >>> 0)'));
+            case 'i32':
+              return withBase(concat('(', base, ' | 0)'));
+            default:
+              return withBase(base);
+          }
+        }
+        return withBase(value);
+      }
+      case 'Number':
+        return withBase({ code: String(node.value), mappings: [] });
     case 'Boolean':
       return withBase({ code: node.value ? 'true' : 'false', mappings: [] });
     case 'String':

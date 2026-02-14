@@ -218,6 +218,7 @@ export type LuminaExpr = (
   | LuminaCall
   | LuminaMove
   | LuminaAwait
+  | LuminaCast
   | LuminaStructLiteral
   | LuminaIsExpr
   | LuminaNumber
@@ -278,6 +279,13 @@ export interface LuminaMove {
 export interface LuminaAwait {
   type: 'Await';
   value: LuminaExpr;
+  location?: Location;
+}
+
+export interface LuminaCast {
+  type: 'Cast';
+  expr: LuminaExpr;
+  targetType: LuminaTypeExpr;
   location?: Location;
 }
 

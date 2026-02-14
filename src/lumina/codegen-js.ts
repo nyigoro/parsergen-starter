@@ -1,6 +1,17 @@
 import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaMatchPattern } from './ast.js';
 import { SourceMapGenerator, type RawSourceMap } from 'source-map';
 
+const normalizeNumericTypeName = (typeName: string): string => {
+  if (typeName === 'int') return 'i32';
+  if (typeName === 'float') return 'f64';
+  return typeName;
+};
+
+const isIntegerTypeName = (typeName: string): boolean =>
+  typeName === 'int' || typeName.startsWith('i') || typeName.startsWith('u');
+
+const isFloatTypeName = (typeName: string): boolean => typeName === 'f32' || typeName === 'f64' || typeName === 'float';
+
 export interface CodegenJsOptions {
   target?: 'esm' | 'cjs';
   includeRuntime?: boolean;
@@ -310,6 +321,37 @@ class JSGenerator {
       case 'Await': {
         const value = this.emitExpr(expr.value);
         return withBase(concat('await ', value));
+      }
+      case 'Cast': {
+        const value = this.emitExpr(expr.expr);
+        const targetType = typeof expr.targetType === 'string' ? expr.targetType : 'any';
+        const target = normalizeNumericTypeName(targetType);
+        const wrap = (prefix: string, suffix: string = ''): EmitResult => concat(prefix, value, suffix);
+
+        if (isFloatTypeName(target)) {
+          if (target === 'f32') return withBase(wrap('Math.fround(', ')'));
+          return withBase(value);
+        }
+        if (isIntegerTypeName(target)) {
+          const base = wrap('Math.trunc(', ')');
+          switch (target) {
+            case 'i8':
+              return withBase(concat('(', base, ' << 24) >> 24'));
+            case 'u8':
+              return withBase(concat('(', base, ' & 0xFF)'));
+            case 'i16':
+              return withBase(concat('(', base, ' << 16) >> 16'));
+            case 'u16':
+              return withBase(concat('(', base, ' & 0xFFFF)'));
+            case 'u32':
+              return withBase(concat('(', base, ' >>> 0)'));
+            case 'i32':
+              return withBase(concat('(', base, ' | 0)'));
+            default:
+              return withBase(base);
+          }
+        }
+        return withBase(value);
       }
       case 'Binary':
         return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));

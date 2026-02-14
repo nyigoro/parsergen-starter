@@ -70,6 +70,31 @@ const literalNumericSuffixes = new Set<PrimitiveName>([
   'f32', 'f64',
 ]);
 
+const intBitWidths: Record<PrimitiveName, number> = {
+  i8: 8,
+  i16: 16,
+  i32: 32,
+  i64: 64,
+  i128: 128,
+  u8: 8,
+  u16: 16,
+  u32: 32,
+  u64: 64,
+  u128: 128,
+  int: 32,
+  float: 64,
+  f32: 32,
+  f64: 64,
+  string: 0,
+  bool: 0,
+  void: 0,
+  any: 0,
+};
+
+const isIntPrimitive = (name: PrimitiveName): boolean => name.startsWith('i') || name.startsWith('u');
+const isFloatPrimitive = (name: PrimitiveName): boolean => name === 'f32' || name === 'f64';
+const isUnsignedPrimitive = (name: PrimitiveName): boolean => name.startsWith('u');
+
 function inferNumberLiteralType(expr: { suffix?: string | null; raw?: string; isFloat?: boolean }): Type {
   const suffix = expr.suffix ?? null;
   if (suffix && literalNumericSuffixes.has(suffix as PrimitiveName)) {
@@ -78,6 +103,36 @@ function inferNumberLiteralType(expr: { suffix?: string | null; raw?: string; is
   const raw = expr.raw ?? '';
   const isFloat = expr.isFloat || raw.includes('.') || raw.includes('e') || raw.includes('E');
   return { kind: 'primitive', name: isFloat ? 'f64' : 'i32' };
+}
+
+function numericPrimitiveOf(type: Type, subst: Subst): PrimitiveName | null {
+  const pruned = prune(type, subst);
+  if (pruned.kind !== 'primitive') return null;
+  const normalized = normalizePrimitiveName(pruned.name);
+  return isNumericPrimitiveName(normalized) ? normalized : null;
+}
+
+function isLossyNumericCast(from: PrimitiveName, to: PrimitiveName): boolean {
+  const fromNorm = normalizePrimitiveName(from);
+  const toNorm = normalizePrimitiveName(to);
+  if (isFloatPrimitive(fromNorm) && isIntPrimitive(toNorm)) return true;
+  if (isFloatPrimitive(fromNorm) && isFloatPrimitive(toNorm)) {
+    return fromNorm === 'f64' && toNorm === 'f32';
+  }
+  if (isIntPrimitive(fromNorm) && isFloatPrimitive(toNorm)) {
+    if (toNorm === 'f32') return true;
+    const width = intBitWidths[fromNorm] ?? 32;
+    return width > 53;
+  }
+  if (isIntPrimitive(fromNorm) && isIntPrimitive(toNorm)) {
+    const fromWidth = intBitWidths[fromNorm] ?? 32;
+    const toWidth = intBitWidths[toNorm] ?? 32;
+    if (fromWidth > toWidth) return true;
+    if (fromWidth === toWidth && isUnsignedPrimitive(fromNorm) !== isUnsignedPrimitive(toNorm)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 type LooseLocation =
@@ -765,6 +820,31 @@ function inferExpr(
       const valueType = inferChild(expr.target, expectedType);
       if (!valueType) return null;
       return recordExprType(expr, valueType, subst);
+    }
+    case 'Cast': {
+      const valueType = inferChild(expr.expr);
+      if (!valueType) return null;
+      const targetType = parseTypeName(expr.targetType, undefined, undefined, defaultLocation);
+      const fromNumeric = numericPrimitiveOf(valueType, subst);
+      const toNumeric = numericPrimitiveOf(targetType, subst);
+      if (!fromNumeric || !toNumeric) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'TYPE-CAST',
+          message: `Cannot cast ${formatType(valueType, subst)} to ${formatType(targetType, subst)}`,
+          source: 'lumina',
+          location: diagLocation(expr.location),
+        });
+      } else if (isLossyNumericCast(fromNumeric, toNumeric)) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'LOSSY-CAST',
+          message: `Lossy conversion from ${formatType(valueType, subst)} to ${formatType(targetType, subst)}`,
+          source: 'lumina',
+          location: diagLocation(expr.location),
+        });
+      }
+      return recordExprType(expr, targetType, subst);
     }
     case 'Binary': {
       const left = inferChild(expr.left);

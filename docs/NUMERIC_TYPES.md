@@ -77,7 +77,7 @@ let b: f64 = 3.14;
 // ERROR: Cannot add i32 and f64
 let c = a + b;
 
-// OK: Explicit conversion (when implemented)
+// OK: Explicit conversion with `as`
 let c = (a as f64) + b;
 ```
 
@@ -93,6 +93,18 @@ Planned:
 - `i64` support
 - Proper unsigned arithmetic
 - 128-bit integer emulation
+
+## Explicit Conversions
+
+Use the `as` operator to convert between numeric types. Lossy conversions emit a warning.
+
+```lumina
+let x: i32 = 42;
+let y = x as f64;    // ok
+
+let z: f64 = 3.14;
+let w = z as i32;    // warning: lossy conversion
+```
 
 ## Overflow Behavior
 

@@ -1,4 +1,4 @@
-import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRPhi, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr, type IRStructLiteral } from './ir.js';
+import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRPhi, type IRReturn, type IRExprStmt, type IRBinary, type IRCast, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr, type IRStructLiteral } from './ir.js';
 
 export function optimizeIR(node: IRNode): IRNode | null {
   const constants = new Map<string, IRNode>();
@@ -52,6 +52,8 @@ function functionHasControlFlow(fn: IRFunction): boolean {
         return visit(n.expr);
       case 'Binary':
         return visit(n.left) || visit(n.right);
+      case 'Cast':
+        return visit(n.expr);
       case 'Call':
         return n.args.some(visit);
       case 'StructLiteral':
@@ -99,6 +101,8 @@ function convertFunctionToSSA(fn: IRFunction): IRFunction {
       }
       case 'Binary':
         return { ...expr, left: renameExpr(expr.left), right: renameExpr(expr.right) };
+      case 'Cast':
+        return { ...expr, expr: renameExpr(expr.expr) };
       case 'Call':
         return { ...expr, args: expr.args.map(renameExpr) };
       case 'StructLiteral':
@@ -323,6 +327,15 @@ function optimizeWithConstants(node: IRNode, constants: Map<string, IRNode>): IR
       const bin: IRBinary = { kind: 'Binary', op: node.op, left, right, location: node.location };
       return bin;
     }
+    case 'Cast': {
+      const expr = optimizeWithConstants(node.expr, constants) ?? node.expr;
+      if (expr.kind === 'Number') {
+        const value = applyNumericCast(expr.value, node.targetType);
+        return { kind: 'Number', value, location: node.location } as IRNumber;
+      }
+      const cast: IRCast = { kind: 'Cast', expr, targetType: node.targetType, location: node.location };
+      return cast;
+    }
     case 'Call': {
       const args = node.args.map((arg) => optimizeWithConstants(arg, constants) ?? arg);
       const call: IRCall = { kind: 'Call', callee: node.callee, args, location: node.location };
@@ -450,6 +463,9 @@ function collectAssignedNames(node: IRNode, out: Set<string>): void {
       collectAssignedNames(node.left, out);
       collectAssignedNames(node.right, out);
       return;
+    case 'Cast':
+      collectAssignedNames(node.expr, out);
+      return;
     case 'Call':
       node.args.forEach((arg) => collectAssignedNames(arg, out));
       return;
@@ -494,6 +510,42 @@ function foldNumeric(op: string, left: IRNumber, right: IRNumber): IRNumber | nu
     default:
       return null;
   }
+}
+
+function applyNumericCast(value: number, targetType: string): number {
+  const normalized = normalizeNumericTypeName(targetType);
+  if (normalized === 'f32') return Math.fround(value);
+  if (normalized === 'f64') return Number(value);
+  if (isIntegerTypeName(normalized)) {
+    const truncated = Math.trunc(value);
+    switch (normalized) {
+      case 'i8':
+        return (truncated << 24) >> 24;
+      case 'u8':
+        return truncated & 0xff;
+      case 'i16':
+        return (truncated << 16) >> 16;
+      case 'u16':
+        return truncated & 0xffff;
+      case 'i32':
+        return truncated | 0;
+      case 'u32':
+        return truncated >>> 0;
+      default:
+        return truncated;
+    }
+  }
+  return value;
+}
+
+function normalizeNumericTypeName(typeName: string): string {
+  if (typeName === 'int') return 'i32';
+  if (typeName === 'float') return 'f64';
+  return typeName;
+}
+
+function isIntegerTypeName(typeName: string): boolean {
+  return typeName.startsWith('i') || typeName.startsWith('u') || typeName === 'int';
 }
 
 function foldBoolean(op: string, left: IRNode, right: IRNode): IRBoolean | null {
@@ -598,6 +650,9 @@ function validateIR(node: IRNode) {
         visit(n.left);
         visit(n.right);
         return;
+      case 'Cast':
+        visit(n.expr);
+        return;
       case 'Call':
         if (!n.callee) throw new Error('IR validation: Call callee missing');
         n.args.forEach(visit);
@@ -652,6 +707,9 @@ function removeDeadStores(program: IRProgram, preserveTopLevelLets: boolean): IR
       case 'Binary':
         markExpr(expr.left);
         markExpr(expr.right);
+        return;
+      case 'Cast':
+        markExpr(expr.expr);
         return;
       case 'Call':
         expr.args.forEach(markExpr);

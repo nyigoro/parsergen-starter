@@ -126,7 +126,7 @@ export function createLuminaLexer(): LuminaLexer {
     keyword: [
       'import', 'from', 'type', 'struct', 'enum', 'fn', 'let', 'return',
       'if', 'else', 'for', 'while', 'match', 'true', 'false',
-      'pub', 'extern',
+      'pub', 'extern', 'as', 'async', 'await', 'ref', 'mut', 'move', 'is',
     ],
     string: [
       { match: /"(?:\\.|[^"\\])*"/, lineBreaks: false },

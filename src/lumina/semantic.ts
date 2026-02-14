@@ -64,7 +64,61 @@ export class SymbolTable {
   }
 }
 
-const builtinTypes: Set<LuminaType> = new Set(['int', 'float', 'string', 'bool', 'void', 'any']);
+const builtinTypes: Set<LuminaType> = new Set([
+  'int',
+  'float',
+  'string',
+  'bool',
+  'void',
+  'any',
+  'i8',
+  'i16',
+  'i32',
+  'i64',
+  'i128',
+  'u8',
+  'u16',
+  'u32',
+  'u64',
+  'u128',
+  'f32',
+  'f64',
+]);
+
+const numericTypes: Set<LuminaType> = new Set([
+  'int',
+  'float',
+  'i8',
+  'i16',
+  'i32',
+  'i64',
+  'i128',
+  'u8',
+  'u16',
+  'u32',
+  'u64',
+  'u128',
+  'f32',
+  'f64',
+]);
+
+const normalizeNumericType = (type: LuminaType): LuminaType => {
+  if (type === 'int') return 'i32';
+  if (type === 'float') return 'f64';
+  return type;
+};
+
+const isNumericTypeName = (type: LuminaType): boolean => numericTypes.has(type);
+
+const intBitWidth = (type: LuminaType): number => {
+  if (type === 'int') return 32;
+  const match = String(type).match(/^[iu](\d+)$/);
+  return match ? Number(match[1]) : 0;
+};
+
+const isFloatTypeName = (type: LuminaType): boolean => type === 'f32' || type === 'f64' || type === 'float';
+const isIntTypeName = (type: LuminaType): boolean =>
+  type === 'int' || String(type).startsWith('i') || String(type).startsWith('u');
 
 const isTypeHoleExpr = (typeName: LuminaTypeExpr): typeName is LuminaTypeHole =>
   typeof typeName === 'object' && !!typeName && (typeName as LuminaTypeHole).kind === 'TypeHole';
@@ -1476,6 +1530,59 @@ function typeCheckExpr(
   if (expr.type === 'Number') return inferNumberType(expr);
   if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'String') return 'string';
+  if (expr.type === 'Cast') {
+    const valueType = typeCheckExpr(
+      expr.expr,
+      symbols,
+      diagnostics,
+      scope,
+      options,
+      undefined,
+      resolving,
+      pendingDeps,
+      currentFunction,
+      di,
+      pipedArgType,
+      allowPartialMoveBase,
+      skipMoveChecks
+    );
+    const targetType = resolveTypeExpr(expr.targetType);
+    if (!valueType || !targetType) {
+      diagnostics.push(diagAt('Invalid cast target type', expr.location, 'error', 'TYPE-CAST'));
+      return null;
+    }
+    const fromNorm = normalizeNumericType(valueType);
+    const toNorm = normalizeNumericType(targetType);
+    if (!isNumericTypeName(fromNorm) || !isNumericTypeName(toNorm)) {
+      diagnostics.push(
+        diagAt(
+          `Cannot cast '${valueType}' to '${targetType}'`,
+          expr.location,
+          'error',
+          'TYPE-CAST'
+        )
+      );
+      return toNorm;
+    }
+    const fromWidth = intBitWidth(fromNorm);
+    const toWidth = intBitWidth(toNorm);
+    const lossy =
+      (isFloatTypeName(fromNorm) && isIntTypeName(toNorm)) ||
+      (isFloatTypeName(fromNorm) && isFloatTypeName(toNorm) && fromNorm === 'f64' && toNorm === 'f32') ||
+      (isIntTypeName(fromNorm) && isFloatTypeName(toNorm) && (toNorm === 'f32' || fromWidth > 53)) ||
+      (isIntTypeName(fromNorm) && isIntTypeName(toNorm) && (fromWidth > toWidth));
+    if (lossy) {
+      diagnostics.push(
+        diagAt(
+          `Lossy conversion from '${valueType}' to '${targetType}'`,
+          expr.location,
+          'warning',
+          'LOSSY-CAST'
+        )
+      );
+    }
+    return toNorm;
+  }
   if (expr.type === 'Move') {
     const path = getMovePath(expr.target);
     if (!path) {
@@ -1677,6 +1784,17 @@ function typeCheckExpr(
       return 'bool';
     }
     if (expr.op === '==' || expr.op === '!=') {
+      const leftNorm = normalizeNumericType(left);
+      const rightNorm = normalizeNumericType(right);
+      const numericLeft = isNumericTypeName(leftNorm);
+      const numericRight = isNumericTypeName(rightNorm);
+      if (numericLeft && numericRight) {
+        if (leftNorm !== rightNorm) {
+          diagnostics.push(diagAt(`Operator '${expr.op}' requires matching numeric operand types`, expr.location));
+          return null;
+        }
+        return 'bool';
+      }
       if (left !== right) {
         diagnostics.push(diagAt(`Operator '${expr.op}' requires matching operand types`, expr.location));
         return null;
@@ -1684,17 +1802,21 @@ function typeCheckExpr(
       return 'bool';
     }
     if (expr.op === '<' || expr.op === '>' || expr.op === '<=' || expr.op === '>=') {
-      if (left !== 'int' || right !== 'int') {
-        diagnostics.push(diagAt(`Operator '${expr.op}' requires int operands`, expr.location));
+      const leftNorm = normalizeNumericType(left);
+      const rightNorm = normalizeNumericType(right);
+      if (!isNumericTypeName(leftNorm) || !isNumericTypeName(rightNorm) || leftNorm !== rightNorm) {
+        diagnostics.push(diagAt(`Operator '${expr.op}' requires matching numeric operands`, expr.location));
         return null;
       }
       return 'bool';
     }
-    if (left !== 'int' || right !== 'int') {
-      diagnostics.push(diagAt(`Operator '${expr.op}' requires int operands`, expr.location));
+    const leftNorm = normalizeNumericType(left);
+    const rightNorm = normalizeNumericType(right);
+    if (!isNumericTypeName(leftNorm) || !isNumericTypeName(rightNorm) || leftNorm !== rightNorm) {
+      diagnostics.push(diagAt(`Operator '${expr.op}' requires matching numeric operands`, expr.location));
       return null;
     }
-    return 'int';
+    return leftNorm;
   }
     if (expr.type === 'Identifier') {
       const name = expr.name;

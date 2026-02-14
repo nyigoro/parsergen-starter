@@ -283,6 +283,15 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
     case 'Move': {
       return lowerExpr(expr.target, ctx);
     }
+    case 'Cast': {
+      const targetType = typeof expr.targetType === 'string' ? expr.targetType : '_';
+      return {
+        kind: 'Cast',
+        expr: lowerExpr(expr.expr, ctx),
+        targetType,
+        location: expr.location,
+      };
+    }
     case 'Member': {
       if (expr.object.type === 'Identifier') {
         const qualified = `${expr.object.name}.${expr.property}`;

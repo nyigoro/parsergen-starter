@@ -235,8 +235,13 @@ LogicAnd
     }
 
 Pipe
-  = head:Equality tail:(_ "|>" _ PipeTarget)* {
+  = head:CastExpr tail:(_ "|>" _ PipeTarget)* {
       return tail.reduce((acc, t) => createNode("Binary", { op: "|>", left: acc, right: t[3] }, location), head);
+    }
+
+CastExpr
+  = head:Equality tail:(_ "as" _ TypeName)* {
+      return tail.reduce((acc, t) => createNode("Cast", { expr: acc, targetType: t[3] }, location), head);
     }
 
 PipeTarget

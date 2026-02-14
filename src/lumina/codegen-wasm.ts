@@ -2,6 +2,15 @@ import { type Diagnostic } from '../parser/index.js';
 import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaFnDecl } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { prune, type Type, normalizePrimitiveName } from './types.js';
+
+const normalizeTargetTypeName = (name: string): string => {
+  if (name === 'int') return 'i32';
+  if (name === 'float') return 'f64';
+  return name;
+};
+
+const isUnsignedTypeName = (name: string): boolean => name.startsWith('u');
+const isFloatTypeName = (name: string): boolean => name === 'f32' || name === 'f64' || name === 'float';
 import { type Location } from '../utils/index.js';
 
 type WasmValType = 'i32' | 'f64';
@@ -234,6 +243,28 @@ class WasmBuilder {
         return [`i32.const ${expr.value ? 1 : 0}`];
       case 'Identifier':
         return [`local.get $${expr.name}`];
+      case 'Cast': {
+        const valueLines = this.emitExpr(expr.expr);
+        const targetTypeName = typeof expr.targetType === 'string' ? expr.targetType : 'any';
+        const normalizedTarget = normalizeTargetTypeName(targetTypeName);
+        const targetWasm: WasmValType = isFloatTypeName(normalizedTarget) ? 'f64' : 'i32';
+        const sourceType = typeof expr.expr.id === 'number' ? this.exprTypes.get(expr.expr.id) : undefined;
+        const sourcePrim =
+          sourceType && sourceType.kind === 'primitive' ? normalizePrimitiveName(sourceType.name) : null;
+        const sourceWasm = this.typeToWasm(sourceType, expr.location) ?? targetWasm;
+
+        if (sourceWasm === targetWasm) return valueLines;
+        if (sourceWasm === 'i32' && targetWasm === 'f64') {
+          const op = sourcePrim && isUnsignedTypeName(sourcePrim) ? 'f64.convert_i32_u' : 'f64.convert_i32_s';
+          return [...valueLines, op];
+        }
+        if (sourceWasm === 'f64' && targetWasm === 'i32') {
+          const op = normalizedTarget.startsWith('u') ? 'i32.trunc_f64_u' : 'i32.trunc_f64_s';
+          return [...valueLines, op];
+        }
+        this.reportUnsupported(`cast to '${normalizedTarget}'`, expr.location);
+        return valueLines;
+      }
       case 'Binary':
         return this.emitBinary(expr);
       case 'Call':
