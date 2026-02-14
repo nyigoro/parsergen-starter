@@ -7,6 +7,10 @@ import {
   type LuminaType,
   type LuminaTypeExpr,
   type LuminaTypeHole,
+  type LuminaTraitDecl,
+  type LuminaTraitMethod,
+  type LuminaImplDecl,
+  type LuminaFnDecl,
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
@@ -18,6 +22,7 @@ import {
   type ModuleFunction,
   type ModuleRegistry,
 } from './module-registry.js';
+import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
 
 export type SymbolKind = 'type' | 'function' | 'variable';
 
@@ -63,6 +68,40 @@ export class SymbolTable {
   list(): SymbolInfo[] {
     return Array.from(this.symbols.values());
   }
+}
+
+export interface TraitMethodSig {
+  name: string;
+  params: LuminaType[];
+  returnType: LuminaType;
+  typeParams: Array<{ name: string; bound?: LuminaType[] }>;
+  location?: Location;
+}
+
+export interface TraitInfo {
+  name: string;
+  typeParams: Array<{ name: string; bound?: LuminaType[] }>;
+  methods: Map<string, TraitMethodSig>;
+  visibility?: 'public' | 'private';
+  location?: Location;
+  uri?: string;
+}
+
+export interface ImplInfo {
+  traitName: string;
+  traitType: LuminaType;
+  forType: LuminaType;
+  typeParams: Array<{ name: string; bound?: LuminaType[] }>;
+  methods: Map<string, LuminaFnDecl>;
+  visibility?: 'public' | 'private';
+  location?: Location;
+  uri?: string;
+}
+
+export interface TraitRegistry {
+  traits: Map<string, TraitInfo>;
+  implsByKey: Map<string, ImplInfo>;
+  implsByTrait: Map<string, ImplInfo[]>;
 }
 
 const builtinTypes: Set<LuminaType> = new Set([
@@ -127,12 +166,15 @@ const isFloatTypeName = (type: LuminaType): boolean => type === 'f32' || type ==
 const isIntTypeName = (type: LuminaType): boolean =>
   type === 'int' || String(type).startsWith('i') || String(type).startsWith('u');
 
+const SELF_TYPE_NAME = 'Self';
+
 const isTypeHoleExpr = (typeName: LuminaTypeExpr): typeName is LuminaTypeHole =>
   typeof typeName === 'object' && !!typeName && (typeName as LuminaTypeHole).kind === 'TypeHole';
 
 const resolveTypeExpr = (typeName: LuminaTypeExpr | null | undefined): LuminaType | null => {
   if (!typeName) return null;
   if (isTypeHoleExpr(typeName)) return 'any';
+  if (typeof typeName === 'string' && typeName === 'unit') return 'void';
   return typeName;
 };
 
@@ -245,6 +287,8 @@ export interface AnalyzeOptions {
   };
   moduleBindings?: Map<string, ModuleExport>;
   moduleRegistry?: ModuleRegistry;
+  traitRegistry?: TraitRegistry;
+  traitMethodResolutions?: Map<number, TraitMethodResolution>;
 }
 
 export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) {
@@ -364,8 +408,12 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
     }
   }
 
+  const traitRegistry = collectTraitRegistry(program, symbols, diagnostics, options);
+  const traitMethodResolutions = new Map<number, TraitMethodResolution>();
+  activeOptions = { ...(activeOptions ?? {}), traitRegistry, traitMethodResolutions };
+
   if (options?.indexingOnly) {
-    return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined };
+    return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined, traitRegistry, traitMethodResolutions };
   }
 
   if (options?.useHm) {
@@ -507,7 +555,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
 
   collectUnusedBindingsLocal(rootScope, diagnostics, program.location);
 
-  return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined, hmCallSignatures, hmExprTypes };
+  return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined, hmCallSignatures, hmExprTypes, traitRegistry, traitMethodResolutions };
 }
 
 function resolveFunctionBody(
@@ -926,6 +974,9 @@ function typeCheckStatement(
           }
         }
       }
+      return;
+    case 'TraitDecl':
+    case 'ImplDecl':
       return;
     case 'StructDecl': {
       if (stmt.typeParams && stmt.typeParams.length > 0) {
@@ -2046,6 +2097,118 @@ function typeCheckExpr(
           return moduleFn.returnType;
         }
 
+        const receiverSym = symbols.get(expr.enumName);
+        if (receiverSym && receiverSym.kind === 'variable') {
+          const receiverExpr: LuminaExpr = {
+            type: 'Identifier',
+            name: expr.enumName,
+            location: expr.location,
+          };
+          const receiverType = typeCheckExpr(
+            receiverExpr,
+            symbols,
+            diagnostics,
+            scope,
+            options,
+            undefined,
+            resolving,
+            pendingDeps,
+            currentFunction,
+            di
+          );
+          if (!receiverType) return null;
+          const registry = options?.traitRegistry;
+          if (registry) {
+            const candidates = findTraitMethodCandidates(registry, receiverType, callee);
+            if (candidates.length === 0) {
+              diagnostics.push(
+                diagAt(`Type '${formatTypeForDiagnostic(receiverType)}' has no method '${callee}'`, expr.location, 'error', 'MEMBER-NOT-FOUND')
+              );
+              return null;
+            }
+            if (candidates.length > 1) {
+              diagnostics.push(
+                diagAt(
+                  `Ambiguous trait method '${callee}' for '${formatTypeForDiagnostic(receiverType)}'`,
+                  expr.location,
+                  'error',
+                  'TRAIT-009'
+                )
+              );
+              return null;
+            }
+            const candidate = candidates[0];
+            const expectedParams = candidate.method.params.map((param) => substituteTypeParams(param, candidate.mapping));
+            const expectedReturn = substituteTypeParams(candidate.method.returnType, candidate.mapping);
+
+            const actualArgs: LuminaType[] = [];
+            for (const arg of expr.args) {
+              const argType = typeCheckExpr(
+                arg,
+                symbols,
+                diagnostics,
+                scope,
+                options,
+                undefined,
+                resolving,
+                pendingDeps,
+                currentFunction,
+                di
+              );
+              if (argType) actualArgs.push(argType);
+            }
+
+            if (expectedParams.length !== actualArgs.length + 1) {
+              diagnostics.push(
+                diagAt(
+                  `Argument count mismatch for '${callee}'`,
+                  expr.location,
+                  'error',
+                  'TRAIT-006'
+                )
+              );
+            } else {
+              const expectedSelf = expectedParams[0];
+              if (!isTypeAssignable(receiverType, expectedSelf, symbols, options?.typeParams)) {
+                diagnostics.push(
+                  diagAt(
+                    `Method '${callee}' expects '${formatTypeForDiagnostic(expectedSelf)}' receiver but got '${formatTypeForDiagnostic(receiverType)}'`,
+                    expr.location,
+                    'error',
+                    'TRAIT-006'
+                  )
+                );
+              }
+              for (let i = 0; i < actualArgs.length; i += 1) {
+                const expected = expectedParams[i + 1];
+                const actual = actualArgs[i];
+                if (!isTypeAssignable(actual, expected, symbols, options?.typeParams)) {
+                  reportCallArgMismatch(
+                    callee,
+                    i,
+                    expected,
+                    actual,
+                    expr.args[i]?.location ?? expr.location,
+                    null
+                  );
+                }
+              }
+            }
+
+            if (expr.id != null && options?.traitMethodResolutions) {
+              const mangledName = mangleTraitMethodName(candidate.impl.traitType, candidate.impl.forType, callee);
+              options.traitMethodResolutions.set(expr.id, {
+                traitName: candidate.impl.traitName,
+                traitType: candidate.impl.traitType,
+                forType: candidate.impl.forType,
+                methodName: callee,
+                mangledName,
+              });
+            }
+            return expectedReturn;
+          }
+        }
+
         const enumVariant = findEnumVariantQualified(symbols, expr.enumName, callee, options);
         if (!enumVariant) {
           diagnostics.push(diagAt(`Unknown enum variant '${expr.enumName}.${callee}'`, expr.location));
@@ -2987,6 +3150,405 @@ function validateRecursiveStructs(
 
   for (const sym of structs) {
     checkStruct(sym.name);
+  }
+}
+
+function collectTraitRegistry(
+  program: LuminaProgram,
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[],
+  options?: AnalyzeOptions
+): TraitRegistry {
+  const traits = new Map<string, TraitInfo>();
+  const implsByKey = new Map<string, ImplInfo>();
+  const implsByTrait = new Map<string, ImplInfo[]>();
+
+  const registerTrait = (stmt: LuminaTraitDecl) => {
+    if (traits.has(stmt.name)) {
+      diagnostics.push(diagAt(`Trait '${stmt.name}' already defined`, stmt.location, 'error', 'TRAIT-001'));
+      return;
+    }
+    const traitTypeParams = normalizeTypeParamsForRegistry(stmt.typeParams, symbols, diagnostics, stmt.location);
+    const traitTypeParamSet = new Set(traitTypeParams.map((param) => param.name));
+    const methods = new Map<string, TraitMethodSig>();
+    for (const method of stmt.methods) {
+      if (methods.has(method.name)) {
+        diagnostics.push(
+          diagAt(
+            `Duplicate method '${method.name}' in trait '${stmt.name}'`,
+            method.location ?? stmt.location,
+            'error',
+            'TRAIT-007'
+          )
+        );
+        continue;
+      }
+      const sig = buildTraitMethodSignature(method, traitTypeParamSet, symbols, diagnostics);
+      methods.set(method.name, sig);
+    }
+    traits.set(stmt.name, {
+      name: stmt.name,
+      typeParams: traitTypeParams,
+      methods,
+      visibility: stmt.visibility ?? 'private',
+      location: stmt.location,
+      uri: options?.currentUri,
+    });
+  };
+
+  const registerImpl = (stmt: LuminaImplDecl) => {
+    const traitType = resolveTypeExpr(stmt.traitType);
+    if (!traitType) {
+      diagnostics.push(diagAt(`Invalid trait type in impl`, stmt.location, 'error', 'TRAIT-002'));
+      return;
+    }
+    const traitParsed = parseTypeName(traitType);
+    if (!traitParsed) {
+      diagnostics.push(diagAt(`Invalid trait type '${traitType}' in impl`, stmt.location, 'error', 'TRAIT-002'));
+      return;
+    }
+    const traitName = traitParsed.base;
+    const traitInfo = traits.get(traitName);
+    if (!traitInfo) {
+      diagnostics.push(diagAt(`Unknown trait '${traitName}'`, stmt.location, 'error', 'TRAIT-002'));
+      return;
+    }
+
+    const implTypeParams = normalizeTypeParamsForRegistry(stmt.typeParams, symbols, diagnostics, stmt.location);
+    const implTypeParamSet = new Set(implTypeParams.map((param) => param.name));
+
+    if (traitInfo.typeParams.length !== traitParsed.args.length) {
+      diagnostics.push(
+        diagAt(
+          `Trait '${traitName}' expects ${traitInfo.typeParams.length} type argument${traitInfo.typeParams.length === 1 ? '' : 's'}`,
+          stmt.location,
+          'error',
+          'TRAIT-006'
+        )
+      );
+    }
+
+    for (const arg of traitParsed.args) {
+      const known = ensureKnownType(arg, symbols, implTypeParamSet, diagnostics, stmt.location);
+      if (known === 'unknown') {
+        diagnostics.push(diagAt(`Unknown type '${arg}' in impl for '${traitName}'`, stmt.location));
+      }
+    }
+
+    const forType = resolveTypeExpr(stmt.forType) ?? 'any';
+    const knownForType = ensureKnownType(stmt.forType, symbols, implTypeParamSet, diagnostics, stmt.location);
+    if (knownForType === 'unknown') {
+      diagnostics.push(diagAt(`Unknown type '${forType}' in impl for '${traitName}'`, stmt.location));
+    }
+
+    const normalizedTraitType = normalizeTypeForComparison(traitType);
+    const normalizedForType = normalizeTypeForComparison(forType);
+    const implKey = `${normalizedTraitType}::${normalizedForType}`;
+    if (implsByKey.has(implKey)) {
+      diagnostics.push(diagAt(`Duplicate impl for '${traitType}' and '${forType}'`, stmt.location, 'error', 'TRAIT-003'));
+      return;
+    }
+
+    const methods = new Map<string, LuminaFnDecl>();
+    for (const method of stmt.methods) {
+      if (methods.has(method.name)) {
+        diagnostics.push(
+          diagAt(
+            `Duplicate method '${method.name}' in impl for '${traitName}'`,
+            method.location ?? stmt.location,
+            'error',
+            'TRAIT-008'
+          )
+        );
+        continue;
+      }
+      methods.set(method.name, method);
+    }
+
+    const mapping = buildTraitTypeMapping(traitInfo, traitParsed.args);
+    mapping.set(SELF_TYPE_NAME, forType);
+
+    for (const [name, traitMethod] of traitInfo.methods.entries()) {
+      const implMethod = methods.get(name);
+      if (!implMethod) {
+        diagnostics.push(diagAt(`Trait '${traitName}' requires method '${name}'`, stmt.location, 'error', 'TRAIT-004'));
+        continue;
+      }
+      validateImplMethodSignature(
+        traitInfo,
+        traitMethod,
+        implMethod,
+        mapping,
+        implTypeParamSet,
+        symbols,
+        diagnostics
+      );
+    }
+
+    for (const [name, implMethod] of methods.entries()) {
+      if (!traitInfo.methods.has(name)) {
+        diagnostics.push(
+          diagAt(
+            `Method '${name}' is not declared in trait '${traitName}'`,
+            implMethod.location ?? stmt.location,
+            'error',
+            'TRAIT-005'
+          )
+        );
+      }
+    }
+
+    const implInfo: ImplInfo = {
+      traitName,
+      traitType,
+      forType,
+      typeParams: implTypeParams,
+      methods,
+      visibility: stmt.visibility ?? 'private',
+      location: stmt.location,
+      uri: options?.currentUri,
+    };
+    implsByKey.set(implKey, implInfo);
+    const list = implsByTrait.get(traitName) ?? [];
+    list.push(implInfo);
+    implsByTrait.set(traitName, list);
+  };
+
+  for (const stmt of program.body) {
+    if (stmt.type === 'TraitDecl') {
+      registerTrait(stmt);
+    }
+  }
+
+  for (const stmt of program.body) {
+    if (stmt.type === 'ImplDecl') {
+      registerImpl(stmt);
+    }
+  }
+
+  return { traits, implsByKey, implsByTrait };
+}
+
+function normalizeTypeParamsForRegistry(
+  params: Array<{ name: string; bound?: LuminaTypeExpr[] }> | undefined,
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[],
+  location?: Location,
+  parentTypeParams?: Set<string>
+): Array<{ name: string; bound?: LuminaType[] }> {
+  const normalized: Array<{ name: string; bound?: LuminaType[] }> = [];
+  if (!params || params.length === 0) return normalized;
+  const seen = new Set<string>(parentTypeParams);
+  for (const param of params) {
+    if (!isValidTypeParam(param.name)) {
+      diagnostics.push(diagAt(`Invalid type parameter '${param.name}'`, location));
+      continue;
+    }
+    if (seen.has(param.name)) {
+      diagnostics.push(diagAt(`Duplicate type parameter '${param.name}'`, location));
+      continue;
+    }
+    seen.add(param.name);
+    const bounds: LuminaType[] = [];
+    for (const bound of param.bound ?? []) {
+      const known = ensureKnownType(bound, symbols, seen, diagnostics, location);
+      if (known === 'unknown') {
+        const resolved = resolveTypeExpr(bound);
+        diagnostics.push(diagAt(`Unknown bound '${resolved ?? 'unknown'}' for type parameter '${param.name}'`, location));
+        continue;
+      }
+      bounds.push(resolveTypeExpr(bound) ?? 'any');
+    }
+    normalized.push({ name: param.name, bound: bounds.length > 0 ? bounds : undefined });
+  }
+  return normalized;
+}
+
+function buildTraitMethodSignature(
+  method: LuminaTraitMethod,
+  traitTypeParamSet: Set<string>,
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[]
+): TraitMethodSig {
+  const methodTypeParams = normalizeTypeParamsForRegistry(method.typeParams, symbols, diagnostics, method.location, traitTypeParamSet);
+  const methodTypeParamSet = new Set<string>(traitTypeParamSet);
+  methodTypeParamSet.add(SELF_TYPE_NAME);
+  for (const param of methodTypeParams) methodTypeParamSet.add(param.name);
+
+  const params: LuminaType[] = [];
+  for (const param of method.params) {
+    if (!param.typeName) {
+      diagnostics.push(
+        diagAt(`Trait method '${method.name}' must specify a type for parameter '${param.name}'`, param.location ?? method.location)
+      );
+      params.push('any');
+      continue;
+    }
+    const known = ensureKnownType(param.typeName, symbols, methodTypeParamSet, diagnostics, param.location ?? method.location);
+    if (known === 'unknown') {
+      diagnostics.push(
+        diagAt(`Unknown type '${resolveTypeExpr(param.typeName) ?? 'unknown'}' in trait '${method.name}'`, param.location ?? method.location)
+      );
+    }
+    params.push(resolveTypeExpr(param.typeName) ?? 'any');
+  }
+
+  let returnType: LuminaType = 'void';
+  if (method.returnType) {
+    const known = ensureKnownType(method.returnType, symbols, methodTypeParamSet, diagnostics, method.location);
+    if (known === 'unknown') {
+      diagnostics.push(diagAt(`Unknown return type for trait method '${method.name}'`, method.location));
+    }
+    returnType = resolveTypeExpr(method.returnType) ?? 'any';
+  }
+
+  return {
+    name: method.name,
+    params,
+    returnType,
+    typeParams: methodTypeParams,
+    location: method.location,
+  };
+}
+
+function buildTraitTypeMapping(trait: TraitInfo, traitArgs: LuminaType[]): Map<string, LuminaType> {
+  const mapping = new Map<string, LuminaType>();
+  for (let i = 0; i < trait.typeParams.length; i++) {
+    const name = trait.typeParams[i].name;
+    const arg = traitArgs[i];
+    if (arg) {
+      mapping.set(name, arg);
+    }
+  }
+  return mapping;
+}
+
+type TraitMethodCandidate = {
+  impl: ImplInfo;
+  trait: TraitInfo;
+  method: TraitMethodSig;
+  mapping: Map<string, LuminaType>;
+};
+
+function findTraitMethodCandidates(
+  registry: TraitRegistry,
+  receiverType: LuminaType,
+  methodName: string
+): TraitMethodCandidate[] {
+  const candidates: TraitMethodCandidate[] = [];
+  const normalizedReceiver = normalizeTypeForComparison(receiverType);
+  for (const impl of registry.implsByKey.values()) {
+    if (normalizeTypeForComparison(impl.forType) !== normalizedReceiver) continue;
+    const trait = registry.traits.get(impl.traitName);
+    if (!trait) continue;
+    const method = trait.methods.get(methodName);
+    if (!method) continue;
+    if (!impl.methods.has(methodName)) continue;
+    const parsedTrait = parseTypeName(impl.traitType);
+    const mapping = buildTraitTypeMapping(trait, parsedTrait?.args ?? []);
+    mapping.set(SELF_TYPE_NAME, receiverType);
+    candidates.push({ impl, trait, method, mapping });
+  }
+  return candidates;
+}
+
+function validateImplMethodSignature(
+  trait: TraitInfo,
+  traitMethod: TraitMethodSig,
+  implMethod: LuminaFnDecl,
+  traitMapping: Map<string, LuminaType>,
+  implTypeParamSet: Set<string>,
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[]
+) {
+  const implMethodTypeParams = normalizeTypeParamsForRegistry(
+    implMethod.typeParams,
+    symbols,
+    diagnostics,
+    implMethod.location,
+    implTypeParamSet
+  );
+  const implMethodTypeParamSet = new Set<string>(implTypeParamSet);
+  implMethodTypeParamSet.add(SELF_TYPE_NAME);
+  for (const param of implMethodTypeParams) implMethodTypeParamSet.add(param.name);
+
+  if (traitMethod.typeParams.length !== implMethodTypeParams.length) {
+    diagnostics.push(
+      diagAt(
+        `Method '${traitMethod.name}' in impl for '${trait.name}' must declare ${traitMethod.typeParams.length} type parameter${traitMethod.typeParams.length === 1 ? '' : 's'}`,
+        implMethod.location,
+        'error',
+        'TRAIT-006'
+      )
+    );
+  }
+
+  const expectedParams = traitMethod.params.map((param) => substituteTypeParams(param, traitMapping));
+  const expectedReturn = substituteTypeParams(traitMethod.returnType, traitMapping);
+
+  const actualParams: LuminaType[] = [];
+  for (const param of implMethod.params) {
+    if (!param.typeName) {
+      diagnostics.push(
+        diagAt(`Impl method '${implMethod.name}' must specify a type for parameter '${param.name}'`, param.location ?? implMethod.location)
+      );
+      actualParams.push('any');
+      continue;
+    }
+    const known = ensureKnownType(param.typeName, symbols, implMethodTypeParamSet, diagnostics, param.location ?? implMethod.location);
+    if (known === 'unknown') {
+      diagnostics.push(
+        diagAt(`Unknown type '${resolveTypeExpr(param.typeName) ?? 'unknown'}' in impl method '${implMethod.name}'`, param.location ?? implMethod.location)
+      );
+    }
+    const resolvedParam = resolveTypeExpr(param.typeName) ?? 'any';
+    const actualParam =
+      resolvedParam === SELF_TYPE_NAME && traitMapping.has(SELF_TYPE_NAME)
+        ? (traitMapping.get(SELF_TYPE_NAME) as LuminaType)
+        : resolvedParam;
+    actualParams.push(actualParam);
+  }
+
+  const resolvedReturn = implMethod.returnType ? resolveTypeExpr(implMethod.returnType) ?? 'any' : 'void';
+  const actualReturn =
+    resolvedReturn === SELF_TYPE_NAME && traitMapping.has(SELF_TYPE_NAME)
+      ? (traitMapping.get(SELF_TYPE_NAME) as LuminaType)
+      : resolvedReturn;
+
+  if (expectedParams.length !== actualParams.length) {
+    diagnostics.push(
+      diagAt(
+        `Method '${traitMethod.name}' in impl for '${trait.name}' has ${actualParams.length} parameter${actualParams.length === 1 ? '' : 's'}, expected ${expectedParams.length}`,
+        implMethod.location,
+        'error',
+        'TRAIT-006'
+      )
+    );
+    return;
+  }
+
+  for (let i = 0; i < expectedParams.length; i++) {
+    if (!areTypesEquivalent(expectedParams[i], actualParams[i])) {
+      diagnostics.push(
+        diagAt(
+          `Method '${traitMethod.name}' in impl for '${trait.name}' has incompatible parameter type '${formatTypeForDiagnostic(actualParams[i])}' (expected '${formatTypeForDiagnostic(expectedParams[i])}')`,
+          implMethod.location,
+          'error',
+          'TRAIT-006'
+        )
+      );
+    }
+  }
+
+  if (!areTypesEquivalent(expectedReturn, actualReturn)) {
+    diagnostics.push(
+      diagAt(
+        `Method '${traitMethod.name}' in impl for '${trait.name}' has return type '${formatTypeForDiagnostic(actualReturn)}' (expected '${formatTypeForDiagnostic(expectedReturn)}')`,
+        implMethod.location,
+        'error',
+        'TRAIT-006'
+      )
+    );
   }
 }
 

@@ -6,6 +6,7 @@ export function normalizeTypeNameForDisplay(typeName: string): string {
   const aliases: Record<string, string> = {
     int: 'i32',
     float: 'f64',
+    unit: 'void',
   };
 
   return aliases[typeName] || typeName;
@@ -16,7 +17,10 @@ export function normalizeTypeNameForDisplay(typeName: string): string {
  * Handles generic types by replacing aliases in-place.
  */
 export function normalizeTypeForDisplay(type: string): string {
-  return type.replace(/\bint\b/g, 'i32').replace(/\bfloat\b/g, 'f64');
+  return type
+    .replace(/\bint\b/g, 'i32')
+    .replace(/\bfloat\b/g, 'f64')
+    .replace(/\bunit\b/g, 'void');
 }
 
 /**

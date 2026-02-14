@@ -1,5 +1,6 @@
-import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaMatchPattern } from './ast.js';
+import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaMatchPattern, type LuminaFnDecl, type LuminaImplDecl } from './ast.js';
 import { SourceMapGenerator, type RawSourceMap } from 'source-map';
+import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
 
 const normalizeNumericTypeName = (typeName: string): string => {
   if (typeName === 'int') return 'i32';
@@ -18,6 +19,7 @@ export interface CodegenJsOptions {
   sourceMap?: boolean;
   sourceFile?: string;
   sourceContent?: string;
+  traitMethodResolutions?: Map<number, TraitMethodResolution>;
 }
 
 export interface CodegenJsResult {
@@ -40,10 +42,12 @@ class JSGenerator {
   private readonly includeRuntime: boolean;
   private matchCounter = 0;
   private usesTryHelper = false;
+  private readonly traitMethodResolutions: Map<number, TraitMethodResolution>;
 
   constructor(private readonly builder: CodeBuilder, options: CodegenJsOptions) {
     this.target = options.target ?? 'esm';
     this.includeRuntime = options.includeRuntime !== false;
+    this.traitMethodResolutions = options.traitMethodResolutions ?? new Map();
   }
 
   emitProgram(node: LuminaProgram): void {
@@ -101,32 +105,7 @@ class JSGenerator {
     const pad = this.pad();
     switch (stmt.type) {
       case 'FnDecl': {
-        const params = stmt.params.map((p) => p.name).join(', ');
-        const asyncKeyword = stmt.async ? 'async ' : '';
-        const usesTry = blockUsesTry(stmt.body);
-        this.builder.append(
-          `${pad}${asyncKeyword}function ${stmt.name}(${params}) {`,
-          stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
-        );
-        this.builder.append('\n');
-        this.indentLevel++;
-        if (usesTry) {
-          this.builder.append(`${this.pad()}try `);
-          this.emitBlock(stmt.body, { inline: true, trailingNewline: false });
-          this.builder.append(` catch (err) {\n`);
-          this.indentLevel++;
-          this.builder.append(`${this.pad()}if (err && err.__lumina_try) return err.value;\n`);
-          this.builder.append(`${this.pad()}throw err;\n`);
-          this.indentLevel--;
-          this.builder.append(`${this.pad()}}\n`);
-        } else {
-          for (const bodyStmt of stmt.body.body) {
-            this.emitStatement(bodyStmt);
-          }
-        }
-        this.indentLevel--;
-        this.builder.append(`${pad}}\n`);
+        this.emitFunctionDecl(stmt.name, stmt);
         return;
       }
       case 'Let': {
@@ -210,7 +189,12 @@ class JSGenerator {
         this.builder.append('\n');
         return;
       }
+      case 'ImplDecl': {
+        this.emitImplDecl(stmt);
+        return;
+      }
       case 'TypeDecl':
+      case 'TraitDecl':
       case 'StructDecl':
       case 'EnumDecl':
       case 'Import':
@@ -218,6 +202,45 @@ class JSGenerator {
         return;
       default:
         return;
+    }
+  }
+
+  private emitFunctionDecl(name: string, stmt: LuminaFnDecl): void {
+    const pad = this.pad();
+    const params = stmt.params.map((p) => p.name).join(', ');
+    const asyncKeyword = stmt.async ? 'async ' : '';
+    const usesTry = blockUsesTry(stmt.body);
+    this.builder.append(
+      `${pad}${asyncKeyword}function ${name}(${params}) {`,
+      stmt.type,
+      stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+    );
+    this.builder.append('\n');
+    this.indentLevel++;
+    if (usesTry) {
+      this.builder.append(`${this.pad()}try `);
+      this.emitBlock(stmt.body, { inline: true, trailingNewline: false });
+      this.builder.append(` catch (err) {\n`);
+      this.indentLevel++;
+      this.builder.append(`${this.pad()}if (err && err.__lumina_try) return err.value;\n`);
+      this.builder.append(`${this.pad()}throw err;\n`);
+      this.indentLevel--;
+      this.builder.append(`${this.pad()}}\n`);
+    } else {
+      for (const bodyStmt of stmt.body.body) {
+        this.emitStatement(bodyStmt);
+      }
+    }
+    this.indentLevel--;
+    this.builder.append(`${pad}}\n`);
+  }
+
+  private emitImplDecl(stmt: LuminaImplDecl): void {
+    const traitType = typeof stmt.traitType === 'string' ? stmt.traitType : 'Trait';
+    const forType = typeof stmt.forType === 'string' ? stmt.forType : 'Unknown';
+    for (const method of stmt.methods) {
+      const mangledName = mangleTraitMethodName(traitType, forType, method.name);
+      this.emitFunctionDecl(mangledName, method);
     }
   }
 
@@ -383,6 +406,17 @@ class JSGenerator {
       case 'Binary':
         return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));
       case 'Call': {
+        const resolution = expr.id != null ? this.traitMethodResolutions.get(expr.id) : undefined;
+        if (resolution && expr.enumName) {
+          const receiverExpr: LuminaExpr = { type: 'Identifier', name: expr.enumName, location: expr.location };
+          const parts: Array<string | EmitResult> = [`${resolution.mangledName}(`, this.emitExpr(receiverExpr)];
+          expr.args.forEach((arg) => {
+            parts.push(', ');
+            parts.push(this.emitExpr(arg));
+          });
+          parts.push(')');
+          return withBase(concat(...parts));
+        }
         if (expr.enumName && isUpperIdent(expr.enumName)) {
           return this.emitEnumConstruct(expr.enumName, expr.callee.name, expr.args, baseLoc);
         }
@@ -572,6 +606,8 @@ const statementUsesTry = (stmt: LuminaStatement): boolean => {
   switch (stmt.type) {
     case 'FnDecl':
       return blockUsesTry(stmt.body);
+    case 'ImplDecl':
+      return stmt.methods.some((method) => blockUsesTry(method.body));
     case 'Let':
       return exprUsesTry(stmt.value);
     case 'Return':

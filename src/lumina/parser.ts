@@ -110,6 +110,26 @@ function normalizeStatement(stmt: LuminaStatement) {
       }
       return;
     }
+    case 'TraitDecl': {
+      normalizeTypeParams(stmt.typeParams, stmt.location);
+      for (const method of stmt.methods) {
+        normalizeTypeParams(method.typeParams, method.location);
+        for (const param of method.params) {
+          param.typeName = normalizeTypeExpr(param.typeName, param.location) as LuminaTypeExpr | null;
+        }
+        method.returnType = normalizeTypeExpr(method.returnType, method.location) as LuminaTypeExpr | null;
+      }
+      return;
+    }
+    case 'ImplDecl': {
+      normalizeTypeParams(stmt.typeParams, stmt.location);
+      stmt.traitType = normalizeTypeExpr(stmt.traitType, stmt.location) as LuminaTypeExpr;
+      stmt.forType = normalizeTypeExpr(stmt.forType, stmt.location) as LuminaTypeExpr;
+      for (const method of stmt.methods) {
+        normalizeStatement(method);
+      }
+      return;
+    }
     case 'FnDecl': {
       normalizeTypeParams(stmt.typeParams, stmt.location);
       for (const param of stmt.params) {

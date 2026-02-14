@@ -206,6 +206,8 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
       return { kind: 'Program', body, location: stmt.location } as IRProgram;
     }
     case 'Import':
+    case 'TraitDecl':
+    case 'ImplDecl':
     case 'TypeDecl':
     case 'StructDecl':
     case 'EnumDecl':

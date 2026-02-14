@@ -244,6 +244,9 @@ const visitStatement = (
     case 'Block':
       for (const inner of stmt.body) visitStatement(inner, ctx, genericFns, hm);
       return;
+    case 'TraitDecl':
+    case 'ImplDecl':
+      return;
     default:
       return;
   }
@@ -353,6 +356,9 @@ const substituteTypesInStatement = (stmt: LuminaStatement, mapping: Map<string, 
       for (const inner of stmt.body) {
         substituteTypesInStatement(inner, mapping);
       }
+      return;
+    case 'TraitDecl':
+    case 'ImplDecl':
       return;
     default:
       return;
@@ -540,6 +546,9 @@ export function rewriteCallSites(
         return;
       case 'Block':
         for (const inner of stmt.body) visitStmtForRewrite(inner);
+        return;
+      case 'TraitDecl':
+      case 'ImplDecl':
         return;
       default:
         return;

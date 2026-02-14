@@ -186,6 +186,8 @@ class WasmBuilder {
           break;
         case 'While':
         case 'MatchStmt':
+        case 'TraitDecl':
+        case 'ImplDecl':
         case 'StructDecl':
         case 'EnumDecl':
         case 'TypeDecl':

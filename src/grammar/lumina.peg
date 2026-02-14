@@ -7,7 +7,7 @@
 
   function expectedStatementTokens() {
     return [
-      "fn", "async", "struct", "enum", "type", "extern", "import", "pub",
+      "fn", "async", "struct", "enum", "type", "extern", "import", "pub", "trait", "impl",
       "let", "if", "while", "match", "return",
       "identifier", "number", "string", "true", "false",
       "{", "}"
@@ -40,7 +40,7 @@ RecoverableStatement
   / error:InvalidStatement { return error; }
 
 SyncKeyword
-  = "fn" / "struct" / "enum" / "type" / "extern" / "import" / "pub"
+  = "fn" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl"
 
 InvalidStatement
   = tokens:(!(";" / "}" / SyncKeyword) .)+ (";" / &"}" / &SyncKeyword / !.) {
@@ -52,6 +52,8 @@ InvalidStatement
 
 Statement
   = Import
+  / TraitDecl
+  / ImplDecl
   / StructDecl
   / EnumDecl
   / AdtTypeDecl
@@ -91,6 +93,34 @@ NamespaceImport
 TypeDecl
   = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {
       return createNode("TypeDecl", { name: node.name, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
+    }
+
+TraitDecl
+  = visibility:Visibility? _ "trait" _ node:IdName _ tparams:TypeParams? _ "{" _ methods:TraitMethodList? _ "}" _ ";"? {
+      return createNode("TraitDecl", { name: node.name, typeParams: tparams || [], methods: methods || [], visibility: visibility ?? "private", location: node.location }, location);
+    }
+
+TraitMethodList
+  = head:TraitMethod tail:(_ TraitMethod)* { return [head].concat(tail.map(t => t[1])); }
+  / "" { return []; }
+
+TraitMethod
+  = "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ ";"? {
+      return createNode("TraitMethod", { name: node.name, params: params || [], returnType: ret || null, typeParams: tparams || [], location: node.location }, location);
+    }
+
+ImplDecl
+  = visibility:Visibility? _ "impl" _ tparams:TypeParams? _ traitType:TypeName _ _ "for" _ forType:TypeName _ "{" _ methods:ImplMethodList? _ "}" _ ";"? {
+      return createNode("ImplDecl", { traitType, forType, typeParams: tparams || [], methods: methods || [], visibility: visibility ?? "private", location: location() }, location);
+    }
+
+ImplMethodList
+  = head:ImplMethod tail:(_ ImplMethod)* { return [head].concat(tail.map(t => t[1])); }
+  / "" { return []; }
+
+ImplMethod
+  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
+      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 AdtTypeDecl
@@ -315,7 +345,7 @@ StructLiteralField
   = field:IdName _ ":" _ value:Expr { return { name: field.name, value, location: field.location }; }
 
 Keyword
-  = ("fn" / "async" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "let" / "mut" / "ref" / "move"
+  = ("fn" / "async" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "let" / "mut" / "ref" / "move"
     / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is") ![a-zA-Z0-9_]
 
 IdName

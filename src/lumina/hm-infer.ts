@@ -740,6 +740,9 @@ function inferStatement(
       }
       return null;
     }
+    case 'TraitDecl':
+    case 'ImplDecl':
+      return null;
     case 'Block': {
       const blockEnv = env.child();
       for (const bodyStmt of stmt.body) {
@@ -1245,6 +1248,9 @@ function parseTypeName(
   }
   if (typeof typeName !== 'string') {
     return { kind: 'primitive', name: 'any' };
+  }
+  if (typeName === 'unit') {
+    typeName = 'void';
   }
   if (
     typeName === 'int' ||

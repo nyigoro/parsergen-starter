@@ -1,0 +1,54 @@
+import { io, str } from "@std";
+
+trait Printable {
+  fn print(self: Self) -> void;
+  fn debug(self: Self) -> string;
+}
+
+struct User {
+  name: string,
+  age: i32
+}
+
+impl Printable for User {
+  fn print(self: Self) -> void {
+    io.println(str.concat("User: ", self.name));
+  }
+  
+  fn debug(self: Self) -> string {
+    return str.concat(
+      str.concat("User { name: ", self.name),
+      str.concat(", age: ", str.concat(str.from_int(self.age), " }"))
+    );
+  }
+}
+
+struct Product {
+  name: string,
+  price: i32
+}
+
+impl Printable for Product {
+  fn print(self: Self) -> void {
+    io.println(str.concat("Product: ", self.name));
+  }
+  
+  fn debug(self: Self) -> string {
+    return str.concat(
+      str.concat("Product { name: ", self.name),
+      str.concat(", price: $", str.concat(str.from_int(self.price), " }"))
+    );
+  }
+}
+
+fn main() -> void {
+  let user = User { name: "Alice", age: 30 };
+  user.print();
+  io.println(user.debug());
+  
+  let product = Product { name: "Laptop", price: 1200 };
+  product.print();
+  io.println(product.debug());
+}
+
+main()

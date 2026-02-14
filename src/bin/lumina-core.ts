@@ -1026,6 +1026,7 @@ async function compileLumina(
         sourceMap,
         sourceFile: sourcePath,
         sourceContent: source,
+        traitMethodResolutions: analysis.traitMethodResolutions,
       });
       out = result.code;
     } else {
@@ -1058,12 +1059,18 @@ async function compileLumina(
   if (cached && cached.hash === fileHash && cached.grammarHash === buildCache.grammarHash) {
     buildCache.stats.hits += 1;
     if (useAstJs) {
+      const analysis = analyzeLumina(cached.ast as never, { diDebug: diCfg });
+      if (analysis.diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+        return { ok: false };
+      }
       const monoAst = monomorphizeAst(cached.ast as never);
       const result = generateJSFromAst(monoAst as never, {
         target,
         sourceMap,
         sourceFile: sourcePath,
         sourceContent: source,
+        traitMethodResolutions: analysis.traitMethodResolutions,
       });
       let out = result.code;
       if (sourceMap && result.map) {
@@ -1115,12 +1122,18 @@ async function compileLumina(
     buildCache.stats.hits += 1;
     buildCache.files.set(sourcePath, diskCache);
     if (useAstJs) {
+      const analysis = analyzeLumina(diskCache.ast as never, { diDebug: diCfg });
+      if (analysis.diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+        return { ok: false };
+      }
       const monoAst = monomorphizeAst(diskCache.ast as never);
       const result = generateJSFromAst(monoAst as never, {
         target,
         sourceMap,
         sourceFile: sourcePath,
         sourceContent: source,
+        traitMethodResolutions: analysis.traitMethodResolutions,
       });
       let out = result.code;
       if (sourceMap && result.map) {
@@ -1195,6 +1208,7 @@ async function compileLumina(
       sourceMap,
       sourceFile: sourcePath,
       sourceContent: source,
+      traitMethodResolutions: analysis.traitMethodResolutions,
     });
     out = result.code;
   } else {

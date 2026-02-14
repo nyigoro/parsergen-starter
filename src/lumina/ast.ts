@@ -21,6 +21,8 @@ export interface LuminaProgram extends LuminaNode {
 
 export type LuminaStatement = (
   | LuminaImport
+  | LuminaTraitDecl
+  | LuminaImplDecl
   | LuminaTypeDecl
   | LuminaStructDecl
   | LuminaEnumDecl
@@ -58,6 +60,34 @@ export interface LuminaTypeDecl {
   typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   extern?: boolean;
   externModule?: string;
+  location?: Location;
+}
+
+export interface LuminaTraitDecl {
+  type: 'TraitDecl';
+  name: string;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  methods: LuminaTraitMethod[];
+  visibility?: 'public' | 'private';
+  location?: Location;
+}
+
+export interface LuminaTraitMethod {
+  type: 'TraitMethod';
+  name: string;
+  params: LuminaParam[];
+  returnType: LuminaTypeExpr | null;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  location?: Location;
+}
+
+export interface LuminaImplDecl {
+  type: 'ImplDecl';
+  traitType: LuminaTypeExpr;
+  forType: LuminaTypeExpr;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  methods: LuminaFnDecl[];
+  visibility?: 'public' | 'private';
   location?: Location;
 }
 
