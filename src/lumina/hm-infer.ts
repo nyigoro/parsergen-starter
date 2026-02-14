@@ -163,6 +163,7 @@ let activeWrapperSet = new Set(defaultWrapperList);
 let activeInferredExprs: Map<number, Type> | null = null;
 let activeStructRegistry: Map<string, StructInfo> | null = null;
 let activeRowPolymorphism = false;
+let activeReturnType: Type | null = null;
 
 export function inferProgram(
   program: LuminaProgram,
@@ -175,6 +176,7 @@ export function inferProgram(
   }
 ): InferResult {
   activeWrapperSet = new Set(options?.recursiveWrappers ?? defaultWrapperList);
+  activeReturnType = null;
   const env = new TypeEnv();
   const subst: Subst = new Map();
   const diagnostics: Diagnostic[] = [];
@@ -386,6 +388,8 @@ function inferFunctionBody(
   const signature = hoistedFns.get(stmt.name) ?? buildFunctionSignature(stmt, holeInfoByVar);
   const fnEnv = env.child();
   const isAsync = !!stmt.async;
+  const prevReturn = activeReturnType;
+  activeReturnType = signature.returnType;
   signature.paramTypes.forEach((t, idx) => {
     const param = stmt.params[idx];
     if (param) {
@@ -412,6 +416,7 @@ function inferFunctionBody(
       isAsync
     );
   }
+  activeReturnType = prevReturn;
   const effectiveReturn = isAsync ? promiseType(signature.returnType) : signature.returnType;
   const prunedReturn = normalizeType(effectiveReturn, subst);
   if (stmt.location?.start) {
@@ -445,6 +450,8 @@ function inferStatement(
       const fnEnv = env.child();
       const isAsync = !!stmt.async;
       const signature = buildFunctionSignature(stmt, holeInfoByVar);
+      const prevReturn = activeReturnType;
+      activeReturnType = signature.returnType;
       signature.paramTypes.forEach((t, idx) => {
         const param = stmt.params[idx];
         if (param) {
@@ -483,6 +490,7 @@ function inferStatement(
       }
       inferredFnByName?.set(stmt.name, prunedReturn);
       inferredFnParams?.set(stmt.name, paramTypes.map((param) => prune(param, subst)));
+      activeReturnType = prevReturn;
       return fnType;
     }
     case 'Let': {
@@ -811,6 +819,34 @@ function inferExpr(
         note: `Await expects a Promise value`,
       });
       return recordExprType(expr, innerType, subst);
+    }
+    case 'Try': {
+      const valueType = inferChild(expr.value);
+      if (!valueType) return null;
+      const okType = freshTypeVar();
+      const errType = freshTypeVar();
+      const resultType: Type = { kind: 'adt', name: 'Result', params: [okType, errType] };
+      tryUnify(valueType, resultType, subst, diagnostics, {
+        location: expr.location,
+        note: `'?' expects a Result value`,
+      });
+      if (!activeReturnType) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'TRY_OUTSIDE_FUNCTION',
+          message: `'?' can only be used inside functions returning Result`,
+          source: 'lumina',
+          location: diagLocation(expr.location),
+        });
+      } else {
+        const returnOk = freshTypeVar();
+        const returnResult: Type = { kind: 'adt', name: 'Result', params: [returnOk, errType] };
+        tryUnify(activeReturnType, returnResult, subst, diagnostics, {
+          location: expr.location,
+          note: `'?' requires the function to return Result`,
+        });
+      }
+      return recordExprType(expr, okType, subst);
     }
     case 'Identifier': {
       const scheme = env.lookup(expr.name);

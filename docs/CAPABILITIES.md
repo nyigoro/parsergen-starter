@@ -20,6 +20,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Move expressions (`move x`) | Stable | **Partial moves** supported with path tracking + tests |
 | Type holes (`_`) in annotations | Stable | **HM validation** + LUMâ€‘010 |
 | Async/await | Stable | `async fn`, `await`, Promise<T> |
+| Error handling (`?`) | Stable | Rust-style Result propagation |
 
 ## Type System (HM)
 | Feature | Status | Notes |

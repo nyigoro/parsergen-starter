@@ -241,6 +241,9 @@ class WasmBuilder {
         return [this.emitNumber(expr)];
       case 'Boolean':
         return [`i32.const ${expr.value ? 1 : 0}`];
+      case 'Try':
+        this.reportUnsupported('try operator', expr.location);
+        return ['unreachable'];
       case 'Identifier':
         return [`local.get $${expr.name}`];
       case 'Cast': {

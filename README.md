@@ -18,6 +18,7 @@ A modern functional language with async/await, type inference, and package manag
 - Lumina LSP server with diagnostics, completion, symbols, rename, references, semantic tokens
 - CLI tools for parsing and Lumina workflows
   - Industry-standard numeric types (i8-i128, u8-u128, f32, f64)
+  - Ergonomic error handling with `?` operator for Result propagation
   - Structs/enums with match + member access
   - Hex/binary/underscored numeric literals
   - IR visualization via `--debug-ir`

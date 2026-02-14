@@ -1735,6 +1735,65 @@ function typeCheckExpr(
     }
     return valueType;
   }
+  if (expr.type === 'Try') {
+    if (!currentFunction) {
+      diagnostics.push(
+        diagAt(`'?' can only be used inside functions returning Result`, expr.location, 'error', 'TRY_OUTSIDE_FUNCTION')
+      );
+      return null;
+    }
+    const valueType = typeCheckExpr(
+      expr.value,
+      symbols,
+      diagnostics,
+      scope,
+      options,
+      undefined,
+      resolving,
+      pendingDeps,
+      currentFunction,
+      di,
+      pipedArgType,
+      allowPartialMoveBase,
+      skipMoveChecks
+    );
+    if (!valueType) return null;
+    const parsedValue = parseTypeName(valueType);
+    if (!parsedValue || parsedValue.base !== 'Result' || parsedValue.args.length !== 2) {
+      diagnostics.push(
+        diagAt(`'?' expects a Result value`, expr.location, 'error', 'TRY_NOT_RESULT')
+      );
+      return null;
+    }
+    const okType = parsedValue.args[0];
+    const errType = parsedValue.args[1];
+    const fnSym = symbols.get(currentFunction);
+    let expectedReturn = fnSym?.type ?? null;
+    if (fnSym?.async && expectedReturn) {
+      const parsed = parseTypeName(expectedReturn);
+      if (parsed && parsed.base === 'Promise' && parsed.args.length === 1) {
+        expectedReturn = parsed.args[0];
+      }
+    }
+    if (expectedReturn && expectedReturn !== 'any') {
+      const parsedReturn = parseTypeName(expectedReturn);
+      if (!parsedReturn || parsedReturn.base !== 'Result' || parsedReturn.args.length !== 2) {
+        diagnostics.push(
+          diagAt(`'?' can only be used in functions returning Result`, expr.location, 'error', 'TRY_RETURN_MISMATCH')
+        );
+      } else if (!areTypesEquivalent(parsedReturn.args[1], errType)) {
+        diagnostics.push(
+          diagAt(
+            `Result error type '${formatTypeForDiagnostic(errType)}' does not match function error type '${formatTypeForDiagnostic(parsedReturn.args[1])}'`,
+            expr.location,
+            'error',
+            'TRY_RETURN_MISMATCH'
+          )
+        );
+      }
+    }
+    return okType;
+  }
   if (expr.type === 'Binary') {
     if (expr.op === '|>') {
       if (expr.right.type !== 'Call') {

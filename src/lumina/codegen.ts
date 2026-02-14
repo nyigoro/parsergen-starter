@@ -18,6 +18,8 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   const target = options.target ?? 'esm';
   const includeRuntime = options.includeRuntime !== false;
   const builder = new CodeBuilder(options.sourceMap === true);
+  const tryFunctions = collectTryFunctions(ir);
+  const usesTry = tryFunctions.size > 0;
 
   if (includeRuntime) {
     if (target === 'cjs') {
@@ -52,9 +54,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append(`function __set(obj, prop, value) { obj[prop] = value; return value; }`, 'Runtime');
     builder.append('\n');
   }
+  if (usesTry) {
+    builder.append(tryHelperSource(), 'Runtime');
+    builder.append('\n');
+  }
 
   const hoistSsa = ir.kind === 'Program' && ir.ssa === true;
-  emit(ir, 0, builder, { hoistSsa });
+  emit(ir, 0, builder, { hoistSsa, tryFunctions });
 
   let code = builder.toString().trimEnd() + '\n';
   if (includeRuntime) {
@@ -78,6 +84,7 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
 type EmitContext = {
   hoistSsa: boolean;
   ssaNames?: Set<string> | null;
+  tryFunctions?: Set<string>;
 };
 
 const SSA_NAME_PATTERN = /_\d+$/;
@@ -167,7 +174,22 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
         }
       }
       const nextCtx: EmitContext = { ...ctx, ssaNames };
-      node.body.forEach((n) => emit(n, indent + 1, out, nextCtx));
+      const usesTry = ctx.tryFunctions?.has(node.name) ?? false;
+      if (usesTry) {
+        out.append(`${pad}  try {`);
+        out.append('\n');
+        node.body.forEach((n) => emit(n, indent + 2, out, nextCtx));
+        out.append(`${pad}  } catch (err) {`);
+        out.append('\n');
+        out.append(`${pad}    if (err && err.__lumina_try) return err.value;`);
+        out.append('\n');
+        out.append(`${pad}    throw err;`);
+        out.append('\n');
+        out.append(`${pad}  }`);
+        out.append('\n');
+      } else {
+        node.body.forEach((n) => emit(n, indent + 1, out, nextCtx));
+      }
       out.append(`${pad}}`, node.kind, node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined);
       out.append('\n');
       return;
@@ -469,6 +491,68 @@ function emitExpr(node: IRNode): EmitResult {
       return withBase({ code: 'undefined', mappings: [] });
   }
 }
+
+const tryHelperSource = (): string => `
+function __lumina_try(value) {
+  if (value && typeof value === 'object') {
+    const tag = value.$tag ?? value.tag;
+    if (tag === 'Ok') {
+      if ('$payload' in value) return value.$payload;
+      const values = value.values;
+      if (Array.isArray(values)) return values.length > 1 ? values : values[0];
+    }
+    if (tag === 'Err') {
+      throw { __lumina_try: true, value };
+    }
+  }
+  return value;
+}`.trim();
+
+const collectTryFunctions = (root: IRNode): Set<string> => {
+  const result = new Set<string>();
+  const visit = (node: IRNode): boolean => {
+    switch (node.kind) {
+      case 'Call':
+        if (node.callee === '__lumina_try') return true;
+        return node.args.some(visit);
+      case 'Let':
+        return visit(node.value);
+      case 'Return':
+        return visit(node.value);
+      case 'ExprStmt':
+        return visit(node.expr);
+      case 'Binary':
+        return visit(node.left) || visit(node.right);
+      case 'Cast':
+        return visit(node.expr);
+      case 'StructLiteral':
+        return node.fields.some((field) => visit(field.value));
+      case 'Member':
+        return visit(node.object);
+      case 'Index':
+        return visit(node.target);
+      case 'Enum':
+        return node.values.some(visit);
+      case 'MatchExpr':
+        return visit(node.value) || node.arms.some((arm) => visit(arm.body));
+      case 'If':
+        return visit(node.condition) || node.thenBody.some(visit) || (node.elseBody ? node.elseBody.some(visit) : false);
+      case 'While':
+        return visit(node.condition) || node.body.some(visit);
+      case 'Program':
+        return node.body.some(visit);
+      case 'Function': {
+        const hasTry = node.body.some(visit);
+        if (hasTry) result.add(node.name);
+        return hasTry;
+      }
+      default:
+        return false;
+    }
+  };
+  visit(root);
+  return result;
+};
 
 class CodeBuilder {
   private chunks: string[] = [];

@@ -192,6 +192,9 @@ const visitExpr = (
     case 'IsExpr':
       visitExpr(expr.value, ctx, genericFns, hm);
       return;
+    case 'Try':
+      visitExpr(expr.value, ctx, genericFns, hm);
+      return;
     case 'Move':
       visitExpr(expr.target, ctx, genericFns, hm);
       return;
@@ -302,6 +305,9 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
       }
       return;
     case 'IsExpr':
+      substituteTypesInExpr(expr.value, mapping);
+      return;
+    case 'Try':
       substituteTypesInExpr(expr.value, mapping);
       return;
     case 'Move':
@@ -488,6 +494,9 @@ export function rewriteCallSites(
         for (const arm of expr.arms) visitExprForRewrite(arm.body);
         return;
       case 'IsExpr':
+        visitExprForRewrite(expr.value);
+        return;
+      case 'Try':
         visitExprForRewrite(expr.value);
         return;
       case 'Move':

@@ -39,6 +39,7 @@ class JSGenerator {
   private readonly target: 'esm' | 'cjs';
   private readonly includeRuntime: boolean;
   private matchCounter = 0;
+  private usesTryHelper = false;
 
   constructor(private readonly builder: CodeBuilder, options: CodegenJsOptions) {
     this.target = options.target ?? 'esm';
@@ -46,6 +47,7 @@ class JSGenerator {
   }
 
   emitProgram(node: LuminaProgram): void {
+    this.usesTryHelper = programUsesTry(node);
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
@@ -68,6 +70,10 @@ class JSGenerator {
       this.builder.append('const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };');
       this.builder.append('\n');
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
+    }
+    if (this.usesTryHelper) {
+      this.builder.append(tryHelperSource());
+      this.builder.append('\n');
     }
     this.builder.append('\n');
 
@@ -97,13 +103,30 @@ class JSGenerator {
       case 'FnDecl': {
         const params = stmt.params.map((p) => p.name).join(', ');
         const asyncKeyword = stmt.async ? 'async ' : '';
+        const usesTry = blockUsesTry(stmt.body);
         this.builder.append(
-          `${pad}${asyncKeyword}function ${stmt.name}(${params}) `,
+          `${pad}${asyncKeyword}function ${stmt.name}(${params}) {`,
           stmt.type,
           stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
         );
-        this.emitBlock(stmt.body, { inline: true, trailingNewline: false });
         this.builder.append('\n');
+        this.indentLevel++;
+        if (usesTry) {
+          this.builder.append(`${this.pad()}try `);
+          this.emitBlock(stmt.body, { inline: true, trailingNewline: false });
+          this.builder.append(` catch (err) {\n`);
+          this.indentLevel++;
+          this.builder.append(`${this.pad()}if (err && err.__lumina_try) return err.value;\n`);
+          this.builder.append(`${this.pad()}throw err;\n`);
+          this.indentLevel--;
+          this.builder.append(`${this.pad()}}\n`);
+        } else {
+          for (const bodyStmt of stmt.body.body) {
+            this.emitStatement(bodyStmt);
+          }
+        }
+        this.indentLevel--;
+        this.builder.append(`${pad}}\n`);
         return;
       }
       case 'Let': {
@@ -322,6 +345,10 @@ class JSGenerator {
         const value = this.emitExpr(expr.value);
         return withBase(concat('await ', value));
       }
+      case 'Try': {
+        const value = this.emitExpr(expr.value);
+        return withBase(concat('__lumina_try(', value, ')'));
+      }
       case 'Cast': {
         const value = this.emitExpr(expr.expr);
         const targetType = typeof expr.targetType === 'string' ? expr.targetType : 'any';
@@ -518,6 +545,82 @@ class JSGenerator {
     return stmt.type === 'ExprStmt';
   }
 }
+
+const tryHelperSource = (): string => `
+function __lumina_try(value) {
+  if (value && typeof value === 'object') {
+    const tag = value.$tag ?? value.tag;
+    if (tag === 'Ok') {
+      if ('$payload' in value) return value.$payload;
+      const values = value.values;
+      if (Array.isArray(values)) return values.length > 1 ? values : values[0];
+    }
+    if (tag === 'Err') {
+      throw { __lumina_try: true, value };
+    }
+  }
+  return value;
+}`.trim();
+
+const programUsesTry = (program: LuminaProgram): boolean =>
+  program.body.some((stmt) => statementUsesTry(stmt));
+
+const blockUsesTry = (block: { body: LuminaStatement[] }): boolean =>
+  block.body.some((stmt) => statementUsesTry(stmt));
+
+const statementUsesTry = (stmt: LuminaStatement): boolean => {
+  switch (stmt.type) {
+    case 'FnDecl':
+      return blockUsesTry(stmt.body);
+    case 'Let':
+      return exprUsesTry(stmt.value);
+    case 'Return':
+      return exprUsesTry(stmt.value);
+    case 'Assign':
+      return exprUsesTry(stmt.value) || exprUsesTry(stmt.target as LuminaExpr);
+    case 'ExprStmt':
+      return exprUsesTry(stmt.expr);
+    case 'If':
+      return (
+        exprUsesTry(stmt.condition) ||
+        blockUsesTry(stmt.thenBlock) ||
+        (stmt.elseBlock ? blockUsesTry(stmt.elseBlock) : false)
+      );
+    case 'While':
+      return exprUsesTry(stmt.condition) || blockUsesTry(stmt.body);
+    case 'MatchStmt':
+      return exprUsesTry(stmt.value) || stmt.arms.some((arm) => blockUsesTry(arm.body));
+    case 'Block':
+      return blockUsesTry(stmt);
+    default:
+      return false;
+  }
+};
+
+const exprUsesTry = (expr: LuminaExpr): boolean => {
+  switch (expr.type) {
+    case 'Try':
+      return true;
+    case 'Await':
+      return exprUsesTry(expr.value);
+    case 'Cast':
+      return exprUsesTry(expr.expr);
+    case 'Binary':
+      return exprUsesTry(expr.left) || exprUsesTry(expr.right);
+    case 'Call':
+      return expr.args.some(exprUsesTry);
+    case 'Member':
+      return exprUsesTry(expr.object);
+    case 'StructLiteral':
+      return expr.fields.some((field) => exprUsesTry(field.value));
+    case 'MatchExpr':
+      return exprUsesTry(expr.value) || expr.arms.some((arm) => exprUsesTry(arm.body));
+    case 'Move':
+      return exprUsesTry(expr.target);
+    default:
+      return false;
+  }
+};
 
 type EmitMapping = { offset: number; source: { line: number; column: number } };
 type EmitResult = { code: string; mappings: EmitMapping[] };

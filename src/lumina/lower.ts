@@ -292,6 +292,15 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
         location: expr.location,
       };
     }
+    case 'Try': {
+      const call: IRCall = {
+        kind: 'Call',
+        callee: '__lumina_try',
+        args: [lowerExpr(expr.value, ctx)],
+        location: expr.location,
+      };
+      return call;
+    }
     case 'Member': {
       if (expr.object.type === 'Identifier') {
         const qualified = `${expr.object.name}.${expr.property}`;

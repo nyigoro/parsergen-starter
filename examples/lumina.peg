@@ -281,8 +281,15 @@ Mul
     }
 
 Primary
-  = AwaitExpr
-  / PrimaryNoAwait
+  = TryExpr
+
+TryExpr
+  = head:AwaitExpr tail:(_ "?")* {
+      return tail.reduce((acc) => createNode("Try", { value: acc }, location), head);
+    }
+  / head:PrimaryNoAwait tail:(_ "?")* {
+      return tail.reduce((acc) => createNode("Try", { value: acc }, location), head);
+    }
 
 PrimaryNoAwait
   = MatchExpr
