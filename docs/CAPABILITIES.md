@@ -60,6 +60,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 | IR optimization (SSA) | Stable | Function‑scoped SSA + loop‑safe constant propagation |
 | Source maps | Stable | External + inline options |
 | Multi‑file module compilation | Stable | Import resolution via bundling (topological compile planned) |
+| Package management | Stable | npm-based, lockfile, workspace support |
 
 ---
 
@@ -73,7 +74,8 @@ This document tracks the current state of the Lumina language/tooling and near�
 - Real‑world utility: working JSON parser
 
 ## Near‑Term Roadmap (Next 3–5)
-1. **Package management** (dependency resolution, library ecosystem)
-2. **Stdlib Phase 2** (advanced string operations)
-3. **Move/borrow safety polish** (borrow checks + branch merge rules)
-4. **Function overloading** (abs/absf → abs, clean API surface)
+1. **Trait system** (interfaces/protocols for polymorphism)
+2. **Package registry** (publish Lumina packages)
+3. **Stdlib Phase 2** (advanced string operations)
+4. **Move/borrow safety polish** (borrow checks + branch merge rules)
+5. **Function overloading** (abs/absf → abs, clean API surface)

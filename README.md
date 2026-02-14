@@ -1,12 +1,12 @@
-# parsergen-starter
+# Lumina (v0.3.0)
 
-A modern TypeScript starter for building parsers, REPLs, and language tooling. It ships a PEG-based parser generator, a Lumina reference language pipeline (lexer → parser → semantic analysis → IR → codegen), and an LSP server with diagnostics and editor features.
+A modern functional language with async/await, type inference, and package management.
 
-![npm](https://img.shields.io/npm/v/parsergen-starter?color=blue)
-![npm downloads](https://img.shields.io/npm/dm/parsergen-starter)
-![MIT License](https://img.shields.io/npm/l/parsergen-starter)
-![GitHub release](https://img.shields.io/github/v/release/nyigoro/parsergen-starter)
-![Build](https://img.shields.io/github/actions/workflow/status/nyigoro/parsergen-starter/ci.yml?branch=main)
+![npm](https://img.shields.io/npm/v/lumina-lang?color=blue)
+![npm downloads](https://img.shields.io/npm/dm/lumina-lang)
+![MIT License](https://img.shields.io/npm/l/lumina-lang)
+![GitHub release](https://img.shields.io/github/v/release/nyigoro/lumina-lang)
+![Build](https://img.shields.io/github/actions/workflow/status/nyigoro/lumina-lang/ci.yml?branch=main)
 
 ## ✨ Highlights
 
@@ -24,9 +24,9 @@ A modern TypeScript starter for building parsers, REPLs, and language tooling. I
 ## 📦 Installation
 
 ```bash
-npm install -g parsergen-starter
+npm install -g lumina-lang
 # or
-pnpm add -D parsergen-starter
+pnpm add -D lumina-lang
 ```
 
 ## 🚀 Getting Started (Lumina)

@@ -1,0 +1,7 @@
+import { JList } from "@lumina/json-parser/types";
+import { Result } from "../../../std/prelude.lm";
+import { Repository } from "./types.lm";
+
+pub async fn list_repos(username: string) -> Result<JList<Repository>, string> {
+  Result.Err("list_repos is not implemented yet")
+}

@@ -1,0 +1,131 @@
+import { get } from "@lumina/http";
+import { parse } from "@lumina/json-parser";
+import { JsonValue, Entry, JList, ParseError } from "@lumina/json-parser/types";
+import { Option, Result } from "../../../std/prelude.lm";
+import { User } from "./types.lm";
+import { str, math } from "@std";
+
+pub async fn get_user(username: string) -> Result<User, string> {
+  let url = str.concat("https://api.github.com/users/", username);
+  match await get(url) {
+    Result.Ok(response) => { return parse_user(response.body); },
+    Result.Err(e) => { return Result.Err(e); }
+  }
+}
+
+fn parse_user(json: string) -> Result<User, string> {
+  match parse(json) {
+    Result.Ok(value) => { return decode_user(value); },
+    Result.Err(err) => { return Result.Err(format_parse_error(err)); }
+  }
+}
+
+fn decode_user(value: JsonValue) -> Result<User, string> {
+  match value {
+    JsonValue.Object(entries) => { return build_user(entries); },
+    _ => { return Result.Err("Expected JSON object for user"); }
+  }
+}
+
+fn build_user(entries: JList<Entry>) -> Result<User, string> {
+  match get_required_string(entries, "login") {
+    Result.Ok(login) => {
+      match get_required_int(entries, "id") {
+        Result.Ok(id) => {
+          let name = get_optional_string(entries, "name");
+          let bio = get_optional_string(entries, "bio");
+          match get_required_int(entries, "public_repos") {
+            Result.Ok(public_repos) => {
+              match get_required_int(entries, "followers") {
+                Result.Ok(followers) => {
+                  match get_required_int(entries, "following") {
+                    Result.Ok(following) => {
+                      return Result.Ok(User {
+                        login: login,
+                        id: id,
+                        name: name,
+                        bio: bio,
+                        public_repos: public_repos,
+                        followers: followers,
+                        following: following
+                      });
+                    },
+                    Result.Err(e) => { return Result.Err(e); }
+                  }
+                },
+                Result.Err(e) => { return Result.Err(e); }
+              }
+            },
+            Result.Err(e) => { return Result.Err(e); }
+          }
+        },
+        Result.Err(e) => { return Result.Err(e); }
+      }
+    },
+    Result.Err(e) => { return Result.Err(e); }
+  }
+}
+
+fn get_required_string(entries: JList<Entry>, key: string) -> Result<string, string> {
+  match find_entry(entries, key) {
+    Option.Some(value) => {
+      match value {
+        JsonValue.String(s) => { return Result.Ok(s); },
+        JsonValue.Null => { return Result.Ok(""); },
+        _ => { return Result.Err(str.concat("Expected string for ", key)); }
+      }
+    },
+    Option.None => { return Result.Err(str.concat("Missing field: ", key)); }
+  }
+}
+
+fn get_optional_string(entries: JList<Entry>, key: string) -> string {
+  match find_entry(entries, key) {
+    Option.Some(value) => {
+      match value {
+        JsonValue.String(s) => { return s; },
+        JsonValue.Null => { return ""; },
+        _ => { return ""; }
+      }
+    },
+    Option.None => { return ""; }
+  }
+}
+
+fn get_required_int(entries: JList<Entry>, key: string) -> Result<int, string> {
+  match find_entry(entries, key) {
+    Option.Some(value) => {
+      match value {
+        JsonValue.Number(n) => { return Result.Ok(math.round(n)); },
+        _ => { return Result.Err(str.concat("Expected number for ", key)); }
+      }
+    },
+    Option.None => { return Result.Err(str.concat("Missing field: ", key)); }
+  }
+}
+
+fn find_entry(entries: JList<Entry>, key: string) -> Option<JsonValue> {
+  match entries {
+    JList.Nil => { return Option.None; },
+    JList.Cons(head, tail) => {
+      if (str.eq(head.key, key)) {
+        return Option.Some(head.value);
+      }
+      return find_entry(tail, key);
+    }
+  }
+}
+
+fn format_parse_error(err: ParseError) -> string {
+  match err {
+    ParseError.UnexpectedToken(tok, pos) => {
+      return str.concat("Unexpected token: ", str.concat(tok, str.concat(" at position ", str.from_int(pos))));
+    },
+    ParseError.UnexpectedEof => { return "Unexpected end of input"; },
+    ParseError.InvalidNumber(s) => { return str.concat("Invalid number: ", s); },
+    ParseError.InvalidString(s) => { return str.concat("Invalid string: ", s); },
+    ParseError.UnexpectedChar(c, pos) => {
+      return str.concat("Unexpected character: ", str.concat(c, str.concat(" at position ", str.from_int(pos))));
+    }
+  }
+}

@@ -1,0 +1,10 @@
+import { List } from "../../../std/prelude.lm";
+import { Header } from "./request.lm";
+
+// Response types for @lumina/http
+pub struct Response {
+  status: int,
+  statusText: string,
+  headers: List<Header>,
+  body: string
+}

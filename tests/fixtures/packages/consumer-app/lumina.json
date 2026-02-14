@@ -1,0 +1,9 @@
+{
+  "name": "consumer-app",
+  "version": "0.1.0",
+  "lumina": "./main.lm",
+  "dependencies": {
+    "my-lib": "0.1.0",
+    "@test/scoped-lib": "0.1.0"
+  }
+}

@@ -14,6 +14,7 @@
 - ✅ Async/await with Promise types + async stdlib
 - ✅ Cross-file LSP hover/definition (module graph)
 - ✅ SSA optimization fixes (function-scoped SSA, loop-safe const folding)
+- ✅ Package management (npm-based with lumina.lock.json)
 
 **Proven Capabilities:**
 - Production-grade type inference (HM + generics + row polymorphism)
@@ -22,7 +23,7 @@
 - Working stdlib (io/str/math/list with 40+ functions)
 - Real-world utility (JSON parser compiles and runs)
 
-**What's Next:** Package management, stdlib Phase 2, move/borrow safety polish
+**What's Next:** Trait system, package registry, stdlib Phase 2
 
 ---
 

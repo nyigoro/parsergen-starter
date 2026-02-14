@@ -1,0 +1,8 @@
+import { greet } from "@lumina/test-utils";
+import { add } from "@lumina/test-utils/math";
+import { io, str } from "@std";
+
+fn main() {
+  io.println(greet("World"));
+  io.println(str.from_int(add(2, 3)));
+}

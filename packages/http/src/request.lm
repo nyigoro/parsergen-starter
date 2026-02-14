@@ -1,0 +1,15 @@
+import { Option, List } from "../../../std/prelude.lm";
+
+// Request types for @lumina/http
+
+pub struct Header {
+  name: string,
+  value: string
+}
+
+pub struct Request {
+  url: string,
+  method: string,
+  headers: Option<List<Header>>,
+  body: Option<string>
+}

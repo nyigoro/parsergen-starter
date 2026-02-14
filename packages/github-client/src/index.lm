@@ -1,0 +1,13 @@
+import { get_user as get_user_impl } from "./user.lm";
+import { list_repos as list_repos_impl } from "./repo.lm";
+import { User, Repository } from "./types.lm";
+import { JList } from "@lumina/json-parser/types";
+import { Result } from "../../../std/prelude.lm";
+
+pub async fn get_user(username: string) -> Result<User, string> {
+  return await get_user_impl(username);
+}
+
+pub async fn list_repos(username: string) -> Result<JList<Repository>, string> {
+  return await list_repos_impl(username);
+}

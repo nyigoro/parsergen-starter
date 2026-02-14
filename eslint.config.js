@@ -165,6 +165,32 @@ export default [
     },
   },
 
+  // Command helpers (allow console output)
+  {
+    files: ['src/commands/**/*.ts'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: 2021,
+        sourceType: 'module',
+        project: './tsconfig.json',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: {
+      ...typescript.configs.recommended.rules,
+      'no-console': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      'no-undef': 'off',
+    },
+  },
+
   // Ignore specific files/folders
   {
     ignores: [
@@ -205,6 +231,8 @@ export default [
       'lumina-runtime.js',
       'lumina.out.js',
       '*.generated.js',
+      'demo.js',
+      'test-lumina-pkg/**',
     ],
   },
 ];

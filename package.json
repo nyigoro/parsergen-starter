@@ -1,8 +1,8 @@
 {
-  "name": "parsergen-starter",
-  "version": "1.0.10",
+  "name": "lumina-lang",
+  "version": "0.3.0",
   "type": "module",
-  "description": "A complete parser generator starter with PEG.js, optional Moo lexer, and VS Code integration",
+  "description": "A modern functional language with async/await, type inference, and package management",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,8 +25,8 @@
     }
   },
   "bin": {
-    "lumina": "./dist/bin/lumina.js",
-    "lumina-lsp": "./dist/bin/lumina-lsp.js"
+    "lumina": "dist/bin/lumina.js",
+    "lumina-lsp": "dist/bin/lumina-lsp.js"
   },
   "scripts": {
     "repl": "tsx src/repl.ts",
@@ -55,14 +55,12 @@
     "pack:check": "node scripts/check-package.cjs && npm pack --dry-run"
   },
   "keywords": [
-    "parser",
-    "peg",
-    "grammar",
-    "lexer",
-    "ast",
+    "lumina",
+    "language",
     "compiler",
-    "pegjs",
-    "moo"
+    "async",
+    "functional",
+    "typescript"
   ],
   "author": "nyigoro",
   "license": "MIT",
@@ -125,10 +123,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/nyigoro/parsergen-starter.git"
+    "url": "git+https://github.com/nyigoro/lumina-lang.git"
   },
   "bugs": {
-    "url": "https://github.com/nyigoro/parsergen-starter/issues"
+    "url": "https://github.com/nyigoro/lumina-lang/issues"
   },
-  "homepage": "https://github.com/nyigoro/parsergen-starter#readme"
+  "homepage": "https://github.com/nyigoro/lumina-lang#readme"
 }

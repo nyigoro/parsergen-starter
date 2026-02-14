@@ -1,0 +1,20 @@
+{
+  "name": "@lumina/json-parser",
+  "version": "0.1.0",
+  "description": "JSON parser for Lumina",
+  "type": "module",
+  "lumina": {
+    ".": "./src/parser.lm",
+    "./types": "./src/types.lm",
+    "./lexer": "./src/lexer.lm",
+    "./stringify": "./src/stringify.lm"
+  },
+  "files": [
+    "src/**/*.lm",
+    "README.md",
+    "package.json"
+  ],
+  "keywords": ["lumina", "json", "parser"],
+  "author": "Lumina Contributors",
+  "license": "MIT"
+}

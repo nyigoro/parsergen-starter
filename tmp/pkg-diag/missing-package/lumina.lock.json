@@ -1,0 +1,10 @@
+{
+  "lockfileVersion": 1,
+  "packages": {
+    "other-pkg": {
+      "version": "0.1.0",
+      "resolved": "node_modules/other-pkg",
+      "lumina": "./src/index.lm"
+    }
+  }
+}

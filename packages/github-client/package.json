@@ -1,0 +1,25 @@
+{
+  "name": "@lumina/github-client",
+  "version": "0.1.0",
+  "description": "GitHub API client for Lumina",
+  "type": "module",
+  "lumina": {
+    ".": "./src/user.lm",
+    "./types": "./src/types.lm",
+    "./user": "./src/user.lm",
+    "./repo": "./src/repo.lm"
+  },
+  "files": [
+    "src/**/*.lm",
+    "examples/**/*.lm",
+    "README.md",
+    "package.json"
+  ],
+  "keywords": ["lumina", "github", "api", "http"],
+  "author": "Lumina Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "@lumina/http": "^0.1.0",
+    "@lumina/json-parser": "^0.1.0"
+  }
+}

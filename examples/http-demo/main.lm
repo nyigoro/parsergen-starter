@@ -1,0 +1,22 @@
+import { Result } from "../../std/prelude.lm";
+import { get } from "@lumina/http";
+import { io, str } from "@std";
+
+async fn main() {
+  io.println("Fetching GitHub API...");
+  
+  match await get("https://api.github.com/users/octocat") {
+    Result.Ok(response) => {
+      io.println(str.concat("Status: ", str.from_int(response.status)));
+      io.println(str.concat("Body length: ", str.from_int(str.length(response.body))));
+      io.println("");
+      io.println("First 200 chars:");
+      io.println(str.substring(response.body, 0, 200));
+    },
+    Result.Err(error) => {
+      io.eprintln(str.concat("Error: ", error));
+    }
+  }
+}
+
+main()

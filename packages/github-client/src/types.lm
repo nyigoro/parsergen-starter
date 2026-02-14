@@ -1,0 +1,19 @@
+// GitHub API types
+
+pub struct User {
+  login: string,
+  id: int,
+  name: string,
+  bio: string,
+  public_repos: int,
+  followers: int,
+  following: int
+}
+
+pub struct Repository {
+  name: string,
+  description: string,
+  stars: int,
+  forks: int,
+  language: string
+}

@@ -1,0 +1,39 @@
+import { Option, Result, List } from "../../../std/prelude.lm";
+import { http } from "@std";
+import { Request, Header } from "./request.lm";
+import { Response } from "./response.lm";
+
+// Send a fully specified request.
+pub async fn request(req: Request) -> Result<Response, string> {
+  return await http.fetch(req)
+}
+
+fn none_string() -> Option<string> { Option.None }
+
+fn none_headers() -> Option<List<Header>> { Option.None }
+
+fn make_request(url: string, method: string, body: Option<string>) -> Request {
+  return Request {
+    url: url,
+    method: method,
+    headers: none_headers(),
+    body: body
+  }
+}
+
+// Convenience helpers.
+pub async fn get(url: string) -> Result<Response, string> {
+  return await request(make_request(url, "GET", none_string()))
+}
+
+pub async fn post(url: string, body: string) -> Result<Response, string> {
+  return await request(make_request(url, "POST", Option.Some(body)))
+}
+
+pub async fn put(url: string, body: string) -> Result<Response, string> {
+  return await request(make_request(url, "PUT", Option.Some(body)))
+}
+
+pub async fn del(url: string) -> Result<Response, string> {
+  return await request(make_request(url, "DELETE", none_string()))
+}

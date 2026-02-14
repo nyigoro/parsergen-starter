@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { existsSync, watch, readFileSync } from 'node:fs';
+import { existsSync, watch, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fg from 'fast-glob';
@@ -25,6 +25,13 @@ import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lu
 import { runREPLWithParser } from '../repl.js';
 import { runParsergen } from './cli-core.js';
 import { type RawSourceMap } from 'source-map';
+import {
+  initProject,
+  installPackages,
+  addPackages,
+  removePackages,
+  listPackages,
+} from '../commands/package.js';
 
 type Target = 'cjs' | 'esm';
 
@@ -157,6 +164,18 @@ type BuildConfig = {
   cacheDir: string;
 };
 
+type LuminaLockfile = {
+  lockfileVersion: number;
+  packages: Record<string, LockfilePackage>;
+};
+
+type LockfilePackage = {
+  version: string;
+  resolved: string;
+  integrity?: string;
+  lumina?: string | Record<string, string>;
+};
+
 type FileCacheEntry = {
   hash: string;
   ast: unknown;
@@ -219,6 +238,7 @@ type DepCacheFile = {
 };
 
 const depCache = new Map<string, DepCacheEntry>();
+const lockfileCache = new Map<string, { mtimeMs: number; data: LuminaLockfile }>();
 
 function depsCachePath(): string {
   return path.resolve(buildCache.cacheDir, 'deps.json');
@@ -270,16 +290,96 @@ export function setBuildConfig(config: BuildConfig) {
   buildCache.cacheDir = config.cacheDir;
 }
 
-function resolveImport(fromPath: string, spec: string, extensions: string[], stdPath: string): string | null {
+function resolveImport(
+  fromPath: string,
+  spec: string,
+  extensions: string[],
+  stdPath: string,
+  lockfileRoot?: string | null
+): string | null {
   if (spec.startsWith('@std/')) {
     const rel = spec.slice('@std/'.length);
     const resolved = path.resolve(stdPath, rel);
     return ensureExtension(resolved, extensions);
   }
-  if (!spec.startsWith('.')) return null;
-  const base = path.dirname(fromPath);
-  const resolved = path.resolve(base, spec);
-  return ensureExtension(resolved, extensions);
+  if (spec.startsWith('.')) {
+    const base = path.dirname(fromPath);
+    const resolved = path.resolve(base, spec);
+    return ensureExtension(resolved, extensions);
+  }
+  return resolveBareImport(fromPath, spec, extensions, lockfileRoot);
+}
+
+function findLockfileRoot(fromPath: string): string | null {
+  let current = path.dirname(fromPath);
+  while (true) {
+    const candidate = path.join(current, 'lumina.lock.json');
+    if (existsSync(candidate)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function loadLockfile(root: string): LuminaLockfile | null {
+  const lockPath = path.join(root, 'lumina.lock.json');
+  try {
+    const stat = statSync(lockPath);
+    const cached = lockfileCache.get(root);
+    if (cached && cached.mtimeMs === stat.mtimeMs) return cached.data;
+    const raw = readFileSync(lockPath, 'utf-8');
+    const parsed = JSON.parse(raw) as LuminaLockfile;
+    lockfileCache.set(root, { mtimeMs: stat.mtimeMs, data: parsed });
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function parsePackageSpecifier(specifier: string): { pkgName: string; subpath: string | null } {
+  if (specifier.startsWith('@')) {
+    const parts = specifier.split('/');
+    if (parts.length < 2) return { pkgName: specifier, subpath: null };
+    const pkgName = `${parts[0]}/${parts[1]}`;
+    const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
+    return { pkgName, subpath };
+  }
+  const slash = specifier.indexOf('/');
+  if (slash === -1) return { pkgName: specifier, subpath: null };
+  return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
+}
+
+function resolveBareImport(
+  fromPath: string,
+  spec: string,
+  extensions: string[],
+  lockfileRoot?: string | null
+): string | null {
+  const root = lockfileRoot ?? findLockfileRoot(fromPath);
+  if (!root) return null;
+  const lockfile = loadLockfile(root);
+  if (!lockfile) return null;
+  const { pkgName, subpath } = parsePackageSpecifier(spec);
+  const pkg = lockfile.packages?.[pkgName];
+  if (!pkg || !pkg.lumina) return null;
+  const lumina = pkg.lumina;
+  let entry: string | undefined;
+  if (subpath) {
+    if (typeof lumina === 'object') {
+      entry = lumina[subpath];
+    }
+  } else if (typeof lumina === 'string') {
+    entry = lumina;
+  } else if (typeof lumina === 'object') {
+    entry = lumina['.'];
+  }
+  if (!entry) return null;
+  let pkgRoot = pkg.resolved;
+  if (!path.isAbsolute(pkgRoot)) {
+    pkgRoot = path.resolve(root, pkgRoot);
+  }
+  const absolute = path.resolve(pkgRoot, entry);
+  return ensureExtension(absolute, extensions);
 }
 
 function getDependents(graph: Map<string, string[]>, target: string): string[] {
@@ -306,7 +406,13 @@ function graphStats(graph: Map<string, string[]>): { nodes: number; edges: numbe
   return { nodes: graph.size, edges };
 }
 
-async function updateDependenciesForFile(sourcePath: string, source: string, extensions: string[], stdPath: string) {
+async function updateDependenciesForFile(
+  sourcePath: string,
+  source: string,
+  extensions: string[],
+  stdPath: string,
+  lockfileRoot?: string | null
+) {
   const fileHash = hashText(source);
   const cached = depCache.get(sourcePath);
   if (cached && cached.hash === fileHash) {
@@ -314,7 +420,7 @@ async function updateDependenciesForFile(sourcePath: string, source: string, ext
   }
   const rawImports = extractImports(source);
   const resolved = rawImports
-    .map((imp) => resolveImport(sourcePath, imp, extensions, stdPath))
+    .map((imp) => resolveImport(sourcePath, imp, extensions, stdPath, lockfileRoot))
     .filter((imp): imp is string => Boolean(imp));
   depCache.set(sourcePath, { hash: fileHash, imports: resolved });
   await saveDepsCache();
@@ -500,7 +606,8 @@ function rewriteTypeNameLite(typeExpr: unknown, renameMap: Map<string, string>):
 function rewriteProgramImports(
   program: { type?: string; body?: unknown[] },
   renameMap: Map<string, string>,
-  namespaceAliases: Map<string, string | null>
+  namespaceAliases: Map<string, string | null>,
+  resolvedImports: Set<string>
 ): { type: string; body: unknown[]; location?: unknown } {
   const makeIdentifier = (name: string, location?: unknown) => ({ type: 'Identifier', name, location });
   const rewriteExpr = (expr: unknown): unknown => {
@@ -716,7 +823,7 @@ function rewriteProgramImports(
           const node = stmt as { type?: string; source?: { value?: string } };
           if (node.type !== 'Import') return true;
           const source = node.source?.value ?? '';
-          return !source.startsWith('.');
+          return !resolvedImports.has(source);
         })
         .map((stmt) => rewriteStmt(stmt))
     : [];
@@ -729,9 +836,10 @@ async function bundleProgram(
   parser: ReturnType<typeof compileGrammar>,
   useRecovery: boolean,
   extensions: string[],
-  stdPath: string
+  stdPath: string,
+  lockfileRoot?: string | null
 ): Promise<{ program: unknown; sources: Map<string, string> } | null> {
-  const visited = new Map<string, { ast: unknown; text: string; bindings: ImportBindingLite[] }>();
+  const visited = new Map<string, { ast: unknown; text: string; bindings: ImportBindingLite[]; resolvedImports: Set<string> }>();
   const order: string[] = [];
   const sources = new Map<string, string>();
 
@@ -746,14 +854,15 @@ async function bundleProgram(
     }
     if (!ast) return false;
     const bindings = collectImportBindingsLite(ast as { type?: string; body?: unknown[] });
-    visited.set(filePath, { ast, text, bindings });
+    const resolvedImports = new Set<string>();
+    visited.set(filePath, { ast, text, bindings, resolvedImports });
     sources.set(filePath, text);
 
     const imports = extractImports(text);
     for (const imp of imports) {
-      if (!imp.startsWith('.')) continue;
-      const resolved = resolveImport(filePath, imp, extensions, stdPath);
+      const resolved = resolveImport(filePath, imp, extensions, stdPath, lockfileRoot);
       if (!resolved) continue;
+      resolvedImports.add(imp);
       const ok = await visit(resolved);
       if (!ok) return false;
     }
@@ -771,7 +880,7 @@ async function bundleProgram(
     const renameMap = new Map<string, string>();
     const namespaceAliases = new Map<string, string | null>();
     for (const binding of entry.bindings) {
-      if (!binding.source.startsWith('.')) continue;
+      if (!entry.resolvedImports.has(binding.source)) continue;
       if (binding.namespace) {
         namespaceAliases.set(binding.local, null);
         continue;
@@ -780,7 +889,12 @@ async function bundleProgram(
         renameMap.set(binding.local, binding.original);
       }
     }
-    const rewritten = rewriteProgramImports(entry.ast as { type?: string; body?: unknown[] }, renameMap, namespaceAliases);
+    const rewritten = rewriteProgramImports(
+      entry.ast as { type?: string; body?: unknown[] },
+      renameMap,
+      namespaceAliases,
+      entry.resolvedImports
+    );
     if (Array.isArray(rewritten.body)) {
       mergedBody.push(...rewritten.body);
     }
@@ -809,13 +923,21 @@ async function compileLumina(
 ) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
-  await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath);
-  const hasRelativeImports = extractImports(source).some((imp) => imp.startsWith('.'));
-  if (hasRelativeImports) {
-    const bundle = await bundleProgram(sourcePath, parser, useRecovery, configFileExtensions, configStdPath);
+  const lockfileRoot = findLockfileRoot(sourcePath);
+  await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath, lockfileRoot);
+  const hasProjectImports = extractImports(source).some((imp) => !imp.startsWith('@std/'));
+  if (hasProjectImports) {
+    const bundle = await bundleProgram(
+      sourcePath,
+      parser,
+      useRecovery,
+      configFileExtensions,
+      configStdPath,
+      lockfileRoot
+    );
     if (!bundle) return { ok: false };
     for (const [depPath, depSource] of bundle.sources.entries()) {
-      await updateDependenciesForFile(depPath, depSource, configFileExtensions, configStdPath);
+      await updateDependenciesForFile(depPath, depSource, configFileExtensions, configStdPath, lockfileRoot);
     }
     const analysis = analyzeLumina(bundle.program as never, { diDebug: diCfg });
     if (analysis.diagnostics.length > 0) {
@@ -1050,7 +1172,8 @@ async function compileLumina(
 async function checkLumina(sourcePath: string, grammarPath: string, useRecovery: boolean, diCfg: boolean) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
-  await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath);
+  const lockfileRoot = findLockfileRoot(sourcePath);
+  await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath, lockfileRoot);
   const fileHash = hashText(source);
   const cached = buildCache.files.get(sourcePath);
   if (cached && cached.hash === fileHash && cached.grammarHash === buildCache.grammarHash) {
@@ -1299,7 +1422,7 @@ function createWorkerRunner(config: BuildConfig) {
   worker.postMessage({ type: 'init', payload: config } satisfies WorkerRequest);
 
   return {
-    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean }) {
+    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean }) {
       const id = requestId++;
       return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         pending.set(id, { resolve });
@@ -1345,16 +1468,58 @@ Options:
   --profile-cache      Print cache hit/miss stats
   --ast-js             Emit JS directly from AST (no IR)
   --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
+  --yes                Use defaults without prompts (init)
+  --frozen             Use npm ci if lockfile is present (install)
+  --dev                Add package as dev dependency (add)
 
 Config file:
   lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir, recovery
+Commands:
+  init                 Initialize a Lumina project (package.json + src/)
+  install              Install dependencies via npm and write lumina.lock.json
+  add <pkg...>         Add dependency (supports @scope/pkg@version)
+  remove <pkg...>      Remove dependency
+  list                 List Lumina-resolvable packages from lumina.lock.json
 `);
 }
 
 export async function runLumina(argv: string[] = process.argv.slice(2)) {
-  const { command, file, args } = parseArgs(argv);
+  const positional = argv.filter((arg) => !arg.startsWith('--'));
+  const command = positional[0];
+  const file = positional[1];
+  const { args } = parseArgs(argv);
+  const positionalArgs = positional.slice(1);
   if (!command || command === '--help' || command === '-h') {
     printHelp();
+    return;
+  }
+
+  const initYes = parseBooleanFlag(args, '--yes');
+  const installFrozen = parseBooleanFlag(args, '--frozen');
+  const addDev = parseBooleanFlag(args, '--dev');
+
+  if (command === 'init') {
+    await initProject({ yes: initYes });
+    return;
+  }
+
+  if (command === 'install') {
+    await installPackages({ frozen: installFrozen });
+    return;
+  }
+
+  if (command === 'add') {
+    await addPackages(positionalArgs, { dev: addDev });
+    return;
+  }
+
+  if (command === 'remove') {
+    await removePackages(positionalArgs);
+    return;
+  }
+
+  if (command === 'list') {
+    await listPackages();
     return;
   }
 
@@ -1508,10 +1673,6 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     return;
   }
 
-  if (command === 'init') {
-    await runParsergen(['--init']);
-    return;
-  }
 
   printHelp();
 }

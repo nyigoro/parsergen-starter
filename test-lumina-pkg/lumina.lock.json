@@ -1,0 +1,13 @@
+{
+  "lockfileVersion": 1,
+  "packages": {
+    "@lumina/test-utils": {
+      "version": "0.1.0",
+      "resolved": "test-pkg",
+      "lumina": {
+        ".": "./src/index.lm",
+        "./math": "./src/math.lm"
+      }
+    }
+  }
+}

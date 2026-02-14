@@ -12,6 +12,14 @@ function resolveRuntimeSource(fileName: string): string | null {
   }
   const localDist = path.resolve(process.cwd(), 'dist', fileName);
   if (fs.existsSync(localDist)) return localDist;
+  let current = process.cwd();
+  while (true) {
+    const candidate = path.join(current, 'dist', fileName);
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
   return null;
 }
 
@@ -203,6 +211,15 @@ function toJsonString(value, pretty = true) {
   return stdinCache;
  }
 
+ function unwrapOption(value) {
+  if (value && (value.$tag || value.tag)) {
+    const tag = getEnumTag(value);
+    if (tag === 'Some') return { isSome: true, value: getEnumPayload(value) };
+    if (tag === 'None') return { isSome: false };
+  }
+  return { isSome: true, value };
+ }
+
 const io = {
   print: (...args) => writeStdout(renderArgs(args), false),
   println: (...args) => writeStdout(renderArgs(args), true),
@@ -222,12 +239,53 @@ const io = {
     const value = lines[stdinIndex++];
     return Option.Some(value);
   },
+  readLineAsync: async () => {
+    const globalAny = globalThis ?? {};
+    if (globalAny.__luminaStdin !== undefined) {
+      const lines = readStdinLines();
+      if (stdinIndex >= lines.length) return Option.None;
+      const value = lines[stdinIndex++];
+      return Option.Some(value);
+    }
+    if (typeof process !== 'undefined') {
+      const stdin = process.stdin;
+      if (stdin && stdin.isTTY !== true) {
+        const lines = readStdinLines();
+        if (stdinIndex >= lines.length) return Option.None;
+        const value = lines[stdinIndex++];
+        return Option.Some(value);
+      }
+      if (stdin && stdin.isTTY) {
+        const readline = await import('node:readline');
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+        return await new Promise((resolve) => {
+          rl.question('', (answer) => {
+            rl.close();
+            resolve(Option.Some(answer));
+          });
+        });
+      }
+    }
+    if (typeof globalAny.prompt === 'function') {
+      const value = globalAny.prompt();
+      return value == null ? Option.None : Option.Some(value);
+    }
+    return Option.None;
+  },
   printJson: (value, pretty = true) => console.log(toJsonString(value, pretty)),
  };
 
 const str = {
   length: (value) => value.length,
   concat: (a, b) => a + b,
+  substring: (value, start, end) => {
+    const safeStart = Math.max(0, Math.trunc(start));
+    const safeEnd = Math.max(safeStart, Math.trunc(end));
+    return value.substring(safeStart, safeEnd);
+  },
   split: (value, sep) => value.split(sep),
   trim: (value) => value.trim(),
   contains: (haystack, needle) => haystack.includes(needle),
@@ -285,6 +343,81 @@ const list = {
   },
   any: (pred, xs) => xs.some(pred),
   all: (pred, xs) => xs.every(pred),
+};
+
+const fs = {
+  readFile: async (path) => {
+    try {
+      if (typeof process !== 'undefined') {
+        const fsPromises = await import('node:fs/promises');
+        const content = await fsPromises.readFile(path, 'utf8');
+        return Result.Ok(content);
+      }
+      if (typeof fetch !== 'undefined') {
+        const response = await fetch(path);
+        if (!response.ok) {
+          return Result.Err('HTTP ' + response.status + ': ' + response.statusText);
+        }
+        const content = await response.text();
+        return Result.Ok(content);
+      }
+      return Result.Err('No file system available');
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  writeFile: async (path, content) => {
+    try {
+      if (typeof process !== 'undefined') {
+        const fsPromises = await import('node:fs/promises');
+        await fsPromises.writeFile(path, content, 'utf8');
+        return Result.Ok(undefined);
+      }
+      return Result.Err('writeFile not supported in browser');
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+};
+
+const http = {
+  fetch: async (request) => {
+    if (typeof fetch !== 'function') {
+      return Result.Err('Fetch API is not available');
+    }
+    if (!request || typeof request !== 'object') {
+      return Result.Err('Invalid request');
+    }
+    const url = typeof request.url === 'string' ? request.url : '';
+    if (!url) return Result.Err('Invalid request url');
+    const method = typeof request.method === 'string' && request.method.length > 0 ? request.method : 'GET';
+    const headerInput = unwrapOption(request.headers).value;
+    const headers = {};
+    if (Array.isArray(headerInput)) {
+      for (const entry of headerInput) {
+        if (Array.isArray(entry) && entry.length >= 2) {
+          const [name, value] = entry;
+          if (typeof name === 'string') headers[name] = typeof value === 'string' ? value : String(value ?? '');
+          continue;
+        }
+        if (entry && typeof entry === 'object') {
+          const name = entry.name;
+          const value = entry.value;
+          if (typeof name === 'string') headers[name] = typeof value === 'string' ? value : String(value ?? '');
+        }
+      }
+    }
+    const bodyValue = unwrapOption(request.body).value;
+    const body = typeof bodyValue === 'string' ? bodyValue : bodyValue == null ? undefined : String(bodyValue);
+    try {
+      const response = await fetch(url, { method, headers, body });
+      const text = await response.text();
+      const responseHeaders = Array.from(response.headers.entries()).map(([name, value]) => ({ name, value }));
+      return Result.Ok({ status: response.status, statusText: response.statusText, headers: responseHeaders, body: text });
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
 };
 
 class LuminaPanic extends Error {
@@ -384,13 +517,13 @@ function __set(obj, prop, value) {
 function runtimeFallbackEsm(): string {
   return `${runtimeFallbackBody()}
 
-export { io, str, math, list, Option, Result, __set, formatValue, LuminaPanic };
+export { io, str, math, list, fs, http, Option, Result, __set, formatValue, LuminaPanic };
 `;
 }
 
 function runtimeFallbackCjs(): string {
   return `${runtimeFallbackBody()}
 
-module.exports = { io, str, math, list, Option, Result, __set, formatValue, LuminaPanic };
+module.exports = { io, str, math, list, fs, http, Option, Result, __set, formatValue, LuminaPanic };
 `;
 }

@@ -1,0 +1,10 @@
+import { greet } from "my-lib";
+import { foo } from "@test/scoped-lib";
+import { util } from "@test/scoped-lib/utils";
+import { io, str } from "@std";
+
+fn main() {
+  io.println(greet("World"));
+  io.println(str.from_int(foo()));
+  io.println(str.from_int(util()));
+}

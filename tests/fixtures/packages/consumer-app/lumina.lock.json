@@ -1,0 +1,18 @@
+{
+  "lockfileVersion": 1,
+  "packages": {
+    "my-lib": {
+      "version": "0.1.0",
+      "resolved": "../my-lib",
+      "lumina": "./lib.lm"
+    },
+    "@test/scoped-lib": {
+      "version": "0.1.0",
+      "resolved": "../scoped-lib",
+      "lumina": {
+        ".": "./index.lm",
+        "./utils": "./utils.lm"
+      }
+    }
+  }
+}

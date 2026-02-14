@@ -1,0 +1,2 @@
+import { x } from "good-pkg/invalid";
+fn main() { }

@@ -1,0 +1,2 @@
+import { x } from "bad-pkg";
+fn main() { }

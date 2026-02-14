@@ -1,0 +1,8 @@
+{
+  "name": "@test/scoped-lib",
+  "version": "0.1.0",
+  "lumina": {
+    ".": "./index.lm",
+    "./utils": "./utils.lm"
+  }
+}

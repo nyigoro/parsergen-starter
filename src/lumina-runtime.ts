@@ -230,6 +230,15 @@ const readStdinLines = (): string[] => {
   return stdinCache;
 };
 
+const unwrapOption = (value: unknown): { isSome: boolean; value?: unknown } => {
+  if (isEnumLike(value)) {
+    const tag = getEnumTag(value);
+    if (tag === 'Some') return { isSome: true, value: getEnumPayload(value) };
+    if (tag === 'None') return { isSome: false };
+  }
+  return { isSome: true, value };
+};
+
 export const io = {
   print: (...args: unknown[]) => {
     writeStdout(renderArgs(args), false);
@@ -268,6 +277,12 @@ export const io = {
     }
     if (isNodeRuntime()) {
       const stdin = (process as { stdin?: { isTTY?: boolean } }).stdin;
+      if (stdin && stdin.isTTY !== true) {
+        const lines = readStdinLines();
+        if (stdinIndex >= lines.length) return Option.None;
+        const value = lines[stdinIndex++];
+        return Option.Some(value);
+      }
       if (stdin?.isTTY) {
         const readline = await import('node:readline');
         const rl = readline.createInterface({
@@ -297,6 +312,11 @@ export const io = {
 export const str = {
   length: (value: string) => value.length,
   concat: (a: string, b: string) => a + b,
+  substring: (value: string, start: number, end: number) => {
+    const safeStart = Math.max(0, Math.trunc(start));
+    const safeEnd = Math.max(safeStart, Math.trunc(end));
+    return value.substring(safeStart, safeEnd);
+  },
   split: (value: string, sep: string) => value.split(sep),
   trim: (value: string) => value.trim(),
   contains: (haystack: string, needle: string) => haystack.includes(needle),
@@ -368,6 +388,63 @@ export const fs = {
         return Result.Ok(undefined);
       }
       return Result.Err('writeFile not supported in browser');
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+};
+
+export const http = {
+  fetch: async (request: unknown) => {
+    if (typeof fetch !== 'function') {
+      return Result.Err('Fetch API is not available');
+    }
+    if (!request || typeof request !== 'object') {
+      return Result.Err('Invalid request');
+    }
+    const req = request as {
+      url?: unknown;
+      method?: unknown;
+      headers?: unknown;
+      body?: unknown;
+    };
+    const url = typeof req.url === 'string' ? req.url : '';
+    if (!url) {
+      return Result.Err('Invalid request url');
+    }
+    const method = typeof req.method === 'string' && req.method.length > 0 ? req.method : 'GET';
+    const headerInput = unwrapOption(req.headers).value;
+    const headers: Record<string, string> = {};
+    if (Array.isArray(headerInput)) {
+      for (const entry of headerInput) {
+        if (Array.isArray(entry) && entry.length >= 2) {
+          const [name, value] = entry;
+          if (typeof name === 'string') {
+            headers[name] = typeof value === 'string' ? value : String(value ?? '');
+          }
+          continue;
+        }
+        if (entry && typeof entry === 'object') {
+          const name = (entry as { name?: unknown }).name;
+          const value = (entry as { value?: unknown }).value;
+          if (typeof name === 'string') {
+            headers[name] = typeof value === 'string' ? value : String(value ?? '');
+          }
+        }
+      }
+    }
+    const bodyValue = unwrapOption(req.body).value;
+    const body = typeof bodyValue === 'string' ? bodyValue : bodyValue == null ? undefined : String(bodyValue);
+    try {
+      const response = await fetch(url, { method, headers, body });
+      const text = await response.text();
+      const responseHeaders = Array.from(response.headers.entries()).map(([name, value]) => ({ name, value }));
+      return Result.Ok({
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: text,
+      });
     } catch (error) {
       return Result.Err(String(error));
     }

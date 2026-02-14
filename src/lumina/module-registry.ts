@@ -259,6 +259,26 @@ export function createStdModuleRegistry(): ModuleRegistry {
     ]),
   };
 
+  const httpModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'http',
+    moduleId: 'std://http',
+    exports: new Map<string, ModuleExport>([
+      [
+        'fetch',
+        moduleFunction(
+          'fetch',
+          ['Request'],
+          'Promise<Result<Response,string>>',
+          [adt('Request')],
+          promiseType(adt('Result', [adt('Response'), primitive('string')])),
+          ['request'],
+          'std://http'
+        ),
+      ],
+    ]),
+  };
+
   const strModule: ModuleNamespace = {
     kind: 'module',
     name: 'str',
@@ -285,6 +305,18 @@ export function createStdModuleRegistry(): ModuleRegistry {
           [primitive('string'), primitive('string')],
           primitive('string'),
           ['a', 'b'],
+          'std://str'
+        ),
+      ],
+      [
+        'substring',
+        moduleFunction(
+          'substring',
+          ['string', 'int', 'int'],
+          'string',
+          [primitive('string'), primitive('int'), primitive('int')],
+          primitive('string'),
+          ['value', 'start', 'end'],
           'std://str'
         ),
       ],
@@ -1012,12 +1044,14 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['math', mathModule],
       ['list', listModule],
       ['fs', fsModule],
+      ['http', httpModule],
     ]),
   };
 
   registry.set('@std', stdModule);
   registry.set('@std/io', ioModule);
   registry.set('@std/fs', fsModule);
+  registry.set('@std/http', httpModule);
   registry.set('@std/Option', optionModule);
   registry.set('@std/Result', resultModule);
   registry.set('@std/str', strModule);

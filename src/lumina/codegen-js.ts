@@ -38,11 +38,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -54,6 +54,8 @@ class JSGenerator {
       this.builder.append('\n');
       this.builder.append('const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };');
       this.builder.append('\n');
+      this.builder.append('const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };');
+      this.builder.append('\n');
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
     }
     this.builder.append('\n');
@@ -64,15 +66,15 @@ class JSGenerator {
 
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('module.exports = { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
       } else {
-        this.builder.append('export { io, str, math, list, fs, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('export { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, fs, __set };');
+        this.builder.append('module.exports = { io, str, math, fs, http, __set };');
       } else {
-        this.builder.append('export { io, str, math, fs, __set };');
+        this.builder.append('export { io, str, math, fs, http, __set };');
       }
     }
     this.builder.append('\n');

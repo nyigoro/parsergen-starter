@@ -1,0 +1,12 @@
+{
+  "lockfileVersion": 1,
+  "packages": {
+    "good-pkg": {
+      "version": "0.1.0",
+      "resolved": "node_modules/good-pkg",
+      "lumina": {
+        ".": "./src/index.lm"
+      }
+    }
+  }
+}

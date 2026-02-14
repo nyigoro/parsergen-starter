@@ -59,6 +59,13 @@ Concatenates two strings.
 - `concat("", "")` returns `""`
 - `concat("a", "")` returns `"a"`
 
+### substring(s: String, start: Int, end: Int) -> String
+Returns a slice of `s` from `start` (inclusive) to `end` (exclusive).
+
+**Notes:**
+- Indices are clamped to non-negative integers.
+- If `end <= start`, returns `""`.
+
 ### split(s: String, sep: String) -> List<String>
 Splits a string by a separator.
 

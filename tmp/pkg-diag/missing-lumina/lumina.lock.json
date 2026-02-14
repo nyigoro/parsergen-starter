@@ -1,0 +1,9 @@
+{
+  "lockfileVersion": 1,
+  "packages": {
+    "bad-pkg": {
+      "version": "0.1.0",
+      "resolved": "node_modules/bad-pkg"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "test-lumina-pkg",
+  "version": "0.1.0",
+  "lumina": "./src/main.lm",
+  "dependencies": {
+    "@lumina/test-utils": "file:test-pkg",
+    "lodash": "^4.17.23"
+  }
+}

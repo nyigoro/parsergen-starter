@@ -1,0 +1,17 @@
+import { Result } from "../../../std/prelude.lm";
+import { get_user } from "@lumina/github-client";
+import { io, str } from "@std";
+
+async fn main() {
+  match await get_user("octocat") {
+    Result.Ok(user) => {
+      io.println(str.concat("User: ", user.login));
+      io.println(str.concat("Repos: ", str.from_int(user.public_repos)));
+    },
+    Result.Err(err) => {
+      io.eprintln(err);
+    }
+  }
+}
+
+main()

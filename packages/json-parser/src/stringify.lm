@@ -1,0 +1,112 @@
+import { JList, JsonValue, Entry } from "./types.lm"
+import { Option } from "../../../std/prelude.lm"
+import { str } from "@std"
+
+// Main stringify entry point (pretty-printed with 2-space indent)
+pub fn stringify(value: JsonValue) -> string {
+  return stringify_indent(value, 0)
+}
+
+// Stringify with indentation level
+fn stringify_indent(value: JsonValue, indent: int) -> string {
+  match value {
+    JsonValue.Null => { return "null" },
+    JsonValue.Bool(b) => {
+      if (b) { return "true" }
+      return "false"
+    },
+    JsonValue.Number(n) => { return str.from_float(n) },
+    JsonValue.String(s) => { return str.concat(str.concat("\"", escape_string(s)), "\"") },
+    JsonValue.Array(elems) => { return stringify_array(elems, indent) },
+    JsonValue.Object(members) => { return stringify_object(members, indent) }
+  }
+}
+
+// Stringify array with indentation
+fn stringify_array(elems: JList<JsonValue>, indent: int) -> string {
+  match elems {
+    JList.Nil => { return "[]" },
+    _ => {
+      let inner = stringify_elements(elems, indent + 1, true)
+      return str.concat(str.concat("[\u000A", inner), str.concat("\u000A", str.concat(make_indent(indent), "]")))
+    }
+  }
+}
+
+// Stringify array elements
+fn stringify_elements(elems: JList<JsonValue>, indent: int, first: bool) -> string {
+  match elems {
+    JList.Nil => { return "" },
+    JList.Cons(head, tail) => {
+      let prefix = prefix_for(first)
+      let elem_str = str.concat(make_indent(indent), stringify_indent(head, indent))
+      match tail {
+        JList.Nil => { return str.concat(prefix, elem_str) },
+        _ => { return str.concat(str.concat(prefix, elem_str), stringify_elements(tail, indent, false)) }
+      }
+    }
+  }
+}
+
+// Stringify object with indentation
+fn stringify_object(members: JList<Entry>, indent: int) -> string {
+  match members {
+    JList.Nil => { return "{}" },
+    _ => {
+      let inner = stringify_members(members, indent + 1, true)
+      return str.concat(str.concat("{\u000A", inner), str.concat("\u000A", str.concat(make_indent(indent), "}")))
+    }
+  }
+}
+
+// Stringify object members
+fn stringify_members(members: JList<Entry>, indent: int, first: bool) -> string {
+  match members {
+    JList.Nil => { return "" },
+    JList.Cons(head, tail) => {
+      let prefix = prefix_for(first)
+      let key_str = str.concat(str.concat("\"", escape_string(head.key)), "\"")
+      let val_str = stringify_indent(head.value, indent)
+      let member_str = str.concat(make_indent(indent), str.concat(key_str, str.concat(": ", val_str)))
+      match tail {
+        JList.Nil => { return str.concat(prefix, member_str) },
+        _ => { return str.concat(str.concat(prefix, member_str), stringify_members(tail, indent, false)) }
+      }
+    }
+  }
+}
+
+fn prefix_for(first: bool) -> string {
+  if (first) { return "" }
+  return ",\u000A"
+}
+
+// Create indentation string (2 spaces per level)
+fn make_indent(level: int) -> string {
+  if (level <= 0) { return "" }
+  return str.concat("  ", make_indent(level - 1))
+}
+
+// Escape string for JSON
+fn escape_string(s: string) -> string {
+  return escape_string_at(s, 0, "")
+}
+
+fn escape_string_at(s: string, pos: int, acc: string) -> string {
+  match str.char_at(s, pos) {
+    Option.None => { return acc },
+    Option.Some(c) => {
+      let escaped = escape_json_char(c)
+      return escape_string_at(s, pos + 1, str.concat(acc, escaped))
+    }
+  }
+}
+
+fn escape_json_char(c: string) -> string {
+  if (str.eq(c, "\"")) { return "\\\"" }
+  if (str.eq(c, "\\")) { return "\\\\" }
+  if (str.eq(c, "\u000A")) { return "\\n" }
+  if (str.eq(c, "\u000D")) { return "\\r" }
+  if (str.eq(c, "\u0009")) { return "\\t" }
+  return c
+}

@@ -15,6 +15,8 @@ export interface BrowserSourceDocument {
   text: string;
   version: number;
   imports: string[];
+  importDiagnostics?: Diagnostic[];
+  packageDiagnostics?: Diagnostic[];
   importAliases?: Map<string, string>;
   importNameMap?: Map<string, ImportBinding>;
   diagnostics: Diagnostic[];
@@ -35,6 +37,27 @@ type ImportBinding = {
   namespace: boolean;
 };
 
+type LuminaLockfile = {
+  lockfileVersion: number;
+  packages: Record<string, LockfilePackage>;
+};
+
+type LockfilePackage = {
+  version: string;
+  resolved: string;
+  integrity?: string;
+  lumina?: string | Record<string, string>;
+};
+
+type BareResolveResult =
+  | { resolved: string }
+  | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004'; message: string } };
+
+const defaultLocation: Location = {
+  start: { line: 1, column: 1 },
+  end: { line: 1, column: 1 },
+};
+
 export class BrowserProjectContext {
   private documents = new Map<string, BrowserSourceDocument>();
   private parser: CompiledGrammar<unknown> | null = null;
@@ -45,6 +68,8 @@ export class BrowserProjectContext {
   private preludeNames = new Set<string>();
   private preludeText: string | null = null;
   private moduleRegistry: ModuleRegistry;
+  private lockfileCache = new Map<string, LuminaLockfile>();
+  private packageDiagnostics: Diagnostic[] = [];
 
   constructor(
     parser?: CompiledGrammar<unknown>,
@@ -93,6 +118,8 @@ export class BrowserProjectContext {
       text,
       version: existing ? existing.version + 1 : version,
       imports,
+      importDiagnostics: existing?.importDiagnostics,
+      packageDiagnostics: existing?.packageDiagnostics,
       diagnostics: [],
       signatures: existing?.signatures,
       functionHashes: existing?.functionHashes,
@@ -128,8 +155,9 @@ export class BrowserProjectContext {
     doc.importNameMap = undefined;
     doc.moduleBindings = undefined;
     doc.hmCallSignatures = undefined;
+    let payload: unknown = null;
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
-      const payload = (result.result as { result: unknown }).result ?? result.result;
+      payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
         doc.ast = payload;
         const nextHashes = collectFunctionBodyHashes(payload as never, doc.text);
@@ -176,6 +204,21 @@ export class BrowserProjectContext {
         doc.diagnostics.push(...analysis.diagnostics);
       }
     }
+    const importDiagnostics = this.collectImportDiagnostics(payload as { type: string; body?: unknown[] }, uri);
+    if (importDiagnostics.length > 0) {
+      doc.importDiagnostics = importDiagnostics;
+      doc.packageDiagnostics = importDiagnostics;
+      doc.diagnostics.push(...importDiagnostics);
+    } else {
+      doc.importDiagnostics = [];
+      doc.packageDiagnostics = [];
+    }
+    this.packageDiagnostics = [];
+    for (const entry of this.documents.values()) {
+      if (entry.packageDiagnostics && entry.packageDiagnostics.length > 0) {
+        this.packageDiagnostics.push(...entry.packageDiagnostics);
+      }
+    }
   }
 
   private resolveImport(fromUri: string, imp: string): string {
@@ -191,10 +234,15 @@ export class BrowserProjectContext {
       const resolved = baseDir.join('/');
       return this.virtualUriFor(this.ensureVirtualExtension(resolved));
     }
+    if (imp.startsWith('@std/')) {
+      return imp;
+    }
     const normalized = this.normalizeVirtualSpec(imp);
     if (this.virtualFiles.has(normalized)) return this.virtualUriFor(normalized);
     const withExt = this.ensureVirtualExtension(normalized);
     if (this.virtualFiles.has(withExt)) return this.virtualUriFor(withExt);
+    const bareResolved = this.resolveBareSpecifier(fromUri, imp);
+    if (bareResolved) return this.virtualUriFor(bareResolved);
     return this.virtualUriFor(normalized);
   }
 
@@ -335,6 +383,128 @@ export class BrowserProjectContext {
       if (sym) results.push(sym as SymbolInfo);
     }
     return results;
+  }
+
+  private findLockfileSpec(fromUri: string): string | null {
+    const spec = this.normalizeVirtualSpec(fromUri);
+    let current = spec.includes('/') ? spec.slice(0, spec.lastIndexOf('/')) : '';
+    while (true) {
+      const candidate = current ? `${current}/lumina.lock.json` : 'lumina.lock.json';
+      if (this.virtualFiles.has(candidate)) return candidate;
+      if (!current) return null;
+      current = current.includes('/') ? current.slice(0, current.lastIndexOf('/')) : '';
+    }
+  }
+
+  private loadLockfile(spec: string): LuminaLockfile | null {
+    const cached = this.lockfileCache.get(spec);
+    if (cached) return cached;
+    const raw = this.virtualFiles.get(spec);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as LuminaLockfile;
+      this.lockfileCache.set(spec, parsed);
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private parsePackageSpecifier(specifier: string): { pkgName: string; subpath: string | null } {
+    if (specifier.startsWith('@')) {
+      const parts = specifier.split('/');
+      if (parts.length < 2) return { pkgName: specifier, subpath: null };
+      const pkgName = `${parts[0]}/${parts[1]}`;
+      const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
+      return { pkgName, subpath };
+    }
+    const slash = specifier.indexOf('/');
+    if (slash === -1) return { pkgName: specifier, subpath: null };
+    return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
+  }
+
+  private resolveBareSpecifier(fromUri: string, specifier: string): string | null {
+    const result = this.resolveBareSpecifierDetailed(fromUri, specifier);
+    if ('resolved' in result) return result.resolved;
+    return null;
+  }
+
+  private resolveBareSpecifierDetailed(fromUri: string, specifier: string): BareResolveResult {
+    const lockSpec = this.findLockfileSpec(fromUri);
+    if (!lockSpec) {
+      return {
+        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+      };
+    }
+    const lockfile = this.loadLockfile(lockSpec);
+    if (!lockfile) {
+      return {
+        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+      };
+    }
+    const { pkgName, subpath } = this.parsePackageSpecifier(specifier);
+    const pkg = lockfile.packages?.[pkgName];
+    if (!pkg) {
+      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in lumina.lock.json` } };
+    }
+    const lumina = pkg.lumina;
+    if (!lumina) {
+      return {
+        error: { code: 'PKG-002', message: `Package '${pkgName}' missing 'lumina' field in lumina.lock.json` },
+      };
+    }
+    let entry: string | undefined;
+    if (subpath) {
+      if (typeof lumina === 'object') {
+        entry = lumina[subpath];
+        if (!entry) {
+          return {
+            error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '${subpath}'` },
+          };
+        }
+      } else {
+        return {
+          error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '${subpath}'` },
+        };
+      }
+    } else if (typeof lumina === 'string') {
+      entry = lumina;
+    } else if (typeof lumina === 'object') {
+      entry = lumina['.'];
+    }
+    if (!entry) {
+      return { error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '.'` } };
+    }
+    const lockDir = lockSpec.includes('/') ? lockSpec.slice(0, lockSpec.lastIndexOf('/')) : '';
+    let pkgRoot = pkg.resolved;
+    if (!pkgRoot.startsWith('/')) {
+      pkgRoot = lockDir ? `${lockDir}/${pkgRoot}` : pkgRoot;
+    }
+    const absolute = pkgRoot.endsWith('/') ? `${pkgRoot}${entry}` : `${pkgRoot}/${entry}`;
+    return { resolved: this.ensureVirtualExtension(absolute) };
+  }
+
+  private collectImportDiagnostics(program: { type: string; body?: unknown[] }, uri: string): Diagnostic[] {
+    const diagnostics: Diagnostic[] = [];
+    if (!program || !Array.isArray(program.body)) return diagnostics;
+    for (const stmt of program.body) {
+      const node = stmt as { type?: string; source?: { value?: string; location?: Location }; location?: Location };
+      if (node.type !== 'Import') continue;
+      const source = node.source?.value;
+      if (!source) continue;
+      if (source.startsWith('.') || source === '@std' || source.startsWith('@std/')) continue;
+      const result = this.resolveBareSpecifierDetailed(uri, source);
+      if ('resolved' in result) continue;
+      const location = node.source?.location ?? node.location ?? defaultLocation;
+      diagnostics.push({
+        severity: 'error',
+        code: result.error.code,
+        message: result.error.message,
+        location,
+        source: 'lumina',
+      });
+    }
+    return diagnostics;
   }
 
   private normalizeVirtualSpec(spec: string): string {

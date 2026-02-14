@@ -1,0 +1,19 @@
+{
+  "name": "@lumina/http",
+  "version": "0.1.0",
+  "description": "HTTP client library for Lumina",
+  "type": "module",
+  "lumina": {
+    ".": "./src/index.lm",
+    "./request": "./src/request.lm",
+    "./response": "./src/response.lm"
+  },
+  "files": [
+    "src/**/*.lm",
+    "README.md",
+    "package.json"
+  ],
+  "keywords": ["lumina", "http", "fetch", "client"],
+  "author": "Lumina Contributors",
+  "license": "MIT"
+}

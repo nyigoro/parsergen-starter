@@ -1,0 +1,37 @@
+import { Option, Result } from "../../std/prelude.lm";
+import { fs, io, str, list } from "@std";
+
+async fn process_file(path: string) {
+  match await fs.readFile(path) {
+    Result.Ok(content) => {
+      let lines = str.split(content, "\n");
+      let line_count = list.length(lines);
+      let char_count = str.length(content);
+      io.println(str.concat("Lines: ", str.from_int(line_count)));
+      io.println(str.concat("Chars: ", str.from_int(char_count)));
+    },
+    Result.Err(error) => {
+      let message: string = error;
+      io.eprintln(str.concat("Read error: ", message));
+    }
+  }
+}
+
+async fn main() {
+  io.println("Lumina File Processor");
+  io.println("Enter a file path:");
+  match await io.readLineAsync() {
+    Option.Some(path) => {
+      if (str.eq(str.trim(path), "")) {
+        io.eprintln("No path provided.");
+      } else {
+        await process_file(path);
+      }
+    },
+    Option.None => {
+      io.eprintln("No input available.");
+    }
+  }
+}
+
+main()

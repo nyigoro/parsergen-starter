@@ -1,0 +1,48 @@
+// Core data structures for JSON parsing
+
+// Recursive list type
+pub enum JList<T> {
+  Nil,
+  Cons(T, JList<T>)
+}
+
+// Key-value pair for JSON objects
+pub struct Entry {
+  key: string,
+  value: JsonValue
+}
+
+// JSON value representation
+pub enum JsonValue {
+  Null,
+  Bool(bool),
+  Number(float),
+  String(string),
+  Array(JList<JsonValue>),
+  Object(JList<Entry>)
+}
+
+// Lexer tokens
+pub enum Token {
+  LeftBrace,
+  RightBrace,
+  LeftBracket,
+  RightBracket,
+  Colon,
+  Comma,
+  StringLit(string),
+  NumberLit(float),
+  TrueLit,
+  FalseLit,
+  NullLit,
+  Eof
+}
+
+// Parse errors with context
+pub enum ParseError {
+  UnexpectedToken(string, int),
+  UnexpectedEof,
+  InvalidNumber(string),
+  InvalidString(string),
+  UnexpectedChar(string, int)
+}

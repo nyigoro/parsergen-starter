@@ -12,12 +12,35 @@ import { type LuminaType } from '../lumina/ast.js';
 import { createStdModuleRegistry, resolveModuleBindings, type ModuleExport, type ModuleNamespace, type ModuleRegistry } from '../lumina/module-registry.js';
 import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
 
+type LuminaLockfile = {
+  lockfileVersion: number;
+  packages: Record<string, LockfilePackage>;
+};
+
+type LockfilePackage = {
+  version: string;
+  resolved: string;
+  integrity?: string;
+  lumina?: string | Record<string, string>;
+};
+
+type BareResolveResult =
+  | { resolved: string }
+  | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004'; message: string } };
+
+const defaultLocation: Location = {
+  start: { line: 1, column: 1, offset: 0 },
+  end: { line: 1, column: 1, offset: 0 },
+};
+
 export interface SourceDocument {
   uri: string;
   fsPath: string;
   text: string;
   version: number;
   imports: string[];
+  importDiagnostics?: Diagnostic[];
+  packageDiagnostics?: Diagnostic[];
   importAliases?: Map<string, string>;
   importNameMap?: Map<string, ImportBinding>;
   diagnostics: Diagnostic[];
@@ -80,6 +103,9 @@ export class ProjectContext {
   private preludeNames = new Set<string>();
   private preludeLoaded = false;
   private preludePath = path.resolve('std/prelude.lm');
+  private lockfileCache = new Map<string, { mtimeMs: number; data: LuminaLockfile }>();
+  private lockfileName = 'lumina.lock.json';
+  private packageDiagnostics: Diagnostic[] = [];
 
   constructor(
     parser?: CompiledGrammar<unknown>,
@@ -159,18 +185,20 @@ export class ProjectContext {
     const fsPath = this.toFsPath(uri);
     const normalizedUri = this.toUri(fsPath);
     const imports = extractImports(text);
-      const existing = this.documents.get(normalizedUri);
-      const doc: SourceDocument = {
-        uri: normalizedUri,
-        fsPath,
-        text,
-        version: existing ? existing.version + 1 : version,
-        imports,
-        diagnostics: [],
-        signatures: existing?.signatures,
-        functionHashes: existing?.functionHashes,
-        inferredReturns: existing?.inferredReturns,
-      };
+    const existing = this.documents.get(normalizedUri);
+    const doc: SourceDocument = {
+      uri: normalizedUri,
+      fsPath,
+      text,
+      version: existing ? existing.version + 1 : version,
+      imports,
+      importDiagnostics: existing?.importDiagnostics,
+      packageDiagnostics: existing?.packageDiagnostics,
+      diagnostics: [],
+      signatures: existing?.signatures,
+      functionHashes: existing?.functionHashes,
+      inferredReturns: existing?.inferredReturns,
+    };
     this.documents.set(normalizedUri, doc);
     this.graph.set(normalizedUri, imports.map((imp) => this.resolveImport(fsPath, imp)));
     for (const dep of this.graph.get(normalizedUri)) {
@@ -203,8 +231,9 @@ export class ProjectContext {
     const prevSignatures = doc.signatures ?? new Map<string, string>();
     let signatureChanged = false;
     let changedSymbols: string[] = [];
+    let payload: unknown = null;
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
-      const payload = (result.result as { result: unknown }).result ?? result.result;
+      payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
         doc.ast = payload;
         const nextFunctionHashes = collectFunctionBodyHashes(payload as never, doc.text);
@@ -267,6 +296,21 @@ export class ProjectContext {
         }
         doc.diagnostics.push(...analysis.diagnostics);
         doc.references = collectReferences(payload as never);
+      }
+    }
+    const importDiagnostics = this.collectImportDiagnostics(payload as { type: string; body?: unknown[] }, normalized);
+    if (importDiagnostics.length > 0) {
+      doc.importDiagnostics = importDiagnostics;
+      doc.packageDiagnostics = importDiagnostics;
+      doc.diagnostics.push(...importDiagnostics);
+    } else {
+      doc.importDiagnostics = [];
+      doc.packageDiagnostics = [];
+    }
+    this.packageDiagnostics = [];
+    for (const entry of this.documents.values()) {
+      if (entry.packageDiagnostics && entry.packageDiagnostics.length > 0) {
+        this.packageDiagnostics.push(...entry.packageDiagnostics);
       }
     }
     doc.diagnostics.push(...lintMissingSemicolons(doc.text));
@@ -610,6 +654,8 @@ export class ProjectContext {
     }
     const virtualTarget = this.resolveVirtualSpec(imp);
     if (virtualTarget) return this.virtualUriFor(virtualTarget);
+    const bareResolved = this.resolveBareSpecifier(fromFsPath, imp);
+    if (bareResolved) return this.toUri(bareResolved);
     return imp;
   }
 
@@ -691,6 +737,130 @@ export class ProjectContext {
       if (fs.existsSync(candidate)) return candidate;
     }
     return resolved + '.lum';
+  }
+
+  private findLockfileRoot(fromFsPath: string): string | null {
+    let current = path.dirname(fromFsPath);
+    while (true) {
+      const candidate = path.join(current, this.lockfileName);
+      if (fs.existsSync(candidate)) return current;
+      const parent = path.dirname(current);
+      if (parent === current) return null;
+      current = parent;
+    }
+  }
+
+  private loadLockfile(root: string): LuminaLockfile | null {
+    const lockPath = path.join(root, this.lockfileName);
+    try {
+      const stat = fs.statSync(lockPath);
+      const cached = this.lockfileCache.get(root);
+      if (cached && cached.mtimeMs === stat.mtimeMs) return cached.data;
+      const raw = fs.readFileSync(lockPath, 'utf-8');
+      const parsed = JSON.parse(raw) as LuminaLockfile;
+      this.lockfileCache.set(root, { mtimeMs: stat.mtimeMs, data: parsed });
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private parsePackageSpecifier(specifier: string): { pkgName: string; subpath: string | null } {
+    if (specifier.startsWith('@')) {
+      const parts = specifier.split('/');
+      if (parts.length < 2) return { pkgName: specifier, subpath: null };
+      const pkgName = `${parts[0]}/${parts[1]}`;
+      const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
+      return { pkgName, subpath };
+    }
+    const slash = specifier.indexOf('/');
+    if (slash === -1) return { pkgName: specifier, subpath: null };
+    return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
+  }
+
+  private resolveBareSpecifier(fromFsPath: string, specifier: string): string | null {
+    const result = this.resolveBareSpecifierDetailed(fromFsPath, specifier);
+    if ('resolved' in result) return result.resolved;
+    return null;
+  }
+
+  private resolveBareSpecifierDetailed(fromFsPath: string, specifier: string): BareResolveResult {
+    const root = this.findLockfileRoot(fromFsPath);
+    if (!root) {
+      return {
+        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+      };
+    }
+    const lockfile = this.loadLockfile(root);
+    if (!lockfile) {
+      return {
+        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+      };
+    }
+    const { pkgName, subpath } = this.parsePackageSpecifier(specifier);
+    const pkg = lockfile.packages?.[pkgName];
+    if (!pkg) {
+      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in lumina.lock.json` } };
+    }
+    const lumina = pkg.lumina;
+    if (!lumina) {
+      return {
+        error: { code: 'PKG-002', message: `Package '${pkgName}' missing 'lumina' field in lumina.lock.json` },
+      };
+    }
+    let entry: string | undefined;
+    if (subpath) {
+      if (typeof lumina === 'object') {
+        entry = lumina[subpath];
+        if (!entry) {
+          return {
+            error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '${subpath}'` },
+          };
+        }
+      } else {
+        return {
+          error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '${subpath}'` },
+        };
+      }
+    } else if (typeof lumina === 'string') {
+      entry = lumina;
+    } else if (typeof lumina === 'object') {
+      entry = lumina['.'];
+    }
+    if (!entry) {
+      return { error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '.'` } };
+    }
+    let pkgRoot = pkg.resolved;
+    if (!path.isAbsolute(pkgRoot)) {
+      pkgRoot = path.resolve(root, pkgRoot);
+    }
+    const absolute = path.resolve(pkgRoot, entry);
+    const withExt = this.ensureExtension(absolute);
+    return { resolved: withExt };
+  }
+
+  private collectImportDiagnostics(program: { type: string; body?: unknown[] }, uri: string): Diagnostic[] {
+    const diagnostics: Diagnostic[] = [];
+    if (!program || !Array.isArray(program.body)) return diagnostics;
+    for (const stmt of program.body) {
+      const node = stmt as { type?: string; source?: { value?: string; location?: Location }; location?: Location };
+      if (node.type !== 'Import') continue;
+      const source = node.source?.value;
+      if (!source) continue;
+      if (source.startsWith('.') || source === '@std' || source.startsWith('@std/')) continue;
+      if (this.resolveVirtualSpec(source)) continue;
+      const result = this.resolveBareSpecifierDetailed(this.toFsPath(uri), source);
+      if ('resolved' in result) continue;
+      const location = node.source?.location ?? node.location ?? defaultLocation;
+      diagnostics.push({
+        severity: 'error',
+        code: result.error.code,
+        message: result.error.message,
+        location,
+        source: 'lumina',
+      });
+    }
+    return diagnostics;
   }
 
   private ensureDocumentLoaded(uri: string) {
