@@ -1,4 +1,13 @@
-import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaMatchPattern, type LuminaFnDecl, type LuminaImplDecl } from './ast.js';
+import {
+  type LuminaProgram,
+  type LuminaStatement,
+  type LuminaExpr,
+  type LuminaMatchPattern,
+  type LuminaFnDecl,
+  type LuminaImplDecl,
+  type LuminaTraitDecl,
+  type LuminaTraitMethod,
+} from './ast.js';
 import { SourceMapGenerator, type RawSourceMap } from 'source-map';
 import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
 
@@ -43,6 +52,10 @@ class JSGenerator {
   private matchCounter = 0;
   private usesTryHelper = false;
   private readonly traitMethodResolutions: Map<number, TraitMethodResolution>;
+  private readonly traitDecls = new Map<string, LuminaTraitDecl>();
+  private defaultMethodContext:
+    | { traitType: string; forType: string; selfParams: Set<string> }
+    | null = null;
 
   constructor(private readonly builder: CodeBuilder, options: CodegenJsOptions) {
     this.target = options.target ?? 'esm';
@@ -52,6 +65,12 @@ class JSGenerator {
 
   emitProgram(node: LuminaProgram): void {
     this.usesTryHelper = programUsesTry(node);
+    this.traitDecls.clear();
+    for (const stmt of node.body) {
+      if (stmt.type === 'TraitDecl') {
+        this.traitDecls.set(stmt.name, stmt);
+      }
+    }
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
@@ -238,10 +257,51 @@ class JSGenerator {
   private emitImplDecl(stmt: LuminaImplDecl): void {
     const traitType = typeof stmt.traitType === 'string' ? stmt.traitType : 'Trait';
     const forType = typeof stmt.forType === 'string' ? stmt.forType : 'Unknown';
+    const traitName = traitType.split('<')[0];
+    const traitDecl = this.traitDecls.get(traitName);
+    const implemented = new Set(stmt.methods.map((method) => method.name));
     for (const method of stmt.methods) {
       const mangledName = mangleTraitMethodName(traitType, forType, method.name);
       this.emitFunctionDecl(mangledName, method);
     }
+    if (traitDecl) {
+      for (const method of traitDecl.methods) {
+        if (!method.body) continue;
+        if (implemented.has(method.name)) continue;
+        const mangledName = mangleTraitMethodName(traitType, forType, method.name);
+        this.emitDefaultTraitMethod(mangledName, traitType, forType, method);
+      }
+    }
+  }
+
+  private emitDefaultTraitMethod(
+    mangledName: string,
+    traitType: string,
+    forType: string,
+    method: LuminaTraitMethod
+  ): void {
+    const selfParams = new Set<string>();
+    for (const param of method.params) {
+      if (typeof param.typeName === 'string' && param.typeName === 'Self') {
+        selfParams.add(param.name);
+      }
+    }
+    const previousContext = this.defaultMethodContext;
+    this.defaultMethodContext = { traitType, forType, selfParams };
+    const fnDecl: LuminaFnDecl = {
+      type: 'FnDecl',
+      name: mangledName,
+      params: method.params,
+      returnType: method.returnType ?? null,
+      body: method.body ?? { type: 'Block', body: [] },
+      visibility: 'private',
+      extern: false,
+      async: false,
+      typeParams: method.typeParams ?? [],
+      location: method.location,
+    };
+    this.emitFunctionDecl(mangledName, fnDecl);
+    this.defaultMethodContext = previousContext;
   }
 
   private emitBlock(
@@ -410,6 +470,20 @@ class JSGenerator {
         if (resolution && expr.enumName) {
           const receiverExpr: LuminaExpr = { type: 'Identifier', name: expr.enumName, location: expr.location };
           const parts: Array<string | EmitResult> = [`${resolution.mangledName}(`, this.emitExpr(receiverExpr)];
+          expr.args.forEach((arg) => {
+            parts.push(', ');
+            parts.push(this.emitExpr(arg));
+          });
+          parts.push(')');
+          return withBase(concat(...parts));
+        }
+        if (this.defaultMethodContext && expr.enumName && this.defaultMethodContext.selfParams.has(expr.enumName)) {
+          const mangledName = mangleTraitMethodName(
+            this.defaultMethodContext.traitType,
+            this.defaultMethodContext.forType,
+            expr.callee.name
+          );
+          const parts: Array<string | EmitResult> = [`${mangledName}(`, this.emitExpr({ type: 'Identifier', name: expr.enumName })];
           expr.args.forEach((arg) => {
             parts.push(', ');
             parts.push(this.emitExpr(arg));
@@ -608,6 +682,8 @@ const statementUsesTry = (stmt: LuminaStatement): boolean => {
       return blockUsesTry(stmt.body);
     case 'ImplDecl':
       return stmt.methods.some((method) => blockUsesTry(method.body));
+    case 'TraitDecl':
+      return stmt.methods.some((method) => (method.body ? blockUsesTry(method.body) : false));
     case 'Let':
       return exprUsesTry(stmt.value);
     case 'Return':

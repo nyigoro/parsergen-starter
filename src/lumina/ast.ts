@@ -68,6 +68,7 @@ export interface LuminaTraitDecl {
   name: string;
   typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   methods: LuminaTraitMethod[];
+  associatedTypes?: LuminaTraitAssocType[];
   visibility?: 'public' | 'private';
   location?: Location;
 }
@@ -78,6 +79,14 @@ export interface LuminaTraitMethod {
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
   typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  body?: LuminaBlock | null;
+  location?: Location;
+}
+
+export interface LuminaTraitAssocType {
+  type: 'TraitAssocType';
+  name: string;
+  typeName?: LuminaTypeExpr | null;
   location?: Location;
 }
 
@@ -87,7 +96,15 @@ export interface LuminaImplDecl {
   forType: LuminaTypeExpr;
   typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   methods: LuminaFnDecl[];
+  associatedTypes?: LuminaImplAssocType[];
   visibility?: 'public' | 'private';
+  location?: Location;
+}
+
+export interface LuminaImplAssocType {
+  type: 'ImplAssocType';
+  name: string;
+  typeName: LuminaTypeExpr;
   location?: Location;
 }
 

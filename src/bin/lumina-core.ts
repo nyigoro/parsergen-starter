@@ -1021,12 +1021,17 @@ async function compileLumina(
     let result: { code: string; map?: RawSourceMap } | null = null;
     if (useAstJs) {
       const monoAst = monomorphizeAst(bundle.program as never);
+      const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+      if (monoAnalysis.diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
+        return { ok: false };
+      }
       result = generateJSFromAst(monoAst as never, {
         target,
         sourceMap,
         sourceFile: sourcePath,
         sourceContent: source,
-        traitMethodResolutions: analysis.traitMethodResolutions,
+        traitMethodResolutions: monoAnalysis.traitMethodResolutions,
       });
       out = result.code;
     } else {
@@ -1065,12 +1070,17 @@ async function compileLumina(
         return { ok: false };
       }
       const monoAst = monomorphizeAst(cached.ast as never);
+      const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+      if (monoAnalysis.diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
+        return { ok: false };
+      }
       const result = generateJSFromAst(monoAst as never, {
         target,
         sourceMap,
         sourceFile: sourcePath,
         sourceContent: source,
-        traitMethodResolutions: analysis.traitMethodResolutions,
+        traitMethodResolutions: monoAnalysis.traitMethodResolutions,
       });
       let out = result.code;
       if (sourceMap && result.map) {
@@ -1128,12 +1138,17 @@ async function compileLumina(
         return { ok: false };
       }
       const monoAst = monomorphizeAst(diskCache.ast as never);
+      const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+      if (monoAnalysis.diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
+        return { ok: false };
+      }
       const result = generateJSFromAst(monoAst as never, {
         target,
         sourceMap,
         sourceFile: sourcePath,
         sourceContent: source,
-        traitMethodResolutions: analysis.traitMethodResolutions,
+        traitMethodResolutions: monoAnalysis.traitMethodResolutions,
       });
       let out = result.code;
       if (sourceMap && result.map) {
@@ -1203,12 +1218,17 @@ async function compileLumina(
   let result: { code: string; map?: RawSourceMap } | null = null;
   if (useAstJs) {
     const monoAst = monomorphizeAst(ast as never);
+    const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+    if (monoAnalysis.diagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
+      return { ok: false };
+    }
     result = generateJSFromAst(monoAst as never, {
       target,
       sourceMap,
       sourceFile: sourcePath,
       sourceContent: source,
-      traitMethodResolutions: analysis.traitMethodResolutions,
+      traitMethodResolutions: monoAnalysis.traitMethodResolutions,
     });
     out = result.code;
   } else {

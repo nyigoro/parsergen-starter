@@ -112,12 +112,20 @@ function normalizeStatement(stmt: LuminaStatement) {
     }
     case 'TraitDecl': {
       normalizeTypeParams(stmt.typeParams, stmt.location);
+      if (stmt.associatedTypes) {
+        for (const assoc of stmt.associatedTypes) {
+          assoc.typeName = normalizeTypeExpr(assoc.typeName ?? null, assoc.location) as LuminaTypeExpr | null;
+        }
+      }
       for (const method of stmt.methods) {
         normalizeTypeParams(method.typeParams, method.location);
         for (const param of method.params) {
           param.typeName = normalizeTypeExpr(param.typeName, param.location) as LuminaTypeExpr | null;
         }
         method.returnType = normalizeTypeExpr(method.returnType, method.location) as LuminaTypeExpr | null;
+        if (method.body) {
+          normalizeStatement(method.body);
+        }
       }
       return;
     }
@@ -125,6 +133,11 @@ function normalizeStatement(stmt: LuminaStatement) {
       normalizeTypeParams(stmt.typeParams, stmt.location);
       stmt.traitType = normalizeTypeExpr(stmt.traitType, stmt.location) as LuminaTypeExpr;
       stmt.forType = normalizeTypeExpr(stmt.forType, stmt.location) as LuminaTypeExpr;
+      if (stmt.associatedTypes) {
+        for (const assoc of stmt.associatedTypes) {
+          assoc.typeName = normalizeTypeExpr(assoc.typeName, assoc.location) as LuminaTypeExpr;
+        }
+      }
       for (const method of stmt.methods) {
         normalizeStatement(method);
       }

@@ -96,27 +96,59 @@ TypeDecl
     }
 
 TraitDecl
-  = visibility:Visibility? _ "trait" _ node:IdName _ tparams:TypeParams? _ "{" _ methods:TraitMethodList? _ "}" _ ";"? {
-      return createNode("TraitDecl", { name: node.name, typeParams: tparams || [], methods: methods || [], visibility: visibility ?? "private", location: node.location }, location);
+  = visibility:Visibility? _ "trait" _ node:IdName _ tparams:TypeParams? _ "{" _ items:TraitItemList? _ "}" _ ";"? {
+      const methods = [];
+      const associatedTypes = [];
+      for (const item of items || []) {
+        if (item && item.type === "TraitMethod") methods.push(item);
+        if (item && item.type === "TraitAssocType") associatedTypes.push(item);
+      }
+      return createNode("TraitDecl", { name: node.name, typeParams: tparams || [], methods, associatedTypes, visibility: visibility ?? "private", location: node.location }, location);
     }
 
-TraitMethodList
-  = head:TraitMethod tail:(_ TraitMethod)* { return [head].concat(tail.map(t => t[1])); }
+TraitItemList
+  = head:TraitItem tail:(_ TraitItem)* { return [head].concat(tail.map(t => t[1])); }
   / "" { return []; }
+
+TraitItem
+  = TraitAssocType / TraitMethod
+
+TraitAssocType
+  = "type" _ node:IdName _ defaultType:(_ "=" _ TypeName)? _ ";"? {
+      return createNode("TraitAssocType", { name: node.name, typeName: defaultType ? defaultType[3] : null, location: node.location }, location);
+    }
 
 TraitMethod
-  = "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ ";"? {
-      return createNode("TraitMethod", { name: node.name, params: params || [], returnType: ret || null, typeParams: tparams || [], location: node.location }, location);
+  = "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:TraitMethodBody {
+      return createNode("TraitMethod", { name: node.name, params: params || [], returnType: ret || null, typeParams: tparams || [], body, location: node.location }, location);
     }
+
+TraitMethodBody
+  = _ body:Block { return body; }
+  / _ ";"? { return null; }
 
 ImplDecl
-  = visibility:Visibility? _ "impl" _ tparams:TypeParams? _ traitType:TypeName _ _ "for" _ forType:TypeName _ "{" _ methods:ImplMethodList? _ "}" _ ";"? {
-      return createNode("ImplDecl", { traitType, forType, typeParams: tparams || [], methods: methods || [], visibility: visibility ?? "private", location: location() }, location);
+  = visibility:Visibility? _ "impl" _ tparams:TypeParams? _ traitType:TypeName _ _ "for" _ forType:TypeName _ "{" _ items:ImplItemList? _ "}" _ ";"? {
+      const methods = [];
+      const associatedTypes = [];
+      for (const item of items || []) {
+        if (item && item.type === "FnDecl") methods.push(item);
+        if (item && item.type === "ImplAssocType") associatedTypes.push(item);
+      }
+      return createNode("ImplDecl", { traitType, forType, typeParams: tparams || [], methods, associatedTypes, visibility: visibility ?? "private", location: location() }, location);
     }
 
-ImplMethodList
-  = head:ImplMethod tail:(_ ImplMethod)* { return [head].concat(tail.map(t => t[1])); }
+ImplItemList
+  = head:ImplItem tail:(_ ImplItem)* { return [head].concat(tail.map(t => t[1])); }
   / "" { return []; }
+
+ImplItem
+  = ImplAssocType / ImplMethod
+
+ImplAssocType
+  = "type" _ node:IdName _ "=" _ typeName:TypeName _ ";"? {
+      return createNode("ImplAssocType", { name: node.name, typeName, location: node.location }, location);
+    }
 
 ImplMethod
   = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
@@ -154,11 +186,15 @@ TypeField
 
 TypeName
   = "_" { return { kind: "TypeHole", location: location() }; }
-  / base:IdName _ args:TypeArgs? {
-      if (!args) return base.name;
+  / path:TypePath _ args:TypeArgs? {
+      const base = path.join("::");
+      if (!args) return base;
       const rendered = args.map(arg => typeof arg === "string" ? arg : "_");
-      return `${base.name}<${rendered.join(",")}>`;
+      return `${base}<${rendered.join(",")}>`;
     }
+
+TypePath
+  = head:IdName tail:(_ "::" _ IdName)* { return [head.name].concat(tail.map(t => t[3].name)); }
 
 FnDecl
   = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
@@ -187,7 +223,7 @@ TypeParam
   / name:IdName { return { name: name.name }; }
 
 TypeBounds
-  = head:TypeName tail:(_ "&" _ TypeName)* { return [head].concat(tail.map(t => t[3])); }
+  = head:TypeName tail:(_ ("&" / "+") _ TypeName)* { return [head].concat(tail.map(t => t[3])); }
 
 EnumVariantList
   = head:EnumVariant tail:(_ "," _ EnumVariant)* _ ","? { return [head].concat(tail.map(t => t[3])); }
