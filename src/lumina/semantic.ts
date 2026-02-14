@@ -10,6 +10,7 @@ import {
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
+import { normalizeTypeForComparison, normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
 import {
   createStdModuleRegistry,
   resolveModuleBindings,
@@ -83,6 +84,7 @@ const builtinTypes: Set<LuminaType> = new Set([
   'u128',
   'f32',
   'f64',
+  'Vec',
 ]);
 
 const numericTypes: Set<LuminaType> = new Set([
@@ -107,6 +109,9 @@ const normalizeNumericType = (type: LuminaType): LuminaType => {
   if (type === 'float') return 'f64';
   return type;
 };
+
+const areTypesEquivalent = (left: LuminaType, right: LuminaType): boolean =>
+  normalizeTypeForComparison(left) === normalizeTypeForComparison(right);
 
 const isNumericTypeName = (type: LuminaType): boolean => numericTypes.has(type);
 
@@ -148,6 +153,17 @@ const diagAt = (
   source: 'lumina',
   relatedInformation,
 });
+
+function formatTypeForDiagnostic(type: LuminaType | null | undefined): string {
+  if (!type) return 'unknown';
+  const normalized = normalizeTypeForDisplay(type);
+  const parsed = parseTypeName(normalized);
+  if (!parsed) return normalized;
+  const base = normalizeTypeNameForDisplay(parsed.base);
+  if (parsed.args.length === 0) return base;
+  const args = parsed.args.map((arg) => formatTypeForDiagnostic(arg));
+  return `${base}<${args.join(',')}>`;
+}
 
 const getLValueBaseName = (expr: LuminaExpr): string | null => {
   if (expr.type === 'Identifier') return expr.name;
@@ -616,7 +632,7 @@ function resolveFunctionBody(
   }
   if (collector && collector.types.length > 0) {
     const [first, ...rest] = collector.types;
-    const mismatch = rest.some((t) => t !== first);
+    const mismatch = rest.some((t) => !areTypesEquivalent(t, first));
     if (mismatch) {
       diagnostics.push(diagAt(`Inconsistent return types for '${stmt.name}'`, stmt.location));
       return null;
@@ -1043,8 +1059,13 @@ function typeCheckStatement(
       const hmTypeKey = hmKey(stmt.location);
       const hmInferredType =
         !expectedType && hmTypeKey ? options?.hmInferred?.letTypes.get(hmTypeKey) ?? null : null;
-      if (expectedType && valueType && valueType !== expectedType) {
-        diagnostics.push(diagAt(`Type mismatch: '${stmt.name}' is '${expectedType}' but value is '${valueType}'`, stmt.location));
+      if (expectedType && valueType && !isTypeAssignable(valueType, expectedType, symbols, options?.typeParams)) {
+        diagnostics.push(
+          diagAt(
+            `Type mismatch: '${stmt.name}' is '${formatTypeForDiagnostic(expectedType)}' but value is '${formatTypeForDiagnostic(valueType)}'`,
+            stmt.location
+          )
+        );
       }
       const finalType = expectedType ?? valueType ?? hmInferredType;
       if (!finalType) {
@@ -1187,8 +1208,13 @@ function typeCheckStatement(
           const defScope = findDefScope(scope, target);
           if (defScope) di.assign(defScope, target);
         }
-        if (valueType && sym.type && valueType !== sym.type) {
-          diagnostics.push(diagAt(`Type mismatch: '${target}' is '${sym.type}' but value is '${valueType}'`, stmt.location));
+        if (valueType && sym.type && !isTypeAssignable(valueType, sym.type, symbols, options?.typeParams)) {
+          diagnostics.push(
+            diagAt(
+              `Type mismatch: '${target}' is '${formatTypeForDiagnostic(sym.type)}' but value is '${formatTypeForDiagnostic(valueType)}'`,
+              stmt.location
+            )
+          );
         }
         return;
       }
@@ -1283,7 +1309,7 @@ function typeCheckStatement(
       if (valueType && !isTypeAssignable(valueType, resolvedField, symbols, options?.typeParams)) {
         diagnostics.push(
           diagAt(
-            `Type mismatch for '${stmt.target.property}': expected '${resolvedField}', got '${valueType}'`,
+            `Type mismatch for '${stmt.target.property}': expected '${formatTypeForDiagnostic(resolvedField)}', got '${formatTypeForDiagnostic(valueType)}'`,
             stmt.location
           )
         );
@@ -1303,8 +1329,18 @@ function typeCheckStatement(
         currentFunction,
         di
       );
-      if (currentReturnType && currentReturnType !== 'any' && valueType && valueType !== currentReturnType) {
-        diagnostics.push(diagAt(`Return type '${valueType}' does not match '${currentReturnType}'`, stmt.location));
+      if (
+        currentReturnType &&
+        currentReturnType !== 'any' &&
+        valueType &&
+        !isTypeAssignable(valueType, currentReturnType, symbols, options?.typeParams)
+      ) {
+        diagnostics.push(
+          diagAt(
+            `Return type '${formatTypeForDiagnostic(valueType)}' does not match '${formatTypeForDiagnostic(currentReturnType)}'`,
+            stmt.location
+          )
+        );
       }
       if (!currentReturnType && valueType && returnCollector) {
         returnCollector.types.push(valueType);
@@ -1458,15 +1494,6 @@ function typeCheckExpr(
   allowPartialMoveBase?: boolean,
   skipMoveChecks?: boolean
 ): LuminaType | null {
-  const formatTypeForDiagnostic = (type: LuminaType | null | undefined): string => {
-    if (!type) return 'unknown';
-    const parsed = parseTypeName(type);
-    if (!parsed) return type;
-    if (parsed.args.length === 0) return parsed.base;
-    const args = parsed.args.map((arg) => formatTypeForDiagnostic(arg));
-    return `${parsed.base}<${args.join(',')}>`;
-  };
-
   const reportCallArgMismatch = (
     fnName: string,
     index: number,
@@ -1556,7 +1583,7 @@ function typeCheckExpr(
     if (!isNumericTypeName(fromNorm) || !isNumericTypeName(toNorm)) {
       diagnostics.push(
         diagAt(
-          `Cannot cast '${valueType}' to '${targetType}'`,
+          `Cannot cast '${formatTypeForDiagnostic(valueType)}' to '${formatTypeForDiagnostic(targetType)}'`,
           expr.location,
           'error',
           'TYPE-CAST'
@@ -1574,7 +1601,7 @@ function typeCheckExpr(
     if (lossy) {
       diagnostics.push(
         diagAt(
-          `Lossy conversion from '${valueType}' to '${targetType}'`,
+          `Lossy conversion from '${formatTypeForDiagnostic(valueType)}' to '${formatTypeForDiagnostic(targetType)}'`,
           expr.location,
           'warning',
           'LOSSY-CAST'
@@ -2016,16 +2043,18 @@ function typeCheckExpr(
                 const resolvedBound = resolveTypeExpr(bound);
                 if (!resolvedBound) continue;
                 if (!isTypeAssignable(value, resolvedBound, symbols, options?.typeParams)) {
+                  const expectedText = formatTypeForDiagnostic(resolvedBound);
+                  const actualText = formatTypeForDiagnostic(value);
                   diagnostics.push(
                     diagAt(
-                      `Type argument '${value}' does not satisfy bound '${resolvedBound}' for '${param.name}'`,
+                      `Type argument '${actualText}' does not satisfy bound '${expectedText}' for '${param.name}'`,
                       expr.location,
                       'error',
                       'BOUND_MISMATCH',
                       [
                         {
                           location: expr.location ?? defaultLocation,
-                          message: `Expected: ${resolvedBound}, Actual: ${value}`,
+                          message: `Expected: ${expectedText}, Actual: ${actualText}`,
                         },
                       ]
                     )
@@ -2136,16 +2165,18 @@ function typeCheckExpr(
                   const resolvedBound = resolveTypeExpr(bound);
                   if (!resolvedBound) continue;
                   if (!isTypeAssignable(value, resolvedBound, symbols, options?.typeParams)) {
+                    const expectedText = formatTypeForDiagnostic(resolvedBound);
+                    const actualText = formatTypeForDiagnostic(value);
                     diagnostics.push(
                       diagAt(
-                        `Type argument '${value}' does not satisfy bound '${resolvedBound}' for '${param.name}'`,
+                        `Type argument '${actualText}' does not satisfy bound '${expectedText}' for '${param.name}'`,
                         expr.location,
                         'error',
                         'BOUND_MISMATCH',
                         [
                           {
                             location: expr.location ?? defaultLocation,
-                            message: `Expected: ${resolvedBound}, Actual: ${value}`,
+                            message: `Expected: ${expectedText}, Actual: ${actualText}`,
                           },
                         ]
                       )
@@ -2297,16 +2328,18 @@ function typeCheckExpr(
           const resolvedBound = resolveTypeExpr(bound);
           if (!resolvedBound) continue;
           if (!isTypeAssignable(value, resolvedBound, symbols, options?.typeParams)) {
+            const expectedText = formatTypeForDiagnostic(resolvedBound);
+            const actualText = formatTypeForDiagnostic(value);
             diagnostics.push(
               diagAt(
-                `Type argument '${value}' does not satisfy bound '${resolvedBound}' for '${param.name}'`,
+                `Type argument '${actualText}' does not satisfy bound '${expectedText}' for '${param.name}'`,
                 expr.location,
                 'error',
                 'BOUND_MISMATCH',
                 [
                   {
                     location: expr.location ?? defaultLocation,
-                    message: `Expected: ${resolvedBound}, Actual: ${value}`,
+                    message: `Expected: ${expectedText}, Actual: ${actualText}`,
                   },
                 ]
               )
@@ -2353,7 +2386,12 @@ function typeCheckExpr(
       }
       const resolvedExpected = substituteTypeParams(expected, mapping);
       if (actual && !isTypeAssignable(actual, resolvedExpected, symbols, options?.typeParams)) {
-        diagnostics.push(diagAt(`Type mismatch for '${field.name}': expected '${resolvedExpected}', got '${actual}'`, field.location ?? expr.location));
+        diagnostics.push(
+          diagAt(
+            `Type mismatch for '${field.name}': expected '${formatTypeForDiagnostic(resolvedExpected)}', got '${formatTypeForDiagnostic(actual)}'`,
+            field.location ?? expr.location
+          )
+        );
       }
     }
 
@@ -2555,8 +2593,9 @@ function typeCheckExpr(
       }
         const bodyType = typeCheckExpr(arm.body, armSymbols, diagnostics, armScope, options, undefined, resolving, pendingDeps, currentFunction, di);
       if (bodyType) {
-        if (!armType) armType = bodyType;
-        else if (armType !== bodyType) {
+        if (!armType) {
+          armType = bodyType;
+        } else if (!areTypesEquivalent(armType, bodyType)) {
           diagnostics.push(diagAt(`Match arms must return the same type`, arm.location ?? expr.location));
         }
       }
@@ -2986,11 +3025,12 @@ function isKnownType(typeName: LuminaType, symbols: SymbolTable, typeParams: Set
 }
 
 function parseTypeName(typeName: string): { base: string; args: string[] } | null {
-  const idx = typeName.indexOf('<');
-  if (idx === -1) return { base: typeName, args: [] };
-  if (!typeName.endsWith('>')) return null;
-  const base = typeName.slice(0, idx);
-  const inner = typeName.slice(idx + 1, -1);
+  const trimmed = typeName.trim();
+  const idx = trimmed.indexOf('<');
+  if (idx === -1) return { base: trimmed, args: [] };
+  if (!trimmed.endsWith('>')) return null;
+  const base = trimmed.slice(0, idx);
+  const inner = trimmed.slice(idx + 1, -1);
   const args = splitTypeArgs(inner);
   return { base, args };
 }
@@ -3001,7 +3041,7 @@ function hmKey(location?: Location): string | null {
 }
 
 function hmTypeToLuminaType(type: import('./types.js').Type): LuminaType | null {
-  if (type.kind === 'primitive') return type.name;
+  if (type.kind === 'primitive') return normalizeTypeNameForDisplay(type.name);
   if (type.kind === 'promise') {
     const inner = hmTypeToLuminaType(type.inner) ?? 'any';
     return `Promise<${inner}>`;
@@ -3021,7 +3061,7 @@ function hmTypeToLuminaType(type: import('./types.js').Type): LuminaType | null 
 }
 
 function hmTypeToDisplay(type: import('./types.js').Type): string {
-  if (type.kind === 'primitive') return type.name;
+  if (type.kind === 'primitive') return normalizeTypeNameForDisplay(type.name);
   if (type.kind === 'variable') return `T${type.id}`;
   if (type.kind === 'promise') {
     return `Promise<${hmTypeToDisplay(type.inner)}>`;
@@ -3077,11 +3117,14 @@ function isTypeAssignable(
   symbols: SymbolTable,
   typeParams?: Map<string, LuminaType | undefined>
 ): boolean {
-  if (actual === expected) return true;
-  if (expected === 'any') return true;
-  if (typeParams && typeParams.has(expected)) return true;
-  const actualParsed = parseTypeName(actual);
-  const expectedParsed = parseTypeName(expected);
+  const actualNorm = normalizeTypeForComparison(actual);
+  const expectedNorm = normalizeTypeForComparison(expected);
+  if (actualNorm === expectedNorm) return true;
+  if (expectedNorm === 'any') return true;
+  if (actualNorm === 'any') return true;
+  if (typeParams && typeParams.has(expectedNorm)) return true;
+  const actualParsed = parseTypeName(actualNorm);
+  const expectedParsed = parseTypeName(expectedNorm);
   if (!actualParsed || !expectedParsed) return false;
   if (actualParsed.base !== expectedParsed.base) return false;
   if (actualParsed.args.length !== expectedParsed.args.length) return false;
@@ -3092,15 +3135,17 @@ function isTypeAssignable(
 }
 
 function unifyTypes(paramType: LuminaType, argType: LuminaType, mapping: Map<string, LuminaType>) {
-  const paramParsed = parseTypeName(paramType);
-  const argParsed = parseTypeName(argType);
+  const paramNorm = normalizeTypeForComparison(paramType);
+  const argNorm = normalizeTypeForComparison(argType);
+  const paramParsed = parseTypeName(paramNorm);
+  const argParsed = parseTypeName(argNorm);
   if (!paramParsed || !argParsed) return;
 
   if (mapping.has(paramParsed.base)) {
     return;
   }
   if (isValidTypeParam(paramParsed.base) && paramParsed.args.length === 0) {
-    mapping.set(paramParsed.base, argType);
+    mapping.set(paramParsed.base, argNorm as LuminaType);
     return;
   }
   if (paramParsed.base !== argParsed.base) return;

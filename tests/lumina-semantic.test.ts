@@ -129,6 +129,22 @@ describe('Lumina semantic analysis', () => {
     expect(messages).not.toMatch(/Unknown function/);
   });
 
+  test('supports vec module and Vec type', () => {
+    const program = `
+      import { vec } from "@std";
+      fn main() {
+        let v: Vec<int> = vec.new();
+        vec.push(v, 42);
+        return vec.len(v);
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const errors = analysis.diagnostics.filter(d => d.severity === 'error');
+    expect(errors.length).toBe(0);
+  });
+
   test('indexing-only mode collects top-level symbols without body diagnostics', () => {
     const program = `
       struct User { id: int }
@@ -851,7 +867,7 @@ describe('Lumina semantic analysis', () => {
     const analysis = analyzeLumina(result as never);
     const boundDiag = analysis.diagnostics.find(d => d.code === 'BOUND_MISMATCH');
     expect(boundDiag?.message).toMatch(/does not satisfy bound/);
-    expect(boundDiag?.relatedInformation?.[0]?.message).toMatch(/Expected: int/);
+    expect(boundDiag?.relatedInformation?.[0]?.message).toMatch(/Expected: i32/);
   });
 
   test('supports multiple bounds', () => {

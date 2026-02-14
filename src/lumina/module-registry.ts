@@ -751,6 +751,92 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const vecModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const vecT = adt('Vec', [t]);
+    const optionT = adt('Option', [t]);
+    const newType: Type = fnType([], vecT);
+    const pushType: Type = fnType([vecT, t], primitive('void'));
+    const getType: Type = fnType([vecT, primitive('int')], optionT);
+    const lenType: Type = fnType([vecT], primitive('int'));
+    const popType: Type = fnType([vecT], optionT);
+    const clearType: Type = fnType([vecT], primitive('void'));
+
+    return {
+      kind: 'module',
+      name: 'vec',
+      moduleId: 'std://vec',
+      exports: new Map([
+        [
+          'new',
+          moduleFunctionWithScheme(
+            'new',
+            [],
+            'Vec<any>',
+            schemeFromVars(newType, [t]),
+            [],
+            'std://vec'
+          ),
+        ],
+        [
+          'push',
+          moduleFunctionWithScheme(
+            'push',
+            ['Vec<any>', 'any'],
+            'void',
+            schemeFromVars(pushType, [t]),
+            ['vec', 'value'],
+            'std://vec'
+          ),
+        ],
+        [
+          'get',
+          moduleFunctionWithScheme(
+            'get',
+            ['Vec<any>', 'int'],
+            'Option<any>',
+            schemeFromVars(getType, [t]),
+            ['vec', 'index'],
+            'std://vec'
+          ),
+        ],
+        [
+          'len',
+          moduleFunctionWithScheme(
+            'len',
+            ['Vec<any>'],
+            'int',
+            schemeFromVars(lenType, [t]),
+            ['vec'],
+            'std://vec'
+          ),
+        ],
+        [
+          'pop',
+          moduleFunctionWithScheme(
+            'pop',
+            ['Vec<any>'],
+            'Option<any>',
+            schemeFromVars(popType, [t]),
+            ['vec'],
+            'std://vec'
+          ),
+        ],
+        [
+          'clear',
+          moduleFunctionWithScheme(
+            'clear',
+            ['Vec<any>'],
+            'void',
+            schemeFromVars(clearType, [t]),
+            ['vec'],
+            'std://vec'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const optionModule: ModuleNamespace = (() => {
     const t = freshTypeVar();
     const u = freshTypeVar();
@@ -1043,6 +1129,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['str', strModule],
       ['math', mathModule],
       ['list', listModule],
+      ['vec', vecModule],
       ['fs', fsModule],
       ['http', httpModule],
     ]),
@@ -1057,6 +1144,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/str', strModule);
   registry.set('@std/math', mathModule);
   registry.set('@std/list', listModule);
+  registry.set('@std/vec', vecModule);
   registry.set('@prelude', preludeModule);
   return registry;
 }

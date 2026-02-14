@@ -15,6 +15,7 @@ import {
   isNumericPrimitiveName,
   normalizePrimitiveName,
 } from './types.js';
+import { normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
 import { type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
 import {
@@ -1246,7 +1247,7 @@ function parseTypeName(
 
 function formatTypeAnnotation(typeName: LuminaTypeExpr): string {
   if (isTypeHoleExpr(typeName) || typeName === '_') return '_';
-  return typeof typeName === 'string' ? typeName : 'any';
+  return typeof typeName === 'string' ? normalizeTypeForDisplay(typeName) : 'any';
 }
 
 function holeOwnerMessage(info: HoleInfo): string {
@@ -1811,7 +1812,7 @@ function formatType(type: Type, subst: Subst): string {
   const pruned = prune(type, subst);
   switch (pruned.kind) {
     case 'primitive':
-      return pruned.name;
+      return normalizeTypeNameForDisplay(pruned.name);
     case 'hole':
       return '_';
     case 'variable':

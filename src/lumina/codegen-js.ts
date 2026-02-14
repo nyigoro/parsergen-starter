@@ -49,11 +49,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, fs, http, Result, Option, __set, formatValue, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, fs, http, Result, Option, __set, formatValue, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -77,9 +77,9 @@ class JSGenerator {
 
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('module.exports = { io, str, math, list, vec, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
       } else {
-        this.builder.append('export { io, str, math, list, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
+        this.builder.append('export { io, str, math, list, vec, fs, http, Result, Option, __set, formatValue, LuminaPanic };');
       }
     } else {
       if (this.target === 'cjs') {

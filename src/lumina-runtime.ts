@@ -468,6 +468,55 @@ export const list = {
   all: <A>(pred: (value: A) => boolean, xs: A[]): boolean => xs.every(pred),
 };
 
+export class Vec<T> {
+  private data: T[];
+
+  constructor() {
+    this.data = [];
+  }
+
+  static new<T>(): Vec<T> {
+    return new Vec<T>();
+  }
+
+  push(value: T): void {
+    this.data.push(value);
+  }
+
+  get(index: number) {
+    if (!Number.isFinite(index)) return Option.None;
+    const idx = Math.trunc(index);
+    return idx >= 0 && idx < this.data.length ? Option.Some(this.data[idx]) : Option.None;
+  }
+
+  len(): number {
+    return this.data.length;
+  }
+
+  pop() {
+    if (this.data.length === 0) return Option.None;
+    const value = this.data.pop() as T;
+    return Option.Some(value);
+  }
+
+  clear(): void {
+    this.data = [];
+  }
+
+  [Symbol.iterator]() {
+    return this.data[Symbol.iterator]();
+  }
+}
+
+export const vec = {
+  new: <T>() => Vec.new<T>(),
+  push: <T>(v: Vec<T>, value: T) => v.push(value),
+  get: <T>(v: Vec<T>, index: number) => v.get(index),
+  len: <T>(v: Vec<T>) => v.len(),
+  pop: <T>(v: Vec<T>) => v.pop(),
+  clear: <T>(v: Vec<T>) => v.clear(),
+};
+
 export class LuminaPanic extends Error {
   value?: unknown;
   constructor(message: string, value?: unknown) {

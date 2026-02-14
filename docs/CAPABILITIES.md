@@ -48,7 +48,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Feature | Status | Notes |
 |---|---|---|
 | Prelude enums (Option/Result) | Stable | Registry + prelude |
-| Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list` |
+| Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list`, `vec`, `fs`, `http` |
 | Runtime Option/Result | Stable | JS runtime + helpers |
 | Async I/O | Stable | `io.readLineAsync()` |
 | File system | Stable | `fs.readFile`, `fs.writeFile` |
@@ -71,7 +71,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 - Recursive generic ADTs (List/Option/Result, JsonValue)
 - Pattern matching with exhaustiveness checks
 - Monomorphization in practice (zeroâ€‘cost generics)
-- Stdlib integration (`io`, `str`, `math`, `list`)
+- Stdlib integration (`io`, `str`, `math`, `list`, `vec`)
 - Source maps for debugging
 - Realâ€‘world utility: working JSON parser
 

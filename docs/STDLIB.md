@@ -128,3 +128,23 @@ Reads a UTF-8 file (Node) or fetches text (browser).
 
 ### writeFile(path: String, content: String) -> Promise<Result<Void, String>>
 Writes a UTF-8 file in Node. Returns an error in browsers.
+
+## @std/vec
+
+### new<T>() -> Vec<T>
+Creates an empty vector.
+
+### push<T>(vec: Vec<T>, value: T) -> Void
+Appends a value to the end of the vector.
+
+### get<T>(vec: Vec<T>, index: Int) -> Option<T>
+Returns `Some(value)` when the index is in bounds, otherwise `None`.
+
+### len<T>(vec: Vec<T>) -> Int
+Returns the number of elements in the vector.
+
+### pop<T>(vec: Vec<T>) -> Option<T>
+Removes the last element and returns it, or `None` if empty.
+
+### clear<T>(vec: Vec<T>) -> Void
+Removes all elements from the vector.
