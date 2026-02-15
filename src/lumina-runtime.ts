@@ -832,13 +832,17 @@ export const Result = {
 
 type ChannelMessage =
   | { __lumina_channel_value: unknown }
-  | { __lumina_channel_close: true };
+  | { __lumina_channel_close: true }
+  | { __lumina_channel_ack: number };
 
 const isChannelValue = (value: unknown): value is { __lumina_channel_value: unknown } =>
   !!value && typeof value === 'object' && '__lumina_channel_value' in value;
 
 const isChannelClose = (value: unknown): value is { __lumina_channel_close: true } =>
   !!value && typeof value === 'object' && (value as { __lumina_channel_close?: unknown }).__lumina_channel_close === true;
+
+const isChannelAck = (value: unknown): value is { __lumina_channel_ack: number } =>
+  !!value && typeof value === 'object' && typeof (value as { __lumina_channel_ack?: unknown }).__lumina_channel_ack === 'number';
 
 const resolveMessageChannel = (): typeof MessageChannel | null => {
   if (typeof MessageChannel === 'function') return MessageChannel;
@@ -847,12 +851,36 @@ const resolveMessageChannel = (): typeof MessageChannel | null => {
 
 export class Sender<T> {
   private closed = false;
-  constructor(private readonly port: MessagePort) {
+  private credits: number | null;
+
+  constructor(
+    private readonly port: MessagePort,
+    capacity: number | null
+  ) {
     this.port.start?.();
+    this.credits = capacity;
+    this.port.onmessage = (event: MessageEvent<ChannelMessage>) => {
+      const data = event.data;
+      if (isChannelClose(data)) {
+        this.closed = true;
+        return;
+      }
+      if (isChannelAck(data)) {
+        if (this.credits !== null) {
+          this.credits += data.__lumina_channel_ack;
+        }
+      }
+    };
   }
 
   send(value: T): boolean {
     if (this.closed) return false;
+    if (this.credits !== null && this.credits <= 0) {
+      return false;
+    }
+    if (this.credits !== null) {
+      this.credits -= 1;
+    }
     const payload: ChannelMessage = { __lumina_channel_value: value };
     this.port.postMessage(payload);
     return true;
@@ -875,8 +903,15 @@ export class Receiver<T> {
   private queue: T[] = [];
   private waiters: Array<(value: { $tag: string; $payload?: T }) => void> = [];
   private closed = false;
+  private readonly capacity: number | null;
+  private readonly ackOnConsume: boolean;
 
-  constructor(private readonly port: MessagePort) {
+  constructor(
+    private readonly port: MessagePort,
+    capacity: number | null
+  ) {
+    this.capacity = capacity;
+    this.ackOnConsume = this.capacity !== null && this.capacity > 0;
     this.port.onmessage = (event: MessageEvent<ChannelMessage>) => {
       const data = event.data;
       if (isChannelClose(data)) {
@@ -884,10 +919,14 @@ export class Receiver<T> {
         this.flushWaiters(Option.None);
         return;
       }
+      if (isChannelAck(data)) {
+        return;
+      }
       const value = (isChannelValue(data) ? data.__lumina_channel_value : data) as T;
       const waiter = this.waiters.shift();
       if (waiter) {
         waiter(Option.Some(value));
+        this.sendAckIfNeeded();
       } else {
         this.queue.push(value);
       }
@@ -906,9 +945,16 @@ export class Receiver<T> {
     }
   }
 
+  private sendAckIfNeeded(): void {
+    if (!this.ackOnConsume) return;
+    const payload: ChannelMessage = { __lumina_channel_ack: 1 };
+    this.port.postMessage(payload);
+  }
+
   recv(): Promise<{ $tag: string; $payload?: T }> {
     if (this.queue.length > 0) {
       const value = this.queue.shift();
+      this.sendAckIfNeeded();
       return Promise.resolve(Option.Some(value as T));
     }
     if (this.closed) {
@@ -916,12 +962,17 @@ export class Receiver<T> {
     }
     return new Promise((resolve) => {
       this.waiters.push(resolve);
+      if (this.capacity === 0) {
+        const payload: ChannelMessage = { __lumina_channel_ack: 1 };
+        this.port.postMessage(payload);
+      }
     });
   }
 
   try_recv(): { $tag: string; $payload?: T } {
     if (this.queue.length > 0) {
       const value = this.queue.shift();
+      this.sendAckIfNeeded();
       return Option.Some(value as T);
     }
     return Option.None;
@@ -930,6 +981,12 @@ export class Receiver<T> {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    const payload: ChannelMessage = { __lumina_channel_close: true };
+    try {
+      this.port.postMessage(payload);
+    } catch {
+      // ignore close failures
+    }
     this.port.close();
     this.flushWaiters(Option.None);
   }
@@ -938,12 +995,17 @@ export class Receiver<T> {
 export const channel = {
   is_available: (): boolean => resolveMessageChannel() !== null,
   new: <T>(): { sender: Sender<T>; receiver: Receiver<T> } => {
+    return channel.bounded<T>(-1);
+  },
+  bounded: <T>(capacity: number): { sender: Sender<T>; receiver: Receiver<T> } => {
     const ChannelCtor = resolveMessageChannel();
     if (!ChannelCtor) {
       throw new Error('MessageChannel is not available in this environment');
     }
+    const normalized = Number.isFinite(capacity) ? Math.trunc(capacity) : -1;
+    const cap = normalized < 0 ? null : normalized;
     const { port1, port2 } = new ChannelCtor();
-    return { sender: new Sender<T>(port1), receiver: new Receiver<T>(port2) };
+    return { sender: new Sender<T>(port1, cap), receiver: new Receiver<T>(port2, cap) };
   },
   send: <T>(sender: Sender<T>, value: T): boolean => sender.send(value),
   recv: <T>(receiver: Receiver<T>): Promise<unknown> => receiver.recv(),

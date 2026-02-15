@@ -250,6 +250,14 @@ Message-passing channels built on Web Platform `MessageChannel`.
 ### new<T>() -> Channel<T>
 Creates a new channel and returns a `Channel<T>` struct with `.sender` and `.receiver`.
 
+### bounded<T>(capacity: Int) -> Channel<T>
+Creates a bounded channel with a maximum number of in-flight messages.
+
+**Capacity rules:**
+- `capacity < 0` behaves like `new()` (unbounded).
+- `capacity = 0` is rendezvous style: sends only succeed when a receiver is waiting.
+- `capacity > 0` limits the number of buffered messages.
+
 ### send<T>(sender: Sender<T>, value: T) -> Bool
 Sends a value. Returns `true` if the message was enqueued, `false` if the sender is closed.
 

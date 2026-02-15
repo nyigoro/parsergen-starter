@@ -1357,6 +1357,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const sendType: Type = fnType([senderT, t], primitive('bool'));
     const recvType: Type = fnType([receiverT], promiseType(optionT));
     const tryRecvType: Type = fnType([receiverT], optionT);
+    const boundedType: Type = fnType([primitive('int')], channelT);
     const closeSenderType: Type = fnType([senderT], primitive('void'));
     const closeReceiverType: Type = fnType([receiverT], primitive('void'));
     const availableType: Type = fnType([], primitive('bool'));
@@ -1385,6 +1386,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'bool',
             schemeFromVars(sendType, [t]),
             ['sender', 'value'],
+            'std://channel'
+          ),
+        ],
+        [
+          'bounded',
+          moduleFunctionWithScheme(
+            'bounded',
+            ['int'],
+            'Channel<any>',
+            schemeFromVars(boundedType, [t]),
+            ['capacity'],
             'std://channel'
           ),
         ],
