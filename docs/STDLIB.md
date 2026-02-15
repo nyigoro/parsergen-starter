@@ -296,9 +296,31 @@ fn main() -> void {
 
   channel.send(sender, 42);
 
-  match await channel.recv(receiver) {
+match await channel.recv(receiver) {
     Some(value) => io.println(str.from_int(value)),
     None => io.println("closed")
   }
 }
 ```
+
+## @std/thread
+
+Worker-based threading API for Node (via `worker_threads`) and Web Worker hosts.
+
+### is_available() -> Bool
+Returns `true` when worker threading is available in the runtime.
+
+### spawn(specifier: String) -> Promise<Result<Thread, String>>
+Spawns a worker from a module specifier/path.
+
+### post(thread: Thread, value: Any) -> Bool
+Posts a message to the worker.
+
+### recv(thread: Thread) -> Promise<Option<Any>>
+Waits for the next message from the worker, or `None` after termination/close.
+
+### try_recv(thread: Thread) -> Option<Any>
+Non-blocking poll for worker messages.
+
+### terminate(thread: Thread) -> Promise<Void>
+Terminates the worker.

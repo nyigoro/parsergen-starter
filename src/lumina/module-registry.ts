@@ -1459,6 +1459,93 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const threadModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const threadT = adt('Thread');
+    const optionT = adt('Option', [t]);
+    const resultT = adt('Result', [threadT, primitive('string')]);
+    const spawnType: Type = fnType([primitive('string')], promiseType(resultT));
+    const postType: Type = fnType([threadT, t], primitive('bool'));
+    const recvType: Type = fnType([threadT], promiseType(optionT));
+    const tryRecvType: Type = fnType([threadT], optionT);
+    const terminateType: Type = fnType([threadT], promiseType(primitive('void')));
+    const availableType: Type = fnType([], primitive('bool'));
+
+    return {
+      kind: 'module',
+      name: 'thread',
+      moduleId: 'std://thread',
+      exports: new Map([
+        [
+          'spawn',
+          moduleFunctionWithScheme(
+            'spawn',
+            ['string'],
+            'Promise<Result<Thread,string>>',
+            schemeFromVars(spawnType, []),
+            ['specifier'],
+            'std://thread'
+          ),
+        ],
+        [
+          'post',
+          moduleFunctionWithScheme(
+            'post',
+            ['Thread', 'any'],
+            'bool',
+            schemeFromVars(postType, [t]),
+            ['thread', 'value'],
+            'std://thread'
+          ),
+        ],
+        [
+          'recv',
+          moduleFunctionWithScheme(
+            'recv',
+            ['Thread'],
+            'Promise<Option<any>>',
+            schemeFromVars(recvType, [t]),
+            ['thread'],
+            'std://thread'
+          ),
+        ],
+        [
+          'try_recv',
+          moduleFunctionWithScheme(
+            'try_recv',
+            ['Thread'],
+            'Option<any>',
+            schemeFromVars(tryRecvType, [t]),
+            ['thread'],
+            'std://thread'
+          ),
+        ],
+        [
+          'terminate',
+          moduleFunctionWithScheme(
+            'terminate',
+            ['Thread'],
+            'Promise<void>',
+            schemeFromVars(terminateType, []),
+            ['thread'],
+            'std://thread'
+          ),
+        ],
+        [
+          'is_available',
+          moduleFunctionWithScheme(
+            'is_available',
+            [],
+            'bool',
+            schemeFromVars(availableType, []),
+            [],
+            'std://thread'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const preludeModule: ModuleNamespace = {
     kind: 'module',
     name: '@prelude',
@@ -1530,6 +1617,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['hashmap', hashmapModule],
       ['hashset', hashsetModule],
       ['channel', channelModule],
+      ['thread', threadModule],
       ['fs', fsModule],
       ['http', httpModule],
     ]),
@@ -1548,6 +1636,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/hashmap', hashmapModule);
   registry.set('@std/hashset', hashsetModule);
   registry.set('@std/channel', channelModule);
+  registry.set('@std/thread', threadModule);
   registry.set('@prelude', preludeModule);
   return registry;
 }

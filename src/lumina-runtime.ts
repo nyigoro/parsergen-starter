@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 export type LuminaEnumLike =
   | { $tag: string; $payload?: unknown }
@@ -1012,6 +1013,156 @@ export const channel = {
   try_recv: <T>(receiver: Receiver<T>): unknown => receiver.try_recv(),
   close_sender: <T>(sender: Sender<T>): void => sender.close(),
   close_receiver: <T>(receiver: Receiver<T>): void => receiver.close(),
+};
+
+type OptionLike = { $tag: string; $payload?: unknown };
+
+interface NodeWorkerLike {
+  postMessage: (value: unknown) => void;
+  terminate: () => Promise<number>;
+  on: (event: 'message', listener: (value: unknown) => void) => void;
+  on: (event: 'error', listener: (error: Error) => void) => void;
+  on: (event: 'exit', listener: (code: number) => void) => void;
+}
+
+interface WebWorkerLike {
+  postMessage: (value: unknown) => void;
+  terminate: () => void;
+  addEventListener: (type: 'message', listener: (event: MessageEvent<unknown>) => void) => void;
+  addEventListener: (type: 'error', listener: (event: ErrorEvent) => void) => void;
+}
+
+type ThreadWorker = { kind: 'node'; worker: NodeWorkerLike } | { kind: 'web'; worker: WebWorkerLike };
+
+const isUrlLike = (specifier: string): boolean => /^[a-z]+:/i.test(specifier);
+
+const resolveNodeWorkerSpecifier = (specifier: string): string => {
+  if (isUrlLike(specifier)) return specifier;
+  return path.resolve(specifier);
+};
+
+const createThreadWorker = async (specifier: string): Promise<ThreadWorker> => {
+  if (isNodeRuntime()) {
+    try {
+      const nodeWorkers = await import('node:worker_threads');
+      const WorkerCtor = (nodeWorkers as { Worker?: new (file: string, options?: { type?: string }) => NodeWorkerLike })
+        .Worker;
+      if (typeof WorkerCtor === 'function') {
+        const worker = new WorkerCtor(resolveNodeWorkerSpecifier(specifier), { type: 'module' });
+        return { kind: 'node', worker };
+      }
+    } catch {
+      // fall through to web worker path
+    }
+  }
+
+  if (typeof Worker === 'function') {
+    const worker = new Worker(specifier, { type: 'module' }) as unknown as WebWorkerLike;
+    return { kind: 'web', worker };
+  }
+
+  throw new Error('Worker API is not available in this environment');
+};
+
+export class Thread {
+  private queue: unknown[] = [];
+  private waiters: Array<(value: OptionLike) => void> = [];
+  private closed = false;
+
+  constructor(private readonly entry: ThreadWorker) {
+    if (entry.kind === 'node') {
+      entry.worker.on('message', (value) => this.onMessage(value));
+      entry.worker.on('error', () => this.onClose());
+      entry.worker.on('exit', () => this.onClose());
+    } else {
+      entry.worker.addEventListener('message', (event) => this.onMessage(event.data));
+      entry.worker.addEventListener('error', () => this.onClose());
+    }
+  }
+
+  private onMessage(value: unknown): void {
+    if (this.closed) return;
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter(Option.Some(value) as OptionLike);
+      return;
+    }
+    this.queue.push(value);
+  }
+
+  private onClose(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.flushWaiters(Option.None as OptionLike);
+  }
+
+  private flushWaiters(value: OptionLike): void {
+    while (this.waiters.length > 0) {
+      const waiter = this.waiters.shift();
+      if (waiter) waiter(value);
+    }
+  }
+
+  post(value: unknown): boolean {
+    if (this.closed) return false;
+    try {
+      this.entry.worker.postMessage(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  recv(): Promise<OptionLike> {
+    if (this.queue.length > 0) {
+      return Promise.resolve(Option.Some(this.queue.shift()) as OptionLike);
+    }
+    if (this.closed) {
+      return Promise.resolve(Option.None as OptionLike);
+    }
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  try_recv(): OptionLike {
+    if (this.queue.length > 0) {
+      return Option.Some(this.queue.shift()) as OptionLike;
+    }
+    return Option.None as OptionLike;
+  }
+
+  async terminate(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    this.flushWaiters(Option.None as OptionLike);
+    if (this.entry.kind === 'node') {
+      await this.entry.worker.terminate();
+      return;
+    }
+    this.entry.worker.terminate();
+  }
+}
+
+export const thread = {
+  is_available: (): boolean => isNodeRuntime() || typeof Worker === 'function',
+  spawn: async (specifier: string): Promise<unknown> => {
+    if (typeof specifier !== 'string' || specifier.length === 0) {
+      return Result.Err('Thread specifier must be a non-empty string');
+    }
+    try {
+      const worker = await createThreadWorker(specifier);
+      return Result.Ok(new Thread(worker));
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  post: (handle: Thread, value: unknown): boolean => handle.post(value),
+  recv: (handle: Thread): Promise<unknown> => handle.recv(),
+  try_recv: (handle: Thread): unknown => handle.try_recv(),
+  terminate: async (handle: Thread): Promise<void> => {
+    await handle.terminate();
+  },
 };
 
 export function __set(obj: Record<string, unknown>, prop: string, value: unknown) {
