@@ -919,6 +919,91 @@ function monomorphizeAst(program: unknown): unknown {
   return monomorphize(cloned, { inferredCalls: hm.inferredCalls });
 }
 
+function programUsesAstOnlySyntax(program: unknown): boolean {
+  const visitExpr = (expr: unknown): boolean => {
+    if (!expr || typeof expr !== 'object') return false;
+    const node = expr as { type?: string; [key: string]: unknown };
+    if (node.type === 'Lambda' || node.type === 'ArrayLiteral') return true;
+    switch (node.type) {
+      case 'Binary':
+        return visitExpr(node.left) || visitExpr(node.right);
+      case 'Call':
+        return Array.isArray(node.args) ? node.args.some((arg) => visitExpr(arg)) : false;
+      case 'ArrayLiteral':
+        return Array.isArray(node.elements) ? node.elements.some((element) => visitExpr(element)) : false;
+      case 'Member':
+        return visitExpr(node.object);
+      case 'StructLiteral':
+        return Array.isArray(node.fields)
+          ? node.fields.some((field) => visitExpr((field as { value?: unknown }).value))
+          : false;
+      case 'MatchExpr':
+        return (
+          visitExpr(node.value) ||
+          (Array.isArray(node.arms)
+            ? node.arms.some((arm) => visitExpr((arm as { body?: unknown }).body))
+            : false)
+        );
+      case 'IsExpr':
+      case 'Cast':
+      case 'Await':
+      case 'Try':
+      case 'Move':
+        return visitExpr(node.value ?? node.expr ?? node.target);
+      case 'InterpolatedString':
+        return Array.isArray(node.parts)
+          ? node.parts.some((part) => typeof part === 'object' && part !== null && visitExpr(part))
+          : false;
+      case 'Range':
+        return visitExpr(node.start) || visitExpr(node.end);
+      case 'Index':
+        return visitExpr(node.object) || visitExpr(node.index);
+      default:
+        return false;
+    }
+  };
+
+  const visitStmt = (stmt: unknown): boolean => {
+    if (!stmt || typeof stmt !== 'object') return false;
+    const node = stmt as { type?: string; [key: string]: unknown };
+    switch (node.type) {
+      case 'FnDecl':
+        return Array.isArray((node.body as { body?: unknown[] } | undefined)?.body)
+          ? ((node.body as { body: unknown[] }).body).some((inner) => visitStmt(inner))
+          : false;
+      case 'Let':
+      case 'Return':
+      case 'ExprStmt':
+        return visitExpr(node.value ?? node.expr);
+      case 'Assign':
+        return visitExpr(node.target) || visitExpr(node.value);
+      case 'If':
+        return (
+          visitExpr(node.condition) ||
+          visitStmt(node.thenBlock) ||
+          (node.elseBlock ? visitStmt(node.elseBlock) : false)
+        );
+      case 'While':
+        return visitExpr(node.condition) || visitStmt(node.body);
+      case 'MatchStmt':
+        return (
+          visitExpr(node.value) ||
+          (Array.isArray(node.arms)
+            ? node.arms.some((arm) => visitStmt((arm as { body?: unknown }).body))
+            : false)
+        );
+      case 'Block':
+      case 'Program':
+        return Array.isArray(node.body) ? node.body.some((inner) => visitStmt(inner)) : false;
+      default:
+        return false;
+    }
+  };
+
+  const body = (program as { body?: unknown[] } | null)?.body;
+  return Array.isArray(body) ? body.some((stmt) => visitStmt(stmt)) : false;
+}
+
 async function compileLumina(
   sourcePath: string,
   outPath: string,
@@ -929,10 +1014,22 @@ async function compileLumina(
   useAstJs: boolean,
   noOptimize: boolean,
   sourceMap: boolean,
-  inlineSourceMap: boolean
+  inlineSourceMap: boolean,
+  stopOnUnresolvedMemberError: boolean
 ) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
+  let warnedLambdaFallback = false;
+  const shouldUseAstJs = (program: unknown): boolean => {
+    if (useAstJs) return true;
+    if (!programUsesAstOnlySyntax(program)) return false;
+    if (!warnedLambdaFallback) {
+      console.warn('Detected AST-only syntax (lambda/array literals); forcing AST JS codegen for this compilation.');
+      warnedLambdaFallback = true;
+    }
+    return true;
+  };
+  const analysisOptions = { diDebug: diCfg, stopOnUnresolvedMemberError };
   const lockfileRoot = findLockfileRoot(sourcePath);
   await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath, lockfileRoot);
   const hasProjectImports = extractImports(source).some((imp) => !imp.startsWith('@std/'));
@@ -947,7 +1044,7 @@ async function compileLumina(
         lockfileRoot
       );
       if (!bundle) return { ok: false };
-      const analysis = analyzeLumina(bundle.program as never, { diDebug: diCfg });
+      const analysis = analyzeLumina(bundle.program as never, analysisOptions);
       if (analysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, analysis.diagnostics);
         return { ok: false };
@@ -977,7 +1074,7 @@ async function compileLumina(
       return { ok: false };
     }
     if (!ast) return { ok: false };
-    const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
+    const analysis = analyzeLumina(ast as never, analysisOptions);
     if (analysis.diagnostics.length > 0) {
       formatDiagnosticsWithSnippet(source, analysis.diagnostics);
       return { ok: false };
@@ -1012,7 +1109,7 @@ async function compileLumina(
     for (const [depPath, depSource] of bundle.sources.entries()) {
       await updateDependenciesForFile(depPath, depSource, configFileExtensions, configStdPath, lockfileRoot);
     }
-    const analysis = analyzeLumina(bundle.program as never, { diDebug: diCfg });
+    const analysis = analyzeLumina(bundle.program as never, analysisOptions);
     if (analysis.diagnostics.length > 0) {
       formatDiagnosticsWithSnippet(source, analysis.diagnostics);
       return { ok: false };
@@ -1020,9 +1117,9 @@ async function compileLumina(
     let out = '';
     let optimized = null as ReturnType<typeof optimizeIR>;
     let result: { code: string; map?: RawSourceMap } | null = null;
-    if (useAstJs) {
+    if (shouldUseAstJs(bundle.program)) {
       const monoAst = monomorphizeAst(bundle.program as never);
-      const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+      const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
       if (monoAnalysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
         return { ok: false };
@@ -1064,14 +1161,14 @@ async function compileLumina(
   const cached = buildCache.files.get(sourcePath);
   if (cached && cached.hash === fileHash && cached.grammarHash === buildCache.grammarHash) {
     buildCache.stats.hits += 1;
-    if (useAstJs) {
-      const analysis = analyzeLumina(cached.ast as never, { diDebug: diCfg });
+    if (shouldUseAstJs(cached.ast)) {
+      const analysis = analyzeLumina(cached.ast as never, analysisOptions);
       if (analysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, analysis.diagnostics);
         return { ok: false };
       }
       const monoAst = monomorphizeAst(cached.ast as never);
-      const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+      const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
       if (monoAnalysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
         return { ok: false };
@@ -1132,14 +1229,14 @@ async function compileLumina(
   if (diskCache && diskCache.hash === fileHash && diskCache.grammarHash === buildCache.grammarHash) {
     buildCache.stats.hits += 1;
     buildCache.files.set(sourcePath, diskCache);
-    if (useAstJs) {
-      const analysis = analyzeLumina(diskCache.ast as never, { diDebug: diCfg });
+    if (shouldUseAstJs(diskCache.ast)) {
+      const analysis = analyzeLumina(diskCache.ast as never, analysisOptions);
       if (analysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, analysis.diagnostics);
         return { ok: false };
       }
       const monoAst = monomorphizeAst(diskCache.ast as never);
-      const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+      const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
       if (monoAnalysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
         return { ok: false };
@@ -1209,7 +1306,7 @@ async function compileLumina(
   if (!ast) {
     return { ok: false };
   }
-  const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
+  const analysis = analyzeLumina(ast as never, analysisOptions);
   if (analysis.diagnostics.length > 0) {
     formatDiagnosticsWithSnippet(source, analysis.diagnostics);
     return { ok: false };
@@ -1217,9 +1314,9 @@ async function compileLumina(
   let out = '';
   let optimized = null as ReturnType<typeof optimizeIR>;
   let result: { code: string; map?: RawSourceMap } | null = null;
-  if (useAstJs) {
+  if (shouldUseAstJs(ast)) {
     const monoAst = monomorphizeAst(ast as never);
-    const monoAnalysis = analyzeLumina(monoAst as never, { diDebug: diCfg });
+    const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
     if (monoAnalysis.diagnostics.length > 0) {
       formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
       return { ok: false };
@@ -1276,7 +1373,13 @@ async function compileLumina(
   return { ok: true, map: result.map, ir: optimized };
 }
 
-async function checkLumina(sourcePath: string, grammarPath: string, useRecovery: boolean, diCfg: boolean) {
+async function checkLumina(
+  sourcePath: string,
+  grammarPath: string,
+  useRecovery: boolean,
+  diCfg: boolean,
+  stopOnUnresolvedMemberError: boolean
+) {
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
   const lockfileRoot = findLockfileRoot(sourcePath);
@@ -1315,7 +1418,7 @@ async function checkLumina(sourcePath: string, grammarPath: string, useRecovery:
   if (!ast) {
     return { ok: false };
   }
-  const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
+  const analysis = analyzeLumina(ast as never, { diDebug: diCfg, stopOnUnresolvedMemberError });
   if (analysis.diagnostics.length > 0) {
     formatDiagnosticsWithSnippet(source, analysis.diagnostics);
     return { ok: false };
@@ -1353,6 +1456,7 @@ export async function compileLuminaTask(payload: {
   noOptimize?: boolean;
   sourceMap?: boolean;
   inlineSourceMap?: boolean;
+  stopOnUnresolvedMemberError?: boolean;
 }) {
   return compileLumina(
     payload.sourcePath,
@@ -1364,7 +1468,8 @@ export async function compileLuminaTask(payload: {
     payload.useAstJs ?? false,
     payload.noOptimize ?? false,
     payload.sourceMap ?? false,
-    payload.inlineSourceMap ?? false
+    payload.inlineSourceMap ?? false,
+    payload.stopOnUnresolvedMemberError ?? false
   );
 }
 
@@ -1373,8 +1478,15 @@ export async function checkLuminaTask(payload: {
   grammarPath: string;
   useRecovery: boolean;
   diCfg?: boolean;
+  stopOnUnresolvedMemberError?: boolean;
 }) {
-  return checkLumina(payload.sourcePath, payload.grammarPath, payload.useRecovery, payload.diCfg ?? false);
+  return checkLumina(
+    payload.sourcePath,
+    payload.grammarPath,
+    payload.useRecovery,
+    payload.diCfg ?? false,
+    payload.stopOnUnresolvedMemberError ?? false
+  );
 }
 
 async function runRepl(grammarPath: string) {
@@ -1392,7 +1504,8 @@ async function watchLumina(
   useRecovery: boolean = false,
   diCfg: boolean = false,
   noOptimize: boolean = false,
-  inlineSourceMap: boolean = false
+  inlineSourceMap: boolean = false,
+  stopOnUnresolvedMemberError: boolean = false
 ) {
   const resolvedSources = sources.map((s) => path.resolve(s));
   const globbed = await fg(resolvedSources, { onlyFiles: true, unique: true, dot: false });
@@ -1415,7 +1528,8 @@ async function watchLumina(
         useAstJs,
         noOptimize,
         sourceMap,
-        inlineSourceMap
+        inlineSourceMap,
+        stopOnUnresolvedMemberError
       );
       return;
     }
@@ -1430,6 +1544,7 @@ async function watchLumina(
       noOptimize,
       sourceMap,
       inlineSourceMap,
+      stopOnUnresolvedMemberError,
     });
     if (!result.ok && result.error) {
       console.error(`Lumina worker error: ${result.error}`);
@@ -1497,6 +1612,7 @@ type WorkerRequest =
         noOptimize?: boolean;
         sourceMap?: boolean;
         inlineSourceMap?: boolean;
+        stopOnUnresolvedMemberError?: boolean;
       };
     };
 
@@ -1529,7 +1645,7 @@ function createWorkerRunner(config: BuildConfig) {
   worker.postMessage({ type: 'init', payload: config } satisfies WorkerRequest);
 
   return {
-    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean }) {
+    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean; stopOnUnresolvedMemberError?: boolean }) {
       const id = requestId++;
       return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         pending.set(id, { resolve });
@@ -1579,6 +1695,7 @@ Options:
   --profile-cache      Print cache hit/miss stats
   --ast-js             Emit JS directly from AST (no IR)
   --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
+  --stop-on-unresolved Halt analysis on first unresolved namespace/member error
   --check              Verify formatting only, do not write files (fmt)
   --public-only        Include only public declarations in docs (doc)
   --yes                Use defaults without prompts (init)
@@ -1670,7 +1787,8 @@ async function runLintCommand(
   extensions: string[],
   grammarPath: string,
   useRecovery: boolean,
-  diCfg: boolean
+  diCfg: boolean,
+  stopOnUnresolvedMemberError: boolean
 ): Promise<boolean> {
   const files = await resolveLuminaInputs(inputs, extensions);
   if (files.length === 0) {
@@ -1697,7 +1815,7 @@ async function runLintCommand(
     }
 
     if (ast) {
-      const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
+      const analysis = analyzeLumina(ast as never, { diDebug: diCfg, stopOnUnresolvedMemberError });
       const seenDiagnostics = new Set<string>();
       for (const diag of analysis.diagnostics) {
         const locationKey = diag.location
@@ -1863,6 +1981,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const diCfg = parseBooleanFlag(args, '--di-cfg');
   const useAstJs = parseBooleanFlag(args, '--ast-js');
   const noOptimize = parseBooleanFlag(args, '--no-optimize');
+  const stopOnUnresolvedMemberError = parseBooleanFlag(args, '--stop-on-unresolved');
   const listConfig = parseBooleanFlag(args, '--list-config');
   const sourceMapMode = args.get('--source-map') as string | undefined;
   let sourceMap = parseBooleanFlag(args, '--sourcemap');
@@ -1916,7 +2035,14 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === 'lint') {
-    const ok = await runLintCommand(positionalArgs, configFileExtensions, grammarPath, useRecovery, diCfg);
+    const ok = await runLintCommand(
+      positionalArgs,
+      configFileExtensions,
+      grammarPath,
+      useRecovery,
+      diCfg,
+      stopOnUnresolvedMemberError
+    );
     if (!ok) process.exit(1);
     return;
   }
@@ -1946,7 +2072,13 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       const sourcePath = path.resolve(entry);
       const outPath = resolveOutPath(sourcePath, outArg, outDir, target);
       if (dryRun) {
-        const result = await checkLumina(sourcePath, grammarPath, useRecovery, diCfg);
+        const result = await checkLumina(
+          sourcePath,
+          grammarPath,
+          useRecovery,
+          diCfg,
+          stopOnUnresolvedMemberError
+        );
         if (!result.ok) process.exit(1);
       } else {
         const result = await compileLumina(
@@ -1959,7 +2091,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
           useAstJs,
           noOptimize,
           sourceMap,
-          inlineSourceMap
+          inlineSourceMap,
+          stopOnUnresolvedMemberError
         );
         if (!result.ok) process.exit(1);
         if (debugIr && result.ir) {
@@ -1988,7 +2121,13 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     }
     if (entries.length === 0) throw new Error('Missing <file> for check');
     for (const entry of entries) {
-      const result = await checkLumina(path.resolve(entry), grammarPath, useRecovery, diCfg);
+      const result = await checkLumina(
+        path.resolve(entry),
+        grammarPath,
+        useRecovery,
+        diCfg,
+        stopOnUnresolvedMemberError
+      );
       if (!result.ok) process.exit(1);
       if (profileCache) {
         const graph = buildDepGraph();
@@ -2007,7 +2146,18 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       sources.push(...extensions.map((ext) => `**/*${ext}`));
     }
     if (sources.length === 0) throw new Error('Missing <file> for watch');
-    await watchLumina(sources, outDir, target, grammarPath, outArg, useRecovery, diCfg, noOptimize, inlineSourceMap);
+    await watchLumina(
+      sources,
+      outDir,
+      target,
+      grammarPath,
+      outArg,
+      useRecovery,
+      diCfg,
+      noOptimize,
+      inlineSourceMap,
+      stopOnUnresolvedMemberError
+    );
     return;
   }
 
