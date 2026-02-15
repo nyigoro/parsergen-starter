@@ -656,6 +656,15 @@ class JSGenerator {
         if (expr.enumName && isUpperIdent(expr.enumName)) {
           return this.emitEnumConstruct(expr.enumName, expr.callee.name, expr.args, baseLoc);
         }
+        if (expr.receiver) {
+          const parts: Array<string | EmitResult> = [this.emitExpr(expr.receiver), '.', expr.callee.name, '('];
+          expr.args.forEach((arg, idx) => {
+            if (idx > 0) parts.push(', ');
+            parts.push(this.emitExpr(arg));
+          });
+          parts.push(')');
+          return withBase(concat(...parts));
+        }
         const calleeName = expr.enumName ? `${expr.enumName}.${expr.callee.name}` : expr.callee.name;
         const parts: Array<string | EmitResult> = [`${calleeName}(`];
         expr.args.forEach((arg, idx) => {

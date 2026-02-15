@@ -1873,6 +1873,164 @@ function typeCheckExpr(
     }
     return expectedReturn;
   };
+
+  const canResolveTraitMethodCall = (receiverType: LuminaType, callee: string): boolean => {
+    const registry = options?.traitRegistry;
+    if (!registry) return false;
+    const receiverParsed = parseTypeName(receiverType);
+    const isTypeParamReference =
+      receiverParsed &&
+      receiverParsed.args.length === 0 &&
+      ((options?.typeParams && options.typeParams.has(receiverParsed.base)) ||
+        (options?.typeParamBounds && options.typeParamBounds.has(receiverParsed.base)));
+    if (isTypeParamReference) {
+      const bounds = options?.typeParamBounds?.get(receiverParsed.base) ?? [];
+      for (const bound of bounds) {
+        const parsedBound = parseTypeName(normalizeTypeForComparison(bound));
+        if (!parsedBound) continue;
+        const trait = registry.traits.get(parsedBound.base);
+        if (trait?.methods.has(callee)) return true;
+      }
+      return false;
+    }
+    return findTraitMethodCandidates(registry, receiverType, callee).length > 0;
+  };
+
+  const resolveBuiltinMethodCall = (
+    receiverType: LuminaType,
+    args: LuminaExpr[],
+    callLocation: Location | undefined,
+    callee: string
+  ): LuminaType | null => {
+    const parsed = parseTypeName(receiverType);
+    if (!parsed) return null;
+
+    const actualArgs: LuminaType[] = [];
+    for (const arg of args) {
+      const argType = typeCheckExpr(
+        arg,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      if (argType) actualArgs.push(argType);
+    }
+
+    const ensureArity = (expected: number): boolean => {
+      if (actualArgs.length === expected) return true;
+      diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, callLocation, 'error', 'LUM-002'));
+      return false;
+    };
+
+    if (parsed.base === 'Vec') {
+      const elemType = parsed.args[0] ?? 'any';
+      if (callee === 'push') {
+        if (!ensureArity(1)) return 'void';
+        if (!isTypeAssignable(actualArgs[0], elemType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, elemType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'void';
+      }
+      if (callee === 'get') {
+        if (!ensureArity(1)) return `Option<${elemType}>`;
+        if (!isIntTypeName(normalizeTypeForComparison(actualArgs[0]))) {
+          reportCallArgMismatch(callee, 0, 'i32', actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return `Option<${elemType}>`;
+      }
+      if (callee === 'len') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'pop') {
+        ensureArity(0);
+        return `Option<${elemType}>`;
+      }
+      if (callee === 'clear') {
+        ensureArity(0);
+        return 'void';
+      }
+      return null;
+    }
+
+    if (parsed.base === 'HashMap' && parsed.args.length >= 2) {
+      const keyType = parsed.args[0] ?? 'any';
+      const valueType = parsed.args[1] ?? 'any';
+      if (callee === 'insert') {
+        if (!ensureArity(2)) return `Option<${valueType}>`;
+        if (!isTypeAssignable(actualArgs[0], keyType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, keyType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        if (!isTypeAssignable(actualArgs[1], valueType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 1, valueType, actualArgs[1], args[1]?.location ?? callLocation, null);
+        }
+        return `Option<${valueType}>`;
+      }
+      if (callee === 'get' || callee === 'remove') {
+        if (!ensureArity(1)) return `Option<${valueType}>`;
+        if (!isTypeAssignable(actualArgs[0], keyType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, keyType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return `Option<${valueType}>`;
+      }
+      if (callee === 'contains_key') {
+        if (!ensureArity(1)) return 'bool';
+        if (!isTypeAssignable(actualArgs[0], keyType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, keyType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'bool';
+      }
+      if (callee === 'len') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'clear') {
+        ensureArity(0);
+        return 'void';
+      }
+      if (callee === 'keys') {
+        ensureArity(0);
+        return `Vec<${keyType}>`;
+      }
+      if (callee === 'values') {
+        ensureArity(0);
+        return `Vec<${valueType}>`;
+      }
+      return null;
+    }
+
+    if (parsed.base === 'HashSet' && parsed.args.length >= 1) {
+      const elemType = parsed.args[0] ?? 'any';
+      if (callee === 'insert' || callee === 'contains' || callee === 'remove') {
+        if (!ensureArity(1)) return 'bool';
+        if (!isTypeAssignable(actualArgs[0], elemType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, elemType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'bool';
+      }
+      if (callee === 'len') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'clear') {
+        ensureArity(0);
+        return 'void';
+      }
+      if (callee === 'values') {
+        ensureArity(0);
+        return `Vec<${elemType}>`;
+      }
+      return null;
+    }
+
+    return null;
+  };
   if (expr.type === 'Number') return inferNumberType(expr);
   if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'ArrayLiteral') {
@@ -2609,15 +2767,70 @@ function typeCheckExpr(
         );
         if (!receiverType) return null;
         if (isErrorTypeName(receiverType)) return ERROR_TYPE;
-        return resolveTraitMethodCall(receiverType, expr.args, expr.location, expr.id, callee);
+
+        if (canResolveTraitMethodCall(receiverType, callee)) {
+          return resolveTraitMethodCall(receiverType, expr.args, expr.location, expr.id, callee);
+        }
+
+        if (expr.receiver.type === 'Identifier') {
+          const moduleBinding = options?.moduleBindings?.get(expr.receiver.name);
+          const moduleFn = moduleBinding ? resolveModuleFunction(moduleBinding, callee) : null;
+          if (moduleFn) {
+            if (moduleFn.paramTypes.length !== expr.args.length) {
+              diagnostics.push(diagAt(`Argument count mismatch for '${expr.receiver.name}.${callee}'`, expr.location));
+              return moduleFn.returnType;
+            }
+            for (let i = 0; i < expr.args.length; i++) {
+              const argType = typeCheckExpr(
+                expr.args[i],
+                symbols,
+                diagnostics,
+                scope,
+                options,
+                undefined,
+                resolving,
+                pendingDeps,
+                currentFunction,
+                di
+              );
+              const expected = moduleFn.paramTypes[i];
+              if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
+                reportCallArgMismatch(
+                  `${expr.receiver.name}.${callee}`,
+                  i,
+                  expected,
+                  argType,
+                  expr.args[i]?.location ?? expr.location,
+                  moduleFn.paramNames?.[i] ?? null
+                );
+              }
+            }
+            return moduleFn.returnType;
+          }
+        }
+
+        const builtinMethodType = resolveBuiltinMethodCall(receiverType, expr.args, expr.location, callee);
+        if (builtinMethodType) return builtinMethodType;
+
+        diagnostics.push(
+          diagAt(
+            `Type '${formatTypeForDiagnostic(receiverType)}' has no method '${callee}'`,
+            expr.location,
+            'error',
+            'MEMBER-NOT-FOUND'
+          )
+        );
+        return null;
       }
 
       if (expr.enumName) {
+        const receiverSym = symbols.get(expr.enumName);
+        const variableShadow = receiverSym?.kind === 'variable';
         const moduleBinding = options?.moduleBindings?.get(expr.enumName);
         const moduleFn = moduleBinding
           ? resolveModuleFunction(moduleBinding, callee)
           : null;
-        if (moduleFn) {
+        if (!variableShadow && moduleFn) {
           const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
           if (moduleFn.paramTypes.length !== effectiveArgCount) {
             diagnostics.push(diagAt(`Argument count mismatch for '${expr.enumName}.${callee}'`, expr.location));
@@ -2654,7 +2867,7 @@ function typeCheckExpr(
           return moduleFn.returnType;
         }
 
-        if (moduleBinding?.kind === 'module') {
+        if (!variableShadow && moduleBinding?.kind === 'module') {
           const exportMember = moduleBinding.exports.get(callee);
           if (!exportMember) {
             return unresolvedMember(
@@ -2672,7 +2885,7 @@ function typeCheckExpr(
           }
         }
 
-        if (options?.importedNames?.has(expr.enumName) && !symbols.has(expr.enumName)) {
+        if (!variableShadow && options?.importedNames?.has(expr.enumName) && !symbols.has(expr.enumName)) {
           return unresolvedMember(
             `Unresolved namespace '${expr.enumName}' for '${callee}'`,
             expr.location,
@@ -2680,7 +2893,6 @@ function typeCheckExpr(
           );
         }
 
-        const receiverSym = symbols.get(expr.enumName);
         if (receiverSym && receiverSym.kind === 'variable') {
           const receiverExpr: LuminaExpr = {
             type: 'Identifier',
@@ -2701,196 +2913,20 @@ function typeCheckExpr(
           );
           if (!receiverType) return null;
           if (isErrorTypeName(receiverType)) return ERROR_TYPE;
-          const registry = options?.traitRegistry;
-          if (registry) {
-            const receiverParsed = parseTypeName(receiverType);
-            const isTypeParamReference =
-              receiverParsed &&
-              receiverParsed.args.length === 0 &&
-              ((options?.typeParams && options.typeParams.has(receiverParsed.base)) ||
-                (options?.typeParamBounds && options.typeParamBounds.has(receiverParsed.base)));
-            if (isTypeParamReference) {
-              const bounds = options?.typeParamBounds?.get(receiverParsed.base) ?? [];
-              const boundCandidates: Array<{
-                trait: TraitInfo;
-                method: TraitMethodSig;
-                mapping: Map<string, LuminaType>;
-                expectedParams: LuminaType[];
-                expectedReturn: LuminaType;
-              }> = [];
-
-              for (const bound of bounds) {
-                const boundNorm = normalizeTypeForComparison(bound);
-                const parsedBound = parseTypeName(boundNorm);
-                if (!parsedBound) continue;
-                const trait = registry.traits.get(parsedBound.base);
-                if (!trait) continue;
-                const method = trait.methods.get(callee);
-                if (!method) continue;
-                const mapping = buildTraitTypeMapping(trait, parsedBound.args);
-                mapping.set(SELF_TYPE_NAME, receiverType);
-                for (const assocName of trait.associatedTypes.keys()) {
-                  mapping.set(`${SELF_TYPE_NAME}::${assocName}`, `${receiverType}::${assocName}`);
-                }
-                const expectedParams = method.params.map((param) => substituteTypeParams(param, mapping));
-                const expectedReturn = substituteTypeParams(method.returnType, mapping);
-                boundCandidates.push({ trait, method, mapping, expectedParams, expectedReturn });
-              }
-
-              if (boundCandidates.length === 0) {
-                diagnostics.push(
-                  diagAt(
-                    `Type '${formatTypeForDiagnostic(receiverType)}' has no method '${callee}'`,
-                    expr.location,
-                    'error',
-                    'MEMBER-NOT-FOUND'
-                  )
-                );
-                return null;
-              }
-              if (boundCandidates.length > 1) {
-                diagnostics.push(
-                  diagAt(
-                    `Ambiguous trait method '${callee}' for '${formatTypeForDiagnostic(receiverType)}'`,
-                    expr.location,
-                    'error',
-                    'TRAIT-009'
-                  )
-                );
-                return null;
-              }
-              const candidate = boundCandidates[0];
-              const actualArgs: LuminaType[] = [];
-              for (const arg of expr.args) {
-                const argType = typeCheckExpr(
-                  arg,
-                  symbols,
-                  diagnostics,
-                  scope,
-                  options,
-                  undefined,
-                  resolving,
-                  pendingDeps,
-                  currentFunction,
-                  di
-                );
-                if (argType) actualArgs.push(argType);
-              }
-
-              if (candidate.expectedParams.length !== actualArgs.length + 1) {
-                diagnostics.push(
-                  diagAt(`Argument count mismatch for '${callee}'`, expr.location, 'error', 'TRAIT-006')
-                );
-              } else {
-                const expectedSelf = candidate.expectedParams[0];
-                if (!isTypeAssignable(receiverType, expectedSelf, symbols, options?.typeParams)) {
-                  diagnostics.push(
-                    diagAt(
-                      `Method '${callee}' expects '${formatTypeForDiagnostic(expectedSelf)}' receiver but got '${formatTypeForDiagnostic(receiverType)}'`,
-                      expr.location,
-                      'error',
-                      'TRAIT-006'
-                    )
-                  );
-                }
-                for (let i = 0; i < actualArgs.length; i += 1) {
-                  const expected = candidate.expectedParams[i + 1];
-                  const actual = actualArgs[i];
-                  if (!isTypeAssignable(actual, expected, symbols, options?.typeParams)) {
-                    reportCallArgMismatch(callee, i, expected, actual, expr.args[i]?.location ?? expr.location, null);
-                  }
-                }
-              }
-              return candidate.expectedReturn;
-            }
-            const candidates = findTraitMethodCandidates(registry, receiverType, callee);
-            if (candidates.length === 0) {
-              diagnostics.push(
-                diagAt(`Type '${formatTypeForDiagnostic(receiverType)}' has no method '${callee}'`, expr.location, 'error', 'MEMBER-NOT-FOUND')
-              );
-              return null;
-            }
-            if (candidates.length > 1) {
-              diagnostics.push(
-                diagAt(
-                  `Ambiguous trait method '${callee}' for '${formatTypeForDiagnostic(receiverType)}'`,
-                  expr.location,
-                  'error',
-                  'TRAIT-009'
-                )
-              );
-              return null;
-            }
-            const candidate = candidates[0];
-            const expectedParams = candidate.method.params.map((param) => substituteTypeParams(param, candidate.mapping));
-            const expectedReturn = substituteTypeParams(candidate.method.returnType, candidate.mapping);
-
-            const actualArgs: LuminaType[] = [];
-            for (const arg of expr.args) {
-              const argType = typeCheckExpr(
-                arg,
-                symbols,
-                diagnostics,
-                scope,
-                options,
-                undefined,
-                resolving,
-                pendingDeps,
-                currentFunction,
-                di
-              );
-              if (argType) actualArgs.push(argType);
-            }
-
-            if (expectedParams.length !== actualArgs.length + 1) {
-              diagnostics.push(
-                diagAt(
-                  `Argument count mismatch for '${callee}'`,
-                  expr.location,
-                  'error',
-                  'TRAIT-006'
-                )
-              );
-            } else {
-              const expectedSelf = expectedParams[0];
-              if (!isTypeAssignable(receiverType, expectedSelf, symbols, options?.typeParams)) {
-                diagnostics.push(
-                  diagAt(
-                    `Method '${callee}' expects '${formatTypeForDiagnostic(expectedSelf)}' receiver but got '${formatTypeForDiagnostic(receiverType)}'`,
-                    expr.location,
-                    'error',
-                    'TRAIT-006'
-                  )
-                );
-              }
-              for (let i = 0; i < actualArgs.length; i += 1) {
-                const expected = expectedParams[i + 1];
-                const actual = actualArgs[i];
-                if (!isTypeAssignable(actual, expected, symbols, options?.typeParams)) {
-                  reportCallArgMismatch(
-                    callee,
-                    i,
-                    expected,
-                    actual,
-                    expr.args[i]?.location ?? expr.location,
-                    null
-                  );
-                }
-              }
-            }
-
-            if (expr.id != null && options?.traitMethodResolutions) {
-              const mangledName = mangleTraitMethodName(candidate.impl.traitType, candidate.impl.forType, callee);
-              options.traitMethodResolutions.set(expr.id, {
-                traitName: candidate.impl.traitName,
-                traitType: candidate.impl.traitType,
-                forType: candidate.impl.forType,
-                methodName: callee,
-                mangledName,
-              });
-            }
-            return expectedReturn;
+          if (canResolveTraitMethodCall(receiverType, callee)) {
+            return resolveTraitMethodCall(receiverType, expr.args, expr.location, expr.id, callee);
           }
+          const builtinMethodType = resolveBuiltinMethodCall(receiverType, expr.args, expr.location, callee);
+          if (builtinMethodType) return builtinMethodType;
+          diagnostics.push(
+            diagAt(
+              `Type '${formatTypeForDiagnostic(receiverType)}' has no method '${callee}'`,
+              expr.location,
+              'error',
+              'MEMBER-NOT-FOUND'
+            )
+          );
+          return null;
         }
 
         const enumVariant = findEnumVariantQualified(symbols, expr.enumName, callee, options);
@@ -3381,37 +3417,39 @@ function typeCheckExpr(
     const args = typeParamDefs.map(tp => mapping.get(tp.name) ?? 'any');
     return `${expr.name}<${args.join(',')}>`;
   }
-  if (expr.type === 'Member') {
-    if (expr.object.type === 'Identifier') {
-      const objectName = expr.object.name;
-      const expectedBase = expectedType ? parseTypeName(expectedType)?.base ?? expectedType : null;
-      const binding = options?.moduleBindings?.get(objectName);
-      if (binding && binding.kind === 'module') {
-        const exp = binding.exports.get(expr.property);
-        if (exp) {
-          if (exp.kind === 'function') return 'any';
-          if (exp.kind === 'value') return exp.valueType;
+    if (expr.type === 'Member') {
+      if (expr.object.type === 'Identifier') {
+        const objectName = expr.object.name;
+        const expectedBase = expectedType ? parseTypeName(expectedType)?.base ?? expectedType : null;
+        const binding = options?.moduleBindings?.get(objectName);
+        const localSym = symbols.get(objectName);
+        const variableShadow = localSym?.kind === 'variable';
+        if (!variableShadow && binding && binding.kind === 'module') {
+          const exp = binding.exports.get(expr.property);
+          if (exp) {
+            if (exp.kind === 'function') return 'any';
+            if (exp.kind === 'value') return exp.valueType;
+          }
+          if (expectedBase && expectedBase === objectName) {
+            return expectedType as LuminaType;
+          }
+          return unresolvedMember(
+            `Unknown module member '${objectName}.${expr.property}'`,
+            expr.location,
+            'UNRESOLVED_MEMBER'
+          );
         }
-        if (expectedBase && expectedBase === objectName) {
-          return expectedType as LuminaType;
+        if (!variableShadow && options?.importedNames?.has(objectName) && !symbols.has(objectName)) {
+          if (expectedBase && expectedBase === objectName) {
+            return expectedType as LuminaType;
+          }
+          return unresolvedMember(
+            `Unresolved namespace '${objectName}' while accessing '${expr.property}'`,
+            expr.location,
+            'UNRESOLVED_NAMESPACE'
+          );
         }
-        return unresolvedMember(
-          `Unknown module member '${objectName}.${expr.property}'`,
-          expr.location,
-          'UNRESOLVED_MEMBER'
-        );
       }
-      if (options?.importedNames?.has(objectName) && !symbols.has(objectName)) {
-        if (expectedBase && expectedBase === objectName) {
-          return expectedType as LuminaType;
-        }
-        return unresolvedMember(
-          `Unresolved namespace '${objectName}' while accessing '${expr.property}'`,
-          expr.location,
-          'UNRESOLVED_NAMESPACE'
-        );
-      }
-    }
     const movePath = getMovePath(expr);
     if (!skipMoveChecks && movePath) {
       const movedAt = scope?.findMoveConflictInfo(movePath, 'overlap');

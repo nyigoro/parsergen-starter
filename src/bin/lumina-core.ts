@@ -928,7 +928,10 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
       case 'Binary':
         return visitExpr(node.left) || visitExpr(node.right);
       case 'Call':
-        return Array.isArray(node.args) ? node.args.some((arg) => visitExpr(arg)) : false;
+        return (
+          visitExpr(node.receiver) ||
+          (Array.isArray(node.args) ? node.args.some((arg) => visitExpr(arg)) : false)
+        );
       case 'ArrayLiteral':
         return Array.isArray(node.elements) ? node.elements.some((element) => visitExpr(element)) : false;
       case 'Member':

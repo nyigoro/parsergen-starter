@@ -172,6 +172,7 @@ const visitExpr = (
         const signature = hm.inferredCalls.get(expr.id);
         if (signature) recordInstantiation(ctx, calleeName, signature);
       }
+      if (expr.receiver) visitExpr(expr.receiver, ctx, genericFns, hm);
       for (const arg of expr.args) visitExpr(arg, ctx, genericFns, hm);
       return;
     }
@@ -308,6 +309,7 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
   switch (expr.type) {
     case 'Call':
       substituteTypeArgs(expr.typeArgs, mapping);
+      if (expr.receiver) substituteTypesInExpr(expr.receiver, mapping);
       expr.args.forEach((arg) => substituteTypesInExpr(arg, mapping));
       return;
     case 'ArrayLiteral':
@@ -530,6 +532,7 @@ export function rewriteCallSites(
             }
           }
         }
+        if (expr.receiver) visitExprForRewrite(expr.receiver);
         expr.args.forEach(visitExprForRewrite);
         return;
       }

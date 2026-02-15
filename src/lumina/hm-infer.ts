@@ -1114,21 +1114,210 @@ function inferExpr(
       return null;
     }
     case 'Call': {
-      if (expr.receiver) {
-        inferChild(expr.receiver);
+      const inferReceiverCall = (receiverExpr: LuminaExpr): Type => {
+        const receiverType = inferChild(receiverExpr);
         const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
         const resultType = freshTypeVar();
+        let resolvedReceiverMethod = false;
+        const receiverResolved = receiverType ? prune(receiverType, subst) : null;
+        if (receiverResolved && receiverResolved.kind === 'adt') {
+          if (receiverResolved.name === 'Vec' && receiverResolved.params.length === 1) {
+            const elemType = receiverResolved.params[0];
+            switch (expr.callee.name) {
+              case 'push':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], elemType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Vec.push expects element type`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.push returns void`,
+                });
+                break;
+              case 'get':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Vec.get index must be an integer`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.get returns Option<T>`,
+                });
+                break;
+              case 'len':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.len returns i32`,
+                });
+                break;
+              case 'pop':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.pop returns Option<T>`,
+                });
+                break;
+              case 'clear':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.clear returns void`,
+                });
+                break;
+              default:
+                break;
+            }
+          } else if (receiverResolved.name === 'HashMap' && receiverResolved.params.length === 2) {
+            const [keyType, valueType] = receiverResolved.params;
+            switch (expr.callee.name) {
+              case 'insert':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], keyType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `HashMap.insert key must match K`,
+                  });
+                }
+                if (argTypes[1]) {
+                  tryUnify(argTypes[1], valueType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `HashMap.insert value must match V`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashMap.insert returns Option<V>`,
+                });
+                break;
+              case 'get':
+              case 'remove':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], keyType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `HashMap key argument must match K`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashMap lookup returns Option<V>`,
+                });
+                break;
+              case 'contains_key':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], keyType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `HashMap key argument must match K`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashMap.contains_key returns bool`,
+                });
+                break;
+              case 'len':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashMap.len returns i32`,
+                });
+                break;
+              case 'clear':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashMap.clear returns void`,
+                });
+                break;
+              case 'keys':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [keyType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashMap.keys returns Vec<K>`,
+                });
+                break;
+              case 'values':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashMap.values returns Vec<V>`,
+                });
+                break;
+              default:
+                break;
+            }
+          } else if (receiverResolved.name === 'HashSet' && receiverResolved.params.length === 1) {
+            const elemType = receiverResolved.params[0];
+            switch (expr.callee.name) {
+              case 'insert':
+              case 'contains':
+              case 'remove':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], elemType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `HashSet value argument must match T`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashSet method returns bool`,
+                });
+                break;
+              case 'len':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashSet.len returns i32`,
+                });
+                break;
+              case 'clear':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashSet.clear returns void`,
+                });
+                break;
+              case 'values':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `HashSet.values returns Vec<T>`,
+                });
+                break;
+              default:
+                break;
+            }
+          }
+        }
         if (expectedType) {
           tryUnify(resultType, expectedType, subst, diagnostics, {
             location: expr.location,
             note: `Call result must match expected type`,
           });
         }
-        recordCallSignature(expr, argTypes, resultType, subst, inferredCalls);
+        if (resolvedReceiverMethod) {
+          recordCallSignature(expr, receiverType ? [receiverType, ...argTypes] : argTypes, resultType, subst, inferredCalls);
+        }
         return recordExprType(expr, resultType, subst);
+      };
+
+      if (expr.receiver) {
+        return inferReceiverCall(expr.receiver);
       }
       const enumName = expr.enumName;
       const isShadowed = enumName ? env.lookup(enumName) : undefined;
+      if (enumName && isShadowed) {
+        return inferReceiverCall({ type: 'Identifier', name: enumName, location: expr.location });
+      }
       if (enumName && !isShadowed && moduleBindings) {
         const moduleExport = moduleBindings.get(enumName);
         if (moduleExport?.kind === 'module') {
