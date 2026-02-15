@@ -23,7 +23,8 @@ export function getCodeActionsForDiagnostics(
     code?: string | number;
     range: Range;
     relatedInformation?: Array<{ message: string; location?: { uri: string; range: Range } }>;
-  }>
+  }>,
+  options?: { range?: Range }
 ): CodeAction[] {
   const lines = text.split(/\r?\n/);
   let insertLine = 0;
@@ -202,5 +203,139 @@ export function getCodeActionsForDiagnostics(
     }
   }
 
+  actions.push(...getRefactorActions(text, uri, options?.range));
+
   return actions;
+}
+
+function getRefactorActions(text: string, uri: string, range?: Range): CodeAction[] {
+  if (!range) return [];
+  const actions: CodeAction[] = [];
+  const selected = getTextInRange(text, range);
+  const trimmed = selected.trim();
+  if (!trimmed) return actions;
+
+  const extract = buildExtractVariableAction(text, uri, range, selected);
+  if (extract) actions.push(extract);
+
+  const rewrites = buildCollectionRewriteActions(uri, range, trimmed);
+  actions.push(...rewrites);
+
+  return actions;
+}
+
+function getTextInRange(text: string, range: Range): string {
+  const lines = text.split(/\r?\n/);
+  if (range.start.line > range.end.line) return '';
+  if (range.start.line === range.end.line) {
+    const line = lines[range.start.line] ?? '';
+    return line.slice(range.start.character, range.end.character);
+  }
+  const chunks: string[] = [];
+  for (let i = range.start.line; i <= range.end.line; i++) {
+    const line = lines[i] ?? '';
+    if (i === range.start.line) {
+      chunks.push(line.slice(range.start.character));
+    } else if (i === range.end.line) {
+      chunks.push(line.slice(0, range.end.character));
+    } else {
+      chunks.push(line);
+    }
+  }
+  return chunks.join('\n');
+}
+
+function findUniqueName(text: string, base: string): string {
+  const hasName = (name: string) => new RegExp(`\\b${name}\\b`).test(text);
+  if (!hasName(base)) return base;
+  let idx = 1;
+  while (hasName(`${base}${idx}`)) idx += 1;
+  return `${base}${idx}`;
+}
+
+function buildExtractVariableAction(
+  text: string,
+  uri: string,
+  range: Range,
+  selected: string
+): CodeAction | null {
+  const trimmed = selected.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes('\n')) return null;
+  if (/^\s*(let|fn|struct|enum|type|import)\b/.test(trimmed)) return null;
+
+  const lines = text.split(/\r?\n/);
+  const lineText = lines[range.start.line] ?? '';
+  const indent = (/^\s*/.exec(lineText)?.[0]) ?? '';
+  const varName = findUniqueName(text, 'extracted');
+  const declaration = `${indent}let ${varName} = ${trimmed};\n`;
+
+  const edit: WorkspaceEdit = {
+    changes: {
+      [uri]: [
+        TextEdit.insert({ line: range.start.line, character: 0 }, declaration),
+        TextEdit.replace(range, varName),
+      ],
+    },
+  };
+
+  return {
+    title: `Extract to local '${varName}'`,
+    kind: CodeActionKind.RefactorExtract,
+    edit,
+  };
+}
+
+function buildCollectionRewriteActions(uri: string, range: Range, snippet: string): CodeAction[] {
+  const actions: CodeAction[] = [];
+
+  // function-style -> method-style: vec.push(v, x) => v.push(x)
+  const fnToMethod = /^(vec|hashmap|hashset)\.([a-zA-Z_][\w]*)\(\s*([a-zA-Z_][\w]*)\s*(?:,\s*([\s\S]*))?\)$/.exec(
+    snippet
+  );
+  if (fnToMethod) {
+    const methodArgs = (fnToMethod[4] ?? '').trim();
+    const replacement = `${fnToMethod[3]}.${fnToMethod[2]}(${methodArgs})`;
+    actions.push({
+      title: 'Convert to method call syntax',
+      kind: CodeActionKind.RefactorRewrite,
+      edit: { changes: { [uri]: [TextEdit.replace(range, replacement)] } },
+    });
+  }
+
+  // method-style -> function-style: v.push(x) => vec.push(v, x)
+  const methodToFn = /^([a-zA-Z_][\w]*)\.([a-zA-Z_][\w]*)\(([\s\S]*)\)$/.exec(snippet);
+  if (methodToFn) {
+    const receiver = methodToFn[1];
+    const method = methodToFn[2];
+    const args = methodToFn[3].trim();
+    const moduleCandidates = methodModules(method);
+    for (const moduleName of moduleCandidates) {
+      const replacement = `${moduleName}.${method}(${receiver}${args ? `, ${args}` : ''})`;
+      actions.push({
+        title: `Convert to function call syntax (${moduleName})`,
+        kind: CodeActionKind.RefactorRewrite,
+        edit: { changes: { [uri]: [TextEdit.replace(range, replacement)] } },
+      });
+    }
+  }
+
+  return actions;
+}
+
+function methodModules(method: string): string[] {
+  const modules = new Set<string>();
+  if (['push', 'get', 'len', 'pop', 'clear', 'map', 'filter', 'fold', 'for_each'].includes(method)) {
+    modules.add('vec');
+  }
+  if (['insert', 'get', 'remove', 'contains_key', 'len', 'clear', 'keys', 'values'].includes(method)) {
+    modules.add('hashmap');
+  }
+  if (['insert', 'contains', 'remove', 'len', 'clear', 'values'].includes(method)) {
+    modules.add('hashset');
+  }
+  if (modules.size > 0) {
+    return Array.from(modules);
+  }
+  return [];
 }

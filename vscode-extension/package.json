@@ -1,0 +1,225 @@
+{
+  "name": "lumina-vscode",
+  "displayName": "Lumina Language",
+  "description": "Advanced VS Code integration for Lumina (LSP, inlay hints, refactors, semantic tokens, tasks).",
+  "version": "0.3.0",
+  "publisher": "nyigoro",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:lumina",
+    "onCommand:lumina.restartLanguageServer",
+    "onCommand:lumina.showServerOutput",
+    "onCommand:lumina.compileCurrentFile",
+    "onCommand:lumina.runCurrentFile",
+    "onCommand:lumina.formatCurrentFile",
+    "onCommand:lumina.doctor"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "lumina",
+        "aliases": [
+          "Lumina",
+          "lumina"
+        ],
+        "extensions": [
+          ".lum",
+          ".lumina",
+          ".lm"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lumina",
+        "scopeName": "source.lumina",
+        "path": "./syntaxes/lumina.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "lumina.restartLanguageServer",
+        "title": "Lumina: Restart Language Server",
+        "category": "Lumina"
+      },
+      {
+        "command": "lumina.showServerOutput",
+        "title": "Lumina: Show Language Server Output",
+        "category": "Lumina"
+      },
+      {
+        "command": "lumina.compileCurrentFile",
+        "title": "Lumina: Compile Current File",
+        "category": "Lumina"
+      },
+      {
+        "command": "lumina.runCurrentFile",
+        "title": "Lumina: Run Current File",
+        "category": "Lumina"
+      },
+      {
+        "command": "lumina.formatCurrentFile",
+        "title": "Lumina: Format Current File",
+        "category": "Lumina"
+      },
+      {
+        "command": "lumina.doctor",
+        "title": "Lumina: Doctor",
+        "category": "Lumina"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "lumina.runCurrentFile",
+          "group": "navigation@10",
+          "when": "resourceLangId == lumina"
+        },
+        {
+          "command": "lumina.compileCurrentFile",
+          "group": "navigation@11",
+          "when": "resourceLangId == lumina"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "lumina.restartLanguageServer"
+        },
+        {
+          "command": "lumina.showServerOutput"
+        },
+        {
+          "command": "lumina.compileCurrentFile"
+        },
+        {
+          "command": "lumina.runCurrentFile"
+        },
+        {
+          "command": "lumina.formatCurrentFile"
+        },
+        {
+          "command": "lumina.doctor"
+        }
+      ]
+    },
+    "snippets": [
+      {
+        "language": "lumina",
+        "path": "./snippets/lumina.code-snippets"
+      }
+    ],
+    "configuration": {
+      "title": "Lumina",
+      "properties": {
+        "lumina.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to lumina-lsp executable or JS entrypoint. If empty, extension auto-discovers workspace/global installations."
+        },
+        "lumina.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional arguments passed to lumina-lsp."
+        },
+        "lumina.cli.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to lumina CLI executable or JS entrypoint. If empty, extension auto-discovers workspace/global installations."
+        },
+        "lumina.cli.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional arguments passed before Lumina CLI command verbs."
+        },
+        "lumina.compile.target": {
+          "type": "string",
+          "enum": [
+            "esm",
+            "cjs",
+            "wasm"
+          ],
+          "default": "esm",
+          "description": "Default compilation target for 'Lumina: Compile Current File'."
+        },
+        "lumina.compile.astJs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include '--ast-js' when compiling via VS Code commands (non-WASM targets)."
+        },
+        "lumina.maxDiagnostics": {
+          "type": "number",
+          "default": 200,
+          "description": "Maximum diagnostics published per file."
+        },
+        "lumina.fileExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".lum",
+            ".lumina",
+            ".lm"
+          ],
+          "description": "File extensions indexed by Lumina LSP."
+        },
+        "lumina.maxIndexFiles": {
+          "type": "number",
+          "default": 2000,
+          "description": "Maximum workspace files indexed by Lumina LSP."
+        },
+        "lumina.renameConflictMode": {
+          "type": "string",
+          "enum": [
+            "all",
+            "exports"
+          ],
+          "default": "all",
+          "description": "Rename conflict scope used by LSP."
+        },
+        "lumina.renamePreviewMode": {
+          "type": "string",
+          "enum": [
+            "popup",
+            "log",
+            "off"
+          ],
+          "default": "popup",
+          "description": "Rename preview behavior."
+        },
+        "lumina.useHmDiagnostics": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable HM-inference diagnostics in language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json",
+    "watch": "tsc -w -p ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.9.3",
+    "vscode-languageclient": "^9.0.1"
+  }
+}
+

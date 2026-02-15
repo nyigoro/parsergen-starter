@@ -1,0 +1,8 @@
+.vscode/**
+src/**
+tsconfig.json
+**/*.map
+**/*.ts
+node_modules/**
+!node_modules/vscode-languageclient/**
+

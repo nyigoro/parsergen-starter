@@ -1241,9 +1241,10 @@ function lintMissingSemicolons(source: string): Diagnostic[] {
 }
 
 function dedupeDiagnostics(list: Diagnostic[]): Diagnostic[] {
+  const normalized = suppressDiagnosticCascade(list);
   const seen = new Set<string>();
   const result: Diagnostic[] = [];
-  for (const diag of list) {
+  for (const diag of normalized) {
     const start = diag.location?.start;
     const key = `${start?.line ?? 0}:${start?.column ?? 0}:${diag.code ?? ''}:${diag.message}`;
     if (seen.has(key)) continue;
@@ -1251,6 +1252,48 @@ function dedupeDiagnostics(list: Diagnostic[]): Diagnostic[] {
     result.push(diag);
   }
   return result;
+}
+
+function suppressDiagnosticCascade(list: Diagnostic[]): Diagnostic[] {
+  if (list.length <= 1) return list;
+  const parseErrors = list.filter((diag) => diag.code === 'PARSE_ERROR' && diag.severity === 'error');
+  const firstParseLine = parseErrors.reduce<number>(
+    (min, diag) => Math.min(min, diag.location.start.line),
+    Number.POSITIVE_INFINITY
+  );
+  const hasParseErrors = Number.isFinite(firstParseLine);
+  const cascadeCodes = new Set([
+    'UNRESOLVED_MEMBER',
+    'UNRESOLVED_NAMESPACE',
+    'MEMBER-NOT-FOUND',
+    'UNKNOWN_FUNCTION',
+    'UNKNOWN_TYPE',
+    'LUM-001',
+    'LUM-002',
+  ]);
+
+  const perLineCodeSeen = new Set<string>();
+  const filtered: Diagnostic[] = [];
+  let postParseErrorCount = 0;
+  for (const diag of list) {
+    const line = diag.location.start.line;
+    const code = String(diag.code ?? '');
+    const isError = diag.severity === 'error';
+
+    if (hasParseErrors && isError && code !== 'PARSE_ERROR' && line >= firstParseLine) {
+      postParseErrorCount += 1;
+      if (postParseErrorCount > 25) continue;
+      if (cascadeCodes.has(code)) continue;
+    }
+
+    if (isError && cascadeCodes.has(code)) {
+      const key = `${line}:${code}`;
+      if (perLineCodeSeen.has(key)) continue;
+      perLineCodeSeen.add(key);
+    }
+    filtered.push(diag);
+  }
+  return filtered;
 }
 
 function locationContains(location: Location, pos: { line: number; column: number }): boolean {

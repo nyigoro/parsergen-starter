@@ -219,4 +219,42 @@ describe('ProjectContext', () => {
     expect(updated.signatureChanged).toBe(true);
     expect(updated.changedSymbols).toContain('exposed');
   });
+
+  test('suppresses duplicate cascade errors on the same line', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const fileUri = path.resolve(__dirname, '../fixtures/cascade-dup.lm');
+    const text = `
+      fn main() {
+        missing(1); missing(2);
+        return 0;
+      }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(fileUri, text);
+    const diagnostics = project.getDiagnostics(fileUri);
+    const unknown = diagnostics.filter((diag) => diag.code === 'UNKNOWN_FUNCTION');
+    expect(unknown).toHaveLength(1);
+  });
+
+  test('limits cascade errors after parse failure', () => {
+    const parser = compileGrammar(luminaGrammar);
+    const project = new ProjectContext(parser);
+
+    const fileUri = path.resolve(__dirname, '../fixtures/cascade-parse.lm');
+    const text = `
+      fn main() {
+        let x = foo(;
+        bar.baz(
+        nope(
+        return x;
+      }
+    `.trim() + '\n';
+
+    project.addOrUpdateDocument(fileUri, text);
+    const diagnostics = project.getDiagnostics(fileUri);
+    expect(diagnostics.some((diag) => diag.code === 'PARSE_ERROR')).toBe(true);
+    expect(diagnostics.length).toBeLessThanOrEqual(35);
+  });
 });

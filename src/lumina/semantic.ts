@@ -71,6 +71,14 @@ export class SymbolTable {
   }
 }
 
+function cloneSymbolTable(source: SymbolTable): SymbolTable {
+  const next = new SymbolTable();
+  for (const sym of source.list()) {
+    next.define(sym);
+  }
+  return next;
+}
+
 export interface TraitMethodSig {
   name: string;
   params: LuminaType[];
@@ -585,6 +593,25 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
   return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined, hmCallSignatures, hmExprTypes, traitRegistry, traitMethodResolutions };
 }
 
+function warnOnImportedShadow(
+  name: string,
+  location: Location | undefined,
+  diagnostics: Diagnostic[],
+  options?: AnalyzeOptions
+): void {
+  if (!options?.importedNames?.has(name)) return;
+  const binding = options.moduleBindings?.get(name);
+  const target = binding?.kind === 'module' ? 'namespace' : 'imported binding';
+  diagnostics.push(
+    diagAt(
+      `Binding '${name}' shadows ${target} '${name}'`,
+      location,
+      'warning',
+      'SHADOWED_IMPORT'
+    )
+  );
+}
+
 function resolveFunctionBody(
   stmt: LuminaStatement,
   symbols: SymbolTable,
@@ -640,6 +667,7 @@ function resolveFunctionBody(
   const fnScope = new Scope(parentScope);
   const hmParamTypes = options?.hmInferred?.fnParams.get(stmt.name);
   stmt.params.forEach((param, idx) => {
+    warnOnImportedShadow(param.name, param.location ?? stmt.location, diagnostics, options);
     const inferredParam = resolveTypeExpr(param.typeName) ?? hmParamTypes?.[idx] ?? null;
     if (!param.typeName && !options?.useHm) {
       diagnostics.push(diagAt(`Missing type annotation for parameter '${param.name}'`, param.location ?? stmt.location));
@@ -1101,6 +1129,7 @@ function typeCheckStatement(
     case 'Let': {
       const typeParams = options?.typeParams ?? new Map<string, LuminaType | undefined>();
       const expectedType = resolveTypeExpr(stmt.typeName) ?? null;
+      warnOnImportedShadow(stmt.name, stmt.location, diagnostics, options);
       if (scope) {
         const parentScope = scope.parent;
         const shadowed = parentScope ? findDefScope(parentScope, stmt.name) : null;
@@ -1233,48 +1262,98 @@ function typeCheckStatement(
         const thenDi = di.clone();
         const elseDi = di.clone();
         const thenScope = new Scope(scope);
+        const thenSymbols = cloneSymbolTable(symbols);
         if (narrowing) {
           if (narrowing.when === 'then') {
             thenScope.narrow(narrowing.name, narrowing.type);
           }
         }
-        typeCheckStatement(stmt.thenBlock, symbols, diagnostics, currentReturnType, thenScope, options, returnCollector, resolving, pendingDeps, currentFunction, thenDi);
+        typeCheckStatement(
+          stmt.thenBlock,
+          thenSymbols,
+          diagnostics,
+          currentReturnType,
+          thenScope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          thenDi
+        );
         const thenMoves = snapshotMoves(scope);
         restoreMoves(baseMoves);
         let elseMoves = baseMoves;
         if (stmt.elseBlock) {
           const elseScope = new Scope(scope);
+          const elseSymbols = cloneSymbolTable(symbols);
           if (narrowing && narrowing.when === 'else') {
             elseScope.narrow(narrowing.name, narrowing.type);
           }
           if (elseNarrow) {
             elseScope.narrow(elseNarrow.name, elseNarrow.type);
           }
-          typeCheckStatement(stmt.elseBlock, symbols, diagnostics, currentReturnType, elseScope, options, returnCollector, resolving, pendingDeps, currentFunction, elseDi);
+          typeCheckStatement(
+            stmt.elseBlock,
+            elseSymbols,
+            diagnostics,
+            currentReturnType,
+            elseScope,
+            options,
+            returnCollector,
+            resolving,
+            pendingDeps,
+            currentFunction,
+            elseDi
+          );
           elseMoves = snapshotMoves(scope);
         }
         mergeMoves(scope, [thenMoves, elseMoves]);
         di.mergeFromBranches([thenDi, elseDi]);
       } else {
         const thenScope = new Scope(scope);
+        const thenSymbols = cloneSymbolTable(symbols);
         if (narrowing) {
           if (narrowing.when === 'then') {
             thenScope.narrow(narrowing.name, narrowing.type);
           }
         }
-        typeCheckStatement(stmt.thenBlock, symbols, diagnostics, currentReturnType, thenScope, options, returnCollector, resolving, pendingDeps, currentFunction);
+        typeCheckStatement(
+          stmt.thenBlock,
+          thenSymbols,
+          diagnostics,
+          currentReturnType,
+          thenScope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction
+        );
         const thenMoves = snapshotMoves(scope);
         restoreMoves(baseMoves);
         let elseMoves = baseMoves;
         if (stmt.elseBlock) {
           const elseScope = new Scope(scope);
+          const elseSymbols = cloneSymbolTable(symbols);
           if (narrowing && narrowing.when === 'else') {
             elseScope.narrow(narrowing.name, narrowing.type);
           }
           if (elseNarrow) {
             elseScope.narrow(elseNarrow.name, elseNarrow.type);
           }
-          typeCheckStatement(stmt.elseBlock, symbols, diagnostics, currentReturnType, elseScope, options, returnCollector, resolving, pendingDeps, currentFunction);
+          typeCheckStatement(
+            stmt.elseBlock,
+            elseSymbols,
+            diagnostics,
+            currentReturnType,
+            elseScope,
+            options,
+            returnCollector,
+            resolving,
+            pendingDeps,
+            currentFunction
+          );
           elseMoves = snapshotMoves(scope);
         }
         mergeMoves(scope, [thenMoves, elseMoves]);
@@ -1289,9 +1368,34 @@ function typeCheckStatement(
       const baseMoves = snapshotMoves(scope);
       if (di) {
         const bodyDi = di.clone();
-        typeCheckStatement(stmt.body, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction, bodyDi);
+        const loopSymbols = cloneSymbolTable(symbols);
+        typeCheckStatement(
+          stmt.body,
+          loopSymbols,
+          diagnostics,
+          currentReturnType,
+          scope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          bodyDi
+        );
       } else {
-        typeCheckStatement(stmt.body, symbols, diagnostics, currentReturnType, scope, options, returnCollector, resolving, pendingDeps, currentFunction);
+        const loopSymbols = cloneSymbolTable(symbols);
+        typeCheckStatement(
+          stmt.body,
+          loopSymbols,
+          diagnostics,
+          currentReturnType,
+          scope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction
+        );
       }
       const bodyMoves = snapshotMoves(scope);
       restoreMoves(baseMoves);
@@ -1461,9 +1565,22 @@ function typeCheckStatement(
       return;
     case 'Block': {
       const blockScope = new Scope(scope);
+      const blockSymbols = cloneSymbolTable(symbols);
       const blockDi = di ?? undefined;
       for (const bodyStmt of stmt.body) {
-        typeCheckStatement(bodyStmt, symbols, diagnostics, currentReturnType, blockScope, options, returnCollector, resolving, pendingDeps, currentFunction, blockDi);
+        typeCheckStatement(
+          bodyStmt,
+          blockSymbols,
+          diagnostics,
+          currentReturnType,
+          blockScope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          blockDi
+        );
       }
       collectUnusedBindings(blockScope, diagnostics, stmt.location);
       return;

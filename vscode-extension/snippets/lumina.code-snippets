@@ -1,0 +1,56 @@
+{
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2})${3: -> ${4:int}} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Define a function"
+  },
+  "Async Function": {
+    "prefix": "afn",
+    "body": [
+      "async fn ${1:name}(${2}) -> ${3:Result<${4:int}, string>} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Define an async function"
+  },
+  "Struct": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:Name} {",
+      "\t${2:field}: ${3:int}",
+      "}"
+    ],
+    "description": "Define a struct"
+  },
+  "Enum": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:Name}${2:<T>} {",
+      "\t${3:Variant}(${4:T}),",
+      "\t${0:None}",
+      "}"
+    ],
+    "description": "Define an enum"
+  },
+  "Match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:value} {",
+      "\t${2:Pattern} => ${0:expr},",
+      "}"
+    ],
+    "description": "Create a match expression"
+  },
+  "Import Namespace": {
+    "prefix": "imn",
+    "body": [
+      "import * as ${1:alias} from \"${2:./module.lm}\";"
+    ],
+    "description": "Import module as namespace"
+  }
+}
+

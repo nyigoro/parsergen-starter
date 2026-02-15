@@ -1387,7 +1387,7 @@ function inferExpr(
     case 'Member': {
       const objectName = expr.object.type === 'Identifier' ? expr.object.name : null;
       const isValueObject = objectName ? !!env.lookup(objectName) : false;
-      if (objectName && moduleBindings) {
+      if (objectName && moduleBindings && !isValueObject) {
         const moduleExport = moduleBindings.get(objectName);
         if (moduleExport?.kind === 'module') {
           const member = moduleExport.exports.get(expr.property);

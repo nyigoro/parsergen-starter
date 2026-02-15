@@ -50,6 +50,37 @@ export default [
     },
   },
 
+  // VS Code extension TypeScript (separate tsconfig)
+  {
+    files: ['vscode-extension/src/**/*.ts'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: 2021,
+        sourceType: 'module',
+        project: './vscode-extension/tsconfig.json',
+      },
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: {
+      ...typescript.configs.recommended.rules,
+      'no-console': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-expressions': 'warn',
+      'no-undef': 'off',
+    },
+  },
+
   // JavaScript config (ESM)
   {
     files: ['**/*.js', '**/*.jsx'],
@@ -234,6 +265,7 @@ export default [
       'demo.js',
       'test-lumina-pkg/**',
       'examples/wasm-hello/benchmark.ts',
+      'vscode-extension/dist/**',
     ],
   },
 ];

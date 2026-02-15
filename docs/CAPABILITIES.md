@@ -44,6 +44,8 @@ This document tracks the current state of the Lumina language/tooling and near�
 | LSP cross‑file definition | Stable | Aliases + namespace imports supported |
 | Canonical module IDs + alias‑aware hover | Stable | Cross‑file hover & definition via module graph |
 | LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010; **range precision for nested generics deferred** |
+| LSP inlay hints | Stable | Type hints for inferred lets + parameter hints |
+| LSP refactor code actions | Beta | Extract local + collection call style rewrite |
 | Diagnostic deduplication | Stable | HM + semantic merged |
 
 ## Standard Library & Runtime

@@ -22,6 +22,7 @@ import {
   PrepareRenameParams,
   Range,
   Hover,
+  InlayHint,
   MarkupKind,
   SignatureHelp,
   SignatureInformation,
@@ -49,6 +50,7 @@ import { findMemberAt, getWordAt, resolveHoverLabel, resolveSignatureHelp } from
 import { getCodeActionsForDiagnostics } from './code-actions.js';
 import { buildModuleGraph, resolveSymbol, type ModuleGraph } from './module-graph.js';
 import { formatHoverContents } from './hover-format.js';
+import { buildInlayHints } from './inlay-hints.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -290,6 +292,7 @@ connection.onInitialize((params: InitializeParams) => {
       hoverProvider: true,
       signatureHelpProvider: { triggerCharacters: ['(', ','] },
       codeActionProvider: true,
+      inlayHintProvider: true,
       semanticTokensProvider: {
         legend: semanticTokensLegend,
         full: true,
@@ -583,7 +586,26 @@ connection.onRenameRequest((params: RenameParams): WorkspaceEdit | null => {
 connection.onCodeAction((params): CodeAction[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  return getCodeActionsForDiagnostics(doc.getText(), params.textDocument.uri, params.context.diagnostics);
+  return getCodeActionsForDiagnostics(doc.getText(), params.textDocument.uri, params.context.diagnostics, {
+    range: params.range,
+  });
+});
+
+connection.languages.inlayHint.on((params): InlayHint[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || !project) return [];
+  const ast = project.getDocumentAst(params.textDocument.uri);
+  const symbols = project.getSymbols(params.textDocument.uri);
+  const moduleBindings = project.getModuleBindings(params.textDocument.uri);
+  const hmExprTypes = project.getHmExprTypes(params.textDocument.uri);
+  return buildInlayHints({
+    doc,
+    ast,
+    range: params.range,
+    symbols,
+    moduleBindings,
+    hmExprTypes,
+  });
 });
 
 connection.languages.semanticTokens.on((params) => {

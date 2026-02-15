@@ -163,6 +163,23 @@ Example (VS Code settings):
 }
 ```
 
+### VS Code Extension (Advanced)
+
+A dedicated VS Code extension is available in `vscode-extension/` with:
+- language registration (`.lum`, `.lumina`, `.lm`)
+- LSP client integration
+- inlay hints
+- quick-fix and refactor code actions
+- compile/run/format commands
+
+Build locally:
+
+```bash
+cd vscode-extension
+npm install
+npm run build
+```
+
 ## 🧭 Lumina By Example
 
 Create two files:
