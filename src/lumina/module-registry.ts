@@ -1546,6 +1546,224 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const syncModule: ModuleNamespace = (() => {
+    const mutexT = adt('Mutex');
+    const semaphoreT = adt('Semaphore');
+    const atomicI32T = adt('AtomicI32');
+    const mutexNewType: Type = fnType([], mutexT);
+    const mutexAcquireType: Type = fnType([mutexT], promiseType(primitive('bool')));
+    const mutexTryAcquireType: Type = fnType([mutexT], primitive('bool'));
+    const mutexReleaseType: Type = fnType([mutexT], primitive('bool'));
+    const mutexIsLockedType: Type = fnType([mutexT], primitive('bool'));
+    const semaphoreNewType: Type = fnType([primitive('int')], semaphoreT);
+    const semaphoreAcquireType: Type = fnType([semaphoreT], promiseType(primitive('bool')));
+    const semaphoreTryAcquireType: Type = fnType([semaphoreT], primitive('bool'));
+    const semaphoreReleaseType: Type = fnType([semaphoreT, primitive('int')], primitive('void'));
+    const semaphoreAvailableType: Type = fnType([semaphoreT], primitive('int'));
+    const atomicNewType: Type = fnType([primitive('int')], atomicI32T);
+    const atomicAvailableType: Type = fnType([], primitive('bool'));
+    const atomicLoadType: Type = fnType([atomicI32T], primitive('int'));
+    const atomicStoreType: Type = fnType([atomicI32T, primitive('int')], primitive('int'));
+    const atomicAddType: Type = fnType([atomicI32T, primitive('int')], primitive('int'));
+    const atomicSubType: Type = fnType([atomicI32T, primitive('int')], primitive('int'));
+    const atomicCmpExType: Type = fnType([atomicI32T, primitive('int'), primitive('int')], primitive('int'));
+
+    return {
+      kind: 'module',
+      name: 'sync',
+      moduleId: 'std://sync',
+      exports: new Map([
+        [
+          'mutex_new',
+          moduleFunctionWithScheme(
+            'mutex_new',
+            [],
+            'Mutex',
+            schemeFromVars(mutexNewType, []),
+            [],
+            'std://sync'
+          ),
+        ],
+        [
+          'mutex_acquire',
+          moduleFunctionWithScheme(
+            'mutex_acquire',
+            ['Mutex'],
+            'Promise<bool>',
+            schemeFromVars(mutexAcquireType, []),
+            ['mutex'],
+            'std://sync'
+          ),
+        ],
+        [
+          'mutex_try_acquire',
+          moduleFunctionWithScheme(
+            'mutex_try_acquire',
+            ['Mutex'],
+            'bool',
+            schemeFromVars(mutexTryAcquireType, []),
+            ['mutex'],
+            'std://sync'
+          ),
+        ],
+        [
+          'mutex_release',
+          moduleFunctionWithScheme(
+            'mutex_release',
+            ['Mutex'],
+            'bool',
+            schemeFromVars(mutexReleaseType, []),
+            ['mutex'],
+            'std://sync'
+          ),
+        ],
+        [
+          'mutex_is_locked',
+          moduleFunctionWithScheme(
+            'mutex_is_locked',
+            ['Mutex'],
+            'bool',
+            schemeFromVars(mutexIsLockedType, []),
+            ['mutex'],
+            'std://sync'
+          ),
+        ],
+        [
+          'semaphore_new',
+          moduleFunctionWithScheme(
+            'semaphore_new',
+            ['int'],
+            'Semaphore',
+            schemeFromVars(semaphoreNewType, []),
+            ['permits'],
+            'std://sync'
+          ),
+        ],
+        [
+          'semaphore_acquire',
+          moduleFunctionWithScheme(
+            'semaphore_acquire',
+            ['Semaphore'],
+            'Promise<bool>',
+            schemeFromVars(semaphoreAcquireType, []),
+            ['semaphore'],
+            'std://sync'
+          ),
+        ],
+        [
+          'semaphore_try_acquire',
+          moduleFunctionWithScheme(
+            'semaphore_try_acquire',
+            ['Semaphore'],
+            'bool',
+            schemeFromVars(semaphoreTryAcquireType, []),
+            ['semaphore'],
+            'std://sync'
+          ),
+        ],
+        [
+          'semaphore_release',
+          moduleFunctionWithScheme(
+            'semaphore_release',
+            ['Semaphore', 'int'],
+            'void',
+            schemeFromVars(semaphoreReleaseType, []),
+            ['semaphore', 'count'],
+            'std://sync'
+          ),
+        ],
+        [
+          'semaphore_available',
+          moduleFunctionWithScheme(
+            'semaphore_available',
+            ['Semaphore'],
+            'int',
+            schemeFromVars(semaphoreAvailableType, []),
+            ['semaphore'],
+            'std://sync'
+          ),
+        ],
+        [
+          'atomic_i32_new',
+          moduleFunctionWithScheme(
+            'atomic_i32_new',
+            ['int'],
+            'AtomicI32',
+            schemeFromVars(atomicNewType, []),
+            ['initial'],
+            'std://sync'
+          ),
+        ],
+        [
+          'atomic_i32_is_available',
+          moduleFunctionWithScheme(
+            'atomic_i32_is_available',
+            [],
+            'bool',
+            schemeFromVars(atomicAvailableType, []),
+            [],
+            'std://sync'
+          ),
+        ],
+        [
+          'atomic_i32_load',
+          moduleFunctionWithScheme(
+            'atomic_i32_load',
+            ['AtomicI32'],
+            'int',
+            schemeFromVars(atomicLoadType, []),
+            ['atomic'],
+            'std://sync'
+          ),
+        ],
+        [
+          'atomic_i32_store',
+          moduleFunctionWithScheme(
+            'atomic_i32_store',
+            ['AtomicI32', 'int'],
+            'int',
+            schemeFromVars(atomicStoreType, []),
+            ['atomic', 'value'],
+            'std://sync'
+          ),
+        ],
+        [
+          'atomic_i32_add',
+          moduleFunctionWithScheme(
+            'atomic_i32_add',
+            ['AtomicI32', 'int'],
+            'int',
+            schemeFromVars(atomicAddType, []),
+            ['atomic', 'delta'],
+            'std://sync'
+          ),
+        ],
+        [
+          'atomic_i32_sub',
+          moduleFunctionWithScheme(
+            'atomic_i32_sub',
+            ['AtomicI32', 'int'],
+            'int',
+            schemeFromVars(atomicSubType, []),
+            ['atomic', 'delta'],
+            'std://sync'
+          ),
+        ],
+        [
+          'atomic_i32_compare_exchange',
+          moduleFunctionWithScheme(
+            'atomic_i32_compare_exchange',
+            ['AtomicI32', 'int', 'int'],
+            'int',
+            schemeFromVars(atomicCmpExType, []),
+            ['atomic', 'expected', 'replacement'],
+            'std://sync'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const preludeModule: ModuleNamespace = {
     kind: 'module',
     name: '@prelude',
@@ -1618,6 +1836,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['hashset', hashsetModule],
       ['channel', channelModule],
       ['thread', threadModule],
+      ['sync', syncModule],
       ['fs', fsModule],
       ['http', httpModule],
     ]),
@@ -1637,6 +1856,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/hashset', hashsetModule);
   registry.set('@std/channel', channelModule);
   registry.set('@std/thread', threadModule);
+  registry.set('@std/sync', syncModule);
   registry.set('@prelude', preludeModule);
   return registry;
 }

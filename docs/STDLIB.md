@@ -324,3 +324,58 @@ Non-blocking poll for worker messages.
 
 ### terminate(thread: Thread) -> Promise<Void>
 Terminates the worker.
+
+## @std/sync
+
+Synchronization primitives for async/threaded coordination.
+
+### mutex_new() -> Mutex
+Creates a new unlocked mutex.
+
+### mutex_acquire(mutex: Mutex) -> Promise<Bool>
+Waits until the mutex is acquired.
+
+### mutex_try_acquire(mutex: Mutex) -> Bool
+Attempts to acquire immediately.
+
+### mutex_release(mutex: Mutex) -> Bool
+Releases the mutex. Returns `false` if it was not locked.
+
+### mutex_is_locked(mutex: Mutex) -> Bool
+Returns lock state.
+
+### semaphore_new(permits: Int) -> Semaphore
+Creates a semaphore with initial permits.
+
+### semaphore_acquire(semaphore: Semaphore) -> Promise<Bool>
+Waits for a permit.
+
+### semaphore_try_acquire(semaphore: Semaphore) -> Bool
+Attempts to acquire a permit immediately.
+
+### semaphore_release(semaphore: Semaphore, count: Int) -> Void
+Releases one or more permits.
+
+### semaphore_available(semaphore: Semaphore) -> Int
+Returns currently available permits.
+
+### atomic_i32_new(initial: Int) -> AtomicI32
+Creates an atomic 32-bit integer.
+
+### atomic_i32_is_available() -> Bool
+Returns whether `SharedArrayBuffer` + `Atomics` are available.
+
+### atomic_i32_load(atomic: AtomicI32) -> Int
+Loads current value.
+
+### atomic_i32_store(atomic: AtomicI32, value: Int) -> Int
+Stores and returns the written value.
+
+### atomic_i32_add(atomic: AtomicI32, delta: Int) -> Int
+Adds and returns the previous value.
+
+### atomic_i32_sub(atomic: AtomicI32, delta: Int) -> Int
+Subtracts and returns the previous value.
+
+### atomic_i32_compare_exchange(atomic: AtomicI32, expected: Int, replacement: Int) -> Int
+CAS operation returning the previous value.

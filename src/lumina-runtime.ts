@@ -1165,6 +1165,171 @@ export const thread = {
   },
 };
 
+export class Mutex {
+  private locked = false;
+  private waiters: Array<(acquired: boolean) => void> = [];
+
+  async acquire(): Promise<boolean> {
+    if (!this.locked) {
+      this.locked = true;
+      return true;
+    }
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  try_acquire(): boolean {
+    if (this.locked) return false;
+    this.locked = true;
+    return true;
+  }
+
+  release(): boolean {
+    if (!this.locked) return false;
+    const next = this.waiters.shift();
+    if (next) {
+      // Direct hand-off keeps the lock held by the next waiter.
+      next(true);
+      return true;
+    }
+    this.locked = false;
+    return true;
+  }
+
+  is_locked(): boolean {
+    return this.locked;
+  }
+}
+
+export class Semaphore {
+  private permits: number;
+  private waiters: Array<(acquired: boolean) => void> = [];
+
+  constructor(initialPermits: number) {
+    this.permits = Math.max(0, Math.trunc(initialPermits));
+  }
+
+  async acquire(): Promise<boolean> {
+    if (this.permits > 0) {
+      this.permits -= 1;
+      return true;
+    }
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  try_acquire(): boolean {
+    if (this.permits <= 0) return false;
+    this.permits -= 1;
+    return true;
+  }
+
+  release(count = 1): void {
+    const n = Math.max(1, Math.trunc(count));
+    for (let i = 0; i < n; i += 1) {
+      const next = this.waiters.shift();
+      if (next) {
+        next(true);
+      } else {
+        this.permits += 1;
+      }
+    }
+  }
+
+  available(): number {
+    return this.permits;
+  }
+}
+
+export class AtomicI32 {
+  private storage: Int32Array | null = null;
+  private fallback = 0;
+
+  constructor(initial: number) {
+    const value = Math.trunc(initial) | 0;
+    const hasSharedMemory = typeof SharedArrayBuffer === 'function' && typeof Atomics !== 'undefined';
+    if (hasSharedMemory) {
+      this.storage = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+      Atomics.store(this.storage, 0, value);
+      return;
+    }
+    this.fallback = value;
+  }
+
+  static is_available(): boolean {
+    return typeof SharedArrayBuffer === 'function' && typeof Atomics !== 'undefined';
+  }
+
+  load(): number {
+    if (!this.storage) return this.fallback;
+    return Atomics.load(this.storage, 0);
+  }
+
+  store(value: number): number {
+    const next = Math.trunc(value) | 0;
+    if (!this.storage) {
+      this.fallback = next;
+      return next;
+    }
+    Atomics.store(this.storage, 0, next);
+    return next;
+  }
+
+  add(delta: number): number {
+    const d = Math.trunc(delta) | 0;
+    if (!this.storage) {
+      const prev = this.fallback;
+      this.fallback = (this.fallback + d) | 0;
+      return prev;
+    }
+    return Atomics.add(this.storage, 0, d);
+  }
+
+  sub(delta: number): number {
+    const d = Math.trunc(delta) | 0;
+    if (!this.storage) {
+      const prev = this.fallback;
+      this.fallback = (this.fallback - d) | 0;
+      return prev;
+    }
+    return Atomics.sub(this.storage, 0, d);
+  }
+
+  compare_exchange(expected: number, replacement: number): number {
+    const exp = Math.trunc(expected) | 0;
+    const rep = Math.trunc(replacement) | 0;
+    if (!this.storage) {
+      const prev = this.fallback;
+      if (prev === exp) this.fallback = rep;
+      return prev;
+    }
+    return Atomics.compareExchange(this.storage, 0, exp, rep);
+  }
+}
+
+export const sync = {
+  mutex_new: (): Mutex => new Mutex(),
+  mutex_acquire: async (mutex: Mutex): Promise<boolean> => mutex.acquire(),
+  mutex_try_acquire: (mutex: Mutex): boolean => mutex.try_acquire(),
+  mutex_release: (mutex: Mutex): boolean => mutex.release(),
+  mutex_is_locked: (mutex: Mutex): boolean => mutex.is_locked(),
+  semaphore_new: (permits: number): Semaphore => new Semaphore(permits),
+  semaphore_acquire: async (semaphore: Semaphore): Promise<boolean> => semaphore.acquire(),
+  semaphore_try_acquire: (semaphore: Semaphore): boolean => semaphore.try_acquire(),
+  semaphore_release: (semaphore: Semaphore, count = 1): void => semaphore.release(count),
+  semaphore_available: (semaphore: Semaphore): number => semaphore.available(),
+  atomic_i32_new: (initial: number): AtomicI32 => new AtomicI32(initial),
+  atomic_i32_is_available: (): boolean => AtomicI32.is_available(),
+  atomic_i32_load: (value: AtomicI32): number => value.load(),
+  atomic_i32_store: (value: AtomicI32, next: number): number => value.store(next),
+  atomic_i32_add: (value: AtomicI32, delta: number): number => value.add(delta),
+  atomic_i32_sub: (value: AtomicI32, delta: number): number => value.sub(delta),
+  atomic_i32_compare_exchange: (value: AtomicI32, expected: number, replacement: number): number =>
+    value.compare_exchange(expected, replacement),
+};
+
 export function __set(obj: Record<string, unknown>, prop: string, value: unknown) {
   obj[prop] = value;
   return value;
