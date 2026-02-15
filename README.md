@@ -1,4 +1,4 @@
-# Lumina (v0.3.0)
+# Lumina (v0.4.0)
 
 A modern functional language with async/await, type inference, and package management.
 
