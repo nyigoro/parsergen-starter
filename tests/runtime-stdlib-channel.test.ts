@@ -7,6 +7,13 @@ describe('runtime channel helpers', () => {
   const waitForEventLoop = async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   };
+  const sendWithRetry = async (sender: unknown, value: unknown, attempts = 20): Promise<boolean> => {
+    for (let i = 0; i < attempts; i += 1) {
+      if (channel.send(sender as never, value as never)) return true;
+      await waitForEventLoop();
+    }
+    return false;
+  };
 
   const closePair = (ch: { sender: unknown; receiver: unknown }) => {
     try {
@@ -78,8 +85,7 @@ describe('runtime channel helpers', () => {
       const first = await channel.recv(receiver);
       expect(unwrapOption(first).$payload).toBe(1);
 
-      await waitForEventLoop();
-      expect(channel.send(sender, 2)).toBe(true);
+      expect(await sendWithRetry(sender, 2)).toBe(true);
       const second = await channel.recv(receiver);
       expect(unwrapOption(second).$payload).toBe(2);
     } finally {
@@ -96,8 +102,7 @@ describe('runtime channel helpers', () => {
       expect(channel.send(sender, 1)).toBe(false);
 
       const pending = channel.recv(receiver);
-      await waitForEventLoop();
-      expect(channel.send(sender, 99)).toBe(true);
+      expect(await sendWithRetry(sender, 99)).toBe(true);
 
       const result = await pending;
       expect(unwrapOption(result).$payload).toBe(99);

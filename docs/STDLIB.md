@@ -276,6 +276,15 @@ Closes the receiver and releases its MessagePort.
 ### is_available() -> Bool
 Returns `true` if `MessageChannel` is available in the current runtime.
 
+### WASM host bindings
+When running WASM via `loadWASM`, the host exposes:
+- `env.channel_is_available() -> i32`
+- `env.channel_new(capacity: i32) -> i32`
+- `env.channel_send(id: i32, value: i32) -> i32`
+- `env.channel_try_recv_or(id: i32, fallback: i32) -> i32`
+- `env.channel_close_sender(id: i32) -> void`
+- `env.channel_close_receiver(id: i32) -> void`
+
 **Example:**
 ```lumina
 import { channel } from "@std";
