@@ -254,25 +254,33 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append('\n');
       return;
     case 'Phi':
-      if (ctx.ssaNames?.has(node.name)) {
+      if (!ctx.ssaNames?.has(node.name)) {
         out.append(
-          `${pad}${node.name} = (`,
+          `${pad}let ${node.name};`,
           node.kind,
           node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
         );
-      } else {
-        out.append(
-          `${pad}let ${node.name} = (`,
-          node.kind,
-          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
-        );
+        out.append('\n');
       }
+      out.append(
+        `${pad}if (`,
+        node.kind,
+        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+      );
       out.appendExpr(emitExpr(node.condition));
-      out.append(') ? ');
+      out.append(') {');
+      out.append('\n');
+      out.append(`${pad}  ${node.name} = `);
       out.appendExpr(emitExpr(node.thenValue));
-      out.append(' : ');
+      out.append(';');
+      out.append('\n');
+      out.append(`${pad}} else {`);
+      out.append('\n');
+      out.append(`${pad}  ${node.name} = `);
       out.appendExpr(emitExpr(node.elseValue));
       out.append(';');
+      out.append('\n');
+      out.append(`${pad}}`);
       out.append('\n');
       return;
     case 'Return':

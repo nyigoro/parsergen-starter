@@ -100,6 +100,29 @@ describe('Lumina codegen', () => {
     expect(out).not.toMatch(/while \(true\)/);
   });
 
+  test('emits SSA phi joins as assignments (no ternary)', () => {
+    const program = `
+      fn main(flag: bool) -> int {
+        let x: int = 0;
+        if (flag) {
+          x = 1;
+        } else {
+          x = 2;
+        }
+        return x;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program);
+    const ir = optimizeIR(lowerLumina(ast as never))!;
+    const out = generateJS(ir, { target: 'esm' }).code;
+
+    expect(out).toMatch(/if \(/);
+    expect(out).toMatch(/ = 1;/);
+    expect(out).toMatch(/ = 2;/);
+    expect(out).not.toMatch(/\)\s*\?\s*/);
+  });
+
   test('folds constant if branches', () => {
     const program = `
       fn main() {
