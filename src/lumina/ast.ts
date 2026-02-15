@@ -261,6 +261,7 @@ export interface LuminaMatchArmExpr {
 
 export type LuminaExpr = (
   | LuminaBinary
+  | LuminaLambda
   | LuminaMember
   | LuminaCall
   | LuminaMove
@@ -269,6 +270,7 @@ export type LuminaExpr = (
   | LuminaCast
   | LuminaStructLiteral
   | LuminaRange
+  | LuminaArrayLiteral
   | LuminaIndex
   | LuminaIsExpr
   | LuminaNumber
@@ -284,6 +286,16 @@ export interface LuminaBinary {
   op: string;
   left: LuminaExpr;
   right: LuminaExpr;
+  location?: Location;
+}
+
+export interface LuminaLambda {
+  type: 'Lambda';
+  async?: boolean;
+  params: LuminaParam[];
+  returnType: LuminaTypeExpr | null;
+  body: LuminaBlock;
+  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   location?: Location;
 }
 
@@ -319,6 +331,12 @@ export interface LuminaRange {
   start: LuminaExpr | null;
   end: LuminaExpr | null;
   inclusive: boolean;
+  location?: Location;
+}
+
+export interface LuminaArrayLiteral {
+  type: 'ArrayLiteral';
+  elements: LuminaExpr[];
   location?: Location;
 }
 

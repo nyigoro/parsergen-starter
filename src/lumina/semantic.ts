@@ -194,6 +194,11 @@ const defaultLocation: Location = {
   end: { line: 1, column: 1, offset: 0 },
 };
 
+const ERROR_TYPE: LuminaType = '__error__';
+
+const isErrorTypeName = (typeName: string | null | undefined): boolean =>
+  !!typeName && normalizeTypeForComparison(typeName) === ERROR_TYPE;
+
 const diagAt = (
   message: string,
   location?: Location,
@@ -211,6 +216,7 @@ const diagAt = (
 
 function formatTypeForDiagnostic(type: LuminaType | null | undefined): string {
   if (!type) return 'unknown';
+  if (isErrorTypeName(type)) return '<error>';
   const normalized = normalizeTypeForDisplay(type);
   const parsed = parseTypeName(normalized);
   if (!parsed) return normalized;
@@ -301,7 +307,10 @@ export interface AnalyzeOptions {
   moduleRegistry?: ModuleRegistry;
   traitRegistry?: TraitRegistry;
   traitMethodResolutions?: Map<number, TraitMethodResolution>;
+  stopOnUnresolvedMemberError?: boolean;
 }
+
+class StopOnUnresolvedMemberError extends Error {}
 
 export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) {
   const diagnostics: Diagnostic[] = [];
@@ -505,63 +514,69 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
 
   validateRecursiveStructs(symbols, diagnostics, options);
 
-  // Pass 2: analyze non-function statements so top-level bindings are known.
-  for (const stmt of program.body) {
-    if (stmt.type === 'FnDecl') continue;
-    typeCheckStatement(stmt, symbols, diagnostics, null, rootScope, activeOptions, undefined, resolving, pendingDeps, undefined, undefined);
-  }
-
-  if (options?.useHm) {
-    for (const sym of symbols.list()) {
-      if (sym.kind !== 'function' || !sym.pendingReturn) continue;
-      symbols.define({ ...sym, type: sym.type ?? 'any', pendingReturn: false });
+  try {
+    // Pass 2: analyze non-function statements so top-level bindings are known.
+    for (const stmt of program.body) {
+      if (stmt.type === 'FnDecl') continue;
+      typeCheckStatement(stmt, symbols, diagnostics, null, rootScope, activeOptions, undefined, resolving, pendingDeps, undefined, undefined);
     }
-  } else {
-    const maxPasses = 5;
-    let changed = true;
-    let pass = 0;
-    while (changed && pass < maxPasses) {
-      changed = false;
-      pass += 1;
-      for (const stmt of program.body) {
-        if (stmt.type !== 'FnDecl') continue;
-        if (options?.skipFunctionBodies?.has(stmt.name)) continue;
-        const sym = symbols.get(stmt.name);
-        if (!sym || !sym.pendingReturn) continue;
-        if (resolving.has(stmt.name)) continue;
-        resolving.add(stmt.name);
-        pendingDeps.set(stmt.name, new Set());
-        const inferred = resolveFunctionBody(stmt, symbols, diagnostics, activeOptions, resolving, pendingDeps, rootScope, diGraphs);
-        resolving.delete(stmt.name);
-        if (inferred) {
-          symbols.define({ ...sym, type: inferred, pendingReturn: false });
-          pendingDeps.delete(stmt.name);
-          changed = true;
-        } else if (inferred === 'void') {
-          symbols.define({ ...sym, type: 'void', pendingReturn: false });
-          pendingDeps.delete(stmt.name);
-          changed = true;
-        }
+
+    if (options?.useHm) {
+      for (const sym of symbols.list()) {
+        if (sym.kind !== 'function' || !sym.pendingReturn) continue;
+        symbols.define({ ...sym, type: sym.type ?? 'any', pendingReturn: false });
       }
-      const cycles = detectPendingCycles(pendingDeps);
-      if (cycles.length > 0) {
-        for (const fnName of cycles) {
-          const sym = symbols.get(fnName);
-          diagnostics.push(diagAt(`Recursive inference detected for '${fnName}'`, sym?.location ?? program.location));
-          if (sym) {
-            symbols.define({ ...sym, type: 'any', pendingReturn: false });
+    } else {
+      const maxPasses = 5;
+      let changed = true;
+      let pass = 0;
+      while (changed && pass < maxPasses) {
+        changed = false;
+        pass += 1;
+        for (const stmt of program.body) {
+          if (stmt.type !== 'FnDecl') continue;
+          if (options?.skipFunctionBodies?.has(stmt.name)) continue;
+          const sym = symbols.get(stmt.name);
+          if (!sym || !sym.pendingReturn) continue;
+          if (resolving.has(stmt.name)) continue;
+          resolving.add(stmt.name);
+          pendingDeps.set(stmt.name, new Set());
+          const inferred = resolveFunctionBody(stmt, symbols, diagnostics, activeOptions, resolving, pendingDeps, rootScope, diGraphs);
+          resolving.delete(stmt.name);
+          if (inferred) {
+            symbols.define({ ...sym, type: inferred, pendingReturn: false });
+            pendingDeps.delete(stmt.name);
+            changed = true;
+          } else if (inferred === 'void') {
+            symbols.define({ ...sym, type: 'void', pendingReturn: false });
+            pendingDeps.delete(stmt.name);
+            changed = true;
           }
         }
-        changed = false;
+        const cycles = detectPendingCycles(pendingDeps);
+        if (cycles.length > 0) {
+          for (const fnName of cycles) {
+            const sym = symbols.get(fnName);
+            diagnostics.push(diagAt(`Recursive inference detected for '${fnName}'`, sym?.location ?? program.location));
+            if (sym) {
+              symbols.define({ ...sym, type: 'any', pendingReturn: false });
+            }
+          }
+          changed = false;
+        }
       }
     }
-  }
 
-  for (const stmt of program.body) {
-    if (stmt.type === 'ErrorNode') continue;
-    if (stmt.type === 'FnDecl') {
-      if (options?.skipFunctionBodies?.has(stmt.name)) continue;
-      resolveFunctionBody(stmt, symbols, diagnostics, activeOptions, resolving, pendingDeps, rootScope, diGraphs);
+    for (const stmt of program.body) {
+      if (stmt.type === 'ErrorNode') continue;
+      if (stmt.type === 'FnDecl') {
+        if (options?.skipFunctionBodies?.has(stmt.name)) continue;
+        resolveFunctionBody(stmt, symbols, diagnostics, activeOptions, resolving, pendingDeps, rootScope, diGraphs);
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof StopOnUnresolvedMemberError)) {
+      throw error;
     }
   }
 
@@ -1609,6 +1624,18 @@ function typeCheckExpr(
     );
   };
 
+  const unresolvedMember = (
+    message: string,
+    location?: Location,
+    code: string = 'UNRESOLVED_MEMBER'
+  ): LuminaType => {
+    diagnostics.push(diagAt(message, location, 'error', code));
+    if (options?.stopOnUnresolvedMemberError) {
+      throw new StopOnUnresolvedMemberError(message);
+    }
+    return ERROR_TYPE;
+  };
+
   const inferNumberType = (expr: { suffix?: string | null; raw?: string; isFloat?: boolean }): LuminaType => {
     const suffix = expr.suffix ?? null;
     if (suffix) return suffix;
@@ -1848,7 +1875,130 @@ function typeCheckExpr(
   };
   if (expr.type === 'Number') return inferNumberType(expr);
   if (expr.type === 'Boolean') return 'bool';
+  if (expr.type === 'ArrayLiteral') {
+    if (expr.elements.length === 0) {
+      const expectedParsed = expectedType ? parseTypeName(expectedType) : null;
+      if (expectedParsed && expectedParsed.base === 'Vec' && expectedParsed.args.length === 1) {
+        return expectedType as LuminaType;
+      }
+      return 'Vec<any>';
+    }
+    const elementTypes: LuminaType[] = [];
+    for (const element of expr.elements) {
+      const elementType = typeCheckExpr(
+        element,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      );
+      if (elementType) elementTypes.push(elementType);
+    }
+    if (elementTypes.length === 0) return 'Vec<any>';
+    let unified = elementTypes[0];
+    for (let i = 1; i < elementTypes.length; i += 1) {
+      const current = elementTypes[i];
+      if (isErrorTypeName(current) || isErrorTypeName(unified)) {
+        unified = ERROR_TYPE;
+        continue;
+      }
+      if (normalizeTypeForComparison(unified) === 'any') {
+        unified = current;
+        continue;
+      }
+      if (normalizeTypeForComparison(current) === 'any') {
+        continue;
+      }
+      if (
+        !isTypeAssignable(current, unified, symbols, options?.typeParams) &&
+        !isTypeAssignable(unified, current, symbols, options?.typeParams)
+      ) {
+        diagnostics.push(
+          diagAt(
+            `Array elements must have compatible types. Expected '${formatTypeForDiagnostic(unified)}', found '${formatTypeForDiagnostic(current)}'`,
+            expr.elements[i]?.location ?? expr.location,
+            'error',
+            'ARRAY-TYPE-MISMATCH'
+          )
+        );
+        unified = 'any';
+      }
+    }
+    const finalElement = isErrorTypeName(unified) ? 'any' : unified;
+    return `Vec<${finalElement}>`;
+  }
   if (expr.type === 'String') return 'string';
+  if (expr.type === 'Lambda') {
+    const local = new SymbolTable();
+    for (const sym of symbols.list()) {
+      local.define(sym);
+    }
+    const lambdaScope = new Scope(scope);
+    const lambdaDi = di ? di.clone() : undefined;
+    const typeParams = new Map<string, LuminaType | undefined>(options?.typeParams ?? []);
+    const typeParamBounds = new Map<string, LuminaType[]>(options?.typeParamBounds ?? []);
+    for (const param of expr.typeParams ?? []) {
+      const bound = param.bound?.[0];
+      typeParams.set(param.name, bound ? (resolveTypeExpr(bound) ?? 'any') : undefined);
+      const bounds: LuminaType[] = [];
+      for (const boundType of param.bound ?? []) {
+        const resolved = resolveTypeExpr(boundType);
+        if (resolved) bounds.push(resolved);
+      }
+      if (bounds.length > 0) {
+        typeParamBounds.set(param.name, bounds);
+      }
+    }
+
+    for (const param of expr.params) {
+      const paramType = resolveTypeExpr(param.typeName) ?? 'any';
+      if (param.typeName) {
+        ensureKnownType(param.typeName, symbols, new Set(typeParams.keys()), diagnostics, param.location ?? expr.location);
+      }
+      local.define({
+        name: param.name,
+        kind: 'variable',
+        type: paramType,
+        location: param.location ?? expr.location,
+        ref: !!param.ref,
+        refMutable: !!param.refMut,
+        mutable: false,
+      });
+      lambdaScope.define(param.name, param.location ?? expr.location);
+      lambdaDi?.define(lambdaScope, param.name, true);
+    }
+
+    const lambdaReturn = resolveTypeExpr(expr.returnType) ?? 'any';
+    const bodyOptions: AnalyzeOptions | undefined = options
+      ? { ...options, typeParams, typeParamBounds }
+      : { typeParams, typeParamBounds };
+    for (const bodyStmt of expr.body.body) {
+      typeCheckStatement(
+        bodyStmt,
+        local,
+        diagnostics,
+        lambdaReturn,
+        lambdaScope,
+        bodyOptions,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        lambdaDi
+      );
+    }
+
+    // Function types are inferred precisely by HM; semantic pass uses a conservative placeholder.
+    return 'any';
+  }
   if (expr.type === 'InterpolatedString') {
     for (const part of expr.parts) {
       if (typeof part === 'string') continue;
@@ -1949,6 +2099,7 @@ function typeCheckExpr(
     if (!objectType || !indexType) return null;
     const objectNorm = normalizeTypeForComparison(objectType);
     const indexNorm = normalizeTypeForComparison(indexType);
+    if (isErrorTypeName(objectNorm) || isErrorTypeName(indexNorm)) return ERROR_TYPE;
     if (objectNorm === 'any' || indexNorm === 'any') return 'any';
 
     if (indexNorm === 'Range') {
@@ -1964,10 +2115,26 @@ function typeCheckExpr(
       return null;
     }
 
+    const parsed = parseTypeName(objectType);
+    if (parsed && parsed.base === 'HashMap' && parsed.args.length === 2) {
+      const keyType = parsed.args[0];
+      if (!isTypeAssignable(indexType, keyType, symbols, options?.typeParams)) {
+        diagnostics.push(
+          diagAt(
+            `HashMap key type mismatch: expected '${formatTypeForDiagnostic(keyType)}', found '${formatTypeForDiagnostic(indexType)}'`,
+            expr.location,
+            'error',
+            'INVALID_INDEX'
+          )
+        );
+        return null;
+      }
+      return parsed.args[1] ?? 'any';
+    }
+
     if (isIntTypeName(indexNorm)) {
-      const parsed = parseTypeName(objectType);
       if (parsed && parsed.base === 'Vec' && parsed.args.length === 1) {
-        return parsed.args[0];
+        return parsed.args[0] ?? 'any';
       }
     }
 
@@ -2441,12 +2608,14 @@ function typeCheckExpr(
           di
         );
         if (!receiverType) return null;
+        if (isErrorTypeName(receiverType)) return ERROR_TYPE;
         return resolveTraitMethodCall(receiverType, expr.args, expr.location, expr.id, callee);
       }
 
       if (expr.enumName) {
-        const moduleFn = options?.moduleBindings
-          ? resolveModuleFunction(options.moduleBindings.get(expr.enumName), callee)
+        const moduleBinding = options?.moduleBindings?.get(expr.enumName);
+        const moduleFn = moduleBinding
+          ? resolveModuleFunction(moduleBinding, callee)
           : null;
         if (moduleFn) {
           const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
@@ -2485,6 +2654,32 @@ function typeCheckExpr(
           return moduleFn.returnType;
         }
 
+        if (moduleBinding?.kind === 'module') {
+          const exportMember = moduleBinding.exports.get(callee);
+          if (!exportMember) {
+            return unresolvedMember(
+              `Unknown module member '${expr.enumName}.${callee}'`,
+              expr.location,
+              'UNRESOLVED_MEMBER'
+            );
+          }
+          if (exportMember.kind !== 'function') {
+            return unresolvedMember(
+              `Module member '${expr.enumName}.${callee}' is not callable`,
+              expr.location,
+              'UNRESOLVED_MEMBER'
+            );
+          }
+        }
+
+        if (options?.importedNames?.has(expr.enumName) && !symbols.has(expr.enumName)) {
+          return unresolvedMember(
+            `Unresolved namespace '${expr.enumName}' for '${callee}'`,
+            expr.location,
+            'UNRESOLVED_NAMESPACE'
+          );
+        }
+
         const receiverSym = symbols.get(expr.enumName);
         if (receiverSym && receiverSym.kind === 'variable') {
           const receiverExpr: LuminaExpr = {
@@ -2505,6 +2700,7 @@ function typeCheckExpr(
             di
           );
           if (!receiverType) return null;
+          if (isErrorTypeName(receiverType)) return ERROR_TYPE;
           const registry = options?.traitRegistry;
           if (registry) {
             const receiverParsed = parseTypeName(receiverType);
@@ -3190,8 +3386,7 @@ function typeCheckExpr(
       const objectName = expr.object.name;
       const expectedBase = expectedType ? parseTypeName(expectedType)?.base ?? expectedType : null;
       const binding = options?.moduleBindings?.get(objectName);
-      const localSym = symbols.get(objectName);
-      if (!localSym && binding && binding.kind === 'module') {
+      if (binding && binding.kind === 'module') {
         const exp = binding.exports.get(expr.property);
         if (exp) {
           if (exp.kind === 'function') return 'any';
@@ -3200,13 +3395,21 @@ function typeCheckExpr(
         if (expectedBase && expectedBase === objectName) {
           return expectedType as LuminaType;
         }
-        return 'any';
+        return unresolvedMember(
+          `Unknown module member '${objectName}.${expr.property}'`,
+          expr.location,
+          'UNRESOLVED_MEMBER'
+        );
       }
       if (options?.importedNames?.has(objectName) && !symbols.has(objectName)) {
         if (expectedBase && expectedBase === objectName) {
           return expectedType as LuminaType;
         }
-        return 'any';
+        return unresolvedMember(
+          `Unresolved namespace '${objectName}' while accessing '${expr.property}'`,
+          expr.location,
+          'UNRESOLVED_NAMESPACE'
+        );
       }
     }
     const movePath = getMovePath(expr);
@@ -3245,6 +3448,7 @@ function typeCheckExpr(
       skipMoveChecks
     );
     if (!objectType) return null;
+    if (isErrorTypeName(objectType)) return ERROR_TYPE;
     const parsed = parseTypeName(objectType);
     const structName = parsed?.base ?? objectType;
     const structSym = symbols.get(structName);
@@ -4314,6 +4518,7 @@ function isKnownType(
   traitNames?: Set<string>,
   allowTraits = false
 ): boolean {
+  if (isErrorTypeName(typeName)) return true;
   if (builtinTypes.has(typeName)) return true;
   if (typeParams.has(typeName)) return true;
   const parsed = parseTypeName(typeName);
@@ -4475,6 +4680,7 @@ function isTypeAssignable(
 ): boolean {
   const actualNorm = normalizeTypeForComparison(actual);
   const expectedNorm = normalizeTypeForComparison(expected);
+  if (actualNorm === ERROR_TYPE || expectedNorm === ERROR_TYPE) return true;
   if (actualNorm === expectedNorm) return true;
   if (expectedNorm === 'any') return true;
   if (actualNorm === 'any') return true;

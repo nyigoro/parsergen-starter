@@ -411,7 +411,9 @@ PostfixPart
 
 PrimaryAtom
   = MatchExpr
+  / ArrayLiteral
   / StructLiteral
+  / LambdaExpr
   / MoveExpr
   / QualifiedCall
   / Call
@@ -429,6 +431,25 @@ AwaitExpr
 StructLiteral
   = name:IdName _ targs:TypeArgs? &(_ "{") _ "{" _ fields:StructLiteralFieldList? _ "}" {
       return createNode("StructLiteral", { name: name.name, typeArgs: targs || [], fields: fields || [], location: location() }, location);
+    }
+
+ArrayLiteral
+  = "[" _ elements:ArrayElements? _ "]" {
+      return createNode("ArrayLiteral", { elements: elements || [] }, location);
+    }
+
+ArrayElements
+  = head:Expr tail:(_ "," _ Expr)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+LambdaExpr
+  = async:("async" __)? "fn" _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
+      return createNode("Lambda", {
+        async: !!async,
+        params: params || [],
+        returnType: ret || null,
+        body,
+        typeParams: tparams || [],
+      }, location);
     }
 
 StructLiteralFieldList

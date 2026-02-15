@@ -800,6 +800,35 @@ function inferExpr(
   switch (expr.type) {
     case 'Number':
       return recordExprType(expr, inferNumberLiteralType(expr), subst);
+    case 'ArrayLiteral': {
+      const expectedPruned = expectedType ? prune(expectedType, subst) : null;
+      const expectedElem =
+        expectedPruned && expectedPruned.kind === 'adt' && expectedPruned.name === 'Vec' && expectedPruned.params.length === 1
+          ? expectedPruned.params[0]
+          : null;
+      let elemType: Type | null = expectedElem;
+      for (const element of expr.elements) {
+        const inferredElement = inferChild(element, elemType ?? undefined);
+        if (!inferredElement) continue;
+        if (!elemType) {
+          elemType = inferredElement;
+          continue;
+        }
+        tryUnify(inferredElement, elemType, subst, diagnostics, {
+          location: element.location,
+          note: 'Array elements must share a common type',
+        });
+      }
+      const finalElemType = elemType ?? freshTypeVar();
+      const vecType: Type = { kind: 'adt', name: 'Vec', params: [finalElemType] };
+      if (expectedType) {
+        tryUnify(vecType, expectedType, subst, diagnostics, {
+          location: expr.location,
+          note: 'Array literal must match expected type',
+        });
+      }
+      return recordExprType(expr, vecType, subst);
+    }
     case 'String':
       return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
     case 'InterpolatedString': {
@@ -844,7 +873,22 @@ function inferExpr(
         return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
       }
       if (objectType && objectType.kind === 'adt' && objectType.name === 'Vec' && objectType.params.length === 1) {
+        if (indexType) {
+          tryUnify(indexType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+            location: expr.location,
+            note: 'Vec index must be an integer',
+          });
+        }
         return recordExprType(expr, objectType.params[0], subst);
+      }
+      if (objectType && objectType.kind === 'adt' && objectType.name === 'HashMap' && objectType.params.length === 2) {
+        if (indexType) {
+          tryUnify(indexType, objectType.params[0], subst, diagnostics, {
+            location: expr.location,
+            note: 'HashMap index must match key type',
+          });
+        }
+        return recordExprType(expr, objectType.params[1], subst);
       }
       if (objectType && objectType.kind === 'variable') {
         const elemType = freshTypeVar();
@@ -853,12 +897,78 @@ function inferExpr(
           location: expr.location,
           note: `Indexing expects a Vec`,
         });
+        if (indexType) {
+          tryUnify(indexType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+            location: expr.location,
+            note: 'Vec index must be an integer',
+          });
+        }
         return recordExprType(expr, elemType, subst);
       }
       return recordExprType(expr, freshTypeVar(), subst);
     }
     case 'Boolean':
       return recordExprType(expr, { kind: 'primitive', name: 'bool' }, subst);
+    case 'Lambda': {
+      const lambdaEnv = env.child();
+      const typeParamMap = new Map<string, Type>();
+      for (const typeParam of expr.typeParams ?? []) {
+        const typeVar = freshTypeVar();
+        typeParamMap.set(typeParam.name, typeVar);
+      }
+
+      const paramTypes = expr.params.map((param) =>
+        param.typeName
+          ? parseTypeNameWithEnv(param.typeName, typeParamMap)
+          : freshTypeVar()
+      );
+      paramTypes.forEach((paramType, index) => {
+        const param = expr.params[index];
+        if (param) {
+          lambdaEnv.extend(param.name, { kind: 'scheme', variables: [], type: paramType });
+        }
+      });
+
+      const declaredReturn = expr.returnType
+        ? parseTypeNameWithEnv(expr.returnType, typeParamMap)
+        : freshTypeVar();
+      const prevReturn = activeReturnType;
+      activeReturnType = declaredReturn;
+      try {
+        for (const bodyStmt of expr.body.body) {
+          inferStatement(
+            bodyStmt,
+            lambdaEnv,
+            subst,
+            diagnostics,
+            declaredReturn,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            enumRegistry,
+            structRegistry,
+            undefined,
+            moduleBindings,
+            inferredCalls,
+            undefined,
+            inAsync || !!expr.async
+          );
+        }
+      } finally {
+        activeReturnType = prevReturn;
+      }
+
+      const returnType = expr.async ? promiseType(declaredReturn) : declaredReturn;
+      const lambdaType: Type = { kind: 'function', args: paramTypes, returnType };
+      if (expectedType) {
+        tryUnify(lambdaType, expectedType, subst, diagnostics, {
+          location: expr.location,
+          note: 'Lambda expression must match expected function type',
+        });
+      }
+      return recordExprType(expr, lambdaType, subst);
+    }
     case 'Await': {
       if (!inAsync) {
         diagnostics.push({

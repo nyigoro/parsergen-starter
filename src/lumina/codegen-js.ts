@@ -7,6 +7,7 @@ import {
   type LuminaImplDecl,
   type LuminaTraitDecl,
   type LuminaTraitMethod,
+  type LuminaBlock,
 } from './ast.js';
 import { SourceMapGenerator, type RawSourceMap } from 'source-map';
 import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
@@ -418,6 +419,32 @@ class JSGenerator {
     });
   }
 
+  private renderInlineFunctionBody(block: LuminaBlock): string {
+    const tempBuilder = new CodeBuilder(false);
+    const tempGenerator = new JSGenerator(tempBuilder, {
+      target: this.target,
+      includeRuntime: false,
+      traitMethodResolutions: this.traitMethodResolutions,
+    });
+    tempGenerator.indentLevel = 1;
+    for (const stmt of block.body) {
+      tempGenerator.emitStatement(stmt);
+    }
+    const rendered = tempBuilder.toString();
+    return rendered.endsWith('\n') ? rendered : `${rendered}\n`;
+  }
+
+  private indentMultiline(value: string, prefix: string): string {
+    if (!value) return value;
+    const lines = value.split('\n');
+    const mapped: string[] = [];
+    for (const line of lines) {
+      if (line.length === 0) continue;
+      mapped.push(`${prefix}${line}\n`);
+    }
+    return mapped.join('');
+  }
+
   private emitExpr(expr: LuminaExpr): EmitResult {
     const baseLoc = expr.location?.start
       ? { line: expr.location.start.line, column: expr.location.start.column }
@@ -447,6 +474,39 @@ class JSGenerator {
         return withBase({ code: String(expr.value), mappings: [] });
       case 'Boolean':
         return withBase({ code: expr.value ? 'true' : 'false', mappings: [] });
+      case 'ArrayLiteral': {
+        if (expr.elements.length === 0) {
+          return withBase({ code: 'vec.from([])', mappings: [] });
+        }
+        const parts: Array<string | EmitResult> = ['vec.from(['];
+        expr.elements.forEach((element, idx) => {
+          if (idx > 0) parts.push(', ');
+          parts.push(this.emitExpr(element));
+        });
+        parts.push('])');
+        return withBase(concat(...parts));
+      }
+      case 'Lambda': {
+        const params = expr.params.map((param) => param.name).join(', ');
+        const asyncKeyword = expr.async ? 'async ' : '';
+        const body = this.renderInlineFunctionBody(expr.body);
+        const usesTry = blockUsesTry(expr.body);
+        if (usesTry) {
+          const wrappedBody = this.indentMultiline(body, '    ');
+          const code =
+            `${asyncKeyword}function(${params}) {\n` +
+            `  try {\n` +
+            `${wrappedBody}` +
+            `  } catch (err) {\n` +
+            `    if (err && err.__lumina_try) return err.value;\n` +
+            `    throw err;\n` +
+            `  }\n` +
+            `}`;
+          return withBase({ code, mappings: [] });
+        }
+        const code = `${asyncKeyword}function(${params}) {\n${body}}`;
+        return withBase({ code, mappings: [] });
+      }
       case 'String':
         return withBase({ code: JSON.stringify(expr.value), mappings: [] });
       case 'InterpolatedString': {
@@ -819,6 +879,8 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
       return exprUsesTry(expr.value);
     case 'Cast':
       return exprUsesTry(expr.expr);
+    case 'Lambda':
+      return blockUsesTry(expr.body);
     case 'Binary':
       return exprUsesTry(expr.left) || exprUsesTry(expr.right);
     case 'Call':
@@ -833,6 +895,8 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
       return exprUsesTry(expr.target);
     case 'InterpolatedString':
       return expr.parts.some((part) => typeof part !== 'string' && exprUsesTry(part));
+    case 'ArrayLiteral':
+      return expr.elements.some((element) => exprUsesTry(element));
     case 'Range':
       return (expr.start ? exprUsesTry(expr.start) : false) || (expr.end ? exprUsesTry(expr.end) : false);
     case 'Index':

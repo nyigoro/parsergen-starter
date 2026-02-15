@@ -175,6 +175,9 @@ const visitExpr = (
       for (const arg of expr.args) visitExpr(arg, ctx, genericFns, hm);
       return;
     }
+    case 'ArrayLiteral':
+      for (const element of expr.elements) visitExpr(element, ctx, genericFns, hm);
+      return;
     case 'Binary':
       visitExpr(expr.left, ctx, genericFns, hm);
       visitExpr(expr.right, ctx, genericFns, hm);
@@ -211,6 +214,11 @@ const visitExpr = (
     case 'Index':
       visitExpr(expr.object, ctx, genericFns, hm);
       visitExpr(expr.index, ctx, genericFns, hm);
+      return;
+    case 'Lambda':
+      for (const inner of expr.body.body) {
+        visitStatement(inner, ctx, genericFns, hm);
+      }
       return;
     default:
       return;
@@ -302,6 +310,9 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
       substituteTypeArgs(expr.typeArgs, mapping);
       expr.args.forEach((arg) => substituteTypesInExpr(arg, mapping));
       return;
+    case 'ArrayLiteral':
+      expr.elements.forEach((element) => substituteTypesInExpr(element, mapping));
+      return;
     case 'Binary':
       substituteTypesInExpr(expr.left, mapping);
       substituteTypesInExpr(expr.right, mapping);
@@ -339,6 +350,19 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
     case 'Range':
       if (expr.start) substituteTypesInExpr(expr.start, mapping);
       if (expr.end) substituteTypesInExpr(expr.end, mapping);
+      return;
+    case 'Index':
+      substituteTypesInExpr(expr.object, mapping);
+      substituteTypesInExpr(expr.index, mapping);
+      return;
+    case 'Lambda':
+      expr.returnType = substituteTypeExpr(expr.returnType, mapping) ?? null;
+      for (const param of expr.params) {
+        param.typeName = substituteTypeExpr(param.typeName, mapping) ?? null;
+      }
+      for (const inner of expr.body.body) {
+        substituteTypesInStatement(inner, mapping);
+      }
       return;
     default:
       return;
@@ -509,6 +533,9 @@ export function rewriteCallSites(
         expr.args.forEach(visitExprForRewrite);
         return;
       }
+      case 'ArrayLiteral':
+        expr.elements.forEach(visitExprForRewrite);
+        return;
       case 'Binary':
         visitExprForRewrite(expr.left);
         visitExprForRewrite(expr.right);
@@ -527,10 +554,31 @@ export function rewriteCallSites(
         visitExprForRewrite(expr.value);
         return;
       case 'Try':
+      case 'Await':
         visitExprForRewrite(expr.value);
+        return;
+      case 'Cast':
+        visitExprForRewrite(expr.expr);
         return;
       case 'Move':
         visitExprForRewrite(expr.target);
+        return;
+      case 'InterpolatedString':
+        for (const part of expr.parts) {
+          if (typeof part === 'string') continue;
+          visitExprForRewrite(part);
+        }
+        return;
+      case 'Range':
+        if (expr.start) visitExprForRewrite(expr.start);
+        if (expr.end) visitExprForRewrite(expr.end);
+        return;
+      case 'Index':
+        visitExprForRewrite(expr.object);
+        visitExprForRewrite(expr.index);
+        return;
+      case 'Lambda':
+        for (const inner of expr.body.body) visitStmtForRewrite(inner);
         return;
       default:
         return;

@@ -810,6 +810,12 @@ export class Vec<T> {
     return new Vec<T>();
   }
 
+  static from<T>(items: T[]): Vec<T> {
+    const next = new Vec<T>();
+    next.data = Array.isArray(items) ? [...items] : [];
+    return next;
+  }
+
   push(value: T): void {
     this.data.push(value);
   }
@@ -841,6 +847,7 @@ export class Vec<T> {
 
 export const vec = {
   new: <T>() => Vec.new<T>(),
+  from: <T>(items: T[]) => Vec.from(items),
   push: <T>(v: Vec<T>, value: T) => v.push(value),
   get: <T>(v: Vec<T>, index: number) => v.get(index),
   len: <T>(v: Vec<T>) => v.len(),
