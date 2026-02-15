@@ -1469,6 +1469,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const recvType: Type = fnType([threadT], promiseType(optionT));
     const tryRecvType: Type = fnType([threadT], optionT);
     const terminateType: Type = fnType([threadT], promiseType(primitive('void')));
+    const joinType: Type = fnType([threadT], promiseType(primitive('int')));
     const availableType: Type = fnType([], primitive('bool'));
 
     return {
@@ -1527,6 +1528,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
             ['Thread'],
             'Promise<void>',
             schemeFromVars(terminateType, []),
+            ['thread'],
+            'std://thread'
+          ),
+        ],
+        [
+          'join',
+          moduleFunctionWithScheme(
+            'join',
+            ['Thread'],
+            'Promise<int>',
+            schemeFromVars(joinType, []),
             ['thread'],
             'std://thread'
           ),

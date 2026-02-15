@@ -325,6 +325,9 @@ Non-blocking poll for worker messages.
 ### terminate(thread: Thread) -> Promise<Void>
 Terminates the worker.
 
+### join(thread: Thread) -> Promise<Int>
+Waits for worker exit and returns its exit code.
+
 ## @std/sync
 
 Synchronization primitives for async/threaded coordination.

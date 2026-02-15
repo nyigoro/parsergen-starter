@@ -35,7 +35,7 @@ describe('runtime thread helpers', () => {
     );
   });
 
-  test('spawn/post/recv/terminate', async () => {
+  test('spawn/post/recv/join', async () => {
     if (!thread.is_available()) return;
 
     const spawned = await thread.spawn(workerPath);
@@ -56,8 +56,30 @@ describe('runtime thread helpers', () => {
 
       const empty = thread.try_recv(handle as never);
       expect(unwrapOption(empty).$tag ?? 'None').toBe('None');
+
+      expect(thread.post(handle as never, 'stop')).toBe(true);
+      const exitCode = await thread.join(handle as never);
+      expect(exitCode).toBe(0);
     } finally {
       await thread.terminate(handle as never);
     }
+  });
+
+  test('join resolves after terminate', async () => {
+    if (!thread.is_available()) return;
+
+    const spawned = await thread.spawn(workerPath);
+    expect(unwrapResult(spawned).$tag).toBe('Ok');
+    const handle = unwrapResult(spawned).$payload;
+    expect(handle).toBeDefined();
+    if (!handle) return;
+
+    const ready = await thread.recv(handle as never);
+    expect(unwrapOption(ready).$tag).toBe('Some');
+    expect(unwrapOption(ready).$payload).toBe('ready');
+
+    await thread.terminate(handle as never);
+    const code = await thread.join(handle as never);
+    expect(typeof code).toBe('number');
   });
 });

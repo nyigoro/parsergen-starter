@@ -1068,15 +1068,17 @@ export class Thread {
   private queue: unknown[] = [];
   private waiters: Array<(value: OptionLike) => void> = [];
   private closed = false;
+  private exitCode: number | null = null;
+  private joinWaiters: Array<(code: number) => void> = [];
 
   constructor(private readonly entry: ThreadWorker) {
     if (entry.kind === 'node') {
       entry.worker.on('message', (value) => this.onMessage(value));
-      entry.worker.on('error', () => this.onClose());
-      entry.worker.on('exit', () => this.onClose());
+      entry.worker.on('error', () => this.finish(-1));
+      entry.worker.on('exit', (code) => this.finish(code | 0));
     } else {
       entry.worker.addEventListener('message', (event) => this.onMessage(event.data));
-      entry.worker.addEventListener('error', () => this.onClose());
+      entry.worker.addEventListener('error', () => this.finish(-1));
     }
   }
 
@@ -1090,10 +1092,15 @@ export class Thread {
     this.queue.push(value);
   }
 
-  private onClose(): void {
-    if (this.closed) return;
+  private finish(code: number): void {
+    if (this.exitCode !== null) return;
+    this.exitCode = code | 0;
     this.closed = true;
     this.flushWaiters(Option.None as OptionLike);
+    while (this.joinWaiters.length > 0) {
+      const waiter = this.joinWaiters.shift();
+      if (waiter) waiter(this.exitCode);
+    }
   }
 
   private flushWaiters(value: OptionLike): void {
@@ -1133,14 +1140,21 @@ export class Thread {
   }
 
   async terminate(): Promise<void> {
-    if (this.closed) return;
-    this.closed = true;
-    this.flushWaiters(Option.None as OptionLike);
+    if (this.exitCode !== null) return;
     if (this.entry.kind === 'node') {
-      await this.entry.worker.terminate();
+      const code = await this.entry.worker.terminate();
+      this.finish(code | 0);
       return;
     }
     this.entry.worker.terminate();
+    this.finish(0);
+  }
+
+  join(): Promise<number> {
+    if (this.exitCode !== null) return Promise.resolve(this.exitCode);
+    return new Promise((resolve) => {
+      this.joinWaiters.push(resolve);
+    });
   }
 }
 
@@ -1163,6 +1177,7 @@ export const thread = {
   terminate: async (handle: Thread): Promise<void> => {
     await handle.terminate();
   },
+  join: (handle: Thread): Promise<number> => handle.join(),
 };
 
 export class Mutex {
