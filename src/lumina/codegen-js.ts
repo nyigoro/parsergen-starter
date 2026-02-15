@@ -75,11 +75,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -92,6 +92,18 @@ class JSGenerator {
       this.builder.append('const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };');
       this.builder.append('\n');
       this.builder.append('const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };');
+      this.builder.append('\n');
+      this.builder.append(
+        'const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };'
+      );
+      this.builder.append('\n');
+      this.builder.append(
+        'const regex = { isValid: () => false, test: async () => ({ $tag: "Err", $payload: "No regex runtime" }), find: () => ({ $tag: "None" }), findAll: async () => ({ $tag: "Err", $payload: "No regex runtime" }), replace: async () => ({ $tag: "Err", $payload: "No regex runtime" }) };'
+      );
+      this.builder.append('\n');
+      this.builder.append(
+        'const crypto = { isAvailable: async () => false, sha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), hmacSha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomBytes: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomInt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmEncrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmDecrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }) };'
+      );
       this.builder.append('\n');
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
       this.builder.append('\n');
@@ -120,18 +132,18 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'module.exports = { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
+          'module.exports = { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
         );
       } else {
         this.builder.append(
-          'export { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
+          'export { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
         );
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, fs, http, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
+        this.builder.append('module.exports = { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
       } else {
-        this.builder.append('export { io, str, math, fs, http, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
+        this.builder.append('export { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
       }
     }
     this.builder.append('\n');

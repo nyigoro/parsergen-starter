@@ -81,6 +81,11 @@ lumina compile examples/hello.lm --dry-run
 lumina compile examples/hello.lm --recovery
 lumina compile --list-config
 lumina watch "examples/**/*.lm"
+lumina fmt "examples/**/*.lm"
+lumina fmt "examples/**/*.lm" --check
+lumina lint "examples/**/*.lm"
+lumina doc "examples/**/*.lm" --out docs/API.md
+lumina doc "examples/**/*.lm" --public-only
 lumina init
 lumina grammar mylang.peg --test "hello world"
 

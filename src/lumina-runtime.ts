@@ -472,6 +472,69 @@ export const fs = {
       return Result.Err(String(error));
     }
   },
+  readDir: async (path: string) => {
+    try {
+      if (!isNodeRuntime()) {
+        return Result.Err('readDir is not supported in browser');
+      }
+      const fsPromises = await import('node:fs/promises');
+      const entries = await fsPromises.readdir(path);
+      return Result.Ok(entries);
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  metadata: async (path: string) => {
+    try {
+      if (!isNodeRuntime()) {
+        return Result.Err('metadata is not supported in browser');
+      }
+      const fsPromises = await import('node:fs/promises');
+      const stats = await fsPromises.stat(path);
+      return Result.Ok({
+        isFile: stats.isFile(),
+        isDirectory: stats.isDirectory(),
+        size: Math.trunc(stats.size),
+        modifiedMs: Math.trunc(stats.mtimeMs),
+      });
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  exists: async (path: string) => {
+    try {
+      if (!isNodeRuntime()) return false;
+      const fsPromises = await import('node:fs/promises');
+      await fsPromises.access(path);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  mkdir: async (path: string, recursive: boolean = true) => {
+    try {
+      if (!isNodeRuntime()) {
+        return Result.Err('mkdir is not supported in browser');
+      }
+      const fsPromises = await import('node:fs/promises');
+      await fsPromises.mkdir(path, { recursive: !!recursive });
+      return Result.Ok(undefined);
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  removeFile: async (path: string) => {
+    try {
+      if (!isNodeRuntime()) {
+        return Result.Err('removeFile is not supported in browser');
+      }
+      const fsPromises = await import('node:fs/promises');
+      await fsPromises.unlink(path);
+      return Result.Ok(undefined);
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
 };
 
 export const http = {
@@ -525,6 +588,194 @@ export const http = {
         headers: responseHeaders,
         body: text,
       });
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+};
+
+const getMonotonicNow = (): number => {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  if (perf && typeof perf.now === 'function') return perf.now();
+  return Date.now();
+};
+
+export const time = {
+  nowMs: () => Math.trunc(Date.now()),
+  nowIso: () => new Date().toISOString(),
+  instantNow: () => Math.trunc(getMonotonicNow()),
+  elapsedMs: (since: number) => Math.max(0, Math.trunc(getMonotonicNow()) - Math.trunc(since)),
+  sleep: async (ms: number) =>
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, Math.max(0, Math.trunc(ms)));
+    }),
+};
+
+const compileRegex = (pattern: string, flags: string = ''): RegExp | null => {
+  try {
+    return new RegExp(pattern, flags);
+  } catch {
+    return null;
+  }
+};
+
+export const regex = {
+  isValid: (pattern: string, flags: string = ''): boolean => compileRegex(pattern, flags) !== null,
+  test: (pattern: string, text: string, flags: string = '') => {
+    const re = compileRegex(pattern, flags);
+    if (!re) return Result.Err(`Invalid regex: /${pattern}/${flags}`);
+    return Result.Ok(re.test(text));
+  },
+  find: (pattern: string, text: string, flags: string = '') => {
+    const re = compileRegex(pattern, flags);
+    if (!re) return Option.None;
+    const match = text.match(re);
+    if (!match) return Option.None;
+    return Option.Some(match[0]);
+  },
+  findAll: (pattern: string, text: string, flags: string = '') => {
+    const normalizedFlags = flags.includes('g') ? flags : `${flags}g`;
+    const re = compileRegex(pattern, normalizedFlags);
+    if (!re) return Result.Err(`Invalid regex: /${pattern}/${normalizedFlags}`);
+    const matches = Array.from(text.matchAll(re)).map((m) => m[0]);
+    return Result.Ok(matches);
+  },
+  replace: (pattern: string, text: string, replacement: string, flags: string = '') => {
+    const re = compileRegex(pattern, flags);
+    if (!re) return Result.Err(`Invalid regex: /${pattern}/${flags}`);
+    return Result.Ok(text.replace(re, replacement));
+  },
+};
+
+const toHex = (bytes: Uint8Array): string => Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+
+const toBase64 = (bytes: Uint8Array): string => {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes).toString('base64');
+  }
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+};
+
+const fromBase64 = (value: string): Uint8Array => {
+  if (typeof Buffer !== 'undefined') {
+    return new Uint8Array(Buffer.from(value, 'base64'));
+  }
+  const binary = atob(value);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+  return out;
+};
+
+const getWebCrypto = async (): Promise<Crypto | null> => {
+  if (globalThis.crypto && typeof globalThis.crypto.subtle !== 'undefined') {
+    return globalThis.crypto;
+  }
+  if (!isNodeRuntime()) return null;
+  try {
+    const nodeCrypto = await import('node:crypto');
+    return (nodeCrypto as { webcrypto?: Crypto }).webcrypto ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const utf8Encode = (value: string): Uint8Array => new TextEncoder().encode(value);
+const utf8Decode = (value: Uint8Array): string => new TextDecoder().decode(value);
+
+const deriveAesKey = async (web: Crypto, key: string, usage: 'encrypt' | 'decrypt'): Promise<CryptoKey> => {
+  const digest = await web.subtle.digest('SHA-256', utf8Encode(key));
+  return await web.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, [usage]);
+};
+
+export const crypto = {
+  isAvailable: async () => (await getWebCrypto()) !== null,
+  sha256: async (value: string) => {
+    try {
+      const web = await getWebCrypto();
+      if (!web) return Result.Err('Crypto API is not available');
+      const digest = await web.subtle.digest('SHA-256', utf8Encode(value));
+      return Result.Ok(toHex(new Uint8Array(digest)));
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  hmacSha256: async (key: string, value: string) => {
+    try {
+      const web = await getWebCrypto();
+      if (!web) return Result.Err('Crypto API is not available');
+      const cryptoKey = await web.subtle.importKey(
+        'raw',
+        utf8Encode(key),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      const signature = await web.subtle.sign('HMAC', cryptoKey, utf8Encode(value));
+      return Result.Ok(toHex(new Uint8Array(signature)));
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  randomBytes: async (length: number) => {
+    try {
+      const web = await getWebCrypto();
+      if (!web) return Result.Err('Crypto API is not available');
+      const n = Math.max(0, Math.trunc(length));
+      const bytes = new Uint8Array(n);
+      web.getRandomValues(bytes);
+      return Result.Ok(Array.from(bytes).map((b) => b | 0));
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  randomInt: async (min: number, max: number) => {
+    const lower = Math.trunc(Math.min(min, max));
+    const upper = Math.trunc(Math.max(min, max));
+    const span = upper - lower + 1;
+    if (span <= 0) return Result.Err('Invalid range');
+    const random = await crypto.randomBytes(4);
+    if (!isEnumLike(random) || getEnumTag(random) !== 'Ok') return random;
+    const bytes = getEnumPayload(random);
+    if (!Array.isArray(bytes) || bytes.length < 4) return Result.Err('Failed to generate randomness');
+    const packed = new Uint8Array([
+      bytes[0] as number,
+      bytes[1] as number,
+      bytes[2] as number,
+      bytes[3] as number,
+    ]);
+    const value = new DataView(packed.buffer).getUint32(0, false);
+    return Result.Ok(lower + (value % span));
+  },
+  aesGcmEncrypt: async (key: string, plaintext: string) => {
+    try {
+      const web = await getWebCrypto();
+      if (!web) return Result.Err('Crypto API is not available');
+      const aesKey = await deriveAesKey(web, key, 'encrypt');
+      const iv = new Uint8Array(12);
+      web.getRandomValues(iv);
+      const encrypted = await web.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, utf8Encode(plaintext));
+      const cipherBytes = new Uint8Array(encrypted);
+      const packed = new Uint8Array(iv.length + cipherBytes.length);
+      packed.set(iv, 0);
+      packed.set(cipherBytes, iv.length);
+      return Result.Ok(toBase64(packed));
+    } catch (error) {
+      return Result.Err(String(error));
+    }
+  },
+  aesGcmDecrypt: async (key: string, payloadBase64: string) => {
+    try {
+      const web = await getWebCrypto();
+      if (!web) return Result.Err('Crypto API is not available');
+      const packed = fromBase64(payloadBase64);
+      if (packed.length < 13) return Result.Err('Invalid AES payload');
+      const iv = packed.slice(0, 12);
+      const cipher = packed.slice(12);
+      const aesKey = await deriveAesKey(web, key, 'decrypt');
+      const plain = await web.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, cipher);
+      return Result.Ok(utf8Decode(new Uint8Array(plain)));
     } catch (error) {
       return Result.Err(String(error));
     }

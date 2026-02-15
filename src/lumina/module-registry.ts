@@ -256,6 +256,66 @@ export function createStdModuleRegistry(): ModuleRegistry {
           'std://fs'
         ),
       ],
+      [
+        'readDir',
+        moduleFunction(
+          'readDir',
+          ['string'],
+          'Promise<Result<List<string>,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [adt('List', [primitive('string')]), primitive('string')])),
+          ['path'],
+          'std://fs'
+        ),
+      ],
+      [
+        'metadata',
+        moduleFunction(
+          'metadata',
+          ['string'],
+          'Promise<Result<FileMetadata,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [adt('FileMetadata'), primitive('string')])),
+          ['path'],
+          'std://fs'
+        ),
+      ],
+      [
+        'exists',
+        moduleFunction(
+          'exists',
+          ['string'],
+          'Promise<bool>',
+          [primitive('string')],
+          promiseType(primitive('bool')),
+          ['path'],
+          'std://fs'
+        ),
+      ],
+      [
+        'mkdir',
+        moduleFunction(
+          'mkdir',
+          ['string', 'bool'],
+          'Promise<Result<void,string>>',
+          [primitive('string'), primitive('bool')],
+          promiseType(adt('Result', [primitive('void'), primitive('string')])),
+          ['path', 'recursive'],
+          'std://fs'
+        ),
+      ],
+      [
+        'removeFile',
+        moduleFunction(
+          'removeFile',
+          ['string'],
+          'Promise<Result<void,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [primitive('void'), primitive('string')])),
+          ['path'],
+          'std://fs'
+        ),
+      ],
     ]),
   };
 
@@ -274,6 +334,210 @@ export function createStdModuleRegistry(): ModuleRegistry {
           promiseType(adt('Result', [adt('Response'), primitive('string')])),
           ['request'],
           'std://http'
+        ),
+      ],
+    ]),
+  };
+
+  const timeModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'time',
+    moduleId: 'std://time',
+    exports: new Map<string, ModuleExport>([
+      [
+        'nowMs',
+        moduleFunction('nowMs', [], 'int', [], primitive('int'), [], 'std://time'),
+      ],
+      [
+        'nowIso',
+        moduleFunction('nowIso', [], 'string', [], primitive('string'), [], 'std://time'),
+      ],
+      [
+        'instantNow',
+        moduleFunction('instantNow', [], 'int', [], primitive('int'), [], 'std://time'),
+      ],
+      [
+        'elapsedMs',
+        moduleFunction(
+          'elapsedMs',
+          ['int'],
+          'int',
+          [primitive('int')],
+          primitive('int'),
+          ['since'],
+          'std://time'
+        ),
+      ],
+      [
+        'sleep',
+        moduleFunction(
+          'sleep',
+          ['int'],
+          'Promise<void>',
+          [primitive('int')],
+          promiseType(primitive('void')),
+          ['ms'],
+          'std://time'
+        ),
+      ],
+    ]),
+  };
+
+  const regexModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'regex',
+    moduleId: 'std://regex',
+    exports: new Map<string, ModuleExport>([
+      [
+        'isValid',
+        moduleFunction(
+          'isValid',
+          ['string', 'string'],
+          'bool',
+          [primitive('string'), primitive('string')],
+          primitive('bool'),
+          ['pattern', 'flags'],
+          'std://regex'
+        ),
+      ],
+      [
+        'test',
+        moduleFunction(
+          'test',
+          ['string', 'string', 'string'],
+          'Result<bool,string>',
+          [primitive('string'), primitive('string'), primitive('string')],
+          adt('Result', [primitive('bool'), primitive('string')]),
+          ['pattern', 'text', 'flags'],
+          'std://regex'
+        ),
+      ],
+      [
+        'find',
+        moduleFunction(
+          'find',
+          ['string', 'string', 'string'],
+          'Option<string>',
+          [primitive('string'), primitive('string'), primitive('string')],
+          adt('Option', [primitive('string')]),
+          ['pattern', 'text', 'flags'],
+          'std://regex'
+        ),
+      ],
+      [
+        'findAll',
+        moduleFunction(
+          'findAll',
+          ['string', 'string', 'string'],
+          'Result<List<string>,string>',
+          [primitive('string'), primitive('string'), primitive('string')],
+          adt('Result', [adt('List', [primitive('string')]), primitive('string')]),
+          ['pattern', 'text', 'flags'],
+          'std://regex'
+        ),
+      ],
+      [
+        'replace',
+        moduleFunction(
+          'replace',
+          ['string', 'string', 'string', 'string'],
+          'Result<string,string>',
+          [primitive('string'), primitive('string'), primitive('string'), primitive('string')],
+          adt('Result', [primitive('string'), primitive('string')]),
+          ['pattern', 'text', 'replacement', 'flags'],
+          'std://regex'
+        ),
+      ],
+    ]),
+  };
+
+  const cryptoModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'crypto',
+    moduleId: 'std://crypto',
+    exports: new Map<string, ModuleExport>([
+      [
+        'isAvailable',
+        moduleFunction(
+          'isAvailable',
+          [],
+          'Promise<bool>',
+          [],
+          promiseType(primitive('bool')),
+          [],
+          'std://crypto'
+        ),
+      ],
+      [
+        'sha256',
+        moduleFunction(
+          'sha256',
+          ['string'],
+          'Promise<Result<string,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [primitive('string'), primitive('string')])),
+          ['value'],
+          'std://crypto'
+        ),
+      ],
+      [
+        'hmacSha256',
+        moduleFunction(
+          'hmacSha256',
+          ['string', 'string'],
+          'Promise<Result<string,string>>',
+          [primitive('string'), primitive('string')],
+          promiseType(adt('Result', [primitive('string'), primitive('string')])),
+          ['key', 'value'],
+          'std://crypto'
+        ),
+      ],
+      [
+        'randomBytes',
+        moduleFunction(
+          'randomBytes',
+          ['int'],
+          'Promise<Result<List<int>,string>>',
+          [primitive('int')],
+          promiseType(adt('Result', [adt('List', [primitive('int')]), primitive('string')])),
+          ['length'],
+          'std://crypto'
+        ),
+      ],
+      [
+        'randomInt',
+        moduleFunction(
+          'randomInt',
+          ['int', 'int'],
+          'Promise<Result<int,string>>',
+          [primitive('int'), primitive('int')],
+          promiseType(adt('Result', [primitive('int'), primitive('string')])),
+          ['min', 'max'],
+          'std://crypto'
+        ),
+      ],
+      [
+        'aesGcmEncrypt',
+        moduleFunction(
+          'aesGcmEncrypt',
+          ['string', 'string'],
+          'Promise<Result<string,string>>',
+          [primitive('string'), primitive('string')],
+          promiseType(adt('Result', [primitive('string'), primitive('string')])),
+          ['key', 'plaintext'],
+          'std://crypto'
+        ),
+      ],
+      [
+        'aesGcmDecrypt',
+        moduleFunction(
+          'aesGcmDecrypt',
+          ['string', 'string'],
+          'Promise<Result<string,string>>',
+          [primitive('string'), primitive('string')],
+          promiseType(adt('Result', [primitive('string'), primitive('string')])),
+          ['key', 'payload'],
+          'std://crypto'
         ),
       ],
     ]),
@@ -1851,6 +2115,9 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['sync', syncModule],
       ['fs', fsModule],
       ['http', httpModule],
+      ['time', timeModule],
+      ['regex', regexModule],
+      ['crypto', cryptoModule],
     ]),
   };
 
@@ -1858,6 +2125,9 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/io', ioModule);
   registry.set('@std/fs', fsModule);
   registry.set('@std/http', httpModule);
+  registry.set('@std/time', timeModule);
+  registry.set('@std/regex', regexModule);
+  registry.set('@std/crypto', cryptoModule);
   registry.set('@std/Option', optionModule);
   registry.set('@std/Result', resultModule);
   registry.set('@std/str', strModule);

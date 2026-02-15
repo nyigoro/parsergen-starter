@@ -1,4 +1,4 @@
-import { __lumina_slice } from '../src/lumina-runtime';
+import { __lumina_index, __lumina_slice, vec } from '../src/lumina-runtime.js';
 
 describe('String slice runtime', () => {
   it('slices within bounds', () => {
@@ -19,9 +19,8 @@ describe('String slice runtime', () => {
 
 describe('__lumina_index Vec bounds', () => {
   it('throws on out-of-bounds Vec access', () => {
-    const vecModule = require('../src/lumina-runtime');
-    const v = vecModule.vec.new();
-    vecModule.vec.push(v, 1);
-    expect(() => vecModule.__lumina_index(v, 5)).toThrow();
+    const v = vec.new();
+    vec.push(v, 1);
+    expect(() => __lumina_index(v, 5)).toThrow();
   });
 });

@@ -159,6 +159,84 @@ Reads a UTF-8 file (Node) or fetches text (browser).
 ### writeFile(path: String, content: String) -> Promise<Result<Void, String>>
 Writes a UTF-8 file in Node. Returns an error in browsers.
 
+### readDir(path: String) -> Promise<Result<List<String>, String>>
+Returns directory entry names for `path` (Node). Returns `Err` in browsers.
+
+### metadata(path: String) -> Promise<Result<FileMetadata, String>>
+Returns metadata for a file path (Node):
+- `isFile: Bool`
+- `isDirectory: Bool`
+- `size: Int`
+- `modifiedMs: Int`
+
+### exists(path: String) -> Promise<Bool>
+Returns whether `path` exists.
+
+### mkdir(path: String, recursive: Bool) -> Promise<Result<Void, String>>
+Creates directories for `path` (Node). Returns `Err` in browsers.
+
+### removeFile(path: String) -> Promise<Result<Void, String>>
+Removes a file path (Node). Returns `Err` in browsers.
+
+## @std/time
+
+### nowMs() -> Int
+Unix timestamp in milliseconds (`Date.now()`).
+
+### nowIso() -> String
+Current UTC timestamp in ISO-8601 format.
+
+### instantNow() -> Int
+Monotonic-ish clock for measuring durations (`performance.now()` when available).
+
+### elapsedMs(since: Int) -> Int
+Returns elapsed milliseconds since `instantNow()` value.
+
+### sleep(ms: Int) -> Promise<Void>
+Async sleep/delay helper.
+
+## @std/regex
+
+### isValid(pattern: String, flags: String) -> Bool
+Returns whether a regex pattern compiles.
+
+### test(pattern: String, text: String, flags: String) -> Result<Bool, String>
+Returns `Ok(true/false)` when valid, `Err` when pattern/flags are invalid.
+
+### find(pattern: String, text: String, flags: String) -> Option<String>
+Returns first match as `Some`, otherwise `None`.
+
+### findAll(pattern: String, text: String, flags: String) -> Result<List<String>, String>
+Returns all matches (global mode), or `Err` when invalid.
+
+### replace(pattern: String, text: String, replacement: String, flags: String) -> Result<String, String>
+Returns replaced string, or `Err` when invalid.
+
+## @std/crypto
+
+All functions rely on Web Crypto (`globalThis.crypto.subtle`) with Node fallback.
+
+### isAvailable() -> Promise<Bool>
+Returns whether crypto support is available.
+
+### sha256(value: String) -> Promise<Result<String, String>>
+Returns lowercase hex SHA-256 digest.
+
+### hmacSha256(key: String, value: String) -> Promise<Result<String, String>>
+Returns lowercase hex HMAC-SHA256 signature.
+
+### randomBytes(length: Int) -> Promise<Result<List<Int>, String>>
+Returns `length` random bytes (`0..255`).
+
+### randomInt(min: Int, max: Int) -> Promise<Result<Int, String>>
+Returns a random integer within `[min, max]`.
+
+### aesGcmEncrypt(key: String, plaintext: String) -> Promise<Result<String, String>>
+Encrypts with AES-GCM and returns base64 payload (`iv + ciphertext`).
+
+### aesGcmDecrypt(key: String, payload: String) -> Promise<Result<String, String>>
+Decrypts base64 payload from `aesGcmEncrypt`.
+
 ## @std/vec
 
 ### new<T>() -> Vec<T>

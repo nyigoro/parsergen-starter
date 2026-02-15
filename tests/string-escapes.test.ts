@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { compileGrammar } from '../src/grammar/index.js';
-import type { LuminaProgram, LuminaStatement, LuminaExpr } from '../src/lumina/ast.js';
+import type { LuminaProgram, LuminaStatement, LuminaExpr, LuminaFnDecl } from '../src/lumina/ast.js';
 
 const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
@@ -9,8 +9,14 @@ const parser = compileGrammar(luminaGrammar);
 
 const parseProgram = (source: string): LuminaProgram => parser.parse(source) as LuminaProgram;
 
+const expectStringExpr = (expr: LuminaExpr | null) => {
+  expect(expr).not.toBeNull();
+  expect(expr?.type).toBe('String');
+  return expr as Extract<LuminaExpr, { type: 'String' }>;
+};
+
 const findLetValue = (ast: LuminaProgram, name: string): LuminaExpr | null => {
-  const fn = ast.body.find((stmt) => stmt.type === 'FnDecl') as any;
+  const fn = ast.body.find((stmt): stmt is LuminaFnDecl => stmt.type === 'FnDecl');
   if (!fn) return null;
   for (const stmt of fn.body.body as LuminaStatement[]) {
     if (stmt.type === 'Let' && stmt.name === name) return stmt.value;
@@ -38,35 +44,34 @@ describe('String escape sequences', () => {
 
     const ast = parseProgram(source);
 
-    const a = findLetValue(ast, 'a') as any;
-    expect(a.type).toBe('String');
+    const a = expectStringExpr(findLetValue(ast, 'a'));
     expect(a.value).toBe(`A\nB`);
 
-    const b = findLetValue(ast, 'b') as any;
+    const b = expectStringExpr(findLetValue(ast, 'b'));
     expect(b.value).toBe(`Tab\tEnd`);
 
-    const c = findLetValue(ast, 'c') as any;
+    const c = expectStringExpr(findLetValue(ast, 'c'));
     expect(c.value).toBe('HexA');
 
-    const d = findLetValue(ast, 'd') as any;
+    const d = expectStringExpr(findLetValue(ast, 'd'));
     expect(d.value).toBe(`Uni${String.fromCharCode(0x263A)}`);
 
-    const e = findLetValue(ast, 'e') as any;
+    const e = expectStringExpr(findLetValue(ast, 'e'));
     expect(e.value).toBe(`Emoji${String.fromCodePoint(0x1f600)}`);
 
-    const f = findLetValue(ast, 'f') as any;
+    const f = expectStringExpr(findLetValue(ast, 'f'));
     expect(f.value).toBe(`Back\bspace`);
 
-    const g = findLetValue(ast, 'g') as any;
+    const g = expectStringExpr(findLetValue(ast, 'g'));
     expect(g.value).toBe(`Form\fFeed`);
 
-    const h = findLetValue(ast, 'h') as any;
+    const h = expectStringExpr(findLetValue(ast, 'h'));
     expect(h.value).toBe(`Vert\vTab`);
 
-    const i = findLetValue(ast, 'i') as any;
+    const i = expectStringExpr(findLetValue(ast, 'i'));
     expect(i.value).toBe(`Esc${String.fromCharCode(0x1b)}`);
 
-    const j = findLetValue(ast, 'j') as any;
+    const j = expectStringExpr(findLetValue(ast, 'j'));
     expect(j.value).toBe('{}');
   });
 

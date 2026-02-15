@@ -24,13 +24,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -48,6 +48,28 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append('\n');
     builder.append(
       `const math = { abs: (value) => Math.trunc(Math.abs(value)), min: (a, b) => Math.trunc(Math.min(a, b)), max: (a, b) => Math.trunc(Math.max(a, b)), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(`const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };`, 'Runtime');
+    builder.append('\n');
+    builder.append(
+      `const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const regex = { isValid: () => false, test: async () => ({ $tag: "Err", $payload: "No regex runtime" }), find: () => ({ $tag: "None" }), findAll: async () => ({ $tag: "Err", $payload: "No regex runtime" }), replace: async () => ({ $tag: "Err", $payload: "No regex runtime" }) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const crypto = { isAvailable: async () => false, sha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), hmacSha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomBytes: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomInt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmEncrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmDecrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }) };`,
       'Runtime'
     );
     builder.append('\n');
@@ -83,16 +105,16 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       code +=
-        'module.exports = { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
+        'module.exports = { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
     } else {
       code +=
-        'export { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
+        'export { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
+      code += 'module.exports = { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
     } else {
-      code += 'export { io, str, math, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
+      code += 'export { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
     }
   }
 

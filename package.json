@@ -37,6 +37,7 @@
     "build:dts": "tsup src/index.ts --format esm --dts --clean false",
     "build:clean": "node scripts/clean-dist-bin.mjs",
     "build:verify": "node scripts/verify-dist.cjs",
+    "verify": "npm run lint:check && npm run build && npm test",
     "test": "jest --config jest.config.cjs",
     "test:watch": "jest --watch",
     "dev:ui": "vite",

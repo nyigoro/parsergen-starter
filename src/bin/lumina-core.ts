@@ -25,6 +25,7 @@ import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
 import { parseWithPanicRecovery } from '../project/panic.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
+import { collectStyleLintIssues, formatLuminaSource, generateLuminaDocsMarkdown } from '../lumina/tooling.js';
 import { runREPLWithParser } from '../repl.js';
 import { runParsergen } from './cli-core.js';
 import { type RawSourceMap } from 'source-map';
@@ -1554,6 +1555,9 @@ lumina <command> [file] [options]
 Commands:
   compile <file>   Compile Lumina source to JS
   check <file>     Parse + analyze only (no emit)
+  fmt [paths...]   Normalize Lumina source whitespace
+  lint [paths...]  Run semantic diagnostics + style lints
+  doc [paths...]   Generate Markdown API docs
   watch <file>     Watch and recompile on change
   run-wasm <file>  Execute a .wasm file and print return value
   repl             Interactive REPL with Lumina grammar
@@ -1575,6 +1579,8 @@ Options:
   --profile-cache      Print cache hit/miss stats
   --ast-js             Emit JS directly from AST (no IR)
   --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
+  --check              Verify formatting only, do not write files (fmt)
+  --public-only        Include only public declarations in docs (doc)
   --yes                Use defaults without prompts (init)
   --frozen             Use npm ci if lockfile is present (install)
   --dev                Add package as dev dependency (add)
@@ -1588,6 +1594,194 @@ Commands:
   remove <pkg...>      Remove dependency
   list                 List Lumina-resolvable packages from lumina.lock.json
 `);
+}
+
+async function resolveLuminaInputs(inputs: string[], extensions: string[]): Promise<string[]> {
+  const resolved = new Set<string>();
+  const patterns = inputs.length > 0 ? inputs : extensions.map((ext) => `**/*${ext}`);
+
+  for (const item of patterns) {
+    const abs = path.resolve(item);
+    if (existsSync(abs)) {
+      const stats = statSync(abs);
+      if (stats.isDirectory()) {
+        const globbed = await fg(extensions.map((ext) => `**/*${ext}`), {
+          cwd: abs,
+          onlyFiles: true,
+          unique: true,
+          dot: false,
+          absolute: true,
+        });
+        globbed.forEach((filePath) => resolved.add(path.resolve(filePath)));
+      } else if (stats.isFile()) {
+        resolved.add(abs);
+      }
+      continue;
+    }
+
+    const globbed = await fg([item], {
+      onlyFiles: true,
+      unique: true,
+      dot: false,
+      absolute: true,
+    });
+    globbed.forEach((filePath) => resolved.add(path.resolve(filePath)));
+  }
+
+  return Array.from(resolved).sort((a, b) => a.localeCompare(b));
+}
+
+async function runFmtCommand(inputs: string[], extensions: string[], checkOnly: boolean): Promise<boolean> {
+  const files = await resolveLuminaInputs(inputs, extensions);
+  if (files.length === 0) {
+    console.error('No Lumina files found for formatting.');
+    return false;
+  }
+
+  let changed = 0;
+  for (const filePath of files) {
+    const source = await fs.readFile(filePath, 'utf-8');
+    const formatted = formatLuminaSource(source);
+    if (formatted === source) continue;
+    changed += 1;
+    if (checkOnly) {
+      console.error(`Needs formatting: ${filePath}`);
+      continue;
+    }
+    await fs.writeFile(filePath, formatted, 'utf-8');
+    console.log(`Formatted: ${filePath}`);
+  }
+
+  if (checkOnly) {
+    if (changed === 0) {
+      console.log(`Formatting check passed (${files.length} file(s)).`);
+      return true;
+    }
+    console.error(`Formatting check failed: ${changed} file(s) need changes.`);
+    return false;
+  }
+
+  console.log(`Formatting complete: ${changed} file(s) updated, ${files.length - changed} unchanged.`);
+  return true;
+}
+
+async function runLintCommand(
+  inputs: string[],
+  extensions: string[],
+  grammarPath: string,
+  useRecovery: boolean,
+  diCfg: boolean
+): Promise<boolean> {
+  const files = await resolveLuminaInputs(inputs, extensions);
+  if (files.length === 0) {
+    console.error('No Lumina files found for lint.');
+    return false;
+  }
+
+  const parser = await loadGrammar(grammarPath);
+  let errorCount = 0;
+  let warningCount = 0;
+
+  for (const filePath of files) {
+    const source = await fs.readFile(filePath, 'utf-8');
+    const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+
+    if (parseError) {
+      errorCount += 1;
+      continue;
+    }
+
+    if (parseDiagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, parseDiagnostics as never);
+      errorCount += parseDiagnostics.length;
+    }
+
+    if (ast) {
+      const analysis = analyzeLumina(ast as never, { diDebug: diCfg });
+      const seenDiagnostics = new Set<string>();
+      for (const diag of analysis.diagnostics) {
+        const locationKey = diag.location
+          ? `${diag.location.start.line}:${diag.location.start.column}:${diag.location.end.line}:${diag.location.end.column}`
+          : '-';
+        const key = `${diag.severity}|${diag.code ?? 'DIAG'}|${diag.message}|${locationKey}`;
+        if (seenDiagnostics.has(key)) continue;
+        seenDiagnostics.add(key);
+        const code = diag.code ?? 'DIAG';
+        const where = diag.location ? `:${diag.location.start.line}:${diag.location.start.column}` : '';
+        const level = diag.severity === 'error' ? 'error' : 'warning';
+        console.error(`${filePath}${where} [${code}] ${diag.message}`);
+        if (diag.location) {
+          try {
+            console.error(highlightSnippet(source, diag.location, true));
+          } catch {
+            // ignore snippet failures
+          }
+        }
+        if (level === 'error') errorCount += 1;
+        else warningCount += 1;
+      }
+    }
+
+    const styleIssues = collectStyleLintIssues(source);
+    for (const issue of styleIssues) {
+      console.error(`${filePath}:${issue.line}:${issue.column} [${issue.code}] ${issue.message}`);
+      if (issue.severity === 'error') errorCount += 1;
+      else warningCount += 1;
+    }
+  }
+
+  console.log(`Lint summary: ${files.length} file(s), ${errorCount} error(s), ${warningCount} warning(s).`);
+  return errorCount === 0;
+}
+
+async function runDocCommand(
+  inputs: string[],
+  extensions: string[],
+  grammarPath: string,
+  useRecovery: boolean,
+  outPath: string | undefined,
+  publicOnly: boolean
+): Promise<boolean> {
+  const files = await resolveLuminaInputs(inputs, extensions);
+  if (files.length === 0) {
+    console.error('No Lumina files found for doc generation.');
+    return false;
+  }
+
+  const parser = await loadGrammar(grammarPath);
+  const chunks: string[] = [];
+  let failures = 0;
+
+  for (const filePath of files) {
+    const source = await fs.readFile(filePath, 'utf-8');
+    const { ast, diagnostics, parseError } = parseSource(source, parser, useRecovery);
+    if (parseError || diagnostics.length > 0 || !ast) {
+      failures += 1;
+      console.error(`Skipping ${filePath}: parse failed.`);
+      continue;
+    }
+    chunks.push(generateLuminaDocsMarkdown(ast as never, filePath, { publicOnly }));
+  }
+
+  if (chunks.length === 0) {
+    console.error('No docs generated due to parse failures.');
+    return false;
+  }
+
+  const markdown = `${chunks.join('\n\n---\n\n').trimEnd()}\n`;
+  if (outPath) {
+    const resolved = path.resolve(outPath);
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, markdown, 'utf-8');
+    console.log(`Docs written: ${resolved}`);
+  } else {
+    process.stdout.write(markdown);
+  }
+
+  if (failures > 0) {
+    console.error(`Doc generation completed with ${failures} skipped file(s).`);
+  }
+  return true;
 }
 
 export async function runLumina(argv: string[] = process.argv.slice(2)) {
@@ -1604,6 +1798,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const initYes = parseBooleanFlag(args, '--yes');
   const installFrozen = parseBooleanFlag(args, '--frozen');
   const addDev = parseBooleanFlag(args, '--dev');
+  const fmtCheck = parseBooleanFlag(args, '--check');
+  const docPublicOnly = parseBooleanFlag(args, '--public-only');
 
   if (command === 'init') {
     await initProject({ yes: initYes });
@@ -1710,6 +1906,31 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         2
       )
     );
+    return;
+  }
+
+  if (command === 'fmt') {
+    const ok = await runFmtCommand(positionalArgs, configFileExtensions, fmtCheck);
+    if (!ok) process.exit(1);
+    return;
+  }
+
+  if (command === 'lint') {
+    const ok = await runLintCommand(positionalArgs, configFileExtensions, grammarPath, useRecovery, diCfg);
+    if (!ok) process.exit(1);
+    return;
+  }
+
+  if (command === 'doc') {
+    const ok = await runDocCommand(
+      positionalArgs,
+      configFileExtensions,
+      grammarPath,
+      useRecovery,
+      outArg,
+      docPublicOnly
+    );
+    if (!ok) process.exit(1);
     return;
   }
 

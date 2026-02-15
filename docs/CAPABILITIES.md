@@ -50,10 +50,13 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Feature | Status | Notes |
 |---|---|---|
 | Prelude enums (Option/Result) | Stable | Registry + prelude |
-| Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list`, `vec`, `hashmap`, `hashset`, `fs`, `http` |
+| Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list`, `vec`, `hashmap`, `hashset`, `fs`, `http`, `time`, `regex`, `crypto` |
 | Runtime Option/Result | Stable | JS runtime + helpers |
 | Async I/O | Stable | `io.readLineAsync()` |
-| File system | Stable | `fs.readFile`, `fs.writeFile` |
+| File system | Stable | `fs.readFile`, `fs.writeFile`, `fs.readDir`, `fs.metadata`, `fs.exists`, `fs.mkdir`, `fs.removeFile` |
+| Time/Duration | Stable | `time.nowMs`, `time.instantNow`, `time.elapsedMs`, `time.sleep` |
+| Regex | Stable | Validation, test, find/findAll, replace |
+| Crypto | Stable | SHA-256, HMAC-SHA256, random bytes/int, AES-GCM |
 
 ## Tooling & Codegen
 | Feature | Status | Notes |
@@ -65,6 +68,9 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Source maps | Stable | External + inline options |
 | Multiâ€‘file module compilation | Stable | Import resolution via bundling (topological compile planned) |
 | Package management | Stable | npm-based, lockfile, workspace support |
+| `lumina fmt` | Beta | Whitespace normalization + check mode |
+| `lumina lint` | Beta | Semantic diagnostics + style checks |
+| `lumina doc` | Beta | Markdown API extraction from declarations |
 
 ---
 
