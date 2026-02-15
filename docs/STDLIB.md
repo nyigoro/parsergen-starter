@@ -242,3 +242,46 @@ Removes all values from the set.
 
 ### values<T>(set: HashSet<T>) -> Vec<T>
 Returns a vector of all values.
+
+## @std/channel
+
+Message-passing channels built on Web Platform `MessageChannel`.
+
+### new<T>() -> Channel<T>
+Creates a new channel and returns a `Channel<T>` struct with `.sender` and `.receiver`.
+
+### send<T>(sender: Sender<T>, value: T) -> Bool
+Sends a value. Returns `true` if the message was enqueued, `false` if the sender is closed.
+
+### recv<T>(receiver: Receiver<T>) -> Promise<Option<T>>
+Waits for the next message. Resolves to `Some(value)` or `None` if the channel is closed and empty.
+
+### try_recv<T>(receiver: Receiver<T>) -> Option<T>
+Attempts to receive a message without waiting.
+
+### close_sender<T>(sender: Sender<T>) -> Void
+Closes the sender. The receiver will eventually return `None` after draining messages.
+
+### close_receiver<T>(receiver: Receiver<T>) -> Void
+Closes the receiver and releases its MessagePort.
+
+### is_available() -> Bool
+Returns `true` if `MessageChannel` is available in the current runtime.
+
+**Example:**
+```lumina
+import { channel } from "@std";
+
+fn main() -> void {
+  let ch = channel.new<i32>();
+  let sender = ch.sender;
+  let receiver = ch.receiver;
+
+  channel.send(sender, 42);
+
+  match await channel.recv(receiver) {
+    Some(value) => io.println(str.from_int(value)),
+    None => io.println("closed")
+  }
+}
+```

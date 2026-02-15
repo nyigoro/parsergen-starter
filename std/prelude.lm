@@ -8,6 +8,9 @@ type List<T> = { length: int };
 extern type Vec<T> from "@std/vec";
 extern type HashMap<K, V> from "@std/hashmap";
 extern type HashSet<T> from "@std/hashset";
+extern type Sender<T> from "@std/channel";
+extern type Receiver<T> from "@std/channel";
+struct Channel<T> { sender: Sender<T>, receiver: Receiver<T> }
 type Map<K, V> = { size: int };
 enum Option<T> { Some(T), None }
 enum Result<T, E> { Ok(T), Err(E) }

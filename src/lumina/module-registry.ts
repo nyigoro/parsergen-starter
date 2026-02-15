@@ -1347,6 +1347,106 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const channelModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const senderT = adt('Sender', [t]);
+    const receiverT = adt('Receiver', [t]);
+    const channelT = adt('Channel', [t]);
+    const optionT = adt('Option', [t]);
+    const newType: Type = fnType([], channelT);
+    const sendType: Type = fnType([senderT, t], primitive('bool'));
+    const recvType: Type = fnType([receiverT], promiseType(optionT));
+    const tryRecvType: Type = fnType([receiverT], optionT);
+    const closeSenderType: Type = fnType([senderT], primitive('void'));
+    const closeReceiverType: Type = fnType([receiverT], primitive('void'));
+    const availableType: Type = fnType([], primitive('bool'));
+
+    return {
+      kind: 'module',
+      name: 'channel',
+      moduleId: 'std://channel',
+      exports: new Map([
+        [
+          'new',
+          moduleFunctionWithScheme(
+            'new',
+            [],
+            'Channel<any>',
+            schemeFromVars(newType, [t]),
+            [],
+            'std://channel'
+          ),
+        ],
+        [
+          'send',
+          moduleFunctionWithScheme(
+            'send',
+            ['Sender<any>', 'any'],
+            'bool',
+            schemeFromVars(sendType, [t]),
+            ['sender', 'value'],
+            'std://channel'
+          ),
+        ],
+        [
+          'recv',
+          moduleFunctionWithScheme(
+            'recv',
+            ['Receiver<any>'],
+            'Promise<Option<any>>',
+            schemeFromVars(recvType, [t]),
+            ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
+          'try_recv',
+          moduleFunctionWithScheme(
+            'try_recv',
+            ['Receiver<any>'],
+            'Option<any>',
+            schemeFromVars(tryRecvType, [t]),
+            ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
+          'close_sender',
+          moduleFunctionWithScheme(
+            'close_sender',
+            ['Sender<any>'],
+            'void',
+            schemeFromVars(closeSenderType, [t]),
+            ['sender'],
+            'std://channel'
+          ),
+        ],
+        [
+          'close_receiver',
+          moduleFunctionWithScheme(
+            'close_receiver',
+            ['Receiver<any>'],
+            'void',
+            schemeFromVars(closeReceiverType, [t]),
+            ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
+          'is_available',
+          moduleFunctionWithScheme(
+            'is_available',
+            [],
+            'bool',
+            schemeFromVars(availableType, []),
+            [],
+            'std://channel'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const preludeModule: ModuleNamespace = {
     kind: 'module',
     name: '@prelude',
@@ -1417,6 +1517,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['vec', vecModule],
       ['hashmap', hashmapModule],
       ['hashset', hashsetModule],
+      ['channel', channelModule],
       ['fs', fsModule],
       ['http', httpModule],
     ]),
@@ -1434,6 +1535,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/vec', vecModule);
   registry.set('@std/hashmap', hashmapModule);
   registry.set('@std/hashset', hashsetModule);
+  registry.set('@std/channel', channelModule);
   registry.set('@prelude', preludeModule);
   return registry;
 }

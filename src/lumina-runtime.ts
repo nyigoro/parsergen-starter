@@ -830,6 +830,128 @@ export const Result = {
   },
 };
 
+type ChannelMessage =
+  | { __lumina_channel_value: unknown }
+  | { __lumina_channel_close: true };
+
+const isChannelValue = (value: unknown): value is { __lumina_channel_value: unknown } =>
+  !!value && typeof value === 'object' && '__lumina_channel_value' in value;
+
+const isChannelClose = (value: unknown): value is { __lumina_channel_close: true } =>
+  !!value && typeof value === 'object' && (value as { __lumina_channel_close?: unknown }).__lumina_channel_close === true;
+
+const resolveMessageChannel = (): typeof MessageChannel | null => {
+  if (typeof MessageChannel === 'function') return MessageChannel;
+  return null;
+};
+
+export class Sender<T> {
+  private closed = false;
+  constructor(private readonly port: MessagePort) {
+    this.port.start?.();
+  }
+
+  send(value: T): boolean {
+    if (this.closed) return false;
+    const payload: ChannelMessage = { __lumina_channel_value: value };
+    this.port.postMessage(payload);
+    return true;
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    const payload: ChannelMessage = { __lumina_channel_close: true };
+    try {
+      this.port.postMessage(payload);
+    } catch {
+      // ignore close failures
+    }
+    this.port.close();
+  }
+}
+
+export class Receiver<T> {
+  private queue: T[] = [];
+  private waiters: Array<(value: { $tag: string; $payload?: T }) => void> = [];
+  private closed = false;
+
+  constructor(private readonly port: MessagePort) {
+    this.port.onmessage = (event: MessageEvent<ChannelMessage>) => {
+      const data = event.data;
+      if (isChannelClose(data)) {
+        this.closed = true;
+        this.flushWaiters(Option.None);
+        return;
+      }
+      const value = (isChannelValue(data) ? data.__lumina_channel_value : data) as T;
+      const waiter = this.waiters.shift();
+      if (waiter) {
+        waiter(Option.Some(value));
+      } else {
+        this.queue.push(value);
+      }
+    };
+    this.port.onmessageerror = () => {
+      this.closed = true;
+      this.flushWaiters(Option.None);
+    };
+    this.port.start?.();
+  }
+
+  private flushWaiters(value: { $tag: string; $payload?: T }): void {
+    while (this.waiters.length > 0) {
+      const waiter = this.waiters.shift();
+      if (waiter) waiter(value);
+    }
+  }
+
+  recv(): Promise<{ $tag: string; $payload?: T }> {
+    if (this.queue.length > 0) {
+      const value = this.queue.shift();
+      return Promise.resolve(Option.Some(value as T));
+    }
+    if (this.closed) {
+      return Promise.resolve(Option.None);
+    }
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  try_recv(): { $tag: string; $payload?: T } {
+    if (this.queue.length > 0) {
+      const value = this.queue.shift();
+      return Option.Some(value as T);
+    }
+    return Option.None;
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.port.close();
+    this.flushWaiters(Option.None);
+  }
+}
+
+export const channel = {
+  is_available: (): boolean => resolveMessageChannel() !== null,
+  new: <T>(): { sender: Sender<T>; receiver: Receiver<T> } => {
+    const ChannelCtor = resolveMessageChannel();
+    if (!ChannelCtor) {
+      throw new Error('MessageChannel is not available in this environment');
+    }
+    const { port1, port2 } = new ChannelCtor();
+    return { sender: new Sender<T>(port1), receiver: new Receiver<T>(port2) };
+  },
+  send: <T>(sender: Sender<T>, value: T): boolean => sender.send(value),
+  recv: <T>(receiver: Receiver<T>): Promise<unknown> => receiver.recv(),
+  try_recv: <T>(receiver: Receiver<T>): unknown => receiver.try_recv(),
+  close_sender: <T>(sender: Sender<T>): void => sender.close(),
+  close_receiver: <T>(receiver: Receiver<T>): void => receiver.close(),
+};
+
 export function __set(obj: Record<string, unknown>, prop: string, value: unknown) {
   obj[prop] = value;
   return value;
