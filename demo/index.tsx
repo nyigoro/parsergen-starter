@@ -82,6 +82,97 @@ fn main() {
   return answer;
 }`;
 
+type LuminaPreset = {
+  name: string;
+  description: string;
+  code: string;
+};
+
+const luminaPresets: LuminaPreset[] = [
+  {
+    name: 'String Interpolation',
+    description: 'String templates + stdlib usage',
+    code: `import { io } from "@std";
+
+fn main() -> void {
+  let name = "Lumina";
+  let version = "0.3.x";
+  io.println("Hello {name}, release line {version}");
+}`,
+  },
+  {
+    name: 'Traits + Impl',
+    description: 'Trait declaration and method dispatch',
+    code: `trait Printable {
+  fn debug(self: Self) -> string;
+}
+
+struct User {
+  name: string
+}
+
+impl Printable for User {
+  fn debug(self: Self) -> string {
+    self.name
+  }
+}
+
+fn main() -> void {
+  let user = User { name: "Ada" };
+  let text = user.debug();
+}`,
+  },
+  {
+    name: 'Channels + Async',
+    description: 'Message passing primitives',
+    code: `import { channel } from "@std";
+
+async fn main() -> void {
+  let ch = channel.new<i32>();
+  let sent = channel.send(ch.sender, 42);
+  let _ = sent;
+}`,
+  },
+  {
+    name: 'WASM Numeric Hot Path',
+    description: 'Recursive computation for wasm target',
+    code: `fn fib(n: i32) -> i32 {
+  if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
+}
+
+fn main() -> i32 {
+  fib(20)
+}`,
+  },
+];
+
+type RuntimeSupport = 'stable' | 'partial' | 'node' | 'planned';
+type RuntimeFeatureRow = {
+  feature: string;
+  browser: RuntimeSupport;
+  node: RuntimeSupport;
+  notes: string;
+};
+
+const runtimeMatrix: RuntimeFeatureRow[] = [
+  { feature: 'io/str/math/list', browser: 'stable', node: 'stable', notes: 'Core runtime modules' },
+  { feature: 'fs', browser: 'partial', node: 'stable', notes: 'Node full; browser returns Result.Err for writes/metadata' },
+  { feature: 'time', browser: 'stable', node: 'stable', notes: 'Monotonic + wall clock helpers' },
+  { feature: 'regex', browser: 'stable', node: 'stable', notes: 'RegExp wrappers with Result/Option' },
+  { feature: 'crypto', browser: 'stable', node: 'stable', notes: 'WebCrypto + Node fallback' },
+  { feature: 'channel', browser: 'stable', node: 'stable', notes: 'MessageChannel-based channels' },
+  { feature: 'thread', browser: 'partial', node: 'stable', notes: 'Worker availability varies by host' },
+  { feature: 'sync/atomics', browser: 'partial', node: 'stable', notes: 'Requires SharedArrayBuffer + Atomics' },
+  { feature: 'wasm backend', browser: 'partial', node: 'stable', notes: 'Compile in CLI; run in both hosts' },
+];
+
+const supportBadgeClasses: Record<RuntimeSupport, string> = {
+  stable: 'bg-green-700/40 text-green-300 border-green-600',
+  partial: 'bg-yellow-700/30 text-yellow-300 border-yellow-600',
+  node: 'bg-blue-700/30 text-blue-300 border-blue-600',
+  planned: 'bg-gray-700/50 text-gray-300 border-gray-600',
+};
+
 const pegLanguage = StreamLanguage.define({
   token(stream) {
     if (stream.match(/\/\/.*/)) return 'comment';
@@ -352,6 +443,7 @@ function App() {
   const [parseHistory, setParseHistory] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [luminaCode, setLuminaCode] = useState(luminaSample);
+  const [luminaPreset, setLuminaPreset] = useState(0);
   const [luminaAst, setLuminaAst] = useState<unknown>(null);
   const [luminaDiagnostics, setLuminaDiagnostics] = useState<LuminaDiagnostic[]>([]);
   const [luminaOutput, setLuminaOutput] = useState('');
@@ -468,6 +560,17 @@ function App() {
     }
   };
 
+  const loadLuminaPreset = (index: number) => {
+    const preset = luminaPresets[index];
+    if (!preset) return;
+    setLuminaPreset(index);
+    setLuminaCode(preset.code);
+    setLuminaDiagnostics([]);
+    setLuminaOutput('');
+    setLuminaAst(null);
+    setLuminaStatus('idle');
+  };
+
   const exportData = () => {
     const data: SessionData = { grammar, code, output, timestamp: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -573,11 +676,11 @@ function App() {
           <div className="max-w-6xl mx-auto px-6 py-12 space-y-12">
             <section className="grid gap-8 lg:grid-cols-2 items-center">
               <div className="space-y-4">
-                <div className="text-xs uppercase tracking-[0.2em] text-blue-300">Parsergen + Lumina</div>
-                <h1 className="text-4xl font-semibold leading-tight">Build grammars, explore ASTs, and ship a compiler toolchain.</h1>
+                <div className="text-xs uppercase tracking-[0.2em] text-blue-300">Lumina v0.3.x</div>
+                <h1 className="text-4xl font-semibold leading-tight">Build grammars, compile apps, and ship cross-runtime tooling.</h1>
                 <p className="text-gray-300 leading-relaxed">
-                  This demo showcases the Lumina pipeline: lexer, PEG parser, semantic analysis, IR, and codegen.
-                  Use the playground to experiment with grammars, then switch to Lumina to see the language tooling stack.
+                  Lumina now includes package management, traits, channels/threading primitives, WASM codegen, and a fuller stdlib.
+                  This site is the fastest way to inspect parser internals and preview the language pipeline in-browser.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <button
@@ -596,24 +699,25 @@ function App() {
               </div>
               <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-6 space-y-4">
                 <div className="flex items-center gap-2 text-sm text-blue-300">
-                  <Zap size={14} /> Pipeline Snapshot
+                  <Zap size={14} /> Capability Snapshot
                 </div>
-                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`Lexer → Parser → Semantic → IR → Codegen
+                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`Lexer → Parser → HM/Semantic → IR/SSA → JS/WASM
 
 Features:
-- Panic recovery
-- Match exhaustiveness
-- CFG + SSA utilities
-- LSP diagnostics + rename`}</pre>
+- Package management + lockfile
+- Tooling: fmt / lint / doc
+- Concurrency: channel / thread / sync
+- Runtime modules: fs, time, regex, crypto`}</pre>
                 <div className="flex gap-2 text-xs text-gray-400">
                   <span className="px-2 py-1 bg-gray-900 rounded">PEG + Moo</span>
                   <span className="px-2 py-1 bg-gray-900 rounded">Lumina CLI</span>
                   <span className="px-2 py-1 bg-gray-900 rounded">LSP</span>
+                  <span className="px-2 py-1 bg-gray-900 rounded">WASM</span>
                 </div>
               </div>
             </section>
 
-            <section className="grid gap-6 md:grid-cols-3">
+            <section className="grid gap-6 md:grid-cols-4">
               <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-2">
                 <div className="flex items-center gap-2 text-blue-300"><Code size={16} /> Grammar Studio</div>
                 <p className="text-sm text-gray-300">Load PEG grammars, parse samples, inspect JSON output or AST trees.</p>
@@ -624,7 +728,11 @@ Features:
               </div>
               <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-2">
                 <div className="flex items-center gap-2 text-blue-300"><FileText size={16} /> Tooling DX</div>
-                <p className="text-sm text-gray-300">CLI pipeline, LSP diagnostics, rename, references, and watch mode.</p>
+                <p className="text-sm text-gray-300">CLI pipeline, LSP diagnostics, rename/references, plus fmt/lint/doc tooling.</p>
+              </div>
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-2">
+                <div className="flex items-center gap-2 text-blue-300"><Zap size={16} /> Runtime + WASM</div>
+                <p className="text-sm text-gray-300">Node + browser runtime modules with optional WASM backend for hot paths.</p>
               </div>
             </section>
 
@@ -632,7 +740,21 @@ Features:
               <div className="flex items-center gap-2 text-blue-300 text-sm mb-3"><Play size={14} /> Try It Quickly</div>
               <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`lumina repl
 lumina compile examples/hello.lm --out dist/hello.js
-lumina check examples/hello.lm`}</pre>
+lumina check examples/hello.lm
+lumina fmt "examples/**/*.lm" --check
+lumina lint "examples/**/*.lm"
+lumina doc "examples/**/*.lm" --out docs/API.md
+npm run verify`}</pre>
+            </section>
+
+            <section className="bg-gray-800/60 border border-gray-700 rounded-lg p-6 space-y-3">
+              <div className="text-sm text-blue-300">Docs + References</div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <a className="px-3 py-1 rounded bg-gray-900 hover:bg-gray-700" href="https://github.com/nyigoro/lumina-lang/blob/main/docs/STDLIB.md" target="_blank" rel="noreferrer">Stdlib</a>
+                <a className="px-3 py-1 rounded bg-gray-900 hover:bg-gray-700" href="https://github.com/nyigoro/lumina-lang/blob/main/docs/CAPABILITIES.md" target="_blank" rel="noreferrer">Capabilities</a>
+                <a className="px-3 py-1 rounded bg-gray-900 hover:bg-gray-700" href="https://github.com/nyigoro/lumina-lang/blob/main/docs/PACKAGE_USAGE.md" target="_blank" rel="noreferrer">Packages</a>
+                <a className="px-3 py-1 rounded bg-gray-900 hover:bg-gray-700" href="https://github.com/nyigoro/lumina-lang/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
+              </div>
             </section>
           </div>
         </main>
@@ -643,27 +765,36 @@ lumina check examples/hello.lm`}</pre>
           <div className="max-w-6xl mx-auto px-6 py-12 space-y-10">
             <section className="space-y-4">
               <div className="text-xs uppercase tracking-[0.2em] text-blue-300">Lumina Toolchain</div>
-              <h2 className="text-3xl font-semibold">Language pipeline and IDE features</h2>
-              <p className="text-gray-300">Lumina ships a full compiler pipeline with panic recovery, SSA-ready IR, and diagnostics designed for LSP integrations.</p>
+              <h2 className="text-3xl font-semibold">Language, runtime, and tooling status</h2>
+              <p className="text-gray-300">Current focus: production CLI flow (`verify`), expanded stdlib modules, and cross-runtime concurrency APIs.</p>
             </section>
 
-            <section className="grid gap-6 md:grid-cols-2">
+            <section className="grid gap-6 md:grid-cols-3">
               <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-3">
                 <div className="text-sm text-blue-300 flex items-center gap-2"><Zap size={14} /> Compiler Pipeline</div>
                 <ul className="text-sm text-gray-300 space-y-2">
-                  <li>Lexer with modern literals and comment support</li>
-                  <li>PEG parser with panic-mode recovery</li>
-                  <li>Semantic analysis with inference + DI checks</li>
-                  <li>IR passes with SSA + DCE hooks</li>
+                  <li>Lexer + PEG parser with panic-mode recovery</li>
+                  <li>HM inference, traits, and diagnostics codes</li>
+                  <li>IR optimization + AST codegen paths</li>
+                  <li>JS and WASM backend targets</li>
                 </ul>
               </div>
               <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-3">
                 <div className="text-sm text-blue-300 flex items-center gap-2"><Info size={14} /> IDE + LSP</div>
                 <ul className="text-sm text-gray-300 space-y-2">
-                  <li>Diagnostics with multi-error reporting</li>
+                  <li>Diagnostics with code-level reporting</li>
                   <li>Go-to-definition and references</li>
-                  <li>Rename with conflict checks</li>
-                  <li>Semantic tokens + completion</li>
+                  <li>Cross-file package symbol resolution</li>
+                  <li>Semantic tokens + completion + hover</li>
+                </ul>
+              </div>
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-5 space-y-3">
+                <div className="text-sm text-blue-300 flex items-center gap-2"><FileText size={14} /> Tooling</div>
+                <ul className="text-sm text-gray-300 space-y-2">
+                  <li><code>lumina fmt</code> for normalization/check mode</li>
+                  <li><code>lumina lint</code> for semantic + style checks</li>
+                  <li><code>lumina doc</code> for markdown API generation</li>
+                  <li><code>npm run verify</code> as release safety gate</li>
                 </ul>
               </div>
             </section>
@@ -674,22 +805,58 @@ lumina check examples/hello.lm`}</pre>
                 <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`lumina compile src/main.lm --out dist/main.js
 lumina compile src/main.lm --sourcemap --debug-ir
 lumina check src/main.lm
-lumina watch examples`}</pre>
+lumina watch examples
+lumina fmt "src/**/*.lm" --check
+lumina lint "src/**/*.lm"
+lumina doc "src/**/*.lm" --out docs/API.md`}</pre>
               </div>
               <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5">
-                <div className="text-sm text-blue-300 mb-3">Project Flow</div>
+                <div className="text-sm text-blue-300 mb-3">Release Signals</div>
+                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`Version: lumina-lang@0.3.x
+Latest verify: lint:check + build + test
+WASM benchmark: ~100x on recursive hot path
+Runtime modules: io/str/math/list/vec/hashmap/hashset
+Expanded modules: fs/time/regex/crypto/channel/thread/sync`}</pre>
+                <div className="mt-4 text-xs text-gray-300">Project flow:</div>
                 <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`ProjectContext
   ├─ std/prelude.lm
   ├─ user sources
   ├─ dependency graph
   └─ diagnostics + IR`}</pre>
-                <div className="mt-4 text-xs text-gray-300">Virtual file demo:</div>
-                <pre className="text-xs text-gray-200 font-mono whitespace-pre-wrap">{`project.registerVirtualFile("lib/math.lm", \`
-  pub fn add(a: int, b: int) -> int { return a + b; }
-\`);
+              </div>
+            </section>
 
-// main.lm
-import { add } from "lib/math.lm";`}</pre>
+            <section className="bg-gray-800/60 border border-gray-700 rounded-lg p-5 space-y-3">
+              <div className="text-sm text-blue-300">Runtime Compatibility Matrix</div>
+              <div className="overflow-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-left text-gray-400 border-b border-gray-700">
+                      <th className="py-2 pr-4">Feature</th>
+                      <th className="py-2 pr-4">Browser</th>
+                      <th className="py-2 pr-4">Node</th>
+                      <th className="py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runtimeMatrix.map((row) => (
+                      <tr key={row.feature} className="border-b border-gray-800">
+                        <td className="py-2 pr-4 text-gray-200">{row.feature}</td>
+                        <td className="py-2 pr-4">
+                          <span className={`inline-block px-2 py-0.5 rounded border ${supportBadgeClasses[row.browser]}`}>
+                            {row.browser}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4">
+                          <span className={`inline-block px-2 py-0.5 rounded border ${supportBadgeClasses[row.node]}`}>
+                            {row.node}
+                          </span>
+                        </td>
+                        <td className="py-2 text-gray-400">{row.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </section>
 
@@ -697,14 +864,39 @@ import { add } from "lib/math.lm";`}</pre>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm text-blue-300 flex items-center gap-2"><Zap size={14} /> Lumina Playground</div>
-                  <div className="text-xs text-gray-400">Runs the Lumina grammar + semantic analysis directly in the browser.</div>
+                  <div className="text-xs text-gray-400">Runs Lumina parse + semantic analysis in-browser (no runtime execution).</div>
                 </div>
-                <button
-                  onClick={handleLuminaParse}
-                  className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm"
-                >
-                  Analyze
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => copyToClipboard('CLI snippet', `lumina lint src/main.lm\nlumina compile src/main.lm --out dist/main.js`)}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-xs"
+                  >
+                    Copy CLI snippet
+                  </button>
+                  <button
+                    onClick={handleLuminaParse}
+                    className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm"
+                  >
+                    Analyze
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {luminaPresets.map((preset, index) => (
+                  <button
+                    key={preset.name}
+                    onClick={() => loadLuminaPreset(index)}
+                    className={`text-left rounded border px-3 py-2 ${
+                      luminaPreset === index
+                        ? 'border-blue-500 bg-blue-600/10'
+                        : 'border-gray-700 bg-gray-900/40 hover:bg-gray-900/70'
+                    }`}
+                  >
+                    <div className="text-xs text-blue-300">{preset.name}</div>
+                    <div className="text-[11px] text-gray-400">{preset.description}</div>
+                  </button>
+                ))}
               </div>
 
               <CodeMirror
@@ -778,7 +970,10 @@ import { add } from "lib/math.lm";`}</pre>
                     {luminaDiagnostics.length === 0 && <div className="text-gray-400">No diagnostics yet.</div>}
                     {luminaDiagnostics.map((diag, idx) => (
                       <div key={idx} className="border border-gray-700 rounded p-3">
-                        <div className="text-xs uppercase text-gray-400">{diag.severity}</div>
+                        <div className="text-xs uppercase text-gray-400 flex items-center gap-2">
+                          <span>{diag.severity}</span>
+                          {diag.code && <span className="text-blue-300">[{diag.code}]</span>}
+                        </div>
                         <div className="text-sm">{diag.message}</div>
                         {diag.location && (
                           <div className="text-xs text-gray-400 mt-1">
