@@ -2150,7 +2150,7 @@ function typeCheckExpr(
       const valueType = parsed.args[0] ?? 'any';
       if (callee === 'join') {
         ensureArity(0);
-        return valueType;
+        return `Promise<Result<${valueType},string>>`;
       }
       return null;
     }

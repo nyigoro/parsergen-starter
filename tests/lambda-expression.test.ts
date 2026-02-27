@@ -91,9 +91,10 @@ describe('lambda expressions', () => {
         return 42;
       }
 
-      fn main() -> i32 {
+      async fn main() -> i32 {
         let h = thread.spawn(|| worker());
-        h.join()
+        let _joined = await h.join();
+        0
       }
     `.trim() + '\n';
 

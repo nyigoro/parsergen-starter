@@ -85,10 +85,10 @@ describe('method syntax', () => {
         return id * 2;
       }
 
-      fn main() -> i32 {
+      async fn main() -> i32 {
         let handle = thread.spawn(|| worker(42));
-        let result = handle.join();
-        result
+        let _joined = await handle.join();
+        0
       }
     `.trim() + '\n';
 

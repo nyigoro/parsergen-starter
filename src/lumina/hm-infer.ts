@@ -1300,10 +1300,20 @@ function inferExpr(
             const valueType = receiverResolved.params[0];
             if (expr.callee.name === 'join') {
               resolvedReceiverMethod = true;
-              tryUnify(resultType, valueType, subst, diagnostics, {
-                location: expr.location,
-                note: `ThreadHandle.join returns task value`,
-              });
+              tryUnify(
+                resultType,
+                promiseType({
+                  kind: 'adt',
+                  name: 'Result',
+                  params: [valueType, { kind: 'primitive', name: 'string' }],
+                }),
+                subst,
+                diagnostics,
+                {
+                  location: expr.location,
+                  note: `ThreadHandle.join returns Promise<Result<T,string>>`,
+                }
+              );
             }
           } else if (receiverResolved.name === 'Thread') {
             switch (expr.callee.name) {

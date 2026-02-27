@@ -83,15 +83,29 @@ describe('runtime thread helpers', () => {
     expect(typeof code).toBe('number');
   });
 
-  test('spawn supports local function tasks with join', () => {
+  test('spawn supports local function tasks with join', async () => {
     const handle = thread.spawn(() => 42 * 2);
     expect(handle instanceof ThreadHandle).toBe(true);
     if (!(handle instanceof ThreadHandle)) return;
 
-    const joined = handle.join();
-    expect(joined).toBe(84);
+    const joined = await handle.join();
+    expect(unwrapResult(joined).$tag).toBe('Ok');
+    expect(unwrapResult(joined).$payload).toBe(84);
 
-    const viaHelper = thread.join(handle as never);
-    expect(viaHelper).toBe(84);
+    const viaHelper = await thread.join(handle as never);
+    expect(unwrapResult(viaHelper).$tag).toBe('Ok');
+    expect(unwrapResult(viaHelper).$payload).toBe(84);
+  });
+
+  test('spawn propagates task errors via Result.Err', async () => {
+    const handle = thread.spawn(() => {
+      throw new Error('boom');
+    });
+    expect(handle instanceof ThreadHandle).toBe(true);
+    if (!(handle instanceof ThreadHandle)) return;
+
+    const joined = await handle.join();
+    expect(unwrapResult(joined).$tag).toBe('Err');
+    expect(String(unwrapResult(joined).$payload)).toContain('boom');
   });
 });

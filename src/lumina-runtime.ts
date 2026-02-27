@@ -1491,29 +1491,19 @@ export class Thread {
 }
 
 export class ThreadHandle<T = unknown> {
-  private done = false;
-  private value: T | undefined;
-  private error: unknown;
+  private readonly result: Promise<unknown>;
 
-  constructor(task: () => T) {
-    try {
-      this.value = task();
-    } catch (err) {
-      this.error = err;
-    } finally {
-      this.done = true;
-    }
+  constructor(task: () => T | Promise<T>) {
+    this.result = Promise.resolve()
+      .then(() => task())
+      .then(
+        (value) => Result.Ok(value),
+        (error) => Result.Err(error instanceof Error ? error.message : String(error))
+      );
   }
 
-  join(): T {
-    if (!this.done) {
-      throw new Error('Thread handle is not ready');
-    }
-    if (this.error !== undefined) {
-      if (this.error instanceof Error) throw this.error;
-      throw new Error(String(this.error));
-    }
-    return this.value as T;
+  join(): Promise<unknown> {
+    return this.result;
   }
 }
 

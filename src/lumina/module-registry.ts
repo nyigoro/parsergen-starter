@@ -1727,11 +1727,12 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const t = freshTypeVar();
     const threadT = adt('Thread');
     const threadHandleT = adt('ThreadHandle', [t]);
+    const joinResultT = adt('Result', [t, primitive('string')]);
     const optionT = adt('Option', [t]);
     const resultT = adt('Result', [threadT, primitive('string')]);
     const spawnType: Type = fnType([fnType([], t)], threadHandleT);
     const spawnWorkerType: Type = fnType([primitive('string')], promiseType(resultT));
-    const joinType: Type = fnType([threadHandleT], t);
+    const joinType: Type = fnType([threadHandleT], promiseType(joinResultT));
     const postType: Type = fnType([threadT, t], primitive('bool'));
     const recvType: Type = fnType([threadT], promiseType(optionT));
     const tryRecvType: Type = fnType([threadT], optionT);
@@ -1815,7 +1816,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
           moduleFunctionWithScheme(
             'join',
             ['ThreadHandle<any>'],
-            'any',
+            'Promise<Result<any,string>>',
             schemeFromVars(joinType, [t]),
             ['thread'],
             'std://thread'

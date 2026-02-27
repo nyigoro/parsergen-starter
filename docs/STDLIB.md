@@ -391,8 +391,8 @@ Returns `true` when worker threading is available in the runtime.
 ### spawn(task: fn() -> T) -> ThreadHandle<T>
 Spawns a local task handle from a zero-arg function and returns a joinable handle.
 
-### join(handle: ThreadHandle<T>) -> T
-Waits for local task completion and returns task result.
+### join(handle: ThreadHandle<T>) -> Promise<Result<T, String>>
+Waits for local task completion and returns `Ok(value)` or `Err(message)`.
 
 ### spawn_worker(specifier: String) -> Promise<Result<Thread, String>>
 Spawns a worker from a module specifier/path.
