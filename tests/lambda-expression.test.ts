@@ -82,4 +82,24 @@ describe('lambda expressions', () => {
     expect(js).toContain('function(x)');
     expect(js).toContain('x + base');
   });
+
+  it('supports zero-arg shorthand lambdas (|| expr)', () => {
+    const source = `
+      import { thread } from "@std";
+
+      fn worker() -> i32 {
+        return 42;
+      }
+
+      fn main() -> i32 {
+        let h = thread.spawn(|| worker());
+        h.join()
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

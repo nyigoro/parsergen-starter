@@ -76,4 +76,29 @@ describe('method syntax', () => {
     expect(js).toContain('v.push(4);');
     expect(js).toContain('v.len();');
   });
+
+  it('supports thread.spawn task handles and join method', () => {
+    const source = `
+      import { thread } from "@std";
+
+      fn worker(id: i32) -> i32 {
+        return id * 2;
+      }
+
+      fn main() -> i32 {
+        let handle = thread.spawn(|| worker(42));
+        let result = handle.join();
+        result
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+
+    const inferred = inferProgram(ast);
+    const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(hmErrors).toHaveLength(0);
+  });
 });

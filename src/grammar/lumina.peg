@@ -413,6 +413,7 @@ PrimaryAtom
   = MatchExpr
   / ArrayLiteral
   / StructLiteral
+  / ZeroArgLambdaExpr
   / LambdaExpr
   / MoveExpr
   / QualifiedCall
@@ -435,6 +436,19 @@ ArrayLiteral
 
 ArrayElements
   = head:Expr tail:(_ "," _ Expr)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+ZeroArgLambdaExpr
+  = "||" _ body:Expr {
+      const ret = createNode("Return", { value: body }, location);
+      const lambdaBody = createNode("Block", { body: [ret] }, location);
+      return createNode("Lambda", {
+        async: false,
+        params: [],
+        returnType: null,
+        body: lambdaBody,
+        typeParams: [],
+      }, location);
+    }
 
 LambdaExpr
   = async:("async" __)? "fn" _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {

@@ -1296,6 +1296,62 @@ function inferExpr(
               default:
                 break;
             }
+          } else if (receiverResolved.name === 'ThreadHandle' && receiverResolved.params.length === 1) {
+            const valueType = receiverResolved.params[0];
+            if (expr.callee.name === 'join') {
+              resolvedReceiverMethod = true;
+              tryUnify(resultType, valueType, subst, diagnostics, {
+                location: expr.location,
+                note: `ThreadHandle.join returns task value`,
+              });
+            }
+          } else if (receiverResolved.name === 'Thread') {
+            switch (expr.callee.name) {
+              case 'post':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Thread.post returns bool`,
+                });
+                break;
+              case 'recv':
+                resolvedReceiverMethod = true;
+                tryUnify(
+                  resultType,
+                  promiseType({ kind: 'adt', name: 'Option', params: [freshTypeVar()] }),
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Thread.recv returns Promise<Option<T>>`,
+                  }
+                );
+                break;
+              case 'try_recv':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [freshTypeVar()] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Thread.try_recv returns Option<T>`,
+                });
+                break;
+              case 'terminate':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, promiseType({ kind: 'primitive', name: 'void' }), subst, diagnostics, {
+                  location: expr.location,
+                  note: `Thread.terminate returns Promise<void>`,
+                });
+                break;
+              case 'join':
+              case 'join_worker':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, promiseType({ kind: 'primitive', name: 'int' }), subst, diagnostics, {
+                  location: expr.location,
+                  note: `Thread.join returns Promise<int>`,
+                });
+                break;
+              default:
+                break;
+            }
           }
         }
         if (expectedType) {

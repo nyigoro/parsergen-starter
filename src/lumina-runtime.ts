@@ -1490,9 +1490,42 @@ export class Thread {
   }
 }
 
+export class ThreadHandle<T = unknown> {
+  private done = false;
+  private value: T | undefined;
+  private error: unknown;
+
+  constructor(task: () => T) {
+    try {
+      this.value = task();
+    } catch (err) {
+      this.error = err;
+    } finally {
+      this.done = true;
+    }
+  }
+
+  join(): T {
+    if (!this.done) {
+      throw new Error('Thread handle is not ready');
+    }
+    if (this.error !== undefined) {
+      if (this.error instanceof Error) throw this.error;
+      throw new Error(String(this.error));
+    }
+    return this.value as T;
+  }
+}
+
 export const thread = {
   is_available: (): boolean => isNodeRuntime() || typeof Worker === 'function',
-  spawn: async (specifier: string): Promise<unknown> => {
+  spawn: (task: unknown): unknown => {
+    if (typeof task === 'function') {
+      return new ThreadHandle(() => (task as () => unknown)());
+    }
+    return thread.spawn_worker(task);
+  },
+  spawn_worker: async (specifier: unknown): Promise<unknown> => {
     if (typeof specifier !== 'string' || specifier.length === 0) {
       return Result.Err('Thread specifier must be a non-empty string');
     }
@@ -1509,7 +1542,12 @@ export const thread = {
   terminate: async (handle: Thread): Promise<void> => {
     await handle.terminate();
   },
-  join: (handle: Thread): Promise<number> => handle.join(),
+  join: (handle: unknown): unknown => {
+    if (handle instanceof ThreadHandle) return handle.join();
+    if (handle instanceof Thread) return handle.join();
+    throw new Error('Invalid thread handle');
+  },
+  join_worker: (handle: Thread): Promise<number> => handle.join(),
 };
 
 export class Mutex {

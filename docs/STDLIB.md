@@ -388,7 +388,13 @@ Worker-based threading API for Node (via `worker_threads`) and Web Worker hosts.
 ### is_available() -> Bool
 Returns `true` when worker threading is available in the runtime.
 
-### spawn(specifier: String) -> Promise<Result<Thread, String>>
+### spawn(task: fn() -> T) -> ThreadHandle<T>
+Spawns a local task handle from a zero-arg function and returns a joinable handle.
+
+### join(handle: ThreadHandle<T>) -> T
+Waits for local task completion and returns task result.
+
+### spawn_worker(specifier: String) -> Promise<Result<Thread, String>>
 Spawns a worker from a module specifier/path.
 
 ### post(thread: Thread, value: Any) -> Bool
@@ -403,7 +409,7 @@ Non-blocking poll for worker messages.
 ### terminate(thread: Thread) -> Promise<Void>
 Terminates the worker.
 
-### join(thread: Thread) -> Promise<Int>
+### join_worker(thread: Thread) -> Promise<Int>
 Waits for worker exit and returns its exit code.
 
 ## @std/sync

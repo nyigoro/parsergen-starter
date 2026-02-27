@@ -1726,14 +1726,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
   const threadModule: ModuleNamespace = (() => {
     const t = freshTypeVar();
     const threadT = adt('Thread');
+    const threadHandleT = adt('ThreadHandle', [t]);
     const optionT = adt('Option', [t]);
     const resultT = adt('Result', [threadT, primitive('string')]);
-    const spawnType: Type = fnType([primitive('string')], promiseType(resultT));
+    const spawnType: Type = fnType([fnType([], t)], threadHandleT);
+    const spawnWorkerType: Type = fnType([primitive('string')], promiseType(resultT));
+    const joinType: Type = fnType([threadHandleT], t);
     const postType: Type = fnType([threadT, t], primitive('bool'));
     const recvType: Type = fnType([threadT], promiseType(optionT));
     const tryRecvType: Type = fnType([threadT], optionT);
     const terminateType: Type = fnType([threadT], promiseType(primitive('void')));
-    const joinType: Type = fnType([threadT], promiseType(primitive('int')));
+    const joinWorkerType: Type = fnType([threadT], promiseType(primitive('int')));
     const availableType: Type = fnType([], primitive('bool'));
 
     return {
@@ -1745,9 +1748,20 @@ export function createStdModuleRegistry(): ModuleRegistry {
           'spawn',
           moduleFunctionWithScheme(
             'spawn',
+            ['fn() -> any'],
+            'ThreadHandle<any>',
+            schemeFromVars(spawnType, []),
+            ['task'],
+            'std://thread'
+          ),
+        ],
+        [
+          'spawn_worker',
+          moduleFunctionWithScheme(
+            'spawn_worker',
             ['string'],
             'Promise<Result<Thread,string>>',
-            schemeFromVars(spawnType, []),
+            schemeFromVars(spawnWorkerType, []),
             ['specifier'],
             'std://thread'
           ),
@@ -1800,9 +1814,20 @@ export function createStdModuleRegistry(): ModuleRegistry {
           'join',
           moduleFunctionWithScheme(
             'join',
+            ['ThreadHandle<any>'],
+            'any',
+            schemeFromVars(joinType, [t]),
+            ['thread'],
+            'std://thread'
+          ),
+        ],
+        [
+          'join_worker',
+          moduleFunctionWithScheme(
+            'join_worker',
             ['Thread'],
             'Promise<int>',
-            schemeFromVars(joinType, []),
+            schemeFromVars(joinWorkerType, []),
             ['thread'],
             'std://thread'
           ),

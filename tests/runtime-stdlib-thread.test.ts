@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { thread } from '../src/lumina-runtime.js';
+import { thread, ThreadHandle } from '../src/lumina-runtime.js';
 
 const unwrapResult = (value: unknown) => value as { $tag?: string; $payload?: unknown };
 const unwrapOption = (value: unknown) => value as { $tag?: string; $payload?: unknown };
@@ -81,5 +81,17 @@ describe('runtime thread helpers', () => {
     await thread.terminate(handle as never);
     const code = await thread.join(handle as never);
     expect(typeof code).toBe('number');
+  });
+
+  test('spawn supports local function tasks with join', () => {
+    const handle = thread.spawn(() => 42 * 2);
+    expect(handle instanceof ThreadHandle).toBe(true);
+    if (!(handle instanceof ThreadHandle)) return;
+
+    const joined = handle.join();
+    expect(joined).toBe(84);
+
+    const viaHelper = thread.join(handle as never);
+    expect(viaHelper).toBe(84);
   });
 });

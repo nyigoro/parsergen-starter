@@ -2146,6 +2146,39 @@ function typeCheckExpr(
       return null;
     }
 
+    if (parsed.base === 'ThreadHandle' && parsed.args.length >= 1) {
+      const valueType = parsed.args[0] ?? 'any';
+      if (callee === 'join') {
+        ensureArity(0);
+        return valueType;
+      }
+      return null;
+    }
+
+    if (parsed.base === 'Thread') {
+      if (callee === 'post') {
+        ensureArity(1);
+        return 'bool';
+      }
+      if (callee === 'recv') {
+        ensureArity(0);
+        return 'Promise<Option<any>>';
+      }
+      if (callee === 'try_recv') {
+        ensureArity(0);
+        return 'Option<any>';
+      }
+      if (callee === 'terminate') {
+        ensureArity(0);
+        return 'Promise<void>';
+      }
+      if (callee === 'join' || callee === 'join_worker') {
+        ensureArity(0);
+        return 'Promise<int>';
+      }
+      return null;
+    }
+
     return null;
   };
   if (expr.type === 'Number') return inferNumberType(expr);
