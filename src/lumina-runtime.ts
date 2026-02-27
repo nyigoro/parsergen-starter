@@ -28,6 +28,46 @@ const isNodeRuntime = (): boolean =>
   typeof process !== 'undefined' &&
   typeof (process as { versions?: { node?: string } }).versions?.node === 'string';
 
+const blockedHttpHosts = new Set([
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '::1',
+  'metadata.google.internal',
+  '169.254.169.254',
+]);
+
+const isPrivateIpv4Host = (host: string): boolean => {
+  const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!match) return false;
+  const octets = match.slice(1).map((part) => Number(part));
+  if (octets.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
+
+  const [a, b] = octets;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+};
+
+const validateHttpUrl = (rawUrl: string): string => {
+  const parsed = new URL(rawUrl);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Blocked protocol '${parsed.protocol}'. Only http and https are allowed.`);
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (blockedHttpHosts.has(host)) {
+    throw new Error(`Blocked host '${host}' for security reasons.`);
+  }
+  if (isPrivateIpv4Host(host)) {
+    throw new Error(`Blocked private IP address: ${host}`);
+  }
+  return parsed.toString();
+};
+
 const supportsColor = (): boolean => {
   if (typeof window !== 'undefined') return false;
   if (!isNodeRuntime()) return false;
@@ -551,9 +591,15 @@ export const http = {
       headers?: unknown;
       body?: unknown;
     };
-    const url = typeof req.url === 'string' ? req.url : '';
-    if (!url) {
+    const rawUrl = typeof req.url === 'string' ? req.url : '';
+    if (!rawUrl) {
       return Result.Err('Invalid request url');
+    }
+    let url: string;
+    try {
+      url = validateHttpUrl(rawUrl);
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
     }
     const method = typeof req.method === 'string' && req.method.length > 0 ? req.method : 'GET';
     const headerInput = unwrapOption(req.headers).value;
@@ -592,6 +638,34 @@ export const http = {
       return Result.Err(String(error));
     }
   },
+  get: async (url: string) =>
+    await http.fetch({
+      url,
+      method: 'GET',
+      headers: Option.None,
+      body: Option.None,
+    }),
+  post: async (url: string, body?: unknown) =>
+    await http.fetch({
+      url,
+      method: 'POST',
+      headers: Option.None,
+      body: body === undefined ? Option.None : Option.Some(typeof body === 'string' ? body : JSON.stringify(body)),
+    }),
+  put: async (url: string, body?: unknown) =>
+    await http.fetch({
+      url,
+      method: 'PUT',
+      headers: Option.None,
+      body: body === undefined ? Option.None : Option.Some(typeof body === 'string' ? body : JSON.stringify(body)),
+    }),
+  del: async (url: string) =>
+    await http.fetch({
+      url,
+      method: 'DELETE',
+      headers: Option.None,
+      body: Option.None,
+    }),
 };
 
 const getMonotonicNow = (): number => {

@@ -14,7 +14,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Numeric types | Stable | i8-i128, u8-u128, f32, f64 with literal suffixes |
 | Structs / Enums / ADTs | Stable | Includes ADT sugar |
 | Pattern matching | Stable | Exhaustiveness checks in HM + semantic |
-| Member access / namespace access | Beta | Module registry / namespaces |
+| Member access / namespace access | Stable | Module/struct/enum/trait resolution order covered by regressions |
 | Pipe operator (`|>`) | Stable | Lowered in semantic / HM |
 | `ref` / `ref mut` | Beta | Grammar + semantic checks |
 | Move expressions (`move x`) | Stable | **Partial moves** supported with path tracking + tests |
@@ -22,6 +22,11 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Async/await | Stable | `async fn`, `await`, Promise<T> |
 | Error handling (`?`) | Stable | Rust-style Result propagation |
 | String interpolation | Stable | `"Hello {name}"` |
+| String slicing | Stable | `s[0..5]`, `s[..5]`, `s[5..]`, `s[..]` |
+| Raw + multiline strings | Stable | `r"..."`, `"""..."""` |
+| Array literals + indexing | Stable | `[1,2,3]`, `v[0]` |
+| Lambda expressions | Stable | `|x| x + 1` |
+| Collection method syntax | Stable | `v.push(1)` style lowering to stdlib calls |
 
 ## Type System (HM)
 | Feature | Status | Notes |
@@ -31,6 +36,10 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Enum exhaustiveness | Stable | LUM‑003 |
 | Type holes (`_`) | Stable | LUM‑010 when unresolved |
 | Monomorphization | Stable | Generic functions specialized at compile‑time |
+| Traits | Stable | Trait declarations + impls + method dispatch |
+| Trait bounds | Stable | Single and multiple bounds (`T: A + B`) |
+| Associated types | Stable | `type Item` in traits/impls |
+| Default trait methods | Stable | Trait methods with default bodies |
 | Row polymorphism (structural) | Beta | Read‑only / constraint‑based MVP |
 | Flow‑sensitive narrowing (`is`) | Beta | Narrowing in HM + semantic |
 
@@ -45,7 +54,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Canonical module IDs + alias‑aware hover | Stable | Cross‑file hover & definition via module graph |
 | LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010; **range precision for nested generics deferred** |
 | LSP inlay hints | Stable | Type hints for inferred lets + parameter hints |
-| LSP refactor code actions | Beta | Extract local + collection call style rewrite |
+| LSP refactor code actions | Stable | Extract local + collection call style rewrite |
 | Diagnostic deduplication | Stable | HM + semantic merged |
 
 ## Standard Library & Runtime
@@ -64,15 +73,15 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Feature | Status | Notes |
 |---|---|---|
 | AST lowering | Beta | Used by transpiler |
-| JS codegen | Beta | Match lowering + IIFE |
+| JS codegen | Stable | Match lowering + IIFE + source map support |
 | WASM codegen | Beta | ~100x faster for recursion in benchmarks |
 | IR optimization (SSA) | Stable | Function‑scoped SSA + loop‑safe constant propagation |
 | Source maps | Stable | External + inline options |
 | Multi‑file module compilation | Stable | Import resolution via bundling (topological compile planned) |
 | Package management | Stable | npm-based, lockfile, workspace support |
-| `lumina fmt` | Beta | Whitespace normalization + check mode |
-| `lumina lint` | Beta | Semantic diagnostics + style checks |
-| `lumina doc` | Beta | Markdown API extraction from declarations |
+| `lumina fmt` | Stable | Whitespace normalization + check mode |
+| `lumina lint` | Stable | Semantic diagnostics + style checks |
+| `lumina doc` | Stable | Markdown API extraction from declarations |
 
 ---
 
@@ -86,8 +95,8 @@ This document tracks the current state of the Lumina language/tooling and near�
 - Real‑world utility: working JSON parser
 
 ## Near‑Term Roadmap (Next 3–5)
-1. **Trait system** (interfaces/protocols for polymorphism)
-2. **Package registry** (publish Lumina packages)
-3. **Stdlib Phase 2** (advanced string operations)
-4. **Move/borrow safety polish** (borrow checks + branch merge rules)
-5. **Function overloading** (abs/absf → abs, clean API surface)
+1. **WASM backend completeness** (broader AST/IR coverage + parity with JS path)
+2. **Package registry** (publish/discovery workflow for Lumina packages)
+3. **Borrow safety polish** (branch-merge borrow checks + stronger diagnostics)
+4. **Advanced IDE refactors** (rename-safe transforms, extraction across modules)
+5. **Function overloading / numeric API cleanup** (abs/absf → unified surface)

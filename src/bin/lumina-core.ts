@@ -155,17 +155,87 @@ function resolveTarget(value: string | undefined): Target | null {
   return value === 'cjs' || value === 'esm' || value === 'wasm' ? value : null;
 }
 
+const blockedOutputRoots = [
+  '/etc',
+  '/usr',
+  '/bin',
+  '/sbin',
+  '/boot',
+  '/sys',
+  '/proc',
+  '/dev',
+  '/System',
+  '/Library',
+  'C:\\Windows',
+  'C:\\Program Files',
+  'C:\\Program Files (x86)',
+];
+
+const normalizePathForCompare = (value: string): string => {
+  const normalized = path.normalize(path.resolve(value)).replace(/[\\/]+$/, '');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+};
+
+const isPathInside = (candidate: string, root: string): boolean =>
+  candidate === root || candidate.startsWith(`${root}${path.sep}`);
+
+export function validateOutputPath(
+  outputPath: string,
+  options: { allowAbsoluteOutsideCwd?: boolean; cwd?: string } = {}
+): string {
+  if (!outputPath || typeof outputPath !== 'string') {
+    throw new Error('Security: Output path must be a non-empty string.');
+  }
+
+  if (outputPath.includes('\0')) {
+    throw new Error('Security: Output path contains an invalid null byte.');
+  }
+
+  const cwd = normalizePathForCompare(options.cwd ?? process.cwd());
+  const resolved = normalizePathForCompare(outputPath);
+
+  if (!options.allowAbsoluteOutsideCwd) {
+    const rel = path.relative(cwd, resolved);
+    if (path.isAbsolute(outputPath) && (rel === '..' || rel.startsWith(`..${path.sep}`))) {
+      throw new Error(
+        `Security: Output path must be within current directory.\n` +
+          `Attempted: ${outputPath}\n` +
+          `Resolved: ${resolved}\n` +
+          `Current directory: ${cwd}`
+      );
+    }
+    if (outputPath.includes('..') && (rel === '..' || rel.startsWith(`..${path.sep}`))) {
+      throw new Error(
+        `Security: Path traversal detected: ${outputPath}\n` +
+          `Relative path would escape current directory: ${rel}`
+      );
+    }
+  }
+
+  for (const blockedRoot of blockedOutputRoots) {
+    const blocked = normalizePathForCompare(blockedRoot);
+    if (isPathInside(resolved, blocked)) {
+      throw new Error(
+        `Security: Cannot write to system directory: ${blockedRoot}\n` +
+          `Attempted path: ${outputPath}`
+      );
+    }
+  }
+
+  return resolved;
+}
+
 function resolveOutPath(
   sourcePath: string,
   outPathArg: string | undefined,
   outDir: string | undefined,
   target?: Target
 ): string {
-  if (outPathArg) return path.resolve(outPathArg);
+  if (outPathArg) return validateOutputPath(outPathArg);
   const ext = target === 'wasm' ? '.wat' : '.js';
   const base = path.basename(sourcePath, path.extname(sourcePath)) + ext;
-  if (outDir) return path.resolve(outDir, base);
-  return path.resolve(target === 'wasm' ? 'lumina.out.wat' : 'lumina.out.js');
+  if (outDir) return validateOutputPath(path.resolve(outDir, base));
+  return validateOutputPath(target === 'wasm' ? 'lumina.out.wat' : 'lumina.out.js');
 }
 
 type BuildConfig = {
@@ -1891,7 +1961,7 @@ async function runDocCommand(
 
   const markdown = `${chunks.join('\n\n---\n\n').trimEnd()}\n`;
   if (outPath) {
-    const resolved = path.resolve(outPath);
+    const resolved = validateOutputPath(outPath);
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, markdown, 'utf-8');
     console.log(`Docs written: ${resolved}`);
