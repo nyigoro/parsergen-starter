@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.4.1 - 2026-02-15
+
+- **Security:** Added HTTP URL validation in runtime (`http`/`https` only), with blocks for localhost/loopback, metadata endpoints, and private IPv4 ranges.
+- **Security:** Added CLI output path hardening to prevent traversal outside workspace by default and block writes to sensitive system directories.
+- **Docs:** Updated capabilities matrix to reflect current implemented language/tooling status and refreshed near-term roadmap.
+- **Quality:** Added security regression tests for HTTP SSRF controls and path traversal protections; full test suite remains green.
+
 ## 0.4.0 - 2026-02-15
 
 - **Language:** Added lambda expressions, array literals (`[a, b, c]`), collection method syntax (`v.push(1)`), and improved namespace/member resolution.
