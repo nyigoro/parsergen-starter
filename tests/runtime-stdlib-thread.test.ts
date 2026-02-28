@@ -108,4 +108,57 @@ describe('runtime thread helpers', () => {
     expect(unwrapResult(joined).$tag).toBe('Err');
     expect(String(unwrapResult(joined).$payload)).toContain('boom');
   });
+
+  test('supports multiple local task handles and joins', async () => {
+    const handles = [0, 1, 2, 3].map((i) => thread.spawn(() => i * 2));
+    expect(handles.every((h) => h instanceof ThreadHandle)).toBe(true);
+
+    const joined = await Promise.all(handles.map((h) => thread.join(h as never)));
+    const tags = joined.map((item) => unwrapResult(item).$tag);
+    const payloads = joined.map((item) => unwrapResult(item).$payload);
+
+    expect(tags).toEqual(['Ok', 'Ok', 'Ok', 'Ok']);
+    expect(payloads).toEqual([0, 2, 4, 6]);
+  });
+
+  test('parallel fibonacci pattern with local handles', async () => {
+    const fib = (n: number): number => (n <= 1 ? n : fib(n - 1) + fib(n - 2));
+    const inputs = [10, 11, 12, 13];
+    const handles = inputs.map((n) => thread.spawn(() => fib(n)));
+
+    const joined = await Promise.all(handles.map((h) => thread.join(h as never)));
+    const tags = joined.map((item) => unwrapResult(item).$tag);
+    const values = joined.map((item) => unwrapResult(item).$payload);
+
+    expect(tags).toEqual(['Ok', 'Ok', 'Ok', 'Ok']);
+    expect(values).toEqual([55, 89, 144, 233]);
+  });
+
+  test('worker pool fan-out/fan-in pattern with fixed workers', async () => {
+    const jobs = [1, 2, 3, 4, 5, 6, 7, 8];
+    const chunkA = jobs.filter((_, idx) => idx % 2 === 0);
+    const chunkB = jobs.filter((_, idx) => idx % 2 === 1);
+    const worker = (chunk: number[]) => chunk.reduce((acc, value) => acc + value * value, 0);
+
+    const handles = [thread.spawn(() => worker(chunkA)), thread.spawn(() => worker(chunkB))];
+    const joined = await Promise.all(handles.map((h) => thread.join(h as never)));
+    const totals = joined.map((item) => unwrapResult(item).$payload as number);
+
+    expect(totals[0] + totals[1]).toBe(204);
+  });
+
+  test('error handling pattern across multiple thread joins', async () => {
+    const handles = [
+      thread.spawn(() => 21 * 2),
+      thread.spawn(() => {
+        throw new Error('worker-failed');
+      }),
+    ];
+    const joined = await Promise.all(handles.map((h) => thread.join(h as never)));
+    const tags = joined.map((item) => unwrapResult(item).$tag);
+
+    expect(tags).toEqual(['Ok', 'Err']);
+    expect(unwrapResult(joined[0]).$payload).toBe(42);
+    expect(String(unwrapResult(joined[1]).$payload)).toContain('worker-failed');
+  });
 });

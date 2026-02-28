@@ -462,6 +462,61 @@ describe('Lumina semantic analysis', () => {
     expect(moveError).toBeTruthy();
   });
 
+  test('requires move closure for thread.spawn when capturing variables', () => {
+    const program = `
+      import { thread } from "@std";
+      async fn main() -> i32 {
+        let x = 1;
+        let h = thread.spawn(|| x + 1);
+        let _joined = await h.join();
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const err = analysis.diagnostics.find(d => d.code === 'THREAD_CAPTURE_REQUIRES_MOVE');
+    expect(err).toBeTruthy();
+  });
+
+  test('move closure capture marks captured bindings as moved', () => {
+    const program = `
+      import { thread } from "@std";
+      async fn main() -> i32 {
+        let x = 1;
+        let h = thread.spawn(move || x + 1);
+        let y = x;
+        let _joined = await h.join();
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'USE_AFTER_MOVE');
+    expect(moveError).toBeTruthy();
+  });
+
+  test('thread.spawn move closure rejects non-Send captures', () => {
+    const program = `
+      import { thread } from "@std";
+      async fn fetch() -> i32 {
+        return 1;
+      }
+      async fn main() -> i32 {
+        let pending: Promise<i32> = fetch();
+        let second = thread.spawn(move || pending);
+        let _joined = await second.join();
+        return 0;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const sendError = analysis.diagnostics.find(d => d.code === 'THREAD_CAPTURE_NOT_SEND');
+    expect(sendError).toBeTruthy();
+  });
+
   test('flags use-after-move when only some match arms move', () => {
     const program = `
       enum Opt { Some(int), None }

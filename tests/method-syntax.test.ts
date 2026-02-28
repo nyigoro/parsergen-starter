@@ -101,4 +101,90 @@ describe('method syntax', () => {
     const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
     expect(hmErrors).toHaveLength(0);
   });
+
+  it('supports multiple thread handles with Vec method syntax', () => {
+    const source = `
+      import { thread } from "@std";
+
+      fn worker(id: i32) -> i32 {
+        return id * 2;
+      }
+
+      async fn main() -> i32 {
+        let h0 = thread.spawn(|| worker(0));
+        let h1 = thread.spawn(|| worker(1));
+        let h2 = thread.spawn(|| worker(2));
+        let h3 = thread.spawn(|| worker(3));
+
+        let _r0 = await h0.join();
+        let _r1 = await h1.join();
+        let _r2 = await h2.join();
+        let _r3 = await h3.join();
+        4
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+
+    const inferred = inferProgram(ast);
+    const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(hmErrors).toHaveLength(0);
+  });
+
+  it('supports Sender/Receiver method syntax for MPSC channels', () => {
+    const source = `
+      import { channel } from "@std";
+
+      async fn main() -> i32 {
+        let ch = channel.new<i32>();
+        let tx = ch.sender;
+        let rx = ch.receiver;
+        let tx2 = tx.clone();
+
+        let _ok0 = await tx.send(1);
+        let _ok1 = await tx2.send(2);
+        tx.close();
+        tx2.close();
+
+        let _a = await rx.recv();
+        let _b = await rx.recv();
+        0
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+
+    const inferred = inferProgram(ast);
+    const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(hmErrors).toHaveLength(0);
+  });
+
+  it('supports channel closing and result-oriented sender/receiver methods', () => {
+    const source = `
+      import { channel } from "@std";
+
+      async fn main() -> i32 {
+        let ch = channel.new<i32>();
+        let tx = ch.sender;
+        let rx = ch.receiver;
+        let _send = tx.send_result(1);
+        tx.drop();
+        let _closed = tx.is_closed();
+        let _recv = await rx.recv_result();
+        rx.close();
+        0
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

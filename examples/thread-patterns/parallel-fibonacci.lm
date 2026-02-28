@@ -1,0 +1,35 @@
+import { thread, Result, io, str } from "@std";
+
+fn fib(n: i32) -> i32 {
+  if (n <= 1) {
+    n
+  } else {
+    fib(n - 1) + fib(n - 2)
+  }
+}
+
+async fn main() -> i32 {
+  let n0 = 10;
+  let n1 = 11;
+  let n2 = 12;
+  let n3 = 13;
+
+  let h0 = thread.spawn(move || fib(n0));
+  let h1 = thread.spawn(move || fib(n1));
+  let h2 = thread.spawn(move || fib(n2));
+  let h3 = thread.spawn(move || fib(n3));
+
+  let r0 = await h0.join();
+  let r1 = await h1.join();
+  let r2 = await h2.join();
+  let r3 = await h3.join();
+
+  let v0: i32 = Result.unwrap_or(0, r0);
+  let v1: i32 = Result.unwrap_or(0, r1);
+  let v2: i32 = Result.unwrap_or(0, r2);
+  let v3: i32 = Result.unwrap_or(0, r3);
+  let total = v0 + v1 + v2 + v3;
+
+  io.println(str.concat("parallel fib total: ", str.from_int(total)));
+  total
+}

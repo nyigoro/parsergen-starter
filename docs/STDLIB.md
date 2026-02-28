@@ -323,7 +323,8 @@ Returns a vector of all values.
 
 ## @std/channel
 
-Message-passing channels built on Web Platform `MessageChannel`.
+Message-passing channels built on Web Platform `MessageChannel` with MPSC semantics
+(multiple producers, single consumer).
 
 ### new<T>() -> Channel<T>
 Creates a new channel and returns a `Channel<T>` struct with `.sender` and `.receiver`.
@@ -338,6 +339,19 @@ Creates a bounded channel with a maximum number of in-flight messages.
 
 ### send<T>(sender: Sender<T>, value: T) -> Bool
 Sends a value. Returns `true` if the message was enqueued, `false` if the sender is closed.
+This is a non-blocking send (`try_send`) helper.
+
+### send_async<T>(sender: Sender<T>, value: T) -> Promise<Bool>
+Async send with backpressure. Waits until the channel can accept a value.
+
+### send_result<T>(sender: Sender<T>, value: T) -> Result<Void, String>
+Non-blocking send with explicit error reason (`Err("channel full")`, `Err("sender closed")`, etc).
+
+### send_async_result<T>(sender: Sender<T>, value: T) -> Promise<Result<Void, String>>
+Async send with backpressure and explicit error reason on failure.
+
+### clone_sender<T>(sender: Sender<T>) -> Sender<T>
+Creates another producer handle for the same channel.
 
 ### recv<T>(receiver: Receiver<T>) -> Promise<Option<T>>
 Waits for the next message. Resolves to `Some(value)` or `None` if the channel is closed and empty.
@@ -345,11 +359,32 @@ Waits for the next message. Resolves to `Some(value)` or `None` if the channel i
 ### try_recv<T>(receiver: Receiver<T>) -> Option<T>
 Attempts to receive a message without waiting.
 
+### recv_result<T>(receiver: Receiver<T>) -> Promise<Result<Option<T>, String>>
+Receive with explicit error path (`Err(...)`) instead of only `Option`.
+
+### try_recv_result<T>(receiver: Receiver<T>) -> Result<Option<T>, String>
+Non-blocking receive with explicit error path.
+
 ### close_sender<T>(sender: Sender<T>) -> Void
 Closes the sender. The receiver will eventually return `None` after draining messages.
 
 ### close_receiver<T>(receiver: Receiver<T>) -> Void
 Closes the receiver and releases its MessagePort.
+
+### drop_sender<T>(sender: Sender<T>) -> Void
+Alias for `close_sender` (drop semantics).
+
+### drop_receiver<T>(receiver: Receiver<T>) -> Void
+Alias for `close_receiver` (drop semantics).
+
+### close<T>(channel: Channel<T>) -> Void
+Closes both sender and receiver.
+
+### is_sender_closed<T>(sender: Sender<T>) -> Bool
+Returns whether sender is closed.
+
+### is_receiver_closed<T>(receiver: Receiver<T>) -> Bool
+Returns whether receiver is closed.
 
 ### is_available() -> Bool
 Returns `true` if `MessageChannel` is available in the current runtime.
@@ -367,17 +402,91 @@ When running WASM via `loadWASM`, the host exposes:
 ```lumina
 import { channel } from "@std";
 
-fn main() -> void {
+async fn main() -> i32 {
   let ch = channel.new<i32>();
-  let sender = ch.sender;
-  let receiver = ch.receiver;
+  let tx = ch.sender;
+  let rx = ch.receiver;
+  let tx2 = channel.clone_sender(tx);
 
-  channel.send(sender, 42);
+  await tx.send(1);
+  await tx2.send(2);
+  tx.close();
+  tx2.close();
 
-match await channel.recv(receiver) {
-    Some(value) => io.println(str.from_int(value)),
-    None => io.println("closed")
+  let mut remaining = 2;
+  while remaining > 0 {
+    match await rx.recv() {
+      Some(value) => {
+        io.println(str.from_int(value));
+        remaining = remaining - 1;
+      },
+      None => {
+        remaining = 0;
+      }
+    }
   }
+  0
+}
+```
+
+**Method syntax on sender/receiver:**
+- `await tx.send(value)` -> `bool`
+- `tx.try_send(value)` -> `bool`
+- `tx.send_result(value)` -> `Result<void,string>`
+- `await tx.send_async_result(value)` -> `Result<void,string>`
+- `tx.clone()` -> `Sender<T>`
+- `tx.is_closed()` -> `bool`
+- `tx.drop()` / `tx.close()` -> `void`
+- `await rx.recv()` -> `Option<T>`
+- `rx.try_recv()` -> `Option<T>`
+- `await rx.recv_result()` -> `Result<Option<T>,string>`
+- `rx.try_recv_result()` -> `Result<Option<T>,string>`
+- `rx.is_closed()` -> `bool`
+- `rx.drop()` / `rx.close()` -> `void`
+
+**Producer/consumer (thread + channel):**
+```lumina
+import { channel, thread, Option, Result } from "@std";
+
+fn produce(tx: Sender<i32>, start: i32, end: i32) -> i32 {
+  let mut i = start;
+  while (i < end) {
+    let _ok = tx.try_send(i);
+    i = i + 1;
+  }
+  tx.close();
+  0
+}
+
+async fn consume(rx: Receiver<i32>, expected: i32) -> i32 {
+  let mut total = 0;
+  let mut count = 0;
+  while (count < expected) {
+    let next = await rx.recv();
+    let value: i32 = Option.unwrap_or(0, next);
+    total = total + value;
+    count = count + 1;
+  }
+  rx.close();
+  total
+}
+
+async fn main() -> i32 {
+  let ch = channel.bounded<i32>(4);
+  let tx = ch.sender;
+  let rx = ch.receiver;
+
+  let tx1 = tx.clone();
+  let tx2 = tx.clone();
+  tx.close();
+
+  let p1 = thread.spawn(move || produce(tx1, 0, 5));
+  let p2 = thread.spawn(move || produce(tx2, 5, 10));
+
+  let total = await consume(rx, 10);
+  let _j1: i32 = Result.unwrap_or(0, await p1.join());
+  let _j2: i32 = Result.unwrap_or(0, await p2.join());
+  total
 }
 ```
 
@@ -390,9 +499,44 @@ Returns `true` when worker threading is available in the runtime.
 
 ### spawn(task: fn() -> T) -> ThreadHandle<T>
 Spawns a local task handle from a zero-arg function and returns a joinable handle.
+Captured variables must use a `move` closure and must be implicitly `Send`.
 
 ### join(handle: ThreadHandle<T>) -> Promise<Result<T, String>>
 Waits for local task completion and returns `Ok(value)` or `Err(message)`.
+
+**Multiple local tasks example:**
+```lumina
+import { thread } from "@std";
+
+fn worker(id: i32) -> i32 {
+  id * 2
+}
+
+async fn main() -> i32 {
+  let h0 = thread.spawn(|| worker(0));
+  let h1 = thread.spawn(|| worker(1));
+  let h2 = thread.spawn(|| worker(2));
+  let h3 = thread.spawn(|| worker(3));
+
+  let _r0 = await h0.join();
+  let _r1 = await h1.join();
+  let _r2 = await h2.join();
+  let _r3 = await h3.join();
+  4
+}
+```
+
+**Move capture example:**
+```lumina
+import { thread } from "@std";
+
+async fn main() -> i32 {
+  let value = 21;
+  let h = thread.spawn(move || value * 2);
+  let joined = await h.join();
+  0
+}
+```
 
 ### spawn_worker(specifier: String) -> Promise<Result<Thread, String>>
 Spawns a worker from a module specifier/path.

@@ -1,0 +1,36 @@
+import { channel, thread, io, str, Option, Result } from "@std";
+
+fn produce(tx: Sender<i32>, a: i32, b: i32) -> i32 {
+  tx.send(a);
+  tx.send(b);
+  tx.close();
+  0
+}
+
+async fn main() -> i32 {
+  let ch = channel.new<i32>();
+  let tx = ch.sender;
+  let rx = ch.receiver;
+
+  // MPSC: clone producer handles.
+  let tx1 = tx.clone();
+  let tx2 = tx.clone();
+  tx.close();
+
+  let h1 = thread.spawn(move || produce(tx1, 1, 2));
+  let h2 = thread.spawn(move || produce(tx2, 3, 4));
+
+  let v0: i32 = Option.unwrap_or(0, await rx.recv());
+  let v1: i32 = Option.unwrap_or(0, await rx.recv());
+  let v2: i32 = Option.unwrap_or(0, await rx.recv());
+  let v3: i32 = Option.unwrap_or(0, await rx.recv());
+
+  io.println(str.from_int(v0));
+  io.println(str.from_int(v1));
+  io.println(str.from_int(v2));
+  io.println(str.from_int(v3));
+
+  let _j1: i32 = Result.unwrap_or(0, await h1.join());
+  let _j2: i32 = Result.unwrap_or(0, await h2.join());
+  0
+}

@@ -1,0 +1,44 @@
+import { channel, thread, io, str, Option, Result } from "@std";
+
+fn produce(tx: Sender<i32>, start: i32, end: i32) -> i32 {
+  let mut i = start;
+  while (i < end) {
+    let _ok = tx.try_send(i);
+    i = i + 1;
+  }
+  tx.close();
+  0
+}
+
+async fn consume(rx: Receiver<i32>, expected: i32) -> i32 {
+  let mut total = 0;
+  let mut count = 0;
+  while (count < expected) {
+    let next = await rx.recv();
+    let value: i32 = Option.unwrap_or(0, next);
+    total = total + value;
+    count = count + 1;
+  }
+  rx.close();
+  total
+}
+
+async fn main() -> i32 {
+  let ch = channel.bounded<i32>(4);
+  let tx = ch.sender;
+  let rx = ch.receiver;
+
+  let tx1 = tx.clone();
+  let tx2 = tx.clone();
+  tx.close();
+
+  let p1 = thread.spawn(move || produce(tx1, 0, 5));
+  let p2 = thread.spawn(move || produce(tx2, 5, 10));
+
+  let total = await consume(rx, 10);
+  io.println(str.concat("Total: ", str.from_int(total)));
+
+  let _j1: i32 = Result.unwrap_or(0, await p1.join());
+  let _j2: i32 = Result.unwrap_or(0, await p2.join());
+  total
+}

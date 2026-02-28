@@ -1,0 +1,21 @@
+import { thread, Result, io, str } from "@std";
+
+fn worker(a: i32, b: i32, c: i32, d: i32) -> i32 {
+  (a * a) + (b * b) + (c * c) + (d * d)
+}
+
+async fn main() -> i32 {
+  // Two workers processing disjoint job chunks (fan-out/fan-in pool pattern).
+  let w0 = thread.spawn(|| worker(1, 3, 5, 7));
+  let w1 = thread.spawn(|| worker(2, 4, 6, 8));
+
+  let r0 = await w0.join();
+  let r1 = await w1.join();
+
+  let t0: i32 = Result.unwrap_or(0, r0);
+  let t1: i32 = Result.unwrap_or(0, r1);
+  let total = t0 + t1;
+
+  io.println(str.concat("worker pool total: ", str.from_int(total)));
+  total
+}

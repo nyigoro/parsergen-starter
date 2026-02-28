@@ -1,0 +1,14 @@
+import { thread, Result, io } from "@std";
+
+async fn main() -> i32 {
+  // Error-handling demo: spawn_worker returns Result<Thread, string>.
+  let spawned = await thread.spawn_worker("./missing-worker.mjs");
+  if (Result.is_err(spawned)) {
+    io.println("worker spawn failed (expected for demo)");
+    1
+  } else {
+    io.println("worker spawned");
+    0
+  }
+}
+

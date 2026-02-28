@@ -1617,13 +1617,25 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const receiverT = adt('Receiver', [t]);
     const channelT = adt('Channel', [t]);
     const optionT = adt('Option', [t]);
+    const sendResultT = adt('Result', [primitive('void'), primitive('string')]);
+    const recvResultT = adt('Result', [optionT, primitive('string')]);
     const newType: Type = fnType([], channelT);
     const sendType: Type = fnType([senderT, t], primitive('bool'));
+    const trySendType: Type = fnType([senderT, t], primitive('bool'));
+    const sendAsyncType: Type = fnType([senderT, t], promiseType(primitive('bool')));
+    const sendResultType: Type = fnType([senderT, t], sendResultT);
+    const sendAsyncResultType: Type = fnType([senderT, t], promiseType(sendResultT));
+    const cloneSenderType: Type = fnType([senderT], senderT);
     const recvType: Type = fnType([receiverT], promiseType(optionT));
     const tryRecvType: Type = fnType([receiverT], optionT);
+    const recvResultType: Type = fnType([receiverT], promiseType(recvResultT));
+    const tryRecvResultType: Type = fnType([receiverT], recvResultT);
     const boundedType: Type = fnType([primitive('int')], channelT);
     const closeSenderType: Type = fnType([senderT], primitive('void'));
     const closeReceiverType: Type = fnType([receiverT], primitive('void'));
+    const senderClosedType: Type = fnType([senderT], primitive('bool'));
+    const receiverClosedType: Type = fnType([receiverT], primitive('bool'));
+    const closeType: Type = fnType([channelT], primitive('void'));
     const availableType: Type = fnType([], primitive('bool'));
 
     return {
@@ -1650,6 +1662,61 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'bool',
             schemeFromVars(sendType, [t]),
             ['sender', 'value'],
+            'std://channel'
+          ),
+        ],
+        [
+          'send_async',
+          moduleFunctionWithScheme(
+            'send_async',
+            ['Sender<any>', 'any'],
+            'Promise<bool>',
+            schemeFromVars(sendAsyncType, [t]),
+            ['sender', 'value'],
+            'std://channel'
+          ),
+        ],
+        [
+          'try_send',
+          moduleFunctionWithScheme(
+            'try_send',
+            ['Sender<any>', 'any'],
+            'bool',
+            schemeFromVars(trySendType, [t]),
+            ['sender', 'value'],
+            'std://channel'
+          ),
+        ],
+        [
+          'send_result',
+          moduleFunctionWithScheme(
+            'send_result',
+            ['Sender<any>', 'any'],
+            'Result<void,string>',
+            schemeFromVars(sendResultType, [t]),
+            ['sender', 'value'],
+            'std://channel'
+          ),
+        ],
+        [
+          'send_async_result',
+          moduleFunctionWithScheme(
+            'send_async_result',
+            ['Sender<any>', 'any'],
+            'Promise<Result<void,string>>',
+            schemeFromVars(sendAsyncResultType, [t]),
+            ['sender', 'value'],
+            'std://channel'
+          ),
+        ],
+        [
+          'clone_sender',
+          moduleFunctionWithScheme(
+            'clone_sender',
+            ['Sender<any>'],
+            'Sender<any>',
+            schemeFromVars(cloneSenderType, [t]),
+            ['sender'],
             'std://channel'
           ),
         ],
@@ -1687,6 +1754,28 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
+          'recv_result',
+          moduleFunctionWithScheme(
+            'recv_result',
+            ['Receiver<any>'],
+            'Promise<Result<Option<any>,string>>',
+            schemeFromVars(recvResultType, [t]),
+            ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
+          'try_recv_result',
+          moduleFunctionWithScheme(
+            'try_recv_result',
+            ['Receiver<any>'],
+            'Result<Option<any>,string>',
+            schemeFromVars(tryRecvResultType, [t]),
+            ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
           'close_sender',
           moduleFunctionWithScheme(
             'close_sender',
@@ -1705,6 +1794,61 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'void',
             schemeFromVars(closeReceiverType, [t]),
             ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
+          'drop_sender',
+          moduleFunctionWithScheme(
+            'drop_sender',
+            ['Sender<any>'],
+            'void',
+            schemeFromVars(closeSenderType, [t]),
+            ['sender'],
+            'std://channel'
+          ),
+        ],
+        [
+          'drop_receiver',
+          moduleFunctionWithScheme(
+            'drop_receiver',
+            ['Receiver<any>'],
+            'void',
+            schemeFromVars(closeReceiverType, [t]),
+            ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
+          'is_sender_closed',
+          moduleFunctionWithScheme(
+            'is_sender_closed',
+            ['Sender<any>'],
+            'bool',
+            schemeFromVars(senderClosedType, [t]),
+            ['sender'],
+            'std://channel'
+          ),
+        ],
+        [
+          'is_receiver_closed',
+          moduleFunctionWithScheme(
+            'is_receiver_closed',
+            ['Receiver<any>'],
+            'bool',
+            schemeFromVars(receiverClosedType, [t]),
+            ['receiver'],
+            'std://channel'
+          ),
+        ],
+        [
+          'close',
+          moduleFunctionWithScheme(
+            'close',
+            ['Channel<any>'],
+            'void',
+            schemeFromVars(closeType, [t]),
+            ['channel'],
             'std://channel'
           ),
         ],
