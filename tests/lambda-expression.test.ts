@@ -103,4 +103,49 @@ describe('lambda expressions', () => {
     const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
     expect(errors).toHaveLength(0);
   });
+
+  it('supports move closures for thread.spawn capture', () => {
+    const source = `
+      import { thread } from "@std";
+
+      async fn main() -> i32 {
+        let id: i32 = 21;
+        let h = thread.spawn(move || id * 2);
+        let _joined = await h.join();
+        0
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
+
+  it('allows move capture of Sender in thread.spawn', () => {
+    const source = `
+      import { thread, channel } from "@std";
+
+      fn produce(tx: Sender<i32>) -> i32 {
+        tx.send(42);
+        tx.close();
+        0
+      }
+
+      async fn main() -> i32 {
+        let ch = channel.new<i32>();
+        let tx = ch.sender;
+        let rx = ch.receiver;
+        let h = thread.spawn(move || produce(tx));
+        let _joined = await h.join();
+        let _value = await rx.recv();
+        0
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

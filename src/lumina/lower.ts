@@ -57,6 +57,54 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
       };
       return letNode;
     }
+    case 'LetTuple': {
+      const tempName = `__tuple${ctx.matchCounter++}`;
+      const tempLet: IRLet = {
+        kind: 'Let',
+        name: tempName,
+        value: lowerExpr(stmt.value, ctx),
+        location: stmt.location,
+      };
+      const body: IRNode[] = [tempLet];
+      stmt.names.forEach((name, idx) => {
+        const value: IRNode =
+          idx === 0
+            ? ({
+                kind: 'Member',
+                object: { kind: 'Identifier', name: tempName },
+                property: 'sender',
+              } as IRMember)
+            : idx === 1
+              ? ({
+                  kind: 'Member',
+                  object: { kind: 'Identifier', name: tempName },
+                  property: 'receiver',
+                } as IRMember)
+              : ({
+                  kind: 'Index',
+                  target: { kind: 'Identifier', name: tempName },
+                  index: idx,
+                } as IRIndex);
+        body.push({
+          kind: 'Let',
+          name,
+          value,
+          location: stmt.location,
+        } as IRLet);
+      });
+      return { kind: 'Program', body, location: stmt.location } as IRProgram;
+    }
+    case 'LetElse': {
+      const matchStmt = {
+        type: 'IfLet',
+        pattern: stmt.pattern,
+        value: stmt.value,
+        thenBlock: { type: 'Block', body: [] },
+        elseBlock: stmt.elseBlock,
+        location: stmt.location,
+      } as unknown as LuminaStatement;
+      return lowerStatement(matchStmt, ctx);
+    }
     case 'Return': {
       const ret: IRReturn = {
         kind: 'Return',
@@ -83,6 +131,37 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
       };
       return ifNode;
     }
+    case 'IfLet': {
+      const tempName = `__ifLet${ctx.matchCounter++}`;
+      const tempLet: IRLet = {
+        kind: 'Let',
+        name: tempName,
+        value: lowerExpr(stmt.value, ctx),
+        location: stmt.location,
+      };
+      const condition: IRNode =
+        stmt.pattern.type === 'EnumPattern'
+          ? ({
+              kind: 'Binary',
+              op: '==',
+              left: {
+                kind: 'Member',
+                object: { kind: 'Identifier', name: tempName } as IRIdentifier,
+                property: '$tag',
+              } as IRMember,
+              right: { kind: 'String', value: stmt.pattern.variant } as IRString,
+              location: stmt.location,
+            } as IRBinary)
+          : ({ kind: 'Boolean', value: true } as IRBoolean);
+      const ifNode: IRIf = {
+        kind: 'If',
+        condition,
+        thenBody: stmt.thenBlock.body.map((s) => lowerStatement(s, ctx)),
+        elseBody: stmt.elseBlock ? stmt.elseBlock.body.map((s) => lowerStatement(s, ctx)) : undefined,
+        location: stmt.location,
+      };
+      return { kind: 'Program', body: [tempLet, ifNode], location: stmt.location } as IRProgram;
+    }
     case 'While': {
       const whileNode: IRWhile = {
         kind: 'While',
@@ -91,6 +170,109 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
         location: stmt.location,
       };
       return whileNode;
+    }
+    case 'For': {
+      if (stmt.iterable.type !== 'Range') {
+        return { kind: 'Noop', location: stmt.location } as IRNoop;
+      }
+      const startExpr = stmt.iterable.start ? lowerExpr(stmt.iterable.start, ctx) : ({ kind: 'Number', value: 0 } as IRNumber);
+      const endExpr = stmt.iterable.end ? lowerExpr(stmt.iterable.end, ctx) : ({ kind: 'Identifier', name: stmt.iterator } as IRIdentifier);
+      const init: IRLet = {
+        kind: 'Let',
+        name: stmt.iterator,
+        value: startExpr,
+        location: stmt.location,
+      };
+      const cond: IRBinary = {
+        kind: 'Binary',
+        op: stmt.iterable.inclusive ? '<=' : '<',
+        left: { kind: 'Identifier', name: stmt.iterator } as IRIdentifier,
+        right: endExpr,
+        location: stmt.location,
+      };
+      const body = stmt.body.body.map((s) => lowerStatement(s, ctx));
+      body.push({
+        kind: 'Assign',
+        target: stmt.iterator,
+        value: {
+          kind: 'Binary',
+          op: '+',
+          left: { kind: 'Identifier', name: stmt.iterator } as IRIdentifier,
+          right: { kind: 'Number', value: 1 } as IRNumber,
+        } as IRBinary,
+        location: stmt.location,
+      } as IRAssign);
+      const whileNode: IRWhile = {
+        kind: 'While',
+        condition: cond,
+        body,
+        location: stmt.location,
+      };
+      return { kind: 'Program', body: [init, whileNode], location: stmt.location } as IRProgram;
+    }
+    case 'WhileLet': {
+      const pattern = stmt.pattern;
+      if (pattern.type !== 'EnumPattern') {
+        return {
+          kind: 'While',
+          condition: { kind: 'Boolean', value: true } as IRBoolean,
+          body: stmt.body.body.map((s) => lowerStatement(s, ctx)),
+          location: stmt.location,
+        } as IRWhile;
+      }
+      const tempName = `__whileLet${ctx.matchCounter++}`;
+      const init: IRLet = {
+        kind: 'Let',
+        name: tempName,
+        value: lowerExpr(stmt.value, ctx),
+        location: stmt.location,
+      };
+      const cond: IRBinary = {
+        kind: 'Binary',
+        op: '==',
+        left: {
+          kind: 'Member',
+          object: { kind: 'Identifier', name: tempName } as IRIdentifier,
+          property: '$tag',
+        } as IRMember,
+        right: { kind: 'String', value: pattern.variant } as IRString,
+        location: stmt.location,
+      };
+      const body: IRNode[] = [];
+      pattern.bindings.forEach((binding, idx) => {
+        if (binding === '_') return;
+        const value: IRNode =
+          pattern.bindings.length === 1
+            ? ({
+                kind: 'Member',
+                object: { kind: 'Identifier', name: tempName } as IRIdentifier,
+                property: '$payload',
+              } as IRMember)
+            : ({
+                kind: 'Index',
+                target: {
+                  kind: 'Member',
+                  object: { kind: 'Identifier', name: tempName } as IRIdentifier,
+                  property: '$payload',
+                } as IRMember,
+                index: idx,
+              } as IRIndex);
+        body.push({ kind: 'Let', name: binding, value, location: stmt.location } as IRLet);
+      });
+      stmt.body.body.map((s) => lowerStatement(s, ctx)).forEach((n) => body.push(n));
+      body.push({
+        kind: 'Assign',
+        target: tempName,
+        value: lowerExpr(stmt.value, ctx),
+        location: stmt.location,
+      } as IRAssign);
+      const whileNode: IRWhile = {
+        kind: 'While',
+        condition: cond,
+        body,
+        location: stmt.location,
+      };
+      return { kind: 'Program', body: [init, whileNode], location: stmt.location } as IRProgram;
     }
     case 'Assign': {
       if (stmt.target.type === 'Identifier') {
@@ -164,8 +346,20 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
           }
         }
         arm.body.body.map((s) => lowerStatement(s, ctx)).forEach((n) => armBody.push(n));
+        if (arm.guard) {
+          armBody.unshift({
+            kind: 'If',
+            condition: lowerExpr(arm.guard, ctx),
+            thenBody: [],
+            elseBody: [],
+          } as IRIf);
+        }
 
         if (arm.pattern.type === 'WildcardPattern') {
+          wildcardBody = armBody;
+          continue;
+        }
+        if (arm.pattern.type !== 'EnumPattern') {
           wildcardBody = armBody;
           continue;
         }
@@ -305,6 +499,18 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       }
       return current;
     }
+    case 'TupleLiteral': {
+      const tupleNode: IRStructLiteral = {
+        kind: 'StructLiteral',
+        name: 'Tuple',
+        fields: expr.elements.map((element, idx) => ({
+          name: String(idx),
+          value: lowerExpr(element, ctx),
+        })),
+        location: expr.location,
+      };
+      return tupleNode;
+    }
     case 'Range': {
       const startExpr = expr.start ? lowerExpr(expr.start, ctx) : ({ kind: 'Number', value: 0 } as IRNumber);
       const endExpr = expr.end ? lowerExpr(expr.end, ctx) : ({ kind: 'Number', value: 0 } as IRNumber);
@@ -402,9 +608,21 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
         kind: 'MatchExpr',
         value: lowerExpr(expr.value, ctx),
         arms: expr.arms.map((arm) => ({
-          variant: arm.pattern.type === 'WildcardPattern' ? null : arm.pattern.variant,
-          bindings: arm.pattern.type === 'WildcardPattern' ? [] : arm.pattern.bindings,
-          body: lowerExpr(arm.body, ctx),
+          variant: arm.pattern.type === 'EnumPattern' ? arm.pattern.variant : null,
+          bindings: arm.pattern.type === 'EnumPattern' ? arm.pattern.bindings : [],
+          body: arm.guard
+            ? ({
+                kind: 'MatchExpr',
+                value: lowerExpr(arm.guard, ctx),
+                arms: [
+                  {
+                    variant: null,
+                    bindings: [],
+                    body: lowerExpr(arm.body, ctx),
+                  },
+                ],
+              } as IRMatchExpr)
+            : lowerExpr(arm.body, ctx),
         })),
         location: expr.location,
       };

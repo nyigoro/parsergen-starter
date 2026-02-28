@@ -52,4 +52,30 @@ describe('Lumina parse wrapper', () => {
     const ast = parseLumina(parser, program);
     expect(ast.type).toBe('Program');
   });
+
+  test('parses if-let, let-else, tuple patterns, and guarded match arms', () => {
+    const program = `
+      struct User { age: i32 }
+
+      fn main() -> i32 {
+        let pair = (1, 2);
+        let (a, b) = pair else { return 0; };
+
+        if let (x, y) = pair {
+          x + y
+        } else {
+          a + b
+        }
+
+        let user = User { age: 10 };
+        match user {
+          User { age: n } if n > 5 => n,
+          _ => 0
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseLumina(parser, program);
+    expect(ast.type).toBe('Program');
+  });
 });

@@ -993,7 +993,7 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
   const visitExpr = (expr: unknown): boolean => {
     if (!expr || typeof expr !== 'object') return false;
     const node = expr as { type?: string; [key: string]: unknown };
-    if (node.type === 'Lambda' || node.type === 'ArrayLiteral') return true;
+    if (node.type === 'Lambda' || node.type === 'ArrayLiteral' || node.type === 'TupleLiteral') return true;
     switch (node.type) {
       case 'Binary':
         return visitExpr(node.left) || visitExpr(node.right);
@@ -1014,7 +1014,13 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
         return (
           visitExpr(node.value) ||
           (Array.isArray(node.arms)
-            ? node.arms.some((arm) => visitExpr((arm as { body?: unknown }).body))
+            ? node.arms.some((arm) => {
+                const armNode = arm as { body?: unknown; guard?: unknown; pattern?: { type?: string } };
+                if (armNode.guard && visitExpr(armNode.guard)) return true;
+                const patternType = armNode.pattern?.type;
+                if (patternType && patternType !== 'EnumPattern' && patternType !== 'WildcardPattern') return true;
+                return visitExpr(armNode.body);
+              })
             : false)
         );
       case 'IsExpr':
@@ -1044,6 +1050,10 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
         return Array.isArray((node.body as { body?: unknown[] } | undefined)?.body)
           ? ((node.body as { body: unknown[] }).body).some((inner) => visitStmt(inner))
           : false;
+      case 'LetElse':
+      case 'IfLet':
+      case 'WhileLet':
+        return true;
       case 'Let':
       case 'Return':
       case 'ExprStmt':
@@ -1062,7 +1072,13 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
         return (
           visitExpr(node.value) ||
           (Array.isArray(node.arms)
-            ? node.arms.some((arm) => visitStmt((arm as { body?: unknown }).body))
+            ? node.arms.some((arm) => {
+                const armNode = arm as { body?: unknown; guard?: unknown; pattern?: { type?: string } };
+                if (armNode.guard && visitExpr(armNode.guard)) return true;
+                const patternType = armNode.pattern?.type;
+                if (patternType && patternType !== 'EnumPattern' && patternType !== 'WildcardPattern') return true;
+                return visitStmt(armNode.body);
+              })
             : false)
         );
       case 'Block':
@@ -1097,7 +1113,7 @@ async function compileLumina(
     if (useAstJs) return true;
     if (!programUsesAstOnlySyntax(program)) return false;
     if (!warnedLambdaFallback) {
-      console.warn('Detected AST-only syntax (lambda/array literals); forcing AST JS codegen for this compilation.');
+      console.warn('Detected AST-only syntax; forcing AST JS codegen for this compilation.');
       warnedLambdaFallback = true;
     }
     return true;

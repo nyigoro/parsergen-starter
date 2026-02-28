@@ -28,9 +28,14 @@ export type LuminaStatement = (
   | LuminaEnumDecl
   | LuminaFnDecl
   | LuminaLet
+  | LuminaLetTuple
+  | LuminaLetElse
   | LuminaReturn
   | LuminaIf
+  | LuminaIfLet
   | LuminaWhile
+  | LuminaWhileLet
+  | LuminaFor
   | LuminaAssign
   | LuminaMatchStmt
   | LuminaExprStmt
@@ -182,6 +187,23 @@ export interface LuminaLet {
   location?: Location;
 }
 
+export interface LuminaLetTuple {
+  type: 'LetTuple';
+  names: string[];
+  value: LuminaExpr;
+  mutable?: boolean;
+  location?: Location;
+}
+
+export interface LuminaLetElse {
+  type: 'LetElse';
+  pattern: LuminaMatchPattern;
+  value: LuminaExpr;
+  elseBlock: LuminaBlock;
+  mutable?: boolean;
+  location?: Location;
+}
+
 export interface LuminaReturn {
   type: 'Return';
   value: LuminaExpr;
@@ -191,6 +213,22 @@ export interface LuminaReturn {
 export interface LuminaWhile {
   type: 'While';
   condition: LuminaExpr;
+  body: LuminaBlock;
+  location?: Location;
+}
+
+export interface LuminaWhileLet {
+  type: 'WhileLet';
+  pattern: LuminaMatchPattern;
+  value: LuminaExpr;
+  body: LuminaBlock;
+  location?: Location;
+}
+
+export interface LuminaFor {
+  type: 'For';
+  iterator: string;
+  iterable: LuminaExpr;
   body: LuminaBlock;
   location?: Location;
 }
@@ -212,6 +250,15 @@ export interface LuminaIf {
   location?: Location;
 }
 
+export interface LuminaIfLet {
+  type: 'IfLet';
+  pattern: LuminaMatchPattern;
+  value: LuminaExpr;
+  thenBlock: LuminaBlock;
+  elseBlock?: LuminaBlock | null;
+  location?: Location;
+}
+
 export interface LuminaExprStmt {
   type: 'ExprStmt';
   expr: LuminaExpr;
@@ -225,13 +272,22 @@ export interface LuminaMatchStmt {
   location?: Location;
 }
 
-export type LuminaMatchPattern = (LuminaEnumPattern | LuminaWildcardPattern) & LuminaNode;
+export type LuminaMatchPattern = (
+  | LuminaEnumPattern
+  | LuminaWildcardPattern
+  | LuminaBindingPattern
+  | LuminaLiteralPattern
+  | LuminaTuplePattern
+  | LuminaStructPattern
+) &
+  LuminaNode;
 
 export interface LuminaEnumPattern {
   type: 'EnumPattern';
   variant: string;
   enumName?: string | null;
   bindings: string[];
+  patterns?: LuminaMatchPattern[];
   location?: Location;
 }
 
@@ -240,8 +296,40 @@ export interface LuminaWildcardPattern {
   location?: Location;
 }
 
+export interface LuminaBindingPattern {
+  type: 'BindingPattern';
+  name: string;
+  location?: Location;
+}
+
+export interface LuminaLiteralPattern {
+  type: 'LiteralPattern';
+  value: string | number | boolean;
+  location?: Location;
+}
+
+export interface LuminaTuplePattern {
+  type: 'TuplePattern';
+  elements: LuminaMatchPattern[];
+  location?: Location;
+}
+
+export interface LuminaStructPatternField {
+  name: string;
+  pattern: LuminaMatchPattern;
+  location?: Location;
+}
+
+export interface LuminaStructPattern {
+  type: 'StructPattern';
+  name: string;
+  fields: LuminaStructPatternField[];
+  location?: Location;
+}
+
 export interface LuminaMatchArmStmt {
   pattern: LuminaMatchPattern;
+  guard?: LuminaExpr | null;
   body: LuminaBlock;
   location?: Location;
 }
@@ -255,6 +343,7 @@ export interface LuminaMatchExpr {
 
 export interface LuminaMatchArmExpr {
   pattern: LuminaMatchPattern;
+  guard?: LuminaExpr | null;
   body: LuminaExpr;
   location?: Location;
 }
@@ -271,6 +360,7 @@ export type LuminaExpr = (
   | LuminaStructLiteral
   | LuminaRange
   | LuminaArrayLiteral
+  | LuminaTupleLiteral
   | LuminaIndex
   | LuminaIsExpr
   | LuminaNumber
@@ -292,6 +382,8 @@ export interface LuminaBinary {
 export interface LuminaLambda {
   type: 'Lambda';
   async?: boolean;
+  capture?: 'move';
+  captures?: string[];
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
   body: LuminaBlock;
@@ -336,6 +428,12 @@ export interface LuminaRange {
 
 export interface LuminaArrayLiteral {
   type: 'ArrayLiteral';
+  elements: LuminaExpr[];
+  location?: Location;
+}
+
+export interface LuminaTupleLiteral {
+  type: 'TupleLiteral';
   elements: LuminaExpr[];
   location?: Location;
 }

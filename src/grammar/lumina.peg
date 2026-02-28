@@ -61,9 +61,14 @@ Statement
   / ExternTypeDecl
   / FnDecl
   / ExternFnDecl
+  / LetElseStmt
+  / LetTupleStmt
   / LetStmt
   / AssignStmt
+  / IfLetStmt
   / IfStmt
+  / ForStmt
+  / WhileLetStmt
   / WhileStmt
   / ReturnStmt
   / MatchStmt
@@ -186,12 +191,23 @@ TypeField
 
 TypeName
   = "_" { return { kind: "TypeHole", location: location() }; }
+  / TupleTypeName
   / path:TypePath _ args:TypeArgs? {
       const base = path.join("::");
       if (!args) return base;
       const rendered = args.map(arg => typeof arg === "string" ? arg : "_");
       return `${base}<${rendered.join(",")}>`;
     }
+
+TupleTypeName
+  = "(" _ head:TypeName _ "," _ tail:TypeNameList _ ")" {
+      const all = [head].concat(tail);
+      const rendered = all.map(arg => typeof arg === "string" ? arg : "_");
+      return `Tuple<${rendered.join(",")}>`;
+    }
+
+TypeNameList
+  = head:TypeName tail:(_ "," _ TypeName)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 TypePath
   = head:IdName tail:(_ "::" _ IdName)* { return [head.name].concat(tail.map(t => t[3].name)); }
@@ -263,6 +279,17 @@ LetStmt
       return createNode("Let", { name: node.name, typeName: typeAnn || null, value, mutable: !!mut, location: node.location }, location);
     }
 
+LetTupleStmt
+  = "let" _ mut:("mut" __)? "(" _ head:IdName tail:(_ "," _ IdName)* _ ","? _ ")" _ "=" _ value:Expr _ ";"? {
+      const names = [head.name].concat(tail.map(t => t[3].name));
+      return createNode("LetTuple", { names, value, mutable: !!mut, location: head.location }, location);
+    }
+
+LetElseStmt
+  = "let" _ mut:("mut" __)? pattern:MatchPattern _ "=" _ value:Expr _ "else" _ elseBlock:Block _ ";"? {
+      return createNode("LetElse", { pattern, value, elseBlock, mutable: !!mut, location: pattern.location }, location);
+    }
+
 ReturnStmt
   = "return" _ value:Expr _ ";"? { return createNode("Return", { value }, location); }
 
@@ -276,12 +303,27 @@ WhileStmt
       return createNode("While", { condition, body }, location);
     }
 
+WhileLetStmt
+  = "while" __ "let" __ pattern:MatchPattern _ "=" _ value:Expr _ body:Block {
+      return createNode("WhileLet", { pattern, value, body }, location);
+    }
+
+ForStmt
+  = "for" __ iterator:IdName __ "in" __ iterable:Expr _ body:Block {
+      return createNode("For", { iterator: iterator.name, iterable, body, location: iterator.location }, location);
+    }
+
 AssignStmt
   = target:(Member / Identifier) _ "=" _ value:Expr _ ";"? { return createNode("Assign", { target, value }, location); }
 
 IfStmt
   = "if" _ "(" _ condition:Expr _ ")" _ thenBlock:Block _ elsePart:(_ "else" _ elseBlock:Block)? {
       return createNode("If", { condition, thenBlock, elseBlock: elsePart ? elsePart[3] : null }, location);
+    }
+
+IfLetStmt
+  = "if" __ "let" __ pattern:MatchPattern _ "=" _ value:Expr _ thenBlock:Block _ elsePart:(_ "else" _ elseBlock:Block)? {
+      return createNode("IfLet", { pattern, value, thenBlock, elseBlock: elsePart ? elsePart[3] : null, location: pattern.location }, location);
     }
 
 ExprStmt
@@ -412,7 +454,10 @@ PostfixPart
 PrimaryAtom
   = MatchExpr
   / ArrayLiteral
+  / TupleLiteral
   / StructLiteral
+  / PipeLambdaExpr
+  / MoveLambdaExpr
   / ZeroArgLambdaExpr
   / LambdaExpr
   / MoveExpr
@@ -436,6 +481,26 @@ ArrayLiteral
 
 ArrayElements
   = head:Expr tail:(_ "," _ Expr)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+TupleLiteral
+  = "(" _ head:Expr _ "," _ tail:ExprList _ ")" {
+      return createNode("TupleLiteral", { elements: [head].concat(tail) }, location);
+    }
+
+ExprList
+  = head:Expr tail:(_ "," _ Expr)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+MoveLambdaExpr
+  = "move" __ lambda:(ZeroArgLambdaExpr / LambdaExpr) {
+      return createNode("Lambda", {
+        async: !!lambda.async,
+        capture: "move",
+        params: lambda.params || [],
+        returnType: lambda.returnType || null,
+        body: lambda.body,
+        typeParams: lambda.typeParams || [],
+      }, location);
+    }
 
 ZeroArgLambdaExpr
   = "||" _ body:Expr {
@@ -461,6 +526,29 @@ LambdaExpr
       }, location);
     }
 
+PipeLambdaExpr
+  = "|" _ params:PipeLambdaParams? _ "|" _ body:(Block / Expr) {
+      let lambdaBody = body;
+      if (!lambdaBody || lambdaBody.type !== "Block") {
+        const ret = createNode("Return", { value: body }, location);
+        lambdaBody = createNode("Block", { body: [ret] }, location);
+      }
+      return createNode("Lambda", {
+        async: false,
+        params: params || [],
+        returnType: null,
+        body: lambdaBody,
+        typeParams: [],
+      }, location);
+    }
+
+PipeLambdaParams
+  = head:IdName tail:(_ "," _ IdName)* {
+      return [{ name: head.name, typeName: null, location: head.location }].concat(
+        tail.map(t => ({ name: t[3].name, typeName: null, location: t[3].location }))
+      );
+    }
+
 StructLiteralFieldList
   = head:StructLiteralField tail:(_ "," _ StructLiteralField)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
@@ -473,6 +561,9 @@ Keyword
 
 IdName
   = !Keyword name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }
+
+VariantIdName
+  = !Keyword name:$([A-Z][a-zA-Z0-9_]*) { return { name, location: location() }; }
 
 Identifier
   = node:IdName { return createNode("Identifier", { name: node.name, location: node.location }, location); }
@@ -616,22 +707,54 @@ MatchArmList
   = head:MatchArm tail:(_ "," _ MatchArm)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 MatchArm
-  = pattern:MatchPattern _ "=>" _ body:Block _ ";"? { return { pattern, body, location: location() }; }
+  = pattern:MatchPattern _ guard:MatchGuard? _ "=>" _ body:Block _ ";"? { return { pattern, guard: guard || null, body, location: location() }; }
+
+MatchGuard
+  = "if" _ condition:Expr { return condition; }
 
 MatchPattern
   = "_" { return createNode("WildcardPattern", {}, location); }
-  / qual:QualifiedVariant _ binds:MatchBindingList? { return createNode("EnumPattern", { variant: qual.variant, enumName: qual.enumName, bindings: binds || [], location: qual.location }, location); }
+  / TupleMatchPattern
+  / StructMatchPattern
+  / LiteralMatchPattern
+  / qual:QualifiedVariant _ binds:MatchBindingPatternList? {
+      const patterns = binds || [];
+      const bindings = patterns.map(p => (p.type === "BindingPattern" ? p.name : (p.type === "WildcardPattern" ? "_" : "_")));
+      return createNode("EnumPattern", { variant: qual.variant, enumName: qual.enumName, bindings, patterns, location: qual.location }, location);
+    }
+  / name:IdName { return createNode("BindingPattern", { name: name.name, location: name.location }, location); }
+
+TupleMatchPattern
+  = "(" _ head:MatchPattern _ "," _ tail:MatchPatternList _ ")" {
+      return createNode("TuplePattern", { elements: [head].concat(tail) }, location);
+    }
+
+StructMatchPattern
+  = name:IdName _ "{" _ fields:StructPatternFieldList? _ "}" {
+      return createNode("StructPattern", { name: name.name, fields: fields || [], location: name.location }, location);
+    }
+
+StructPatternFieldList
+  = head:StructPatternField tail:(_ "," _ StructPatternField)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+StructPatternField
+  = field:IdName _ ":" _ pattern:MatchPattern { return { name: field.name, pattern, location: field.location }; }
+  / field:IdName { return { name: field.name, pattern: createNode("BindingPattern", { name: field.name, location: field.location }, location), location: field.location }; }
+
+LiteralMatchPattern
+  = number:Number { return createNode("LiteralPattern", { value: number.value }, location); }
+  / str:String { return createNode("LiteralPattern", { value: str.value }, location); }
+  / bool:Boolean { return createNode("LiteralPattern", { value: bool.value }, location); }
+
+MatchPatternList
+  = head:MatchPattern tail:(_ "," _ MatchPattern)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 QualifiedVariant
   = enumName:IdName _ "." _ variant:IdName { return { enumName: enumName.name, variant: variant.name, location: enumName.location }; }
-  / variant:IdName { return { enumName: null, variant: variant.name, location: variant.location }; }
+  / variant:VariantIdName { return { enumName: null, variant: variant.name, location: variant.location }; }
 
-MatchBindingList
-  = "(" _ head:MatchBinding tail:(_ "," _ MatchBinding)* _ ")" { return [head].concat(tail.map(t => t[3])); }
-
-MatchBinding
-  = name:IdName { return name.name; }
-  / "_" { return "_"; }
+MatchBindingPatternList
+  = "(" _ head:MatchPattern tail:(_ "," _ MatchPattern)* _ ")" { return [head].concat(tail.map(t => t[3])); }
 
 MatchExpr
   = "match" _ value:Expr _ "{" _ arms:MatchExprArmList? _ "}" {
@@ -642,7 +765,7 @@ MatchExprArmList
   = head:MatchExprArm tail:(_ "," _ MatchExprArm)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 MatchExprArm
-  = pattern:MatchPattern _ "=>" _ body:Expr { return { pattern, body, location: location() }; }
+  = pattern:MatchPattern _ guard:MatchGuard? _ "=>" _ body:Expr { return { pattern, guard: guard || null, body, location: location() }; }
 
 Member
   = base:Identifier tail:(_ "." _ IdName)* {

@@ -191,13 +191,22 @@ const visitExpr = (
       return;
     case 'MatchExpr':
       visitExpr(expr.value, ctx, genericFns, hm);
-      for (const arm of expr.arms) visitExpr(arm.body, ctx, genericFns, hm);
+      for (const arm of expr.arms) {
+        if (arm.guard) visitExpr(arm.guard, ctx, genericFns, hm);
+        visitExpr(arm.body, ctx, genericFns, hm);
+      }
       return;
     case 'IsExpr':
       visitExpr(expr.value, ctx, genericFns, hm);
       return;
     case 'Try':
       visitExpr(expr.value, ctx, genericFns, hm);
+      return;
+    case 'Await':
+      visitExpr(expr.value, ctx, genericFns, hm);
+      return;
+    case 'Cast':
+      visitExpr(expr.expr, ctx, genericFns, hm);
       return;
     case 'Move':
       visitExpr(expr.target, ctx, genericFns, hm);
@@ -215,6 +224,9 @@ const visitExpr = (
     case 'Index':
       visitExpr(expr.object, ctx, genericFns, hm);
       visitExpr(expr.index, ctx, genericFns, hm);
+      return;
+    case 'TupleLiteral':
+      for (const element of expr.elements) visitExpr(element, ctx, genericFns, hm);
       return;
     case 'Lambda':
       for (const inner of expr.body.body) {
@@ -241,6 +253,13 @@ const visitStatement = (
     case 'Let':
       visitExpr(stmt.value, ctx, genericFns, hm);
       return;
+    case 'LetTuple':
+      visitExpr(stmt.value, ctx, genericFns, hm);
+      return;
+    case 'LetElse':
+      visitExpr(stmt.value, ctx, genericFns, hm);
+      visitStatement(stmt.elseBlock, ctx, genericFns, hm);
+      return;
     case 'Return':
       visitExpr(stmt.value, ctx, genericFns, hm);
       return;
@@ -252,8 +271,21 @@ const visitStatement = (
       visitStatement(stmt.thenBlock, ctx, genericFns, hm);
       if (stmt.elseBlock) visitStatement(stmt.elseBlock, ctx, genericFns, hm);
       return;
+    case 'IfLet':
+      visitExpr(stmt.value, ctx, genericFns, hm);
+      visitStatement(stmt.thenBlock, ctx, genericFns, hm);
+      if (stmt.elseBlock) visitStatement(stmt.elseBlock, ctx, genericFns, hm);
+      return;
     case 'While':
       visitExpr(stmt.condition, ctx, genericFns, hm);
+      visitStatement(stmt.body, ctx, genericFns, hm);
+      return;
+    case 'For':
+      visitExpr(stmt.iterable, ctx, genericFns, hm);
+      visitStatement(stmt.body, ctx, genericFns, hm);
+      return;
+    case 'WhileLet':
+      visitExpr(stmt.value, ctx, genericFns, hm);
       visitStatement(stmt.body, ctx, genericFns, hm);
       return;
     case 'Assign':
@@ -262,7 +294,10 @@ const visitStatement = (
       return;
     case 'MatchStmt':
       visitExpr(stmt.value, ctx, genericFns, hm);
-      for (const arm of stmt.arms) visitStatement(arm.body, ctx, genericFns, hm);
+      for (const arm of stmt.arms) {
+        if (arm.guard) visitExpr(arm.guard, ctx, genericFns, hm);
+        visitStatement(arm.body, ctx, genericFns, hm);
+      }
       return;
     case 'Block':
       for (const inner of stmt.body) visitStatement(inner, ctx, genericFns, hm);
@@ -331,6 +366,7 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
     case 'MatchExpr':
       substituteTypesInExpr(expr.value, mapping);
       for (const arm of expr.arms) {
+        if (arm.guard) substituteTypesInExpr(arm.guard, mapping);
         substituteTypesInExpr(arm.body, mapping);
       }
       return;
@@ -339,6 +375,13 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
       return;
     case 'Try':
       substituteTypesInExpr(expr.value, mapping);
+      return;
+    case 'Await':
+      substituteTypesInExpr(expr.value, mapping);
+      return;
+    case 'Cast':
+      substituteTypesInExpr(expr.expr, mapping);
+      expr.targetType = substituteTypeExpr(expr.targetType, mapping) ?? expr.targetType;
       return;
     case 'Move':
       substituteTypesInExpr(expr.target, mapping);
@@ -356,6 +399,9 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
     case 'Index':
       substituteTypesInExpr(expr.object, mapping);
       substituteTypesInExpr(expr.index, mapping);
+      return;
+    case 'TupleLiteral':
+      expr.elements.forEach((element) => substituteTypesInExpr(element, mapping));
       return;
     case 'Lambda':
       expr.returnType = substituteTypeExpr(expr.returnType, mapping) ?? null;
@@ -377,6 +423,13 @@ const substituteTypesInStatement = (stmt: LuminaStatement, mapping: Map<string, 
       stmt.typeName = substituteTypeExpr(stmt.typeName, mapping) ?? null;
       substituteTypesInExpr(stmt.value, mapping);
       return;
+    case 'LetTuple':
+      substituteTypesInExpr(stmt.value, mapping);
+      return;
+    case 'LetElse':
+      substituteTypesInExpr(stmt.value, mapping);
+      substituteTypesInStatement(stmt.elseBlock, mapping);
+      return;
     case 'Return':
       substituteTypesInExpr(stmt.value, mapping);
       return;
@@ -388,8 +441,21 @@ const substituteTypesInStatement = (stmt: LuminaStatement, mapping: Map<string, 
       substituteTypesInStatement(stmt.thenBlock, mapping);
       if (stmt.elseBlock) substituteTypesInStatement(stmt.elseBlock, mapping);
       return;
+    case 'IfLet':
+      substituteTypesInExpr(stmt.value, mapping);
+      substituteTypesInStatement(stmt.thenBlock, mapping);
+      if (stmt.elseBlock) substituteTypesInStatement(stmt.elseBlock, mapping);
+      return;
     case 'While':
       substituteTypesInExpr(stmt.condition, mapping);
+      substituteTypesInStatement(stmt.body, mapping);
+      return;
+    case 'For':
+      substituteTypesInExpr(stmt.iterable, mapping);
+      substituteTypesInStatement(stmt.body, mapping);
+      return;
+    case 'WhileLet':
+      substituteTypesInExpr(stmt.value, mapping);
       substituteTypesInStatement(stmt.body, mapping);
       return;
     case 'Assign':
@@ -399,6 +465,7 @@ const substituteTypesInStatement = (stmt: LuminaStatement, mapping: Map<string, 
     case 'MatchStmt':
       substituteTypesInExpr(stmt.value, mapping);
       for (const arm of stmt.arms) {
+        if (arm.guard) substituteTypesInExpr(arm.guard, mapping);
         substituteTypesInStatement(arm.body, mapping);
       }
       return;
@@ -539,6 +606,9 @@ export function rewriteCallSites(
       case 'ArrayLiteral':
         expr.elements.forEach(visitExprForRewrite);
         return;
+      case 'TupleLiteral':
+        expr.elements.forEach(visitExprForRewrite);
+        return;
       case 'Binary':
         visitExprForRewrite(expr.left);
         visitExprForRewrite(expr.right);
@@ -551,7 +621,10 @@ export function rewriteCallSites(
         return;
       case 'MatchExpr':
         visitExprForRewrite(expr.value);
-        for (const arm of expr.arms) visitExprForRewrite(arm.body);
+        for (const arm of expr.arms) {
+          if (arm.guard) visitExprForRewrite(arm.guard);
+          visitExprForRewrite(arm.body);
+        }
         return;
       case 'IsExpr':
         visitExprForRewrite(expr.value);
@@ -596,6 +669,13 @@ export function rewriteCallSites(
       case 'Let':
         visitExprForRewrite(stmt.value);
         return;
+      case 'LetTuple':
+        visitExprForRewrite(stmt.value);
+        return;
+      case 'LetElse':
+        visitExprForRewrite(stmt.value);
+        visitStmtForRewrite(stmt.elseBlock);
+        return;
       case 'Return':
         visitExprForRewrite(stmt.value);
         return;
@@ -607,8 +687,21 @@ export function rewriteCallSites(
         visitStmtForRewrite(stmt.thenBlock);
         if (stmt.elseBlock) visitStmtForRewrite(stmt.elseBlock);
         return;
+      case 'IfLet':
+        visitExprForRewrite(stmt.value);
+        visitStmtForRewrite(stmt.thenBlock);
+        if (stmt.elseBlock) visitStmtForRewrite(stmt.elseBlock);
+        return;
       case 'While':
         visitExprForRewrite(stmt.condition);
+        visitStmtForRewrite(stmt.body);
+        return;
+      case 'For':
+        visitExprForRewrite(stmt.iterable);
+        visitStmtForRewrite(stmt.body);
+        return;
+      case 'WhileLet':
+        visitExprForRewrite(stmt.value);
         visitStmtForRewrite(stmt.body);
         return;
       case 'Assign':
@@ -617,7 +710,10 @@ export function rewriteCallSites(
         return;
       case 'MatchStmt':
         visitExprForRewrite(stmt.value);
-        for (const arm of stmt.arms) visitStmtForRewrite(arm.body);
+        for (const arm of stmt.arms) {
+          if (arm.guard) visitExprForRewrite(arm.guard);
+          visitStmtForRewrite(arm.body);
+        }
         return;
       case 'Block':
         for (const inner of stmt.body) visitStmtForRewrite(inner);

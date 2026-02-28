@@ -12,6 +12,7 @@ import {
   type LuminaImplDecl,
   type LuminaFnDecl,
   type LuminaBlock,
+  type LuminaLambda,
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
@@ -144,6 +145,15 @@ const builtinTypes: Set<LuminaType> = new Set([
   'Vec',
   'HashMap',
   'HashSet',
+  'Channel',
+  'Sender',
+  'Receiver',
+  'Thread',
+  'ThreadHandle',
+  'Mutex',
+  'Semaphore',
+  'AtomicI32',
+  'Promise',
   'Range',
 ]);
 
@@ -232,6 +242,92 @@ function formatTypeForDiagnostic(type: LuminaType | null | undefined): string {
   if (parsed.args.length === 0) return base;
   const args = parsed.args.map((arg) => formatTypeForDiagnostic(arg));
   return `${base}<${args.join(',')}>`;
+}
+
+function collectPatternBindingNames(pattern: import('./ast.js').LuminaMatchPattern, out: string[] = []): string[] {
+  switch (pattern.type) {
+    case 'BindingPattern':
+      out.push(pattern.name);
+      return out;
+    case 'TuplePattern':
+      for (const element of pattern.elements) collectPatternBindingNames(element, out);
+      return out;
+    case 'StructPattern':
+      for (const field of pattern.fields) collectPatternBindingNames(field.pattern, out);
+      return out;
+    case 'EnumPattern':
+      if (pattern.patterns && pattern.patterns.length > 0) {
+        for (const nested of pattern.patterns) collectPatternBindingNames(nested, out);
+      } else {
+        for (const binding of pattern.bindings) {
+          if (binding !== '_') out.push(binding);
+        }
+      }
+      return out;
+    default:
+      return out;
+  }
+}
+
+function collectPatternBindingTypes(
+  pattern: import('./ast.js').LuminaMatchPattern,
+  valueType: LuminaType | null | undefined,
+  symbols: SymbolTable
+): Map<string, LuminaType> {
+  const out = new Map<string, LuminaType>();
+  const visit = (pat: import('./ast.js').LuminaMatchPattern, currentType: LuminaType | null | undefined) => {
+    switch (pat.type) {
+      case 'BindingPattern':
+        out.set(pat.name, currentType ?? 'any');
+        return;
+      case 'WildcardPattern':
+      case 'LiteralPattern':
+        return;
+      case 'TuplePattern': {
+        const parsed = currentType ? parseTypeName(currentType) : null;
+        const tupleArgs = parsed && parsed.base === 'Tuple' ? parsed.args : [];
+        pat.elements.forEach((element, idx) => visit(element, tupleArgs[idx] ?? 'any'));
+        return;
+      }
+      case 'StructPattern': {
+        const structSym = symbols.get(pat.name);
+        const currentParsed = currentType ? parseTypeName(currentType) : null;
+        const mapping = new Map<string, LuminaType>();
+        if (structSym?.typeParams && currentParsed && currentParsed.base === pat.name) {
+          structSym.typeParams.forEach((tp, idx) => {
+            mapping.set(tp.name, currentParsed.args[idx] ?? 'any');
+          });
+        }
+        for (const field of pat.fields) {
+          const declared = structSym?.structFields?.get(field.name) ?? 'any';
+          const resolved = mapping.size > 0 ? substituteTypeParams(declared, mapping) : declared;
+          visit(field.pattern, resolved);
+        }
+        return;
+      }
+      case 'EnumPattern': {
+        const enumName = pat.enumName ?? (currentType ? parseTypeName(currentType)?.base : null);
+        const enumSym = enumName ? symbols.get(enumName) : undefined;
+        const variant = enumSym?.enumVariants?.find((entry) => entry.name === pat.variant);
+        const mapping = enumName && currentType ? buildEnumTypeMapping(enumName, currentType, symbols) : null;
+        const mappedParams = variant
+          ? variant.params.map((param) => (mapping ? substituteTypeParams(param, mapping) : param))
+          : [];
+        if (pat.patterns && pat.patterns.length > 0) {
+          pat.patterns.forEach((nested, idx) => visit(nested, mappedParams[idx] ?? 'any'));
+          return;
+        }
+        pat.bindings.forEach((binding, idx) => {
+          if (binding === '_') return;
+          out.set(binding, mappedParams[idx] ?? 'any');
+        });
+        return;
+      }
+    }
+  };
+
+  visit(pattern, valueType ?? 'any');
+  return out;
 }
 
 const getLValueBaseName = (expr: LuminaExpr): string | null => {
@@ -765,8 +861,14 @@ function blockHasReturn(block: { body: LuminaStatement[] }): boolean {
         return stmt.body.some(visit);
       case 'If':
         return visit(stmt.thenBlock) || (stmt.elseBlock ? visit(stmt.elseBlock) : false);
+      case 'IfLet':
+        return visit(stmt.thenBlock) || (stmt.elseBlock ? visit(stmt.elseBlock) : false);
       case 'While':
+      case 'WhileLet':
+      case 'For':
         return visit(stmt.body);
+      case 'LetElse':
+        return visit(stmt.elseBlock);
       case 'MatchStmt':
         return stmt.arms.some((arm) => visit(arm.body));
       default:
@@ -1239,6 +1341,153 @@ function typeCheckStatement(
       }
       return;
     }
+    case 'LetTuple': {
+      const seen = new Set<string>();
+      for (const name of stmt.names) {
+        if (seen.has(name)) {
+          diagnostics.push(diagAt(`Duplicate binding '${name}' in tuple destructuring`, stmt.location, 'error', 'DUPLICATE_BINDING'));
+          return;
+        }
+        seen.add(name);
+      }
+
+      const valueType = typeCheckExpr(
+        stmt.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      if (!valueType || isErrorTypeName(valueType)) return;
+
+      const parsed = parseTypeName(valueType);
+      let bindingTypes: LuminaType[] | null = null;
+      if (parsed?.base === 'Channel' && parsed.args.length >= 1) {
+        const value = parsed.args[0] ?? 'any';
+        bindingTypes = [`Sender<${value}>`, `Receiver<${value}>`];
+      } else if (parsed?.base === 'Tuple' && parsed.args.length > 0) {
+        bindingTypes = parsed.args;
+      }
+
+      if (!bindingTypes) {
+        diagnostics.push(
+          diagAt(
+            `Cannot destructure '${formatTypeForDiagnostic(valueType)}' with tuple pattern`,
+            stmt.location,
+            'error',
+            'TUPLE_DESTRUCTURE_TYPE'
+          )
+        );
+        return;
+      }
+
+      if (bindingTypes.length !== stmt.names.length) {
+        diagnostics.push(
+          diagAt(
+            `Tuple destructuring expects ${bindingTypes.length} binding(s), found ${stmt.names.length}`,
+            stmt.location,
+            'error',
+            'TUPLE_DESTRUCTURE_ARITY'
+          )
+        );
+        return;
+      }
+
+      for (let i = 0; i < stmt.names.length; i += 1) {
+        const name = stmt.names[i];
+        const finalType = bindingTypes[i] ?? 'any';
+        warnOnImportedShadow(name, stmt.location, diagnostics, options);
+        if (scope) {
+          const parentScope = scope.parent;
+          const shadowed = parentScope ? findDefScope(parentScope, name) : null;
+          if (shadowed) {
+            const shadowedLocation = shadowed.locals.get(name);
+            const related = shadowedLocation
+              ? [
+                  {
+                    location: shadowedLocation,
+                    message: `Previous '${name}' declared here`,
+                  },
+                ]
+              : undefined;
+            diagnostics.push(
+              diagAt(
+                `Binding '${name}' shadows a variable from an outer scope`,
+                stmt.location,
+                'warning',
+                'SHADOWED_BINDING',
+                related
+              )
+            );
+          }
+        }
+        symbols.define({
+          name,
+          kind: 'variable',
+          type: finalType,
+          location: stmt.location,
+          mutable: stmt.mutable ?? false,
+        });
+        scope?.define(name, stmt.location);
+        if (scope && di) {
+          di.define(scope, name, false);
+          di.assign(scope, name);
+        }
+      }
+      return;
+    }
+    case 'LetElse': {
+      const valueType = typeCheckExpr(
+        stmt.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+
+      const elseScope = new Scope(scope);
+      const elseSymbols = cloneSymbolTable(symbols);
+      typeCheckStatement(
+        stmt.elseBlock,
+        elseSymbols,
+        diagnostics,
+        currentReturnType,
+        elseScope,
+        options,
+        returnCollector,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di ? di.clone() : undefined
+      );
+
+      const bindingTypes = collectPatternBindingTypes(stmt.pattern, valueType ?? 'any', symbols);
+      for (const [name, bindingType] of bindingTypes.entries()) {
+        symbols.define({
+          name,
+          kind: 'variable',
+          type: bindingType,
+          location: stmt.location,
+          mutable: stmt.mutable ?? false,
+        });
+        scope?.define(name, stmt.location);
+        if (scope && di) {
+          di.define(scope, name, false);
+          di.assign(scope, name);
+        }
+      }
+      return;
+    }
     case 'If': {
       const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       if (condType && condType !== 'bool') {
@@ -1360,6 +1609,70 @@ function typeCheckStatement(
       }
       return;
     }
+    case 'IfLet': {
+      const valueType = typeCheckExpr(
+        stmt.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+
+      const thenScope = new Scope(scope);
+      const thenSymbols = cloneSymbolTable(symbols);
+      const thenDi = di ? di.clone() : undefined;
+      const bindingTypes = collectPatternBindingTypes(stmt.pattern, valueType ?? 'any', symbols);
+      for (const [name, bindingType] of bindingTypes.entries()) {
+        thenScope.define(name, stmt.location);
+        thenSymbols.define({
+          name,
+          kind: 'variable',
+          type: bindingType,
+          location: stmt.location,
+          mutable: false,
+        });
+        if (thenDi) {
+          thenDi.define(thenScope, name, true);
+        }
+      }
+      typeCheckStatement(
+        stmt.thenBlock,
+        thenSymbols,
+        diagnostics,
+        currentReturnType,
+        thenScope,
+        options,
+        returnCollector,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        thenDi
+      );
+
+      if (stmt.elseBlock) {
+        const elseScope = new Scope(scope);
+        const elseSymbols = cloneSymbolTable(symbols);
+        typeCheckStatement(
+          stmt.elseBlock,
+          elseSymbols,
+          diagnostics,
+          currentReturnType,
+          elseScope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          di ? di.clone() : undefined
+        );
+      }
+      return;
+    }
     case 'While': {
       const condType = typeCheckExpr(stmt.condition, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       if (condType && condType !== 'bool') {
@@ -1397,6 +1710,160 @@ function typeCheckStatement(
           currentFunction
         );
       }
+      const bodyMoves = snapshotMoves(scope);
+      restoreMoves(baseMoves);
+      mergeMoves(scope, [baseMoves, bodyMoves]);
+      return;
+    }
+    case 'For': {
+      const iterableType = typeCheckExpr(
+        stmt.iterable,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        'Range',
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      if (iterableType && !areTypesEquivalent(iterableType, 'Range')) {
+        diagnostics.push(
+          diagAt(
+            `For loop expects a Range iterable, found '${formatTypeForDiagnostic(iterableType)}'`,
+            stmt.location,
+            'error',
+            'FOR_RANGE_REQUIRED'
+          )
+        );
+      }
+
+      const loopScope = new Scope(scope);
+      const loopSymbols = cloneSymbolTable(symbols);
+      loopScope.define(stmt.iterator, stmt.location);
+      loopSymbols.define({
+        name: stmt.iterator,
+        kind: 'variable',
+        type: 'i32',
+        location: stmt.location,
+        mutable: false,
+      });
+
+      const baseMoves = snapshotMoves(scope);
+      if (di) {
+        const loopDi = di.clone();
+        loopDi.define(loopScope, stmt.iterator, true);
+        typeCheckStatement(
+          stmt.body,
+          loopSymbols,
+          diagnostics,
+          currentReturnType,
+          loopScope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          loopDi
+        );
+      } else {
+        typeCheckStatement(
+          stmt.body,
+          loopSymbols,
+          diagnostics,
+          currentReturnType,
+          loopScope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction
+        );
+      }
+      collectUnusedBindings(loopScope, diagnostics, stmt.location);
+      const bodyMoves = snapshotMoves(scope);
+      restoreMoves(baseMoves);
+      mergeMoves(scope, [baseMoves, bodyMoves]);
+      return;
+    }
+    case 'WhileLet': {
+      const matchType = typeCheckExpr(
+        stmt.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
+      const parsedMatch = matchType ? parseTypeName(matchType) : null;
+      const matchBase = parsedMatch?.base ?? matchType ?? null;
+      const enumSym = matchBase ? symbols.get(matchBase) : undefined;
+      const variants = enumSym?.enumVariants ?? [];
+      const loopScope = new Scope(scope);
+      const loopSymbols = cloneSymbolTable(symbols);
+      const loopDi = di ? di.clone() : undefined;
+      const matchMutability = resolveMutableSource(stmt.value, symbols, options);
+      const pattern = stmt.pattern;
+      if (pattern.type === 'EnumPattern') {
+        if (pattern.enumName && matchBase && pattern.enumName !== matchBase) {
+          diagnostics.push(diagAt(`While-let value is '${matchBase}', not '${pattern.enumName}'`, stmt.location));
+        }
+        const variant = pattern.enumName
+          ? findEnumVariantQualified(symbols, pattern.enumName, pattern.variant, options)
+          : variants.find((v) => v.name === pattern.variant)
+            ? { enumName: matchBase ?? '', params: variants.find((v) => v.name === pattern.variant)?.params ?? [] }
+            : null;
+        if (!variant) {
+          diagnostics.push(diagAt(`Unknown enum variant '${pattern.variant}'`, stmt.location));
+        } else {
+          const mapping = matchBase ? buildEnumTypeMapping(matchBase, matchType, symbols) : null;
+          const mappedParams = mapping
+            ? variant.params.map((param) => substituteTypeParams(param, mapping))
+            : variant.params;
+          if (pattern.bindings.length > 0) {
+            if (mappedParams.length === 0) {
+              diagnostics.push(diagAt(`Variant '${pattern.variant}' has no payload`, stmt.location));
+            } else if (pattern.bindings.length !== mappedParams.length) {
+              diagnostics.push(diagAt(`Variant '${pattern.variant}' expects ${mappedParams.length} bindings`, stmt.location));
+            }
+            pattern.bindings.forEach((binding, idx) => {
+              if (binding === '_') return;
+              const paramType = mappedParams[idx];
+              if (!paramType) return;
+              loopScope.define(binding, stmt.location);
+              loopSymbols.define({
+                name: binding,
+                kind: 'variable',
+                type: paramType,
+                location: stmt.location,
+                mutable: matchMutability,
+              });
+              loopDi?.define(loopScope, binding, true);
+            });
+          }
+        }
+      }
+
+      const baseMoves = snapshotMoves(scope);
+      typeCheckStatement(
+        stmt.body,
+        loopSymbols,
+        diagnostics,
+        currentReturnType,
+        loopScope,
+        options,
+        returnCollector,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        loopDi
+      );
+      collectUnusedBindings(loopScope, diagnostics, stmt.location);
       const bodyMoves = snapshotMoves(scope);
       restoreMoves(baseMoves);
       mergeMoves(scope, [baseMoves, bodyMoves]);
@@ -1593,6 +2060,7 @@ function typeCheckStatement(
       const variants = enumSym?.enumVariants ?? [];
       const seen = new Set<string>();
       let hasWildcard = false;
+      let hasEnumPattern = false;
       const branchStates: DefiniteAssignment[] = [];
       const baseMoves = snapshotMoves(scope);
       const branchMoves: Array<Map<Scope, Map<string, Location | undefined>>> = [];
@@ -1610,6 +2078,7 @@ function typeCheckStatement(
         if (pattern.type === 'WildcardPattern') {
           hasWildcard = true;
         } else if (pattern.type === 'EnumPattern') {
+          hasEnumPattern = true;
           if (pattern.enumName && matchBase && pattern.enumName !== matchBase) {
             diagnostics.push(diagAt(`Match value is '${matchBase}', not '${pattern.enumName}'`, arm.location ?? stmt.location));
           }
@@ -1657,6 +2126,47 @@ function typeCheckStatement(
               });
             }
           }
+        } else if (pattern.type === 'BindingPattern') {
+          hasWildcard = true;
+          armScope.define(pattern.name, arm.location ?? stmt.location);
+          armSymbols.define({
+            name: pattern.name,
+            kind: 'variable',
+            type: matchType ?? 'any',
+            location: arm.location ?? stmt.location,
+            mutable: matchMutability,
+          });
+          if (armDi) armDi.define(armScope, pattern.name, true);
+        } else {
+          const genericBindingTypes = collectPatternBindingTypes(pattern, matchType ?? 'any', symbols);
+          for (const [binding, bindingType] of genericBindingTypes.entries()) {
+            armScope.define(binding, arm.location ?? stmt.location);
+            armSymbols.define({
+              name: binding,
+              kind: 'variable',
+              type: bindingType,
+              location: arm.location ?? stmt.location,
+              mutable: matchMutability,
+            });
+            if (armDi) armDi.define(armScope, binding, true);
+          }
+        }
+        if (arm.guard) {
+          const guardType = typeCheckExpr(
+            arm.guard,
+            armSymbols,
+            diagnostics,
+            armScope,
+            options,
+            undefined,
+            resolving,
+            pendingDeps,
+            currentFunction,
+            armDi
+          );
+          if (guardType && normalizeTypeForComparison(guardType) !== 'bool' && normalizeTypeForComparison(guardType) !== 'any') {
+            diagnostics.push(diagAt(`Match guard must be 'bool'`, arm.guard.location ?? arm.location ?? stmt.location));
+          }
         }
         typeCheckStatement(arm.body, armSymbols, diagnostics, currentReturnType, armScope, options, returnCollector, resolving, pendingDeps, currentFunction, armDi);
         collectUnusedBindings(armScope, diagnostics, arm.location ?? stmt.location);
@@ -1669,9 +2179,9 @@ function typeCheckStatement(
       if (branchMoves.length > 0) {
         mergeMoves(scope, branchMoves);
       }
-      if (matchType && (!enumSym || !enumSym.enumVariants)) {
+      if (hasEnumPattern && matchType && (!enumSym || !enumSym.enumVariants)) {
         diagnostics.push(diagAt(`Match expression must be an enum`, stmt.location));
-      } else if (!hasWildcard && enumSym?.enumVariants) {
+      } else if (hasEnumPattern && !hasWildcard && enumSym?.enumVariants) {
         const missing = enumSym.enumVariants.map((v) => v.name).filter((name) => !seen.has(name));
       if (missing.length > 0) {
         const related: DiagnosticRelatedInformation[] = [
@@ -1759,6 +2269,233 @@ function typeCheckExpr(
     const raw = expr.raw ?? '';
     const isFloat = expr.isFloat || raw.includes('.') || raw.includes('e') || raw.includes('E');
     return isFloat ? 'f64' : 'i32';
+  };
+
+  const collectLambdaCaptureCandidates = (lambda: LuminaLambda): string[] => {
+    const used = new Set<string>();
+    const declared = new Set<string>(lambda.params.map((param) => param.name));
+
+    const visitExprNode = (node: LuminaExpr) => {
+      switch (node.type) {
+        case 'Identifier':
+          used.add(node.name);
+          return;
+        case 'Member':
+          visitExprNode(node.object);
+          return;
+        case 'Call':
+          if (!node.receiver && !node.enumName) {
+            used.add(node.callee.name);
+          }
+          if (node.receiver) visitExprNode(node.receiver);
+          for (const arg of node.args) visitExprNode(arg);
+          return;
+        case 'Binary':
+          visitExprNode(node.left);
+          visitExprNode(node.right);
+          return;
+        case 'Move':
+          if (node.target.type === 'Identifier') {
+            used.add(node.target.name);
+          } else {
+            visitExprNode(node.target.object);
+          }
+          return;
+        case 'Await':
+        case 'Try':
+          visitExprNode(node.value);
+          return;
+        case 'Cast':
+          visitExprNode(node.expr);
+          return;
+        case 'StructLiteral':
+          for (const field of node.fields) visitExprNode(field.value);
+          return;
+        case 'ArrayLiteral':
+          for (const element of node.elements) visitExprNode(element);
+          return;
+        case 'TupleLiteral':
+          for (const element of node.elements) visitExprNode(element);
+          return;
+        case 'Index':
+          visitExprNode(node.object);
+          visitExprNode(node.index);
+          return;
+        case 'IsExpr':
+          visitExprNode(node.value);
+          return;
+        case 'MatchExpr':
+          visitExprNode(node.value);
+          for (const arm of node.arms) {
+            visitExprNode(arm.body);
+          }
+          return;
+        case 'InterpolatedString':
+          for (const part of node.parts) {
+            if (typeof part !== 'string') visitExprNode(part);
+          }
+          return;
+        case 'Lambda':
+        case 'Number':
+        case 'String':
+        case 'Boolean':
+          return;
+        case 'Range':
+          if (node.start) visitExprNode(node.start);
+          if (node.end) visitExprNode(node.end);
+          return;
+      }
+    };
+
+    const visitStmtNode = (stmt: LuminaStatement) => {
+      switch (stmt.type) {
+        case 'Let':
+          visitExprNode(stmt.value);
+          declared.add(stmt.name);
+          return;
+        case 'LetTuple':
+          visitExprNode(stmt.value);
+          for (const name of stmt.names) {
+            declared.add(name);
+          }
+          return;
+        case 'LetElse':
+          visitExprNode(stmt.value);
+          visitStmtNode(stmt.elseBlock);
+          return;
+        case 'Return':
+          visitExprNode(stmt.value);
+          return;
+        case 'ExprStmt':
+          visitExprNode(stmt.expr);
+          return;
+        case 'Assign':
+          if (stmt.target.type === 'Identifier') {
+            used.add(stmt.target.name);
+          } else {
+            visitExprNode(stmt.target.object);
+          }
+          visitExprNode(stmt.value);
+          return;
+        case 'If':
+          visitExprNode(stmt.condition);
+          visitStmtNode(stmt.thenBlock);
+          if (stmt.elseBlock) visitStmtNode(stmt.elseBlock);
+          return;
+        case 'IfLet':
+          visitExprNode(stmt.value);
+          visitStmtNode(stmt.thenBlock);
+          if (stmt.elseBlock) visitStmtNode(stmt.elseBlock);
+          return;
+        case 'While':
+          visitExprNode(stmt.condition);
+          visitStmtNode(stmt.body);
+          return;
+        case 'For':
+          visitExprNode(stmt.iterable);
+          declared.add(stmt.iterator);
+          visitStmtNode(stmt.body);
+          return;
+        case 'WhileLet':
+          visitExprNode(stmt.value);
+          if (stmt.pattern.type === 'EnumPattern') {
+            for (const binding of stmt.pattern.bindings) {
+              declared.add(binding);
+            }
+          }
+          visitStmtNode(stmt.body);
+          return;
+        case 'MatchStmt':
+          visitExprNode(stmt.value);
+          for (const arm of stmt.arms) {
+            for (const binding of collectPatternBindingNames(arm.pattern)) {
+              if (binding === '_') continue;
+              declared.add(binding);
+            }
+            visitStmtNode(arm.body);
+          }
+          return;
+        case 'Block':
+          for (const inner of stmt.body) visitStmtNode(inner);
+          return;
+        case 'ErrorNode':
+        case 'Import':
+        case 'TraitDecl':
+        case 'ImplDecl':
+        case 'TypeDecl':
+        case 'StructDecl':
+        case 'EnumDecl':
+        case 'FnDecl':
+          return;
+      }
+    };
+
+    for (const stmt of lambda.body.body) {
+      visitStmtNode(stmt);
+    }
+
+    return Array.from(used).filter((name) => !declared.has(name));
+  };
+
+  const validateThreadSpawnCall = (args: LuminaExpr[], argTypes: Array<LuminaType | null>) => {
+    if (args.length !== 1) return;
+    const firstArg = args[0];
+    if (firstArg.type !== 'Lambda') return;
+    const lambda = firstArg as LuminaLambda;
+    const captures = Array.from(
+      new Set((lambda.captures && lambda.captures.length > 0 ? lambda.captures : collectLambdaCaptureCandidates(lambda)) ?? [])
+    );
+    const variableCaptures = captures.filter((name) => {
+      if (scope && findDefScope(scope, name)) return true;
+      const sym = symbols.get(name) ?? options?.externSymbols?.(name);
+      return sym?.kind === 'variable';
+    });
+    if (variableCaptures.length === 0) return;
+
+    if (lambda.capture !== 'move') {
+      diagnostics.push(
+        diagAt(
+          `thread.spawn requires a 'move' closure when capturing variables (${variableCaptures.join(', ')})`,
+          lambda.location ?? firstArg.location ?? defaultLocation,
+          'error',
+          'THREAD_CAPTURE_REQUIRES_MOVE'
+        )
+      );
+      return;
+    }
+
+    for (const name of variableCaptures) {
+      const sym = symbols.get(name) ?? options?.externSymbols?.(name);
+      const captureType =
+        typeCheckExpr(
+          { type: 'Identifier', name, location: lambda.location } as LuminaExpr,
+          symbols,
+          [],
+          scope,
+          options,
+          undefined,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          di,
+          undefined,
+          false,
+          true
+        ) ??
+        sym?.type ??
+        argTypes[0] ??
+        'any';
+      if (!isImplicitlySendType(captureType, symbols)) {
+        diagnostics.push(
+          diagAt(
+            `Captured variable '${name}' has non-Send type '${formatTypeForDiagnostic(captureType)}'`,
+            lambda.location ?? firstArg.location ?? defaultLocation,
+            'error',
+            'THREAD_CAPTURE_NOT_SEND'
+          )
+        );
+      }
+    }
   };
 
   const seedTypeParamsFromExpected = (
@@ -2179,6 +2916,88 @@ function typeCheckExpr(
       return null;
     }
 
+    if (parsed.base === 'Sender' && parsed.args.length >= 1) {
+      const valueType = parsed.args[0] ?? 'any';
+      if (callee === 'send') {
+        if (!ensureArity(1)) return 'Promise<bool>';
+        if (!isTypeAssignable(actualArgs[0], valueType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, valueType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'Promise<bool>';
+      }
+      if (callee === 'try_send') {
+        if (!ensureArity(1)) return 'bool';
+        if (!isTypeAssignable(actualArgs[0], valueType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, valueType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'bool';
+      }
+      if (callee === 'send_result') {
+        if (!ensureArity(1)) return 'Result<void,string>';
+        if (!isTypeAssignable(actualArgs[0], valueType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, valueType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'Result<void,string>';
+      }
+      if (callee === 'send_async_result') {
+        if (!ensureArity(1)) return 'Promise<Result<void,string>>';
+        if (!isTypeAssignable(actualArgs[0], valueType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, valueType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'Promise<Result<void,string>>';
+      }
+      if (callee === 'clone') {
+        ensureArity(0);
+        return `Sender<${valueType}>`;
+      }
+      if (callee === 'is_closed') {
+        ensureArity(0);
+        return 'bool';
+      }
+      if (callee === 'drop') {
+        ensureArity(0);
+        return 'void';
+      }
+      if (callee === 'close') {
+        ensureArity(0);
+        return 'void';
+      }
+      return null;
+    }
+
+    if (parsed.base === 'Receiver' && parsed.args.length >= 1) {
+      const valueType = parsed.args[0] ?? 'any';
+      if (callee === 'recv') {
+        ensureArity(0);
+        return `Promise<Option<${valueType}>>`;
+      }
+      if (callee === 'try_recv') {
+        ensureArity(0);
+        return `Option<${valueType}>`;
+      }
+      if (callee === 'recv_result') {
+        ensureArity(0);
+        return `Promise<Result<Option<${valueType}>,string>>`;
+      }
+      if (callee === 'try_recv_result') {
+        ensureArity(0);
+        return `Result<Option<${valueType}>,string>`;
+      }
+      if (callee === 'is_closed') {
+        ensureArity(0);
+        return 'bool';
+      }
+      if (callee === 'drop') {
+        ensureArity(0);
+        return 'void';
+      }
+      if (callee === 'close') {
+        ensureArity(0);
+        return 'void';
+      }
+      return null;
+    }
+
     return null;
   };
   if (expr.type === 'Number') return inferNumberType(expr);
@@ -2243,6 +3062,28 @@ function typeCheckExpr(
     const finalElement = isErrorTypeName(unified) ? 'any' : unified;
     return `Vec<${finalElement}>`;
   }
+  if (expr.type === 'TupleLiteral') {
+    const elementTypes: LuminaType[] = [];
+    for (const element of expr.elements) {
+      const elementType = typeCheckExpr(
+        element,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      );
+      elementTypes.push(elementType ?? 'any');
+    }
+    return `Tuple<${elementTypes.join(',')}>`;
+  }
   if (expr.type === 'String') return 'string';
   if (expr.type === 'Lambda') {
     const local = new SymbolTable();
@@ -2302,6 +3143,47 @@ function typeCheckExpr(
         currentFunction,
         lambdaDi
       );
+    }
+
+    const captured = Array.from(lambdaScope.reads).filter((name) => {
+      if (lambdaScope.locals.has(name)) return false;
+      const sym = symbols.get(name) ?? options?.externSymbols?.(name);
+      return sym?.kind === 'variable';
+    });
+    expr.captures = Array.from(new Set(captured));
+
+    if (expr.capture === 'move') {
+      for (const name of expr.captures) {
+        if (scope?.isBorrowed(name)) {
+          diagnostics.push(
+            diagAt(
+              `Cannot capture '${name}' by move while it is borrowed`,
+              expr.location,
+              'error',
+              'MOVE_WHILE_BORROWED'
+            )
+          );
+          continue;
+        }
+        const previousMove = scope?.findMoveConflictInfo(name, 'overlap');
+        if (previousMove) {
+          diagnostics.push(
+            diagAt(
+              formatMoveConflictMessage('move', name, previousMove.path),
+              expr.location,
+              'error',
+              'USE_AFTER_MOVE',
+              [
+                {
+                  location: previousMove.location ?? expr.location ?? defaultLocation,
+                  message: `Moved here`,
+                },
+              ]
+            )
+          );
+        }
+        scope?.markMovedPath(name, expr.location);
+      }
     }
 
     // Function types are inferred precisely by HM; semantic pass uses a conservative placeholder.
@@ -2830,16 +3712,22 @@ function typeCheckExpr(
       }
       const narrowed = scope?.lookupNarrowed(name);
       const sym = symbols.get(name) ?? options?.externSymbols?.(name);
+      const localDefScope = scope ? findDefScope(scope, name) : null;
       let hmType: LuminaType | null = null;
       if (options?.hmInferred && scope) {
-        const defScope = findDefScope(scope, name);
-        const defLocation = defScope?.locals.get(name);
+        const defLocation = localDefScope?.locals.get(name);
         const hmKeyForDef = hmKey(defLocation ?? undefined);
         if (hmKeyForDef) {
           hmType = options.hmInferred.letTypes.get(hmKeyForDef) ?? null;
         }
       }
       if (!sym) {
+        if (localDefScope) {
+          if (scope && di && !di.isAssigned(localDefScope, name)) {
+            diagnostics.push(diagAt(`Variable '${name}' used before assignment`, expr.location));
+          }
+          return narrowed ?? hmType ?? 'any';
+        }
         if (options?.importedNames?.has(name)) {
           return 'any';
         }
@@ -2860,7 +3748,7 @@ function typeCheckExpr(
       return null;
     }
     if (scope && di) {
-      const defScope = findDefScope(scope, name);
+      const defScope = localDefScope;
       if (defScope && !di.isAssigned(defScope, name)) {
         diagnostics.push(diagAt(`Variable '${name}' used before assignment`, expr.location));
         }
@@ -2930,6 +3818,7 @@ function typeCheckExpr(
               diagnostics.push(diagAt(`Argument count mismatch for '${expr.receiver.name}.${callee}'`, expr.location));
               return moduleFn.returnType;
             }
+            const argTypes: Array<LuminaType | null> = [];
             for (let i = 0; i < expr.args.length; i++) {
               const argType = typeCheckExpr(
                 expr.args[i],
@@ -2943,6 +3832,7 @@ function typeCheckExpr(
                 currentFunction,
                 di
               );
+              argTypes.push(argType);
               const expected = moduleFn.paramTypes[i];
               if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
                 reportCallArgMismatch(
@@ -2954,6 +3844,9 @@ function typeCheckExpr(
                   moduleFn.paramNames?.[i] ?? null
                 );
               }
+            }
+            if (expr.receiver.name === 'thread' && callee === 'spawn') {
+              validateThreadSpawnCall(expr.args, argTypes);
             }
             return moduleFn.returnType;
           }
@@ -2986,6 +3879,7 @@ function typeCheckExpr(
             diagnostics.push(diagAt(`Argument count mismatch for '${expr.enumName}.${callee}'`, expr.location));
             return moduleFn.returnType;
           }
+          const argTypes: Array<LuminaType | null> = [];
           for (let i = 0; i < effectiveArgCount; i++) {
             const argType =
               pipedArgType && i === 0
@@ -3002,6 +3896,7 @@ function typeCheckExpr(
                     currentFunction,
                     di
                   );
+            argTypes.push(argType);
             const expected = moduleFn.paramTypes[i];
             if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
               reportCallArgMismatch(
@@ -3013,6 +3908,9 @@ function typeCheckExpr(
                 moduleFn.paramNames?.[i] ?? null
               );
             }
+          }
+          if (expr.enumName === 'thread' && callee === 'spawn' && !pipedArgType) {
+            validateThreadSpawnCall(expr.args, argTypes);
           }
           return moduleFn.returnType;
         }
@@ -3567,39 +4465,40 @@ function typeCheckExpr(
     const args = typeParamDefs.map(tp => mapping.get(tp.name) ?? 'any');
     return `${expr.name}<${args.join(',')}>`;
   }
-    if (expr.type === 'Member') {
-      if (expr.object.type === 'Identifier') {
-        const objectName = expr.object.name;
-        const expectedBase = expectedType ? parseTypeName(expectedType)?.base ?? expectedType : null;
-        const binding = options?.moduleBindings?.get(objectName);
-        const localSym = symbols.get(objectName);
-        const variableShadow = localSym?.kind === 'variable';
-        if (!variableShadow && binding && binding.kind === 'module') {
-          const exp = binding.exports.get(expr.property);
-          if (exp) {
-            if (exp.kind === 'function') return 'any';
-            if (exp.kind === 'value') return exp.valueType;
-          }
-          if (expectedBase && expectedBase === objectName) {
-            return expectedType as LuminaType;
-          }
-          return unresolvedMember(
-            `Unknown module member '${objectName}.${expr.property}'`,
-            expr.location,
-            'UNRESOLVED_MEMBER'
-          );
+  if (expr.type === 'Member') {
+    if (expr.object.type === 'Identifier') {
+      const objectName = expr.object.name;
+      const expectedBase = expectedType ? parseTypeName(expectedType)?.base ?? expectedType : null;
+      const binding = options?.moduleBindings?.get(objectName);
+      const localSym = symbols.get(objectName);
+      const variableShadow = localSym?.kind === 'variable';
+      if (!variableShadow && binding && binding.kind === 'module') {
+        const exp = binding.exports.get(expr.property);
+        if (exp) {
+          if (exp.kind === 'function') return 'any';
+          if (exp.kind === 'value') return exp.valueType;
         }
-        if (!variableShadow && options?.importedNames?.has(objectName) && !symbols.has(objectName)) {
-          if (expectedBase && expectedBase === objectName) {
-            return expectedType as LuminaType;
-          }
-          return unresolvedMember(
-            `Unresolved namespace '${objectName}' while accessing '${expr.property}'`,
-            expr.location,
-            'UNRESOLVED_NAMESPACE'
-          );
+        if (expectedBase && expectedBase === objectName) {
+          return expectedType as LuminaType;
         }
+        return unresolvedMember(
+          `Unknown module member '${objectName}.${expr.property}'`,
+          expr.location,
+          'UNRESOLVED_MEMBER'
+        );
       }
+      if (!variableShadow && options?.importedNames?.has(objectName) && !symbols.has(objectName)) {
+        if (expectedBase && expectedBase === objectName) {
+          return expectedType as LuminaType;
+        }
+        return unresolvedMember(
+          `Unresolved namespace '${objectName}' while accessing '${expr.property}'`,
+          expr.location,
+          'UNRESOLVED_NAMESPACE'
+        );
+      }
+    }
+
     const movePath = getMovePath(expr);
     if (!skipMoveChecks && movePath) {
       const movedAt = scope?.findMoveConflictInfo(movePath, 'overlap');
@@ -3620,6 +4519,7 @@ function typeCheckExpr(
         );
       }
     }
+
     const objectType = typeCheckExpr(
       expr.object,
       symbols,
@@ -3639,6 +4539,14 @@ function typeCheckExpr(
     if (isErrorTypeName(objectType)) return ERROR_TYPE;
     const parsed = parseTypeName(objectType);
     const structName = parsed?.base ?? objectType;
+    if (parsed?.base === 'Channel' && parsed.args.length >= 1) {
+      const valueType = parsed.args[0] ?? 'any';
+      if (expr.property === 'sender') return `Sender<${valueType}>`;
+      if (expr.property === 'receiver') return `Receiver<${valueType}>`;
+      diagnostics.push(diagAt(`Unknown field '${expr.property}' on '${objectType}'`, expr.location));
+      return null;
+    }
+
     const structSym = symbols.get(structName);
     if (structSym?.enumVariants) {
       const variant = findEnumVariantQualified(symbols, structName, expr.property, options);
@@ -3666,6 +4574,7 @@ function typeCheckExpr(
       }
       return structName;
     }
+
     if (!structSym || !structSym.structFields) {
       diagnostics.push(diagAt(`'${objectType}' has no fields`, expr.location));
       return null;
@@ -3686,79 +4595,153 @@ function typeCheckExpr(
     });
     return substituteTypeParams(fieldType, mapping);
   }
-    if (expr.type === 'MatchExpr') {
-      const matchType = typeCheckExpr(expr.value, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
-      const parsedMatch = matchType ? parseTypeName(matchType) : null;
-      const matchBase = parsedMatch?.base ?? matchType ?? null;
-      const enumSym = matchBase ? symbols.get(matchBase) : undefined;
+
+  if (expr.type === 'MatchExpr') {
+    const matchType = typeCheckExpr(
+      expr.value,
+      symbols,
+      diagnostics,
+      scope,
+      options,
+      undefined,
+      resolving,
+      pendingDeps,
+      currentFunction,
+      di
+    );
+    const parsedMatch = matchType ? parseTypeName(matchType) : null;
+    const matchBase = parsedMatch?.base ?? matchType ?? null;
+    const enumSym = matchBase ? symbols.get(matchBase) : undefined;
     const variants = enumSym?.enumVariants ?? [];
     const seen = new Set<string>();
     let hasWildcard = false;
+    let hasEnumPattern = false;
     let armType: LuminaType | null = null;
     const baseMoves = snapshotMoves(scope);
     const branchMoves: Array<Map<Scope, Map<string, Location | undefined>>> = [];
     const matchValueName = expr.value.type === 'Identifier' ? expr.value.name : null;
     const matchMutability = resolveMutableSource(expr.value, symbols, options);
+
     for (const arm of expr.arms) {
       restoreMoves(baseMoves);
       const armScope = new Scope(scope);
       const armSymbols = new SymbolTable();
       for (const sym of symbols.list()) {
-          armSymbols.define(sym);
+        armSymbols.define(sym);
+      }
+
+      const pattern = arm.pattern;
+      if (pattern.type === 'WildcardPattern') {
+        hasWildcard = true;
+      } else if (pattern.type === 'EnumPattern') {
+        hasEnumPattern = true;
+        if (pattern.enumName && matchBase && pattern.enumName !== matchBase) {
+          diagnostics.push(diagAt(`Match value is '${matchBase}', not '${pattern.enumName}'`, arm.location ?? expr.location));
         }
-        const pattern = arm.pattern;
-        if (pattern.type === 'WildcardPattern') {
-          hasWildcard = true;
-        } else if (pattern.type === 'EnumPattern') {
-          if (pattern.enumName && matchBase && pattern.enumName !== matchBase) {
-            diagnostics.push(diagAt(`Match value is '${matchBase}', not '${pattern.enumName}'`, arm.location ?? expr.location));
+        const variant = pattern.enumName
+          ? findEnumVariantQualified(symbols, pattern.enumName, pattern.variant, options)
+          : variants.find((v) => v.name === pattern.variant)
+            ? { enumName: matchBase ?? '', params: variants.find((v) => v.name === pattern.variant)?.params ?? [] }
+            : null;
+        if (!variant) {
+          diagnostics.push(diagAt(`Unknown enum variant '${pattern.variant}'`, arm.location ?? expr.location));
+        } else {
+          const variantName = pattern.variant;
+          if (seen.has(variantName)) {
+            diagnostics.push(diagAt(`Duplicate match arm for '${variantName}'`, arm.location ?? expr.location));
           }
-          const variant = pattern.enumName
-            ? findEnumVariantQualified(symbols, pattern.enumName, pattern.variant, options)
-            : variants.find((v) => v.name === pattern.variant)
-              ? { enumName: matchBase ?? '', params: variants.find((v) => v.name === pattern.variant)?.params ?? [] }
-              : null;
-          if (!variant) {
-            diagnostics.push(diagAt(`Unknown enum variant '${pattern.variant}'`, arm.location ?? expr.location));
-          } else {
-            const variantName = pattern.variant;
-            if (seen.has(variantName)) {
-              diagnostics.push(diagAt(`Duplicate match arm for '${variantName}'`, arm.location ?? expr.location));
+          seen.add(variantName);
+          const mapping = matchBase ? buildEnumTypeMapping(matchBase, matchType, symbols) : null;
+          const mappedParams = mapping
+            ? variant.params.map((param) => substituteTypeParams(param, mapping))
+            : variant.params;
+          if (matchValueName && mappedParams.length === 1) {
+            armScope.narrow(matchValueName, mappedParams[0]);
+          }
+          if (pattern.bindings.length > 0) {
+            if (mappedParams.length === 0) {
+              diagnostics.push(diagAt(`Variant '${variantName}' has no payload`, arm.location ?? expr.location));
+            } else if (pattern.bindings.length !== mappedParams.length) {
+              diagnostics.push(diagAt(`Variant '${variantName}' expects ${mappedParams.length} bindings`, arm.location ?? expr.location));
             }
-            seen.add(variantName);
-            const mapping = matchBase ? buildEnumTypeMapping(matchBase, matchType, symbols) : null;
-            const mappedParams = mapping
-              ? variant.params.map((param) => substituteTypeParams(param, mapping))
-              : variant.params;
-            if (matchValueName && mappedParams.length === 1) {
-              armScope.narrow(matchValueName, mappedParams[0]);
-            }
-            if (pattern.bindings.length > 0) {
-              if (mappedParams.length === 0) {
-                diagnostics.push(diagAt(`Variant '${variantName}' has no payload`, arm.location ?? expr.location));
-              } else if (pattern.bindings.length !== mappedParams.length) {
-                diagnostics.push(diagAt(`Variant '${variantName}' expects ${mappedParams.length} bindings`, arm.location ?? expr.location));
-              }
-              pattern.bindings.forEach((binding, idx) => {
-                if (binding === '_') return;
-                const paramType = mappedParams[idx];
-                if (!paramType) return;
-                armScope.define(binding, arm.location ?? expr.location);
-                armSymbols.define({
-                  name: binding,
-                  kind: 'variable',
-                  type: paramType,
-                  location: arm.location ?? expr.location,
-                  mutable: matchMutability,
-                });
+            pattern.bindings.forEach((binding, idx) => {
+              if (binding === '_') return;
+              const paramType = mappedParams[idx];
+              if (!paramType) return;
+              armScope.define(binding, arm.location ?? expr.location);
+              armSymbols.define({
+                name: binding,
+                kind: 'variable',
+                type: paramType,
+                location: arm.location ?? expr.location,
+                mutable: matchMutability,
+              });
               if (di) {
                 di.define(armScope, binding, true);
               }
             });
           }
         }
+      } else if (pattern.type === 'BindingPattern') {
+        hasWildcard = true;
+        armScope.define(pattern.name, arm.location ?? expr.location);
+        armSymbols.define({
+          name: pattern.name,
+          kind: 'variable',
+          type: matchType ?? 'any',
+          location: arm.location ?? expr.location,
+          mutable: matchMutability,
+        });
+        if (di) {
+          di.define(armScope, pattern.name, true);
+        }
+      } else {
+        const genericBindingTypes = collectPatternBindingTypes(pattern, matchType ?? 'any', symbols);
+        for (const [binding, bindingType] of genericBindingTypes.entries()) {
+          armScope.define(binding, arm.location ?? expr.location);
+          armSymbols.define({
+            name: binding,
+            kind: 'variable',
+            type: bindingType,
+            location: arm.location ?? expr.location,
+            mutable: matchMutability,
+          });
+          if (di) {
+            di.define(armScope, binding, true);
+          }
+        }
       }
-        const bodyType = typeCheckExpr(arm.body, armSymbols, diagnostics, armScope, options, undefined, resolving, pendingDeps, currentFunction, di);
+
+      if (arm.guard) {
+        const guardType = typeCheckExpr(
+          arm.guard,
+          armSymbols,
+          diagnostics,
+          armScope,
+          options,
+          undefined,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          di
+        );
+        if (guardType && normalizeTypeForComparison(guardType) !== 'bool' && normalizeTypeForComparison(guardType) !== 'any') {
+          diagnostics.push(diagAt(`Match guard must be 'bool'`, arm.guard.location ?? arm.location ?? expr.location));
+        }
+      }
+
+      const bodyType = typeCheckExpr(
+        arm.body,
+        armSymbols,
+        diagnostics,
+        armScope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
       if (bodyType) {
         if (!armType) {
           armType = bodyType;
@@ -3769,12 +4752,13 @@ function typeCheckExpr(
       collectUnusedBindings(armScope, diagnostics, arm.location ?? expr.location);
       branchMoves.push(snapshotMoves(scope));
     }
+
     if (branchMoves.length > 0) {
       mergeMoves(scope, branchMoves);
     }
-    if (matchType && (!enumSym || !enumSym.enumVariants)) {
+    if (hasEnumPattern && matchType && (!enumSym || !enumSym.enumVariants)) {
       diagnostics.push(diagAt(`Match expression must be an enum`, expr.location));
-    } else if (!hasWildcard && enumSym?.enumVariants) {
+    } else if (hasEnumPattern && !hasWildcard && enumSym?.enumVariants) {
       const missing = enumSym.enumVariants.map((v) => v.name).filter((name) => !seen.has(name));
       if (missing.length > 0) {
         const related: DiagnosticRelatedInformation[] = [
@@ -3800,6 +4784,7 @@ function typeCheckExpr(
     }
     return armType ?? null;
   }
+
   return null;
 }
 
@@ -3863,7 +4848,11 @@ class Scope {
       this.reads.add(name);
       return;
     }
-    this.parent?.read(name);
+    if (this.parent) {
+      // Track free-variable reads on this scope (used for closure capture analysis).
+      this.reads.add(name);
+      this.parent.read(name);
+    }
   }
 
     write(name: string) {
@@ -4860,6 +5849,88 @@ function satisfiesTraitBound(actual: LuminaType, bound: LuminaType, registry?: T
   return registry.implsByKey.has(implKey);
 }
 
+function isImplicitlySendType(typeName: LuminaType, symbols: SymbolTable, seen: Set<string> = new Set()): boolean {
+  const normalized = normalizeTypeForComparison(typeName);
+  if (normalized === ERROR_TYPE) return true;
+  if (normalized === 'any') return false;
+  if (normalized === 'string' || normalized === 'bool' || normalized === 'void') return true;
+  if (isIntTypeName(normalized) || isFloatTypeName(normalized)) return true;
+
+  const parsed = parseTypeName(normalized);
+  if (!parsed) return false;
+
+  if (
+    parsed.base === 'Thread' ||
+    parsed.base === 'ThreadHandle' ||
+    parsed.base === 'Mutex' ||
+    parsed.base === 'Semaphore' ||
+    parsed.base === 'AtomicI32' ||
+    parsed.base === 'Promise'
+  ) {
+    return false;
+  }
+
+  if (parsed.base === 'Sender' || parsed.base === 'Receiver') {
+    return parsed.args.every((arg) => {
+      const normalizedArg = normalizeTypeForComparison(arg);
+      if (normalizedArg === 'any') return true;
+      return isImplicitlySendType(arg, symbols, seen);
+    });
+  }
+
+  if (
+    parsed.base === 'Vec' ||
+    parsed.base === 'List' ||
+    parsed.base === 'HashSet' ||
+    parsed.base === 'Option'
+  ) {
+    return parsed.args.every((arg) => isImplicitlySendType(arg, symbols, seen));
+  }
+
+  if (parsed.base === 'HashMap' || parsed.base === 'Result') {
+    return parsed.args.every((arg) => isImplicitlySendType(arg, symbols, seen));
+  }
+
+  if (parsed.args.length === 0 && isValidTypeParam(parsed.base) && !symbols.has(parsed.base)) {
+    return true;
+  }
+
+  const key = `${parsed.base}<${parsed.args.join(',')}>`;
+  if (seen.has(key)) return true;
+  seen.add(key);
+
+  const sym = symbols.get(parsed.base);
+  if (!sym || sym.kind !== 'type') return false;
+
+  const mapping = new Map<string, LuminaType>();
+  const typeParams = sym.typeParams ?? [];
+  for (let i = 0; i < typeParams.length; i += 1) {
+    const name = typeParams[i]?.name;
+    if (!name) continue;
+    mapping.set(name, parsed.args[i] ?? 'any');
+  }
+
+  if (sym.structFields) {
+    for (const field of sym.structFields.values()) {
+      const concrete = substituteTypeParams(field, mapping);
+      if (!isImplicitlySendType(concrete, symbols, seen)) return false;
+    }
+    return true;
+  }
+
+  if (sym.enumVariants) {
+    for (const variant of sym.enumVariants) {
+      for (const param of variant.params) {
+        const concrete = substituteTypeParams(param, mapping);
+        if (!isImplicitlySendType(concrete, symbols, seen)) return false;
+      }
+    }
+    return true;
+  }
+
+  return true;
+}
+
 function isTypeAssignable(
   actual: LuminaType,
   expected: LuminaType,
@@ -4964,6 +6035,24 @@ function buildCfgDot(functionName: string, body: LuminaStatement[]): string {
         addEdge(cond, bodySeq.entry ?? cond);
         addEdge(bodySeq.exit ?? cond, cond);
         const exit = addNode('WhileEnd');
+        addEdge(cond, exit);
+        return { entry: cond, exit };
+      }
+      case 'For': {
+        const cond = addNode('For');
+        const bodySeq = buildSequence(stmt.body.body);
+        addEdge(cond, bodySeq.entry ?? cond);
+        addEdge(bodySeq.exit ?? cond, cond);
+        const exit = addNode('ForEnd');
+        addEdge(cond, exit);
+        return { entry: cond, exit };
+      }
+      case 'WhileLet': {
+        const cond = addNode('WhileLet');
+        const bodySeq = buildSequence(stmt.body.body);
+        addEdge(cond, bodySeq.entry ?? cond);
+        addEdge(bodySeq.exit ?? cond, cond);
+        const exit = addNode('WhileLetEnd');
         addEdge(cond, exit);
         return { entry: cond, exit };
       }

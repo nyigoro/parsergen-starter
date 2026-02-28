@@ -156,6 +156,13 @@ function normalizeStatement(stmt: LuminaStatement) {
       stmt.typeName = normalizeTypeExpr(stmt.typeName, stmt.location) as LuminaTypeExpr | null;
       return;
     }
+    case 'LetTuple': {
+      return;
+    }
+    case 'LetElse': {
+      normalizeStatement(stmt.elseBlock);
+      return;
+    }
     case 'Block': {
       for (const inner of stmt.body) normalizeStatement(inner);
       return;
@@ -165,7 +172,20 @@ function normalizeStatement(stmt: LuminaStatement) {
       if (stmt.elseBlock) normalizeStatement(stmt.elseBlock);
       return;
     }
+    case 'IfLet': {
+      normalizeStatement(stmt.thenBlock);
+      if (stmt.elseBlock) normalizeStatement(stmt.elseBlock);
+      return;
+    }
     case 'While': {
+      normalizeStatement(stmt.body);
+      return;
+    }
+    case 'WhileLet': {
+      normalizeStatement(stmt.body);
+      return;
+    }
+    case 'For': {
       normalizeStatement(stmt.body);
       return;
     }

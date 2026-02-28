@@ -168,6 +168,45 @@ class JSGenerator {
         this.builder.append(';\n');
         return;
       }
+      case 'LetTuple': {
+        const tupleTemp = `__tuple_${this.tempCounter++}`;
+        this.builder.append(
+          `${pad}const ${tupleTemp} = `,
+          stmt.type,
+          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+        );
+        this.builder.appendExpr(this.emitExpr(stmt.value));
+        this.builder.append(';\n');
+        const keyword = stmt.mutable ? 'let' : 'const';
+        stmt.names.forEach((name, idx) => {
+          const sourceExpr =
+            idx === 0
+              ? `${tupleTemp}.sender ?? ${tupleTemp}[0]`
+              : idx === 1
+                ? `${tupleTemp}.receiver ?? ${tupleTemp}[1]`
+                : `${tupleTemp}[${idx}]`;
+          this.builder.append(`${pad}${keyword} ${name} = ${sourceExpr};\n`);
+        });
+        return;
+      }
+      case 'LetElse': {
+        const matchTemp = `__let_else_${this.tempCounter++}`;
+        this.builder.append(
+          `${pad}const ${matchTemp} = `,
+          stmt.type,
+          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+        );
+        this.builder.appendExpr(this.emitExpr(stmt.value));
+        this.builder.append(';\n');
+        const patternCond = this.emitPatternCondition(stmt.pattern, matchTemp);
+        this.builder.append(`${pad}if (!(${patternCond})) `);
+        this.emitBlock(stmt.elseBlock, { inline: true, trailingNewline: true });
+        const bindingKeyword = stmt.mutable ? 'let' : 'const';
+        for (const line of this.emitPatternBindingLines(stmt.pattern, matchTemp, bindingKeyword)) {
+          this.builder.append(`${pad}${line}\n`);
+        }
+        return;
+      }
       case 'Return': {
         this.builder.append(
           `${pad}return `,
@@ -216,6 +255,33 @@ class JSGenerator {
         this.builder.append('\n');
         return;
       }
+      case 'IfLet': {
+        const matchTemp = `__if_let_${this.tempCounter++}`;
+        this.builder.append(
+          `${pad}const ${matchTemp} = `,
+          stmt.type,
+          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+        );
+        this.builder.appendExpr(this.emitExpr(stmt.value));
+        this.builder.append(';\n');
+        const patternCond = this.emitPatternCondition(stmt.pattern, matchTemp);
+        this.builder.append(`${pad}if (${patternCond}) {\n`);
+        this.indentLevel++;
+        for (const line of this.emitPatternBindingLines(stmt.pattern, matchTemp, 'const')) {
+          this.builder.append(`${this.pad()}${line}\n`);
+        }
+        for (const bodyStmt of stmt.thenBlock.body) {
+          this.emitStatement(bodyStmt);
+        }
+        this.indentLevel--;
+        this.builder.append(`${pad}}`);
+        if (stmt.elseBlock) {
+          this.builder.append(' else ');
+          this.emitBlock(stmt.elseBlock, { inline: true, trailingNewline: false });
+        }
+        this.builder.append('\n');
+        return;
+      }
       case 'While': {
         this.builder.append(
           `${pad}while (`,
@@ -226,6 +292,48 @@ class JSGenerator {
         this.builder.append(') ');
         this.emitBlock(stmt.body, { inline: true, trailingNewline: false });
         this.builder.append('\n');
+        return;
+      }
+      case 'For': {
+        const rangeTemp = `__for_range_${this.tempCounter++}`;
+        const endTemp = `__for_end_${this.tempCounter++}`;
+        this.builder.append(
+          `${pad}const ${rangeTemp} = `,
+          stmt.type,
+          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+        );
+        this.builder.appendExpr(this.emitExpr(stmt.iterable));
+        this.builder.append(';\n');
+        this.builder.append(`${pad}const ${endTemp} = ${rangeTemp}.end ?? (${rangeTemp}.start ?? 0);\n`);
+        this.builder.append(
+          `${pad}for (let ${stmt.iterator} = (${rangeTemp}.start ?? 0); ${rangeTemp}.inclusive ? ${stmt.iterator} <= ${endTemp} : ${stmt.iterator} < ${endTemp}; ${stmt.iterator}++) `
+        );
+        this.emitBlock(stmt.body, { inline: true, trailingNewline: false });
+        this.builder.append('\n');
+        return;
+      }
+      case 'WhileLet': {
+        const matchTemp = `__while_let_${this.tempCounter++}`;
+        this.builder.append(
+          `${pad}while (true) {`,
+          stmt.type,
+          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+        );
+        this.builder.append('\n');
+        this.indentLevel++;
+        this.builder.append(`${this.pad()}const ${matchTemp} = `);
+        this.builder.appendExpr(this.emitExpr(stmt.value));
+        this.builder.append(';\n');
+        const patternCond = this.emitPatternCondition(stmt.pattern, matchTemp);
+        this.builder.append(`${this.pad()}if (!(${patternCond})) break;\n`);
+        for (const line of this.emitPatternBindingLines(stmt.pattern, matchTemp, 'const')) {
+          this.builder.append(`${this.pad()}${line}\n`);
+        }
+        for (const bodyStmt of stmt.body.body) {
+          this.emitStatement(bodyStmt);
+        }
+        this.indentLevel--;
+        this.builder.append(`${pad}}\n`);
         return;
       }
       case 'MatchStmt': {
@@ -362,6 +470,7 @@ class JSGenerator {
 
   private emitMatchStatement(stmt: Extract<LuminaStatement, { type: 'MatchStmt' }>): void {
     const matchId = `__match_val_${this.matchCounter++}`;
+    const matchDone = `__match_done_${this.matchCounter++}`;
     const pad = this.pad();
     this.builder.append(
       `${pad}const ${matchId} = `,
@@ -370,53 +479,129 @@ class JSGenerator {
     );
     this.builder.appendExpr(this.emitExpr(stmt.value));
     this.builder.append(';\n');
-    this.builder.append(`${pad}switch (${matchId}.$tag) {\n`);
-    this.indentLevel++;
-    let hasWildcard = false;
+    this.builder.append(`${pad}let ${matchDone} = false;\n`);
     for (const arm of stmt.arms) {
-      if (arm.pattern.type === 'WildcardPattern') {
-        hasWildcard = true;
-        this.builder.append(`${this.pad()}default: {\n`);
+      const armCondition = this.emitPatternCondition(arm.pattern, matchId);
+      this.builder.append(`${pad}if (!${matchDone} && (${armCondition})) {\n`);
+      this.indentLevel++;
+      for (const line of this.emitPatternBindingLines(arm.pattern, matchId, 'const')) {
+        this.builder.append(`${this.pad()}${line}\n`);
+      }
+      if (arm.guard) {
+        this.builder.append(`${this.pad()}if (`);
+        this.builder.appendExpr(this.emitExpr(arm.guard));
+        this.builder.append(`) {\n`);
         this.indentLevel++;
-        this.emitMatchBindings(matchId, arm.pattern);
+        this.builder.append(`${this.pad()}${matchDone} = true;\n`);
         for (const s of arm.body.body) {
           this.emitStatement(s);
         }
-        this.builder.append(`${this.pad()}break;\n`);
         this.indentLevel--;
         this.builder.append(`${this.pad()}}\n`);
-        continue;
+      } else {
+        this.builder.append(`${this.pad()}${matchDone} = true;\n`);
+        for (const s of arm.body.body) {
+          this.emitStatement(s);
+        }
       }
-      this.builder.append(`${this.pad()}case ${JSON.stringify(arm.pattern.variant)}: {\n`);
-      this.indentLevel++;
-      this.emitMatchBindings(matchId, arm.pattern);
-      for (const s of arm.body.body) {
-        this.emitStatement(s);
-      }
-      this.builder.append(`${this.pad()}break;\n`);
       this.indentLevel--;
-      this.builder.append(`${this.pad()}}\n`);
+      this.builder.append(`${pad}}\n`);
     }
-    if (!hasWildcard) {
-      this.builder.append(`${this.pad()}default: {\n`);
-      this.builder.append(`${this.pad()}  throw new Error("Exhaustiveness failure");\n`);
-      this.builder.append(`${this.pad()}}\n`);
-    }
+    this.builder.append(`${pad}if (!${matchDone}) {\n`);
+    this.indentLevel++;
+    this.builder.append(`${this.pad()}throw new Error("Exhaustiveness failure");\n`);
     this.indentLevel--;
-    this.builder.append(`${pad}}`);
+    this.builder.append(`${pad}}\n`);
+  }
+
+  private emitPatternCondition(pattern: LuminaMatchPattern, valueExpr: string): string {
+    switch (pattern.type) {
+      case 'WildcardPattern':
+      case 'BindingPattern':
+        return 'true';
+      case 'LiteralPattern':
+        return `${valueExpr} === ${JSON.stringify(pattern.value)}`;
+      case 'TuplePattern': {
+        const clauses = [`Array.isArray(${valueExpr})`, `${valueExpr}.length >= ${pattern.elements.length}`];
+        pattern.elements.forEach((element, idx) => {
+          clauses.push(this.emitPatternCondition(element, `${valueExpr}[${idx}]`));
+        });
+        return clauses.join(' && ');
+      }
+      case 'StructPattern': {
+        const clauses = [`${valueExpr} != null`, `typeof ${valueExpr} === "object"`];
+        pattern.fields.forEach((field) => {
+          clauses.push(this.emitPatternCondition(field.pattern, `${valueExpr}.${field.name}`));
+        });
+        return clauses.join(' && ');
+      }
+      case 'EnumPattern': {
+        const clauses = [`((${valueExpr}?.$tag ?? ${valueExpr}?.tag) === ${JSON.stringify(pattern.variant)})`];
+        if (pattern.patterns && pattern.patterns.length > 0) {
+          pattern.patterns.forEach((nested, idx) => {
+            const payloadExpr =
+              pattern.patterns && pattern.patterns.length === 1
+                ? `${valueExpr}?.$payload`
+                : `${valueExpr}?.$payload?.[${idx}]`;
+            clauses.push(this.emitPatternCondition(nested, payloadExpr));
+          });
+        }
+        return clauses.join(' && ');
+      }
+      default:
+        return 'false';
+    }
+  }
+
+  private emitPatternBindingLines(
+    pattern: LuminaMatchPattern,
+    valueExpr: string,
+    keyword: 'const' | 'let'
+  ): string[] {
+    const lines: string[] = [];
+    const emit = (pat: LuminaMatchPattern, valueCode: string) => {
+      switch (pat.type) {
+        case 'BindingPattern':
+          lines.push(`${keyword} ${pat.name} = ${valueCode};`);
+          return;
+        case 'TuplePattern':
+          pat.elements.forEach((element, idx) => emit(element, `${valueCode}[${idx}]`));
+          return;
+        case 'StructPattern':
+          pat.fields.forEach((field) => emit(field.pattern, `${valueCode}.${field.name}`));
+          return;
+        case 'EnumPattern':
+          if (pat.patterns && pat.patterns.length > 0) {
+            pat.patterns.forEach((nested, idx) => {
+              const payloadExpr = pat.patterns && pat.patterns.length === 1
+                ? `${valueCode}.$payload`
+                : `${valueCode}.$payload[${idx}]`;
+              emit(nested, payloadExpr);
+            });
+            return;
+          }
+          pat.bindings.forEach((binding, idx) => {
+            if (binding === '_') return;
+            if (pat.bindings.length === 1) {
+              lines.push(`${keyword} ${binding} = ${valueCode}.$payload;`);
+              return;
+            }
+            lines.push(`${keyword} ${binding} = ${valueCode}.$payload[${idx}];`);
+          });
+          return;
+        case 'LiteralPattern':
+        case 'WildcardPattern':
+          return;
+      }
+    };
+    emit(pattern, valueExpr);
+    return lines;
   }
 
   private emitMatchBindings(matchId: string, pattern: LuminaMatchPattern): void {
-    if (pattern.type !== 'EnumPattern') return;
-    if (pattern.bindings.length === 0) return;
-    pattern.bindings.forEach((binding, idx) => {
-      if (binding === '_') return;
-      if (pattern.bindings.length === 1) {
-        this.builder.append(`${this.pad()}const ${binding} = ${matchId}.$payload;\n`);
-        return;
-      }
-      this.builder.append(`${this.pad()}const ${binding} = ${matchId}.$payload[${idx}];\n`);
-    });
+    for (const line of this.emitPatternBindingLines(pattern, matchId, 'const')) {
+      this.builder.append(`${this.pad()}${line}\n`);
+    }
   }
 
   private renderInlineFunctionBody(block: LuminaBlock): string {
@@ -484,6 +669,15 @@ class JSGenerator {
           parts.push(this.emitExpr(element));
         });
         parts.push('])');
+        return withBase(concat(...parts));
+      }
+      case 'TupleLiteral': {
+        const parts: Array<string | EmitResult> = ['['];
+        expr.elements.forEach((element, idx) => {
+          if (idx > 0) parts.push(', ');
+          parts.push(this.emitExpr(element));
+        });
+        parts.push(']');
         return withBase(concat(...parts));
       }
       case 'Lambda': {
@@ -745,9 +939,11 @@ class JSGenerator {
 
   private emitMatchExpr(
     value: LuminaExpr,
-    arms: Array<{ pattern: LuminaMatchPattern; body: LuminaExpr }>
+    arms: Array<{ pattern: LuminaMatchPattern; guard?: LuminaExpr | null; body: LuminaExpr }>
   ): EmitResult {
     const matchId = `__match_val_${this.matchCounter++}`;
+    const doneId = `__match_done_${this.matchCounter++}`;
+    const resultId = `__match_result_${this.matchCounter++}`;
     const result: EmitResult = { code: '', mappings: [] };
     const concat = (...parts: Array<string | EmitResult>): EmitResult => {
       let code = '';
@@ -774,46 +970,56 @@ class JSGenerator {
     add(`const ${matchId} = `);
     add(this.emitExpr(value));
     add(';\n');
-    add(`switch (${matchId}.$tag) {\n`);
-    let hasWildcard = false;
+    add(`let ${doneId} = false;\n`);
+    add(`let ${resultId};\n`);
     for (const arm of arms) {
-      if (arm.pattern.type === 'WildcardPattern') {
-        hasWildcard = true;
-        add('  default: {\n');
-        const binds = this.emitMatchBindingsExpr(matchId, arm.pattern);
-        if (binds) add(binds + '\n');
-        add('    return ');
-        add(this.emitExpr(arm.body));
-        add(';\n  }\n');
-        continue;
+      const armCondition = this.emitPatternCondition(arm.pattern, matchId);
+      add(`if (!${doneId} && (${armCondition})) {\n`);
+      const binds = this.emitPatternBindingLines(arm.pattern, matchId, 'const');
+      if (binds.length > 0) {
+        for (const line of binds) {
+          add(`  ${line}\n`);
+        }
       }
-      add(`  case ${JSON.stringify(arm.pattern.variant)}: {\n`);
-      const binds = this.emitMatchBindingsExpr(matchId, arm.pattern);
-      if (binds) add(binds + '\n');
-      add('    return ');
-      add(this.emitExpr(arm.body));
-      add(';\n  }\n');
+      if (arm.guard) {
+        add('  if (');
+        add(this.emitExpr(arm.guard));
+        add(') {\n');
+        add(`    ${doneId} = true;\n`);
+        add(`    ${resultId} = `);
+        add(this.emitExpr(arm.body));
+        add(';\n');
+        add('  }\n');
+      } else {
+        add(`  ${doneId} = true;\n`);
+        add(`  ${resultId} = `);
+        add(this.emitExpr(arm.body));
+        add(';\n');
+      }
+      add('}\n');
     }
-    if (!hasWildcard) {
-      add('  default: {\n    throw new Error("Exhaustiveness failure");\n  }\n');
-    }
-    add('}\n})()');
+    add(`if (!${doneId}) throw new Error("Exhaustiveness failure");\n`);
+    add(`return ${resultId};\n`);
+    add('})()');
     return result;
   }
 
-  private emitMatchBindingsExpr(matchId: string, pattern: LuminaMatchPattern): string {
-    if (pattern.type !== 'EnumPattern') return '';
-    if (pattern.bindings.length === 0) return '';
-    const lines: string[] = [];
-    pattern.bindings.forEach((binding, idx) => {
-      if (binding === '_') return;
-      if (pattern.bindings.length === 1) {
-        lines.push(`    const ${binding} = ${matchId}.$payload;`);
-        return;
-      }
-      lines.push(`    const ${binding} = ${matchId}.$payload[${idx}];`);
-    });
-    return lines.join('\n');
+  private collectPatternBindings(pattern: LuminaMatchPattern): string[] {
+    switch (pattern.type) {
+      case 'BindingPattern':
+        return [pattern.name];
+      case 'TuplePattern':
+        return pattern.elements.flatMap((element) => this.collectPatternBindings(element));
+      case 'StructPattern':
+        return pattern.fields.flatMap((field) => this.collectPatternBindings(field.pattern));
+      case 'EnumPattern':
+        if (pattern.patterns && pattern.patterns.length > 0) {
+          return pattern.patterns.flatMap((nested) => this.collectPatternBindings(nested));
+        }
+        return pattern.bindings.filter((binding) => binding !== '_');
+      default:
+        return [];
+    }
   }
 
   private pad(): string {
@@ -857,6 +1063,10 @@ const statementUsesTry = (stmt: LuminaStatement): boolean => {
       return stmt.methods.some((method) => (method.body ? blockUsesTry(method.body) : false));
     case 'Let':
       return exprUsesTry(stmt.value);
+    case 'LetTuple':
+      return exprUsesTry(stmt.value);
+    case 'LetElse':
+      return exprUsesTry(stmt.value) || blockUsesTry(stmt.elseBlock);
     case 'Return':
       return exprUsesTry(stmt.value);
     case 'Assign':
@@ -869,10 +1079,16 @@ const statementUsesTry = (stmt: LuminaStatement): boolean => {
         blockUsesTry(stmt.thenBlock) ||
         (stmt.elseBlock ? blockUsesTry(stmt.elseBlock) : false)
       );
+    case 'IfLet':
+      return exprUsesTry(stmt.value) || blockUsesTry(stmt.thenBlock) || (stmt.elseBlock ? blockUsesTry(stmt.elseBlock) : false);
     case 'While':
       return exprUsesTry(stmt.condition) || blockUsesTry(stmt.body);
+    case 'For':
+      return exprUsesTry(stmt.iterable) || blockUsesTry(stmt.body);
+    case 'WhileLet':
+      return exprUsesTry(stmt.value) || blockUsesTry(stmt.body);
     case 'MatchStmt':
-      return exprUsesTry(stmt.value) || stmt.arms.some((arm) => blockUsesTry(arm.body));
+      return exprUsesTry(stmt.value) || stmt.arms.some((arm) => (arm.guard ? exprUsesTry(arm.guard) : false) || blockUsesTry(arm.body));
     case 'Block':
       return blockUsesTry(stmt);
     default:
@@ -899,12 +1115,14 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
     case 'StructLiteral':
       return expr.fields.some((field) => exprUsesTry(field.value));
     case 'MatchExpr':
-      return exprUsesTry(expr.value) || expr.arms.some((arm) => exprUsesTry(arm.body));
+      return exprUsesTry(expr.value) || expr.arms.some((arm) => (arm.guard ? exprUsesTry(arm.guard) : false) || exprUsesTry(arm.body));
     case 'Move':
       return exprUsesTry(expr.target);
     case 'InterpolatedString':
       return expr.parts.some((part) => typeof part !== 'string' && exprUsesTry(part));
     case 'ArrayLiteral':
+      return expr.elements.some((element) => exprUsesTry(element));
+    case 'TupleLiteral':
       return expr.elements.some((element) => exprUsesTry(element));
     case 'Range':
       return (expr.start ? exprUsesTry(expr.start) : false) || (expr.end ? exprUsesTry(expr.end) : false);

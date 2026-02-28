@@ -40,6 +40,7 @@ describe('Lumina AST JS codegen', () => {
     const { code } = generateJSFromAst(ast);
     expect(code).toContain('(() =>');
     expect(code).toContain('$tag');
-    expect(code).toContain('return v;');
+    expect(code).toContain('const v =');
+    expect(code).toContain('__match_result_');
   });
 });

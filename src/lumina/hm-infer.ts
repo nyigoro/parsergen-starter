@@ -526,6 +526,98 @@ function inferStatement(
       }
       return valueType;
     }
+    case 'LetTuple': {
+      const valueType = inferExpr(
+        stmt.value,
+        env,
+        subst,
+        diagnostics,
+        enumRegistry,
+        structRegistry,
+        moduleBindings,
+        inferredCalls,
+        undefined,
+        inAsync
+      );
+      if (!valueType) return null;
+
+      const pruned = prune(valueType, subst);
+      let tupleItems: Type[] | null = null;
+      if (pruned.kind === 'adt' && pruned.name === 'Channel' && pruned.params.length >= 1) {
+        const itemType = pruned.params[0];
+        tupleItems = [
+          { kind: 'adt', name: 'Sender', params: [itemType] },
+          { kind: 'adt', name: 'Receiver', params: [itemType] },
+        ];
+      }
+
+      if (!tupleItems) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'HM_TUPLE_DESTRUCTURE',
+          message: `Cannot destructure value of type '${formatType(pruned, subst)}'`,
+          source: 'lumina',
+          location: diagLocation(stmt.location),
+        });
+        return null;
+      }
+      if (tupleItems.length !== stmt.names.length) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'HM_TUPLE_ARITY',
+          message: `Tuple destructuring expected ${tupleItems.length} binding(s), found ${stmt.names.length}`,
+          source: 'lumina',
+          location: diagLocation(stmt.location),
+        });
+        return null;
+      }
+
+      stmt.names.forEach((name, idx) => {
+        const item = tupleItems?.[idx] ?? freshTypeVar();
+        const scheme = generalize(item, subst, env.freeVars(subst));
+        env.extend(name, scheme);
+      });
+      return valueType;
+    }
+    case 'LetElse': {
+      const valueType = inferExpr(
+        stmt.value,
+        env,
+        subst,
+        diagnostics,
+        enumRegistry,
+        structRegistry,
+        moduleBindings,
+        inferredCalls,
+        undefined,
+        inAsync
+      );
+      if (!valueType) return null;
+      const thenEnv = env.child();
+      applyMatchPattern(stmt.pattern, valueType, thenEnv, subst, diagnostics, enumRegistry);
+      const elseEnv = env.child();
+      for (const bodyStmt of stmt.elseBlock.body) {
+        inferStatement(
+          bodyStmt,
+          elseEnv,
+          subst,
+          diagnostics,
+          currentReturn,
+          inferredLets,
+          inferredFnReturns,
+          inferredFnByName,
+          inferredFnParams,
+          enumRegistry,
+          structRegistry,
+          holeInfoByVar,
+          moduleBindings,
+          inferredCalls,
+          undefined,
+          inAsync
+        );
+      }
+      return valueType;
+    }
     case 'Return': {
       if (!currentReturn) return null;
       const valueType = inferExpr(
@@ -654,6 +746,67 @@ function inferStatement(
       }
       return null;
     }
+    case 'IfLet': {
+      const valueType = inferExpr(
+        stmt.value,
+        env,
+        subst,
+        diagnostics,
+        enumRegistry,
+        structRegistry,
+        moduleBindings,
+        inferredCalls,
+        undefined,
+        inAsync
+      );
+      if (!valueType) return null;
+      const thenEnv = env.child();
+      applyMatchPattern(stmt.pattern, valueType, thenEnv, subst, diagnostics, enumRegistry);
+      for (const bodyStmt of stmt.thenBlock.body) {
+        inferStatement(
+          bodyStmt,
+          thenEnv,
+          subst,
+          diagnostics,
+          currentReturn,
+          inferredLets,
+          inferredFnReturns,
+          inferredFnByName,
+          inferredFnParams,
+          enumRegistry,
+          structRegistry,
+          holeInfoByVar,
+          moduleBindings,
+          inferredCalls,
+          undefined,
+          inAsync
+        );
+      }
+      if (stmt.elseBlock) {
+        const elseEnv = env.child();
+        for (const bodyStmt of stmt.elseBlock.body) {
+          inferStatement(
+            bodyStmt,
+            elseEnv,
+            subst,
+            diagnostics,
+            currentReturn,
+            inferredLets,
+            inferredFnReturns,
+            inferredFnByName,
+            inferredFnParams,
+            enumRegistry,
+            structRegistry,
+            holeInfoByVar,
+            moduleBindings,
+            inferredCalls,
+            undefined,
+            inAsync
+          );
+        }
+      }
+      return null;
+    }
     case 'While': {
       const condType = inferExpr(
         stmt.condition,
@@ -696,6 +849,88 @@ function inferStatement(
       }
       return null;
     }
+    case 'For': {
+      const iterableType = inferExpr(
+        stmt.iterable,
+        env,
+        subst,
+        diagnostics,
+        enumRegistry,
+        structRegistry,
+        moduleBindings,
+        inferredCalls,
+        undefined,
+        inAsync
+      );
+      if (iterableType) {
+        tryUnify(iterableType, { kind: 'adt', name: 'Range', params: [] }, subst, diagnostics, {
+          location: stmt.iterable.location,
+          note: 'for loops currently require a Range iterable',
+        });
+      }
+      const loopEnv = env.child();
+      loopEnv.extend(stmt.iterator, { kind: 'scheme', variables: [], type: { kind: 'primitive', name: 'i32' } });
+      for (const bodyStmt of stmt.body.body) {
+        inferStatement(
+          bodyStmt,
+          loopEnv,
+          subst,
+          diagnostics,
+          currentReturn,
+          inferredLets,
+          inferredFnReturns,
+          inferredFnByName,
+          inferredFnParams,
+          enumRegistry,
+          structRegistry,
+          holeInfoByVar,
+          moduleBindings,
+          inferredCalls,
+          undefined,
+          inAsync
+        );
+      }
+      return null;
+    }
+    case 'WhileLet': {
+      const scrutineeType = inferExpr(
+        stmt.value,
+        env,
+        subst,
+        diagnostics,
+        enumRegistry,
+        structRegistry,
+        moduleBindings,
+        inferredCalls,
+        undefined,
+        inAsync
+      );
+      const loopEnv = env.child();
+      if (scrutineeType) {
+        applyMatchPattern(stmt.pattern, scrutineeType, loopEnv, subst, diagnostics, enumRegistry);
+      }
+      for (const bodyStmt of stmt.body.body) {
+        inferStatement(
+          bodyStmt,
+          loopEnv,
+          subst,
+          diagnostics,
+          currentReturn,
+          inferredLets,
+          inferredFnReturns,
+          inferredFnByName,
+          inferredFnParams,
+          enumRegistry,
+          structRegistry,
+          holeInfoByVar,
+          moduleBindings,
+          inferredCalls,
+          undefined,
+          inAsync
+        );
+      }
+      return null;
+    }
     case 'MatchStmt': {
       const scrutineeType = inferExpr(
         stmt.value,
@@ -713,6 +948,26 @@ function inferStatement(
         const armEnv = env.child();
         if (scrutineeType) {
           applyMatchPattern(arm.pattern, scrutineeType, armEnv, subst, diagnostics, enumRegistry);
+        }
+        if (arm.guard) {
+          const guardType = inferExpr(
+            arm.guard,
+            armEnv,
+            subst,
+            diagnostics,
+            enumRegistry,
+            structRegistry,
+            moduleBindings,
+            inferredCalls,
+            undefined,
+            inAsync
+          );
+          if (guardType) {
+            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+              location: arm.guard.location,
+              note: 'Match guard must be a bool',
+            });
+          }
         }
         for (const bodyStmt of arm.body.body) {
           inferStatement(
@@ -828,6 +1083,22 @@ function inferExpr(
         });
       }
       return recordExprType(expr, vecType, subst);
+    }
+    case 'TupleLiteral': {
+      const items: Type[] = [];
+      for (const element of expr.elements) {
+        items.push(
+          inferChild(element, undefined) ?? freshTypeVar()
+        );
+      }
+      const tupleType: Type = { kind: 'adt', name: 'Tuple', params: items };
+      if (expectedType) {
+        tryUnify(tupleType, expectedType, subst, diagnostics, {
+          location: expr.location,
+          note: 'Tuple literal must match expected type',
+        });
+      }
+      return recordExprType(expr, tupleType, subst);
     }
     case 'String':
       return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
@@ -1362,6 +1633,173 @@ function inferExpr(
               default:
                 break;
             }
+          } else if (receiverResolved.name === 'Sender' && receiverResolved.params.length === 1) {
+            const valueType = receiverResolved.params[0];
+            switch (expr.callee.name) {
+              case 'send':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], valueType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Sender.send expects T`,
+                  });
+                }
+                tryUnify(resultType, promiseType({ kind: 'primitive', name: 'bool' }), subst, diagnostics, {
+                  location: expr.location,
+                  note: `Sender.send returns Promise<bool>`,
+                });
+                break;
+              case 'try_send':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], valueType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Sender.try_send expects T`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Sender.try_send returns bool`,
+                });
+                break;
+              case 'send_result':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], valueType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Sender.send_result expects T`,
+                  });
+                }
+                tryUnify(
+                  resultType,
+                  { kind: 'adt', name: 'Result', params: [{ kind: 'primitive', name: 'void' }, { kind: 'primitive', name: 'string' }] },
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Sender.send_result returns Result<void,string>`,
+                  }
+                );
+                break;
+              case 'send_async_result':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], valueType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Sender.send_async_result expects T`,
+                  });
+                }
+                tryUnify(
+                  resultType,
+                  promiseType({
+                    kind: 'adt',
+                    name: 'Result',
+                    params: [{ kind: 'primitive', name: 'void' }, { kind: 'primitive', name: 'string' }],
+                  }),
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Sender.send_async_result returns Promise<Result<void,string>>`,
+                  }
+                );
+                break;
+              case 'clone':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Sender', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Sender.clone returns Sender<T>`,
+                });
+                break;
+              case 'is_closed':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Sender.is_closed returns bool`,
+                });
+                break;
+              case 'drop':
+              case 'close':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Sender.${expr.callee.name} returns void`,
+                });
+                break;
+              default:
+                break;
+            }
+          } else if (receiverResolved.name === 'Receiver' && receiverResolved.params.length === 1) {
+            const valueType = receiverResolved.params[0];
+            switch (expr.callee.name) {
+              case 'recv':
+                resolvedReceiverMethod = true;
+                tryUnify(
+                  resultType,
+                  promiseType({ kind: 'adt', name: 'Option', params: [valueType] }),
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Receiver.recv returns Promise<Option<T>>`,
+                  }
+                );
+                break;
+              case 'try_recv':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Receiver.try_recv returns Option<T>`,
+                });
+                break;
+              case 'recv_result':
+                resolvedReceiverMethod = true;
+                tryUnify(
+                  resultType,
+                  promiseType({
+                    kind: 'adt',
+                    name: 'Result',
+                    params: [{ kind: 'adt', name: 'Option', params: [valueType] }, { kind: 'primitive', name: 'string' }],
+                  }),
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Receiver.recv_result returns Promise<Result<Option<T>,string>>`,
+                  }
+                );
+                break;
+              case 'try_recv_result':
+                resolvedReceiverMethod = true;
+                tryUnify(
+                  resultType,
+                  { kind: 'adt', name: 'Result', params: [{ kind: 'adt', name: 'Option', params: [valueType] }, { kind: 'primitive', name: 'string' }] },
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Receiver.try_recv_result returns Result<Option<T>,string>`,
+                  }
+                );
+                break;
+              case 'is_closed':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Receiver.is_closed returns bool`,
+                });
+                break;
+              case 'drop':
+              case 'close':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Receiver.${expr.callee.name} returns void`,
+                });
+                break;
+              default:
+                break;
+            }
           }
         }
         if (expectedType) {
@@ -1504,6 +1942,30 @@ function inferExpr(
       }
       const objectType = inferChild(expr.object);
       if (!objectType) return null;
+      const objectResolved = prune(objectType, subst);
+      if (objectResolved.kind === 'adt' && objectResolved.name === 'Channel' && objectResolved.params.length === 1) {
+        const valueType = objectResolved.params[0];
+        if (expr.property === 'sender') {
+          const senderType: Type = { kind: 'adt', name: 'Sender', params: [valueType] };
+          if (expectedType) {
+            tryUnify(senderType, expectedType, subst, diagnostics, {
+              location: expr.location,
+              note: `Field '${expr.property}' must match expected type`,
+            });
+          }
+          return recordExprType(expr, senderType, subst);
+        }
+        if (expr.property === 'receiver') {
+          const receiverType: Type = { kind: 'adt', name: 'Receiver', params: [valueType] };
+          if (expectedType) {
+            tryUnify(receiverType, expectedType, subst, diagnostics, {
+              location: expr.location,
+              note: `Field '${expr.property}' must match expected type`,
+            });
+          }
+          return recordExprType(expr, receiverType, subst);
+        }
+      }
       if (structRegistry) {
         const fieldType = resolveStructFieldType(objectType, expr.property, structRegistry, subst);
         if (fieldType) {
@@ -1543,6 +2005,26 @@ function inferExpr(
       for (const arm of expr.arms) {
         const armEnv = env.child();
         applyMatchPattern(arm.pattern, scrutineeType, armEnv, subst, diagnostics, enumRegistry);
+        if (arm.guard) {
+          const guardType = inferExpr(
+            arm.guard,
+            armEnv,
+            subst,
+            diagnostics,
+            enumRegistry,
+            structRegistry,
+            moduleBindings,
+            inferredCalls,
+            undefined,
+            inAsync
+          );
+          if (guardType) {
+            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+              location: arm.guard.location,
+              note: 'Match guard must be a bool',
+            });
+          }
+        }
         const armType = inferExpr(
           arm.body,
           armEnv,
@@ -2037,6 +2519,59 @@ function applyMatchPattern(
   enumRegistry?: Map<string, EnumInfo>
 ) {
   if (pattern.type === 'WildcardPattern') return;
+  if (pattern.type === 'BindingPattern') {
+    env.extend(pattern.name, { kind: 'scheme', variables: [], type: scrutineeType });
+    return;
+  }
+  if (pattern.type === 'LiteralPattern') {
+    const literalType: Type =
+      typeof pattern.value === 'number'
+        ? { kind: 'primitive', name: Number.isInteger(pattern.value) ? 'i32' : 'f64' }
+        : typeof pattern.value === 'boolean'
+          ? { kind: 'primitive', name: 'bool' }
+          : { kind: 'primitive', name: 'string' };
+    tryUnify(scrutineeType, literalType, subst, diagnostics, { location: pattern.location, note: 'Literal pattern type' });
+    return;
+  }
+  if (pattern.type === 'TuplePattern') {
+    const elementTypes = pattern.elements.map(() => freshTypeVar());
+    const tupleType: Type = { kind: 'adt', name: 'Tuple', params: elementTypes };
+    tryUnify(scrutineeType, tupleType, subst, diagnostics, { location: pattern.location, note: 'Tuple pattern type' });
+    pattern.elements.forEach((element, idx) => {
+      applyMatchPattern(element, elementTypes[idx], env, subst, diagnostics, enumRegistry);
+    });
+    return;
+  }
+  if (pattern.type === 'StructPattern') {
+    if (activeStructRegistry) {
+      const info = activeStructRegistry.get(pattern.name);
+      if (!info) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'HM_STRUCT_PATTERN',
+          message: `Unknown struct '${pattern.name}'`,
+          source: 'lumina',
+          location: diagLocation(pattern.location),
+        });
+        return;
+      }
+      const params = info.typeParams.map(() => freshTypeVar());
+      const structType: Type = { kind: 'adt', name: pattern.name, params };
+      tryUnify(scrutineeType, structType, subst, diagnostics, { location: pattern.location, note: 'Struct pattern type' });
+      const mapping = new Map<string, Type>();
+      info.typeParams.forEach((name, idx) => mapping.set(name, params[idx]));
+      for (const field of pattern.fields) {
+        const fieldTypeName = info.fields.get(field.name);
+        if (!fieldTypeName) continue;
+        const fieldType = parseTypeNameWithEnv(fieldTypeName, mapping);
+        applyMatchPattern(field.pattern, fieldType, env, subst, diagnostics, enumRegistry);
+      }
+      return;
+    }
+  }
+  if (pattern.type !== 'EnumPattern') {
+    return;
+  }
   const enumName = pattern.enumName ?? (scrutineeType.kind === 'adt' ? scrutineeType.name : null);
   if (!enumName || !enumRegistry) return;
   const info = enumRegistry.get(enumName);
@@ -2064,6 +2599,14 @@ function applyMatchPattern(
       source: 'lumina',
       location: diagLocation(pattern.location),
     });
+    return;
+  }
+  const nestedPatterns = pattern.patterns ?? [];
+  if (nestedPatterns.length > 0) {
+    for (let i = 0; i < nestedPatterns.length && i < variantParams.length; i++) {
+      const expected = parseTypeNameWithEnv(variantParams[i], enumParamMap);
+      applyMatchPattern(nestedPatterns[i], expected, env, subst, diagnostics, enumRegistry);
+    }
     return;
   }
   for (let i = 0; i < pattern.bindings.length && i < variantParams.length; i++) {
