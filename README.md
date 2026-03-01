@@ -89,6 +89,8 @@ npm test
 - `docs/USING_LUMINA.md` — CLI + language usage guide
 - `docs/LEARNING_PATH.md` — lesson-based learning track
 - `docs/lessons/` — detailed hands-on tutorials
+- `docs/MIGRATION_FROM_TS_JS.md` — TypeScript/JavaScript migration playbook
+- `docs/ECOSYSTEM.md` — ecosystem status and contribution model
 - `docs/CAPABILITIES.md` — feature/status matrix
 - `docs/STDLIB.md` — standard library reference
 - `docs/DOCS_MAINTENANCE.md` — how to keep docs current as features land
