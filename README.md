@@ -122,6 +122,7 @@ lumina doc "examples/**/*.lm" --out docs/API.md
 lumina doc "examples/**/*.lm" --public-only
 lumina init
 lumina grammar mylang.peg --test "hello world"
+lumina grammar mylang.peg --out parser.js --format es --optimize size
 
 Parser generator tooling now lives under `lumina grammar`.
 

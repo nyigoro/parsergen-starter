@@ -29,6 +29,8 @@ import { formatError, formatCompilationError } from '../utils/index.js';
 // Define the valid format types with const assertion for type safety
 const VALID_FORMATS = ['bare', 'commonjs', 'es', 'globals', 'umd'] as const;
 type OutputFormat = typeof VALID_FORMATS[number];
+const VALID_OPTIMIZE_MODES = ['speed', 'size'] as const;
+type OptimizeMode = typeof VALID_OPTIMIZE_MODES[number];
 
 // Tool version (can be dynamically loaded from package.json in a real app)
 const TOOL_VERSION = '0.1.0';
@@ -65,6 +67,7 @@ interface CLIConfig {
   testInput?: string;
   outFile?: string;
   format: OutputFormat;
+  optimize: OptimizeMode;
   validate: boolean;
   analyze: boolean;
   ast: boolean;
@@ -105,6 +108,7 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.green}--analyze${colors.reset}               Show detailed grammar metadata
   ${colors.green}--out <file>${colors.reset}            Output compiled parser as JS
   ${colors.green}--format <target>${colors.reset}       Format: ${VALID_FORMATS.join(' | ')} (default: es)
+  ${colors.green}--optimize <mode>${colors.reset}       Parser optimize mode: ${VALID_OPTIMIZE_MODES.join(' | ')} (default: speed)
   ${colors.green}--ast${colors.reset}                   Print parse AST in JSON format
   ${colors.green}--transform <script.js>${colors.reset} Apply a JS transformation script to the AST.
   ${colors.green}--codegen <script.js>${colors.reset}   Apply a JS code generation script to the AST.
@@ -124,6 +128,7 @@ ${colors.bold}OPTIONS:${colors.reset}
 ${colors.bold}EXAMPLES:${colors.reset}
   parsergen grammar.peg --test "hello world"
   parsergen grammar.peg --out parser.js --format commonjs --watch
+  parsergen grammar.peg --out parser.js --format es --optimize size
   parsergen grammar.peg --analyze --verbose
   parsergen grammar.peg --interactive
   parsergen mylang.peg --test "input" --transform ast-transform.js --codegen generate-js.js
@@ -144,6 +149,7 @@ function parseArgs(args: string[]): CLIConfig {
   const config: CLIConfig = {
     grammarPath: args[0] && !args[0].startsWith('--') ? args[0] : undefined,
     format: 'es',
+    optimize: 'speed',
     validate: false,
     analyze: false,
     ast: false,
@@ -203,6 +209,15 @@ function parseArgs(args: string[]): CLIConfig {
           i++;
         } else {
           log.error(`Invalid format: ${nextArg}. Valid formats: ${VALID_FORMATS.join(', ')}`);
+          process.exit(1);
+        }
+        break;
+      case '--optimize':
+        if (nextArg && isValidOptimizeMode(nextArg)) {
+          config.optimize = nextArg;
+          i++;
+        } else {
+          log.error(`Invalid optimize mode: ${nextArg}. Valid modes: ${VALID_OPTIMIZE_MODES.join(', ')}`);
           process.exit(1);
         }
         break;
@@ -290,6 +305,10 @@ function isValidFormat(format: string): format is OutputFormat {
   return VALID_FORMATS.includes(format as OutputFormat);
 }
 
+function isValidOptimizeMode(optimize: string): optimize is OptimizeMode {
+  return VALID_OPTIMIZE_MODES.includes(optimize as OptimizeMode);
+}
+
 // Use the directly imported CompiledGrammar type
 async function benchmarkParsing(parser: CompiledGrammar<unknown>, input: string, iterations: number = 1000) {
   log.build(`Running benchmark with ${iterations} iterations...`);
@@ -326,13 +345,20 @@ ${colors.bold}BENCHMARK RESULTS:${colors.reset}
 `);
 }
 
-async function compileAndWrite(grammarPath: string, outFile: string, format: OutputFormat, verbose: boolean = false) {
+async function compileAndWrite(
+  grammarPath: string,
+  outFile: string,
+  format: OutputFormat,
+  optimize: OptimizeMode,
+  verbose: boolean = false
+) {
   try {
     const grammarText = await fs.readFile(grammarPath, 'utf-8');
 
     if (verbose) {
       log.debug(`Reading grammar from: ${grammarPath}`);
       log.debug(`Output format: ${format}`);
+      log.debug(`Optimize mode: ${optimize}`);
     }
 
     // Import Peggy directly to generate source code
@@ -342,7 +368,7 @@ async function compileAndWrite(grammarPath: string, outFile: string, format: Out
     const baseOptions = {
       allowedStartRules: ['*'],
       cache: false,
-      optimize: 'speed' as const,
+      optimize,
       output: 'source' as const,
       trace: verbose,
     };
@@ -557,12 +583,12 @@ export async function runParsergen(args: string[], options?: { deprecate?: boole
     // Watch mode
     if (config.watch && config.outFile) {
       log.watch(`Watching ${grammarFilePath} for changes...`);
-      await compileAndWrite(grammarFilePath, config.outFile, config.format, config.verbose);
+      await compileAndWrite(grammarFilePath, config.outFile, config.format, config.optimize, config.verbose);
 
       watchFile(grammarFilePath, { interval: 300 }, async () => {
         try {
           log.build('Detected change, recompiling...');
-          await compileAndWrite(grammarFilePath, config.outFile!, config.format, config.verbose);
+          await compileAndWrite(grammarFilePath, config.outFile!, config.format, config.optimize, config.verbose);
         } catch (err: unknown) {
           log.error('Rebuild failed');
           if (config.verbose) {
@@ -581,14 +607,14 @@ export async function runParsergen(args: string[], options?: { deprecate?: boole
 
     // Compile to file
     if (config.outFile) {
-      await compileAndWrite(grammarFilePath, config.outFile, config.format, config.verbose);
+      await compileAndWrite(grammarFilePath, config.outFile, config.format, config.optimize, config.verbose);
       return;
     }
 
     // Lumina pipeline (parse -> analyze -> lower -> optimize -> codegen)
     if (config.luminaBuild) {
       try {
-        const luminaParser = compileGrammar(grammarText);
+        const luminaParser = compileGrammar(grammarText, { optimize: config.optimize });
         const source = await fs.readFile(config.luminaBuild, 'utf-8');
         const parsed = parseInput(luminaParser, source);
         if (ParserUtils.isParseError(parsed)) {
@@ -624,7 +650,7 @@ export async function runParsergen(args: string[], options?: { deprecate?: boole
     }
 
     // Default: compile grammar in memory
-    const parser = await compileGrammarFromFile(grammarFilePath);
+    const parser = await compileGrammarFromFile(grammarFilePath, { optimize: config.optimize });
     log.success(`Grammar compiled: ${grammarFilePath}`);
 
     // Interactive mode
