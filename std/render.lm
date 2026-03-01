@@ -1,0 +1,29 @@
+import { render } from "@std";
+
+pub fn text(value: any) -> VNode {
+  render.text(value)
+}
+
+pub fn fragment(children: any) -> VNode {
+  render.fragment(children)
+}
+
+pub fn vnode(tag: string, attrs: any, children: any) -> VNode {
+  render.element(tag, attrs, children)
+}
+
+pub fn createDomRenderer() -> Renderer {
+  render.createDomRenderer()
+}
+
+pub fn mount_reactive(renderer: Renderer, container: any, view: fn() -> VNode) -> ReactiveRenderRoot {
+  render.mount_reactive(renderer, container, view)
+}
+
+pub fn hydrate_reactive(renderer: Renderer, container: any, view: fn() -> VNode) -> ReactiveRenderRoot {
+  render.hydrate_reactive(renderer, container, view)
+}
+
+pub fn render_to_string(node: VNode) -> string {
+  render.render_to_string(node)
+}

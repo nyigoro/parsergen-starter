@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lumina Additional Render Targets</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #0b1220;
+        color: #e2e8f0;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      pre {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 12px;
+        overflow: auto;
+      }
+      canvas {
+        background: #020617;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Additional Render Targets</h1>
+
+      <section class="card">
+        <h2>SSR + Hydration</h2>
+        <p>Server output HTML from VNode, then hydrate in DOM container.</p>
+        <pre id="ssr-output"></pre>
+        <div id="hydrate-host"></div>
+      </section>
+
+      <section class="card">
+        <h2>Canvas Renderer</h2>
+        <canvas id="canvas-host" width="520" height="180"></canvas>
+      </section>
+
+      <section class="card">
+        <h2>Terminal Renderer</h2>
+        <pre id="terminal-output"></pre>
+      </section>
+    </main>
+    <script type="module" src="./targets.js"></script>
+  </body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lumina DOM Benchmarks</title>
+    <style>
+      body {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        margin: 0;
+        background: #0b1220;
+        color: #e2e8f0;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+      }
+      th,
+      td {
+        text-align: left;
+        border-bottom: 1px solid #1f2937;
+        padding: 8px 6px;
+      }
+      button {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+      .hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      code {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        padding: 1px 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>DOM Benchmark Harness</h1>
+        <p>
+          Compares list update throughput for:
+          <code>Lumina render DOM</code>,
+          <code>React</code>,
+          <code>Solid</code>,
+          <code>Vanilla</code>.
+        </p>
+        <p>Scenario: update one row in a 1,000-item list over 300 iterations.</p>
+        <button id="run">Run Benchmarks</button>
+        <table>
+          <thead>
+            <tr>
+              <th>Library</th>
+              <th>Total (ms)</th>
+              <th>Avg / iter (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="results"></tbody>
+        </table>
+      </div>
+
+      <div id="host-lumina" class="hidden"></div>
+      <div id="host-react" class="hidden"></div>
+      <div id="host-solid" class="hidden"></div>
+      <div id="host-vanilla" class="hidden"></div>
+    </main>
+
+    <script type="module" src="./benchmark.js"></script>
+  </body>
+</html>

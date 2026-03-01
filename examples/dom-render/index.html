@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lumina DOM Renderer Demo</title>
+    <style>
+      body {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h1,
+      h2 {
+        margin: 0 0 12px;
+      }
+      button {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #374151;
+      }
+      input {
+        background: #0b1220;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        color: #e2e8f0;
+        padding: 8px 10px;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 8px;
+      }
+      code {
+        background: #0b1220;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        padding: 2px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Lumina DOM Renderer (Phase 2)</h1>
+      <p>
+        This demo uses <code>@std/render</code> core primitives + the DOM renderer with
+        fine-grained signals/memos/effects.
+      </p>
+      <div id="app"></div>
+      <p>
+        Benchmark harness:
+        <a href="./benchmark.html" style="color: #93c5fd">benchmark.html</a>
+      </p>
+      <p>
+        Additional targets:
+        <a href="./targets.html" style="color: #93c5fd">targets.html</a>
+      </p>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

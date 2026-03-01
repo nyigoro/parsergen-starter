@@ -167,6 +167,13 @@ const builtinTypes: Set<LuminaType> = new Set([
   'ProcessOutput',
   'Promise',
   'Range',
+  'Signal',
+  'Memo',
+  'Effect',
+  'VNode',
+  'Renderer',
+  'RenderRoot',
+  'ReactiveRenderRoot',
 ]);
 
 const numericTypes: Set<LuminaType> = new Set([

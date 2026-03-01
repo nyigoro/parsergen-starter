@@ -2987,6 +2987,8 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const vnodeT = adt('VNode');
     const rendererT = adt('Renderer');
     const renderRootT = adt('RenderRoot');
+    const reactiveRenderRootT = adt('ReactiveRenderRoot');
+    const containerT = freshTypeVar();
     const thunkT = fnType([], t);
     const effectFnT = fnType([], primitive('void'));
     const updaterT = fnType([t], t);
@@ -3002,17 +3004,32 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const effectDisposeType: Type = fnType([effectT], primitive('void'));
     const batchType: Type = fnType([thunkT], t);
     const untrackType: Type = fnType([thunkT], t);
-    const textType: Type = fnType([primitive('string')], vnodeT);
-    const elementType: Type = fnType([primitive('string'), primitive('any'), primitive('any')], vnodeT);
-    const fragmentType: Type = fnType([primitive('any')], vnodeT);
+    const textValueT = freshTypeVar();
+    const attrsT = freshTypeVar();
+    const childrenT = freshTypeVar();
+    const fragmentChildrenT = freshTypeVar();
+    const rendererFactoryT = freshTypeVar();
+    const textType: Type = fnType([textValueT], vnodeT);
+    const elementType: Type = fnType([primitive('string'), attrsT, childrenT], vnodeT);
+    const fragmentType: Type = fnType([fragmentChildrenT], vnodeT);
     const isVNodeType: Type = fnType([primitive('any')], primitive('bool'));
     const serializeType: Type = fnType([vnodeT], primitive('string'));
     const parseType: Type = fnType([primitive('string')], vnodeT);
-    const createRendererType: Type = fnType([primitive('any')], rendererT);
-    const createRootType: Type = fnType([rendererT, primitive('any')], renderRootT);
-    const mountType: Type = fnType([rendererT, primitive('any'), vnodeT], renderRootT);
+    const createRendererType: Type = fnType([rendererFactoryT], rendererT);
+    const createDomRendererType: Type = fnType([], rendererT);
+    const createSsrRendererType: Type = fnType([], rendererT);
+    const createCanvasRendererType: Type = fnType([], rendererT);
+    const createTerminalRendererType: Type = fnType([], rendererT);
+    const renderToStringType: Type = fnType([vnodeT], primitive('string'));
+    const renderToTerminalType: Type = fnType([vnodeT], primitive('string'));
+    const createRootType: Type = fnType([rendererT, containerT], renderRootT);
+    const hydrateType: Type = fnType([rendererT, containerT, vnodeT], renderRootT);
+    const mountType: Type = fnType([rendererT, containerT, vnodeT], renderRootT);
+    const mountReactiveType: Type = fnType([rendererT, containerT, fnType([], vnodeT)], reactiveRenderRootT);
+    const hydrateReactiveType: Type = fnType([rendererT, containerT, fnType([], vnodeT)], reactiveRenderRootT);
     const updateType: Type = fnType([renderRootT, vnodeT], primitive('void'));
     const unmountType: Type = fnType([renderRootT], primitive('void'));
+    const disposeReactiveType: Type = fnType([reactiveRenderRootT], primitive('void'));
 
     return {
       kind: 'module',
@@ -3166,9 +3183,9 @@ export function createStdModuleRegistry(): ModuleRegistry {
           'text',
           moduleFunctionWithScheme(
             'text',
-            ['string'],
+            ['any'],
             'VNode',
-            schemeFromVars(textType, []),
+            schemeFromVars(textType, [textValueT]),
             ['value'],
             'std://render'
           ),
@@ -3179,7 +3196,18 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'element',
             ['string', 'any', 'any'],
             'VNode',
-            schemeFromVars(elementType, []),
+            schemeFromVars(elementType, [attrsT, childrenT]),
+            ['tag', 'props', 'children'],
+            'std://render'
+          ),
+        ],
+        [
+          'vnode',
+          moduleFunctionWithScheme(
+            'vnode',
+            ['string', 'any', 'any'],
+            'VNode',
+            schemeFromVars(elementType, [attrsT, childrenT]),
             ['tag', 'props', 'children'],
             'std://render'
           ),
@@ -3190,7 +3218,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'fragment',
             ['any'],
             'VNode',
-            schemeFromVars(fragmentType, []),
+            schemeFromVars(fragmentType, [fragmentChildrenT]),
             ['children'],
             'std://render'
           ),
@@ -3234,8 +3262,85 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'create_renderer',
             ['any'],
             'Renderer',
-            schemeFromVars(createRendererType, []),
+            schemeFromVars(createRendererType, [rendererFactoryT]),
             ['renderer'],
+            'std://render'
+          ),
+        ],
+        [
+          'create_dom_renderer',
+          moduleFunctionWithScheme(
+            'create_dom_renderer',
+            [],
+            'Renderer',
+            schemeFromVars(createDomRendererType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'createDomRenderer',
+          moduleFunctionWithScheme(
+            'createDomRenderer',
+            [],
+            'Renderer',
+            schemeFromVars(createDomRendererType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'create_ssr_renderer',
+          moduleFunctionWithScheme(
+            'create_ssr_renderer',
+            [],
+            'Renderer',
+            schemeFromVars(createSsrRendererType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'create_canvas_renderer',
+          moduleFunctionWithScheme(
+            'create_canvas_renderer',
+            [],
+            'Renderer',
+            schemeFromVars(createCanvasRendererType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'create_terminal_renderer',
+          moduleFunctionWithScheme(
+            'create_terminal_renderer',
+            [],
+            'Renderer',
+            schemeFromVars(createTerminalRendererType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'render_to_string',
+          moduleFunctionWithScheme(
+            'render_to_string',
+            ['VNode'],
+            'string',
+            schemeFromVars(renderToStringType, []),
+            ['node'],
+            'std://render'
+          ),
+        ],
+        [
+          'render_to_terminal',
+          moduleFunctionWithScheme(
+            'render_to_terminal',
+            ['VNode'],
+            'string',
+            schemeFromVars(renderToTerminalType, []),
+            ['node'],
             'std://render'
           ),
         ],
@@ -3245,8 +3350,41 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'create_root',
             ['Renderer', 'any'],
             'RenderRoot',
-            schemeFromVars(createRootType, []),
+            schemeFromVars(createRootType, [containerT]),
             ['renderer', 'container'],
+            'std://render'
+          ),
+        ],
+        [
+          'hydrate',
+          moduleFunctionWithScheme(
+            'hydrate',
+            ['Renderer', 'any', 'VNode'],
+            'RenderRoot',
+            schemeFromVars(hydrateType, [containerT]),
+            ['renderer', 'container', 'node'],
+            'std://render'
+          ),
+        ],
+        [
+          'mount_reactive',
+          moduleFunctionWithScheme(
+            'mount_reactive',
+            ['Renderer', 'any', 'fn() -> VNode'],
+            'ReactiveRenderRoot',
+            schemeFromVars(mountReactiveType, [containerT]),
+            ['renderer', 'container', 'view'],
+            'std://render'
+          ),
+        ],
+        [
+          'hydrate_reactive',
+          moduleFunctionWithScheme(
+            'hydrate_reactive',
+            ['Renderer', 'any', 'fn() -> VNode'],
+            'ReactiveRenderRoot',
+            schemeFromVars(hydrateReactiveType, [containerT]),
+            ['renderer', 'container', 'view'],
             'std://render'
           ),
         ],
@@ -3256,7 +3394,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'mount',
             ['Renderer', 'any', 'VNode'],
             'RenderRoot',
-            schemeFromVars(mountType, []),
+            schemeFromVars(mountType, [containerT]),
             ['renderer', 'container', 'node'],
             'std://render'
           ),
@@ -3281,6 +3419,155 @@ export function createStdModuleRegistry(): ModuleRegistry {
             schemeFromVars(unmountType, []),
             ['root'],
             'std://render'
+          ),
+        ],
+        [
+          'dispose_reactive',
+          moduleFunctionWithScheme(
+            'dispose_reactive',
+            ['ReactiveRenderRoot'],
+            'void',
+            schemeFromVars(disposeReactiveType, []),
+            ['root'],
+            'std://render'
+          ),
+        ],
+      ]),
+    };
+  })();
+
+  const reactiveModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const signalT = adt('Signal', [t]);
+    const memoT = adt('Memo', [t]);
+    const effectT = adt('Effect');
+    const thunkT = fnType([], t);
+    const updaterT = fnType([t], t);
+
+    const createSignalType: Type = fnType([t], signalT);
+    const getType: Type = fnType([signalT], t);
+    const setType: Type = fnType([signalT, t], primitive('bool'));
+    const updateSignalType: Type = fnType([signalT, updaterT], t);
+    const createMemoType: Type = fnType([thunkT], memoT);
+    const memoGetType: Type = fnType([memoT], t);
+    const createEffectType: Type = fnType([fnType([], primitive('void'))], effectT);
+    const disposeEffectType: Type = fnType([effectT], primitive('void'));
+    const batchType: Type = fnType([thunkT], t);
+    const untrackType: Type = fnType([thunkT], t);
+
+    return {
+      kind: 'module',
+      name: 'reactive',
+      moduleId: 'std://reactive',
+      exports: new Map([
+        [
+          'createSignal',
+          moduleFunctionWithScheme(
+            'createSignal',
+            ['any'],
+            'Signal<any>',
+            schemeFromVars(createSignalType, [t]),
+            ['initial'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'get',
+          moduleFunctionWithScheme(
+            'get',
+            ['Signal<any>'],
+            'any',
+            schemeFromVars(getType, [t]),
+            ['signal'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'set',
+          moduleFunctionWithScheme(
+            'set',
+            ['Signal<any>', 'any'],
+            'bool',
+            schemeFromVars(setType, [t]),
+            ['signal', 'value'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'updateSignal',
+          moduleFunctionWithScheme(
+            'updateSignal',
+            ['Signal<any>', 'fn(any) -> any'],
+            'any',
+            schemeFromVars(updateSignalType, [t]),
+            ['signal', 'updater'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'createMemo',
+          moduleFunctionWithScheme(
+            'createMemo',
+            ['fn() -> any'],
+            'Memo<any>',
+            schemeFromVars(createMemoType, [t]),
+            ['compute'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'memoGet',
+          moduleFunctionWithScheme(
+            'memoGet',
+            ['Memo<any>'],
+            'any',
+            schemeFromVars(memoGetType, [t]),
+            ['memo'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'createEffect',
+          moduleFunctionWithScheme(
+            'createEffect',
+            ['fn() -> void'],
+            'Effect',
+            schemeFromVars(createEffectType, []),
+            ['run'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'disposeEffect',
+          moduleFunctionWithScheme(
+            'disposeEffect',
+            ['Effect'],
+            'void',
+            schemeFromVars(disposeEffectType, []),
+            ['effect'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'batch',
+          moduleFunctionWithScheme(
+            'batch',
+            ['fn() -> any'],
+            'any',
+            schemeFromVars(batchType, [t]),
+            ['block'],
+            'std://reactive'
+          ),
+        ],
+        [
+          'untrack',
+          moduleFunctionWithScheme(
+            'untrack',
+            ['fn() -> any'],
+            'any',
+            schemeFromVars(untrackType, [t]),
+            ['block'],
+            'std://reactive'
           ),
         ],
       ]),
@@ -3394,6 +3681,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['async_channel', asyncChannelModule],
       ['thread', threadModule],
       ['sync', syncModule],
+      ['reactive', reactiveModule],
       ['render', renderModule],
       ['fs', fsModule],
       ['path', pathModule],
@@ -3437,6 +3725,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/async_channel', asyncChannelModule);
   registry.set('@std/thread', threadModule);
   registry.set('@std/sync', syncModule);
+  registry.set('@std/reactive', reactiveModule);
   registry.set('@std/render', renderModule);
   registry.set('@prelude', preludeModule);
   return registry;

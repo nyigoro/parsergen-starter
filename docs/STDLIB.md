@@ -273,6 +273,40 @@ Alias for `time.sleep(ms)` for timeout/race flows.
 ### join_all<T>(values: Vec<Promise<T>>) -> Promise<Vec<T>>
 Waits for all promises and returns results in input order.
 
+## @std/reactive
+
+Language-level wrappers for reactive primitives.
+
+### createSignal<T>(initial: T) -> Signal<T>
+Creates signal state.
+
+### get<T>(signal: Signal<T>) -> T
+Reads signal value (tracked).
+
+### set<T>(signal: Signal<T>, value: T) -> Bool
+Updates signal value.
+
+### updateSignal<T>(signal: Signal<T>, updater: fn(T) -> T) -> T
+Updates signal from previous value.
+
+### createMemo<T>(compute: fn() -> T) -> Memo<T>
+Creates derived memo value.
+
+### memoGet<T>(memo: Memo<T>) -> T
+Reads memo value.
+
+### createEffect(run: fn() -> Void) -> Effect
+Registers reactive side effect.
+
+### disposeEffect(effect: Effect) -> Void
+Disposes effect.
+
+### batch<T>(block: fn() -> T) -> T
+Batches reactive writes.
+
+### untrack<T>(block: fn() -> T) -> T
+Runs without dependency tracking.
+
 ## @std/render
 
 Core frontend/runtime primitives for reactive UI layers. The module is platform-agnostic: it models state, virtual nodes, and renderer contracts without DOM assumptions.
@@ -343,8 +377,35 @@ Parses serialized VNode payload.
 ### create_renderer(candidate: Any) -> Renderer
 Validates and wraps a renderer implementation. Renderer must provide `mount(node, container)`. Optional hooks: `patch(prev, next, container)` and `unmount(container)`.
 
+### create_dom_renderer() -> Renderer
+Creates a DOM renderer implementation for browser/document-like hosts.
+
+### create_ssr_renderer() -> Renderer
+Creates an SSR renderer that writes HTML strings.
+
+### create_canvas_renderer() -> Renderer
+Creates a Canvas renderer (2D context based).
+
+### create_terminal_renderer() -> Renderer
+Creates a terminal/text renderer.
+
+### render_to_string(node: VNode) -> String
+Converts VNode tree into escaped HTML string.
+
+### render_to_terminal(node: VNode) -> String
+Converts VNode tree into terminal text tree.
+
 ### create_root(renderer: Renderer, container: Any) -> RenderRoot
 Creates a render root state holder.
+
+### mount_reactive(renderer: Renderer, container: Any, view: fn() -> VNode) -> ReactiveRenderRoot
+Mounts a reactive view and updates when tracked signals/memos change.
+
+### hydrate(renderer: Renderer, container: Any, node: VNode) -> RenderRoot
+Hydrates existing container markup/tree and sets initial VNode state.
+
+### hydrate_reactive(renderer: Renderer, container: Any, view: fn() -> VNode) -> ReactiveRenderRoot
+Hydrates then keeps updating through reactive dependencies.
 
 ### mount(renderer: Renderer, container: Any, node: VNode) -> RenderRoot
 Mounts a VNode and returns render root.
@@ -354,6 +415,9 @@ Patches/re-mounts root with new VNode.
 
 ### unmount(root: RenderRoot) -> Void
 Unmounts current tree from root container.
+
+### dispose_reactive(root: ReactiveRenderRoot) -> Void
+Disposes reactive mount and unmounts its root.
 
 ## Duration Helpers
 

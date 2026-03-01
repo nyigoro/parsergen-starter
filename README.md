@@ -95,6 +95,7 @@ npm test
 - `docs/STDLIB.md` — standard library reference
 - `docs/RENDER.md` — reactivity + renderer core primitives
 - `docs/DOCS_MAINTENANCE.md` — how to keep docs current as features land
+- `examples/dom-render/` — DOM renderer demo + benchmark harness
 
 ## 🧰 CLI
 

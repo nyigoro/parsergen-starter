@@ -27,6 +27,7 @@ extern type Effect from "@std/render";
 extern type VNode from "@std/render";
 extern type Renderer from "@std/render";
 extern type RenderRoot from "@std/render";
+extern type ReactiveRenderRoot from "@std/render";
 struct FileMetadata { isFile: bool, isDirectory: bool, size: int, modifiedMs: int }
 type Map<K, V> = { size: int };
 enum Option<T> { Some(T), None }

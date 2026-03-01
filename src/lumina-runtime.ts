@@ -2997,8 +2997,630 @@ export const parseVNode = (json: string): VNode => {
 export interface Renderer {
   mount: (node: VNode, container: unknown) => void;
   patch?: (prev: VNode | null, next: VNode, container: unknown) => void;
+  hydrate?: (node: VNode, container: unknown) => void;
   unmount?: (container: unknown) => void;
 }
+
+interface DomEventTargetLike {
+  addEventListener?: (event: string, listener: (event: unknown) => void) => void;
+  removeEventListener?: (event: string, listener: (event: unknown) => void) => void;
+}
+
+interface DomNodeLike extends DomEventTargetLike {
+  textContent: string | null;
+  childNodes: DomNodeLike[];
+  parentNode: DomNodeLike | null;
+  appendChild: (node: DomNodeLike) => DomNodeLike;
+  removeChild: (node: DomNodeLike) => DomNodeLike;
+  replaceChild?: (newChild: DomNodeLike, oldChild: DomNodeLike) => DomNodeLike;
+}
+
+interface DomElementLike extends DomNodeLike {
+  setAttribute?: (name: string, value: string) => void;
+  removeAttribute?: (name: string) => void;
+  className?: string;
+  style?: Record<string, unknown> & { setProperty?: (name: string, value: string) => void };
+}
+
+interface DomDocumentLike {
+  createElement: (tag: string) => DomElementLike;
+  createTextNode: (value: string) => DomNodeLike;
+}
+
+interface DomRendererOptions {
+  document?: DomDocumentLike;
+}
+
+type DomEventMap = Record<string, (event: unknown) => void>;
+type DomEventStore = Map<DomNodeLike, DomEventMap>;
+
+const getDomDocument = (options?: DomRendererOptions): DomDocumentLike => {
+  if (options?.document) return options.document;
+  const doc = (globalThis as { document?: DomDocumentLike }).document;
+  if (!doc) {
+    throw new Error('DOM renderer requires a document-like object');
+  }
+  return doc;
+};
+
+const asDomChildren = (node: VNode): VNode[] => node.children ?? [];
+
+const isEventProp = (name: string): boolean => /^on[A-Z]/.test(name);
+
+const normalizeEventName = (name: string): string => name.slice(2).toLowerCase();
+
+const setDomStyle = (
+  element: DomElementLike,
+  previous: Record<string, unknown> | undefined,
+  next: Record<string, unknown> | undefined
+): void => {
+  const prev = previous ?? {};
+  const nxt = next ?? {};
+  const style = element.style;
+  if (!style) return;
+
+  for (const [key, value] of Object.entries(nxt)) {
+    if (prev[key] === value) continue;
+    if (style.setProperty) {
+      style.setProperty(key, value == null ? '' : String(value));
+    } else {
+      style[key] = value;
+    }
+  }
+
+  for (const key of Object.keys(prev)) {
+    if (Object.prototype.hasOwnProperty.call(nxt, key)) continue;
+    if (style.setProperty) {
+      style.setProperty(key, '');
+    } else {
+      delete style[key];
+    }
+  }
+};
+
+const setDomProperty = (
+  element: DomElementLike,
+  name: string,
+  value: unknown,
+  eventStore: DomEventStore
+): void => {
+  if (name === 'key') return;
+
+  if (isEventProp(name)) {
+    const event = normalizeEventName(name);
+    const map = eventStore.get(element) ?? {};
+    const prev = map[event];
+    if (prev && element.removeEventListener) {
+      element.removeEventListener(event, prev);
+    }
+    if (typeof value === 'function') {
+      const next = value as (event: unknown) => void;
+      if (element.addEventListener) {
+        element.addEventListener(event, next);
+      }
+      map[event] = next;
+      eventStore.set(element, map);
+    } else {
+      delete map[event];
+      if (Object.keys(map).length === 0) {
+        eventStore.delete(element);
+      } else {
+        eventStore.set(element, map);
+      }
+    }
+    return;
+  }
+
+  if (name === 'style' && typeof value === 'object' && value !== null) {
+    setDomStyle(element, undefined, value as Record<string, unknown>);
+    return;
+  }
+
+  if (value === false || value === null || value === undefined) {
+    if (element.removeAttribute) element.removeAttribute(name);
+    (element as Record<string, unknown>)[name] = value as never;
+    return;
+  }
+
+  if (name in element) {
+    (element as Record<string, unknown>)[name] = value;
+  } else if (element.setAttribute) {
+    element.setAttribute(name, String(value));
+  } else {
+    (element as Record<string, unknown>)[name] = value;
+  }
+};
+
+const updateDomProperties = (
+  element: DomElementLike,
+  previous: Record<string, unknown> | undefined,
+  next: Record<string, unknown> | undefined,
+  eventStore: DomEventStore
+): void => {
+  const prev = previous ?? {};
+  const nxt = next ?? {};
+
+  for (const key of Object.keys(prev)) {
+    if (Object.prototype.hasOwnProperty.call(nxt, key)) continue;
+    if (key === 'style') {
+      setDomStyle(element, prev.style as Record<string, unknown>, undefined);
+      continue;
+    }
+    setDomProperty(element, key, undefined, eventStore);
+  }
+
+  for (const [key, value] of Object.entries(nxt)) {
+    if (key === 'style') {
+      setDomStyle(
+        element,
+        prev.style as Record<string, unknown> | undefined,
+        value as Record<string, unknown> | undefined
+      );
+      continue;
+    }
+    if (prev[key] === value) continue;
+    setDomProperty(element, key, value, eventStore);
+  }
+};
+
+const setChildren = (container: DomNodeLike, children: DomNodeLike[]): void => {
+  const current = Array.from(container.childNodes);
+  for (const child of current) {
+    container.removeChild(child);
+  }
+  for (const child of children) {
+    container.appendChild(child);
+  }
+};
+
+const vnodeKindTag = (node: VNode): string => `${node.kind}:${node.tag ?? ''}`;
+
+const createDomNode = (
+  node: VNode,
+  documentLike: DomDocumentLike,
+  eventStore: DomEventStore
+): DomNodeLike => {
+  if (node.kind === 'text') {
+    return documentLike.createTextNode(node.text ?? '');
+  }
+  if (node.kind === 'fragment') {
+    const wrapper = documentLike.createElement('lumina-fragment');
+    const children = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore));
+    setChildren(wrapper, children);
+    return wrapper;
+  }
+
+  const element = documentLike.createElement(node.tag ?? 'div');
+  updateDomProperties(element, {}, node.props, eventStore);
+  const children = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore));
+  setChildren(element, children);
+  return element;
+};
+
+const patchDomNode = (
+  domNode: DomNodeLike,
+  prevNode: VNode,
+  nextNode: VNode,
+  documentLike: DomDocumentLike,
+  eventStore: DomEventStore
+): DomNodeLike => {
+  if (vnodeKindTag(prevNode) !== vnodeKindTag(nextNode)) {
+    const replacement = createDomNode(nextNode, documentLike, eventStore);
+    const parent = domNode.parentNode;
+    if (parent && parent.replaceChild) {
+      parent.replaceChild(replacement, domNode);
+      return replacement;
+    }
+    return replacement;
+  }
+
+  if (nextNode.kind === 'text') {
+    const nextText = nextNode.text ?? '';
+    if (domNode.textContent !== nextText) {
+      domNode.textContent = nextText;
+    }
+    return domNode;
+  }
+
+  const element = domNode as DomElementLike;
+  if (nextNode.kind === 'element') {
+    updateDomProperties(element, prevNode.props, nextNode.props, eventStore);
+  }
+
+  const prevChildren = asDomChildren(prevNode);
+  const nextChildren = asDomChildren(nextNode);
+  const shared = Math.min(prevChildren.length, nextChildren.length);
+
+  for (let i = 0; i < shared; i += 1) {
+    const currentChild = element.childNodes[i];
+    if (!currentChild) {
+      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore));
+      continue;
+    }
+    patchDomNode(currentChild, prevChildren[i], nextChildren[i], documentLike, eventStore);
+  }
+
+  if (nextChildren.length > prevChildren.length) {
+    for (let i = prevChildren.length; i < nextChildren.length; i += 1) {
+      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore));
+    }
+  } else if (prevChildren.length > nextChildren.length) {
+    for (let i = prevChildren.length - 1; i >= nextChildren.length; i -= 1) {
+      const child = element.childNodes[i];
+      if (child) element.removeChild(child);
+    }
+  }
+
+  return element;
+};
+
+export const createDomRenderer = (options?: DomRendererOptions): Renderer => {
+  const documentLike = getDomDocument(options);
+  const eventStore: DomEventStore = new Map();
+  let currentDom: DomNodeLike | null = null;
+  let currentVNode: VNode | null = null;
+
+  return {
+    mount(node: VNode, container: unknown): void {
+      const domContainer = container as DomNodeLike;
+      const domNode = createDomNode(node, documentLike, eventStore);
+      setChildren(domContainer, [domNode]);
+      currentDom = domNode;
+      currentVNode = node;
+    },
+    patch(prev: VNode | null, next: VNode, container: unknown): void {
+      const domContainer = container as DomNodeLike;
+      if (!currentDom || !currentVNode || !prev) {
+        const domNode = createDomNode(next, documentLike, eventStore);
+        setChildren(domContainer, [domNode]);
+        currentDom = domNode;
+        currentVNode = next;
+        return;
+      }
+      const nextDom = patchDomNode(currentDom, prev, next, documentLike, eventStore);
+      if (nextDom !== currentDom) {
+        setChildren(domContainer, [nextDom]);
+      }
+      currentDom = nextDom;
+      currentVNode = next;
+    },
+    hydrate(node: VNode, container: unknown): void {
+      const domContainer = container as DomNodeLike;
+      const existing = domContainer.childNodes?.[0] ?? null;
+      if (!existing) {
+        const domNode = createDomNode(node, documentLike, eventStore);
+        setChildren(domContainer, [domNode]);
+        currentDom = domNode;
+        currentVNode = node;
+        return;
+      }
+      currentDom = existing;
+      currentVNode = node;
+    },
+    unmount(container: unknown): void {
+      const domContainer = container as DomNodeLike;
+      setChildren(domContainer, []);
+      currentDom = null;
+      currentVNode = null;
+      eventStore.clear();
+    },
+  };
+};
+
+const htmlEscapeMap: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char);
+
+const kebabCase = (value: string): string =>
+  value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, '-ms-');
+
+const serializeStyleValue = (value: Record<string, unknown>): string =>
+  Object.entries(value)
+    .filter(([, entry]) => entry !== null && entry !== undefined)
+    .map(([key, entry]) => `${kebabCase(key)}:${String(entry)}`)
+    .join(';');
+
+const serializePropsToHtml = (props: Record<string, unknown> | undefined): string => {
+  if (!props) return '';
+  const attrs: string[] = [];
+  for (const [key, value] of Object.entries(props)) {
+    if (key === 'key') continue;
+    if (key.startsWith('on') && typeof value === 'function') continue;
+    if (value === false || value === null || value === undefined) continue;
+    if (key === 'style' && typeof value === 'object' && value !== null) {
+      const styleText = serializeStyleValue(value as Record<string, unknown>);
+      if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);
+      continue;
+    }
+    if (value === true) {
+      attrs.push(key);
+      continue;
+    }
+    attrs.push(`${key}="${escapeHtml(String(value))}"`);
+  }
+  return attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
+};
+
+const voidHtmlTags = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
+
+const vnodeToHtml = (node: VNode): string => {
+  if (node.kind === 'text') return escapeHtml(node.text ?? '');
+  const children = (node.children ?? []).map((child) => vnodeToHtml(child)).join('');
+  if (node.kind === 'fragment') return children;
+
+  const tag = node.tag ?? 'div';
+  const attrs = serializePropsToHtml(node.props);
+  if (voidHtmlTags.has(tag.toLowerCase())) {
+    return `<${tag}${attrs}>`;
+  }
+  return `<${tag}${attrs}>${children}</${tag}>`;
+};
+
+const setContainerMarkup = (container: unknown, output: string): void => {
+  if (container && typeof container === 'object') {
+    const target = container as {
+      innerHTML?: string;
+      html?: string;
+      textContent?: string;
+      write?: (value: string) => void;
+    };
+    if (typeof target.write === 'function') {
+      target.write(output);
+      return;
+    }
+    if (typeof target.innerHTML === 'string' || 'innerHTML' in target) {
+      target.innerHTML = output;
+      return;
+    }
+    if (typeof target.html === 'string' || 'html' in target) {
+      target.html = output;
+      return;
+    }
+    if (typeof target.textContent === 'string' || 'textContent' in target) {
+      target.textContent = output;
+      return;
+    }
+    target.html = output;
+  }
+};
+
+export const createSsrRenderer = (): Renderer => {
+  let current = '';
+  return {
+    mount(node: VNode, container: unknown): void {
+      current = vnodeToHtml(node);
+      setContainerMarkup(container, current);
+    },
+    patch(_prev: VNode | null, next: VNode, container: unknown): void {
+      current = vnodeToHtml(next);
+      setContainerMarkup(container, current);
+    },
+    hydrate(node: VNode, container: unknown): void {
+      current = vnodeToHtml(node);
+      setContainerMarkup(container, current);
+    },
+    unmount(container: unknown): void {
+      current = '';
+      setContainerMarkup(container, '');
+    },
+  };
+};
+
+export const renderToString = (node: VNode): string => vnodeToHtml(node);
+
+interface Canvas2DLike {
+  canvas?: { width?: number; height?: number };
+  clearRect?: (x: number, y: number, width: number, height: number) => void;
+  fillRect?: (x: number, y: number, width: number, height: number) => void;
+  strokeRect?: (x: number, y: number, width: number, height: number) => void;
+  beginPath?: () => void;
+  arc?: (x: number, y: number, radius: number, startAngle: number, endAngle: number) => void;
+  fill?: () => void;
+  stroke?: () => void;
+  fillText?: (text: string, x: number, y: number) => void;
+  font?: string;
+  fillStyle?: unknown;
+  strokeStyle?: unknown;
+}
+
+interface CanvasLike {
+  getContext?: (kind: '2d') => Canvas2DLike | null;
+  width?: number;
+  height?: number;
+}
+
+interface CanvasRendererOptions {
+  context?: Canvas2DLike;
+  clear?: boolean;
+  width?: number;
+  height?: number;
+}
+
+const resolveCanvasContext = (container: unknown, options?: CanvasRendererOptions): Canvas2DLike => {
+  if (options?.context) return options.context;
+  if (container && typeof container === 'object') {
+    const maybeContext = container as Canvas2DLike;
+    if (typeof maybeContext.fillText === 'function' || typeof maybeContext.fillRect === 'function') {
+      return maybeContext;
+    }
+    const canvas = container as CanvasLike;
+    if (typeof canvas.getContext === 'function') {
+      const ctx = canvas.getContext('2d');
+      if (ctx) return ctx;
+    }
+  }
+  throw new Error('Canvas renderer requires a 2D context or canvas');
+};
+
+const drawCanvasVNode = (
+  ctx: Canvas2DLike,
+  node: VNode,
+  state: { x: number; y: number; lineHeight: number }
+): number => {
+  if (node.kind === 'text') {
+    if (ctx.fillText) ctx.fillText(node.text ?? '', state.x, state.y);
+    return state.y + state.lineHeight;
+  }
+  if (node.kind === 'fragment') {
+    let y = state.y;
+    for (const child of node.children ?? []) {
+      y = drawCanvasVNode(ctx, child, { ...state, y });
+    }
+    return y;
+  }
+
+  const props = node.props ?? {};
+  const tag = (node.tag ?? '').toLowerCase();
+  if (typeof props.fill === 'string') ctx.fillStyle = props.fill;
+  if (typeof props.stroke === 'string') ctx.strokeStyle = props.stroke;
+  if (typeof props.font === 'string') ctx.font = props.font;
+
+  if (tag === 'rect') {
+    const x = Number(props.x ?? state.x);
+    const y = Number(props.y ?? state.y);
+    const width = Number(props.width ?? 50);
+    const height = Number(props.height ?? 20);
+    if (ctx.fillRect) ctx.fillRect(x, y, width, height);
+    if (ctx.strokeRect) ctx.strokeRect(x, y, width, height);
+    return Math.max(state.y + state.lineHeight, y + height + 4);
+  }
+
+  if (tag === 'circle') {
+    const x = Number(props.x ?? state.x);
+    const y = Number(props.y ?? state.y);
+    const radius = Number(props.radius ?? 10);
+    if (ctx.beginPath && ctx.arc) {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      if (ctx.fill) ctx.fill();
+      if (ctx.stroke) ctx.stroke();
+    }
+    return Math.max(state.y + state.lineHeight, y + radius + 4);
+  }
+
+  if (tag === 'text') {
+    const value = typeof props.value === 'string' ? props.value : (node.children ?? []).map((child) => child.text ?? '').join('');
+    const x = Number(props.x ?? state.x);
+    const y = Number(props.y ?? state.y);
+    if (ctx.fillText) ctx.fillText(value, x, y);
+    return Math.max(state.y + state.lineHeight, y + state.lineHeight);
+  }
+
+  let y = state.y;
+  for (const child of node.children ?? []) {
+    y = drawCanvasVNode(ctx, child, { ...state, y });
+  }
+  return y;
+};
+
+export const createCanvasRenderer = (options?: CanvasRendererOptions): Renderer => {
+  let context: Canvas2DLike | null = options?.context ?? null;
+  return {
+    mount(node: VNode, container: unknown): void {
+      context = resolveCanvasContext(container, options);
+      const width = Number(options?.width ?? context.canvas?.width ?? 800);
+      const height = Number(options?.height ?? context.canvas?.height ?? 600);
+      if (options?.clear !== false && context.clearRect) {
+        context.clearRect(0, 0, width, height);
+      }
+      drawCanvasVNode(context, node, { x: 8, y: 20, lineHeight: 20 });
+    },
+    patch(_prev: VNode | null, next: VNode, container: unknown): void {
+      const ctx = context ?? resolveCanvasContext(container, options);
+      context = ctx;
+      const width = Number(options?.width ?? ctx.canvas?.width ?? 800);
+      const height = Number(options?.height ?? ctx.canvas?.height ?? 600);
+      if (options?.clear !== false && ctx.clearRect) {
+        ctx.clearRect(0, 0, width, height);
+      }
+      drawCanvasVNode(ctx, next, { x: 8, y: 20, lineHeight: 20 });
+    },
+    unmount(container: unknown): void {
+      const ctx = context ?? resolveCanvasContext(container, options);
+      const width = Number(options?.width ?? ctx.canvas?.width ?? 800);
+      const height = Number(options?.height ?? ctx.canvas?.height ?? 600);
+      if (ctx.clearRect) ctx.clearRect(0, 0, width, height);
+      context = null;
+    },
+  };
+};
+
+const vnodeToTerminal = (node: VNode, depth = 0): string[] => {
+  const indent = '  '.repeat(depth);
+  if (node.kind === 'text') {
+    return [`${indent}${node.text ?? ''}`];
+  }
+  if (node.kind === 'fragment') {
+    return (node.children ?? []).flatMap((child) => vnodeToTerminal(child, depth));
+  }
+  const tag = node.tag ?? 'div';
+  const head = `${indent}<${tag}>`;
+  const children = (node.children ?? []).flatMap((child) => vnodeToTerminal(child, depth + 1));
+  const tail = `${indent}</${tag}>`;
+  return [head, ...children, tail];
+};
+
+export const renderToTerminal = (node: VNode): string => vnodeToTerminal(node).join('\n');
+
+interface TerminalSink {
+  textContent?: string;
+  output?: string;
+  write?: (text: string) => void;
+}
+
+const setTerminalOutput = (container: unknown, text: string): void => {
+  if (!container || typeof container !== 'object') return;
+  const sink = container as TerminalSink;
+  if (typeof sink.write === 'function') {
+    sink.write(text);
+    return;
+  }
+  if (typeof sink.textContent === 'string' || 'textContent' in sink) {
+    sink.textContent = text;
+    return;
+  }
+  if (typeof sink.output === 'string' || 'output' in sink) {
+    sink.output = text;
+    return;
+  }
+  sink.output = text;
+};
+
+export const createTerminalRenderer = (): Renderer => ({
+  mount(node: VNode, container: unknown): void {
+    setTerminalOutput(container, renderToTerminal(node));
+  },
+  patch(_prev: VNode | null, next: VNode, container: unknown): void {
+    setTerminalOutput(container, renderToTerminal(next));
+  },
+  hydrate(node: VNode, container: unknown): void {
+    setTerminalOutput(container, renderToTerminal(node));
+  },
+  unmount(container: unknown): void {
+    setTerminalOutput(container, '');
+  },
+});
 
 export class RenderRoot {
   private current: VNode | null = null;
@@ -3010,6 +3632,15 @@ export class RenderRoot {
 
   mount(node: VNode): void {
     this.current = node;
+    this.renderer.mount(node, this.container);
+  }
+
+  hydrate(node: VNode): void {
+    this.current = node;
+    if (typeof this.renderer.hydrate === 'function') {
+      this.renderer.hydrate(node, this.container);
+      return;
+    }
     this.renderer.mount(node, this.container);
   }
 
@@ -3031,6 +3662,22 @@ export class RenderRoot {
       this.renderer.unmount(this.container);
     }
     this.current = null;
+  }
+
+  currentNode(): VNode | null {
+    return this.current;
+  }
+}
+
+export class ReactiveRenderRoot {
+  constructor(
+    readonly root: RenderRoot,
+    readonly effect: Effect
+  ) {}
+
+  dispose(): void {
+    this.effect.dispose();
+    this.root.unmount();
   }
 }
 
@@ -3091,14 +3738,71 @@ export const render = {
   serialize: (node: VNode): string => serializeVNode(node),
   parse: (json: string): VNode => parseVNode(json),
   create_renderer: (renderer: unknown): Renderer => coerceRenderer(renderer),
+  create_dom_renderer: (options?: DomRendererOptions): Renderer => createDomRenderer(options),
+  create_ssr_renderer: (): Renderer => createSsrRenderer(),
+  create_canvas_renderer: (options?: CanvasRendererOptions): Renderer => createCanvasRenderer(options),
+  create_terminal_renderer: (): Renderer => createTerminalRenderer(),
+  render_to_string: (node: VNode): string => renderToString(node),
+  render_to_terminal: (node: VNode): string => renderToTerminal(node),
   create_root: (renderer: unknown, container: unknown): RenderRoot => new RenderRoot(coerceRenderer(renderer), container),
   mount: (renderer: unknown, container: unknown, node: VNode): RenderRoot => {
     const root = new RenderRoot(coerceRenderer(renderer), container);
     root.mount(node);
     return root;
   },
+  hydrate: (renderer: unknown, container: unknown, node: VNode): RenderRoot => {
+    const root = new RenderRoot(coerceRenderer(renderer), container);
+    root.hydrate(node);
+    return root;
+  },
+  mount_reactive: (renderer: unknown, container: unknown, view: () => VNode): ReactiveRenderRoot => {
+    const root = new RenderRoot(coerceRenderer(renderer), container);
+    const fx = new Effect(() => {
+      const node = view();
+      root.update(node);
+    });
+    return new ReactiveRenderRoot(root, fx);
+  },
+  hydrate_reactive: (renderer: unknown, container: unknown, view: () => VNode): ReactiveRenderRoot => {
+    const root = new RenderRoot(coerceRenderer(renderer), container);
+    let initialized = false;
+    const fx = new Effect(() => {
+      const node = view();
+      if (!initialized) {
+        root.hydrate(node);
+        initialized = true;
+        return;
+      }
+      root.update(node);
+    });
+    return new ReactiveRenderRoot(root, fx);
+  },
   update: (root: RenderRoot, node: VNode): void => root.update(node),
   unmount: (root: RenderRoot): void => root.unmount(),
+  dispose_reactive: (root: ReactiveRenderRoot): void => root.dispose(),
+};
+
+export const createSignal = <T>(initial: T): Signal<T> => render.signal(initial);
+export const get = <T>(signal: Signal<T>): T => render.get(signal);
+export const set = <T>(signal: Signal<T>, value: T): boolean => render.set(signal, value);
+export const createMemo = <T>(compute: () => T): Memo<T> => render.memo(compute);
+export const createEffect = (fn: (onCleanup: (cleanup: ReactiveCleanup) => void) => void | ReactiveCleanup): Effect =>
+  render.effect(fn);
+export const vnode = (tag: string, attrs?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
+  render.element(tag, attrs, children);
+export const text = (value: unknown): VNode => render.text(value);
+export const mount_reactive = (renderer: unknown, container: unknown, view: () => VNode): ReactiveRenderRoot =>
+  render.mount_reactive(renderer, container, view);
+
+export const reactive = {
+  createSignal,
+  get,
+  set,
+  createMemo,
+  createEffect,
+  updateSignal: render.update_signal,
+  batch: render.batch,
+  untrack: render.untrack,
 };
 
 export function __set(obj: Record<string, unknown>, prop: string, value: unknown) {

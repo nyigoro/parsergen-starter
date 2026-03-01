@@ -1,0 +1,41 @@
+import { reactive } from "@std";
+
+pub fn createSignal<T>(initial: T) -> Signal<T> {
+  reactive.createSignal(initial)
+}
+
+pub fn get<T>(signal: Signal<T>) -> T {
+  reactive.get(signal)
+}
+
+pub fn set<T>(signal: Signal<T>, value: T) -> bool {
+  reactive.set(signal, value)
+}
+
+pub fn updateSignal<T>(signal: Signal<T>, updater: fn(T) -> T) -> T {
+  reactive.updateSignal(signal, updater)
+}
+
+pub fn createMemo<T>(compute: fn() -> T) -> Memo<T> {
+  reactive.createMemo(compute)
+}
+
+pub fn memoGet<T>(memo: Memo<T>) -> T {
+  reactive.memoGet(memo)
+}
+
+pub fn createEffect(effect: fn() -> void) -> Effect {
+  reactive.createEffect(effect)
+}
+
+pub fn disposeEffect(effect: Effect) -> void {
+  reactive.disposeEffect(effect)
+}
+
+pub fn batch<T>(block: fn() -> T) -> T {
+  reactive.batch(block)
+}
+
+pub fn untrack<T>(block: fn() -> T) -> T {
+  reactive.untrack(block)
+}

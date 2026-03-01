@@ -8,6 +8,8 @@
 
 This layer is intentionally host-neutral. It does not depend on DOM APIs and can be used for browser, server rendering, terminal UIs, or custom targets.
 
+For idiomatic language-level state API, use `@std/reactive` (`createSignal`, `createMemo`, `createEffect`, `get`, `set`).
+
 ## Reactivity Model
 
 ### `Signal<T>`
@@ -66,6 +68,45 @@ Runtime helpers:
 - `render.update(root, node)` updates tree.
 - `render.unmount(root)` unmounts current tree.
 
+## DOM Target (Phase 2)
+
+Use the built-in DOM renderer:
+
+- `render.create_dom_renderer()` creates a renderer that maps VNodes to DOM.
+- `render.mount_reactive(renderer, container, view)` links signals/memos to DOM updates.
+
+Patch behavior:
+
+- Text nodes update in place.
+- Element props/styles/events are diffed and patched.
+- Children are patched by index with append/remove for length differences.
+- Unchanged signal writes do not trigger re-render.
+
+## Additional Targets (Phase 3)
+
+### SSR Renderer
+
+- `render.create_ssr_renderer()`
+- `render.render_to_string(node)`
+- Supports escaped HTML output for fast server responses.
+- Hydration path:
+  - server: serialize VNode to HTML
+  - client: `render.hydrate(...)` or `render.hydrate_reactive(...)`
+
+### Canvas Renderer
+
+- `render.create_canvas_renderer()`
+- Maps VNode primitives to Canvas 2D drawing commands.
+- Useful for data-heavy or animation-heavy targets.
+- Same reactive component/view logic, different output backend.
+
+### Terminal Renderer (bonus)
+
+- `render.create_terminal_renderer()`
+- `render.render_to_terminal(node)`
+- Produces plain text tree output for CLI UIs and logs.
+- Demonstrates renderer-agnostic component model.
+
 ## Example
 
 ```lumina
@@ -84,6 +125,14 @@ fn main() {
   render.dispose_effect(fx);
 }
 ```
+
+See complete examples in `examples/dom-render/`:
+
+- Counter (signal updates)
+- Todo list (list patching)
+- Async data loader (effect + async)
+- Benchmark harness (`benchmark.html`) vs React/Solid/vanilla
+- SSR/Canvas/Terminal target notes in the benchmark/readme pages
 
 ## Scope
 
