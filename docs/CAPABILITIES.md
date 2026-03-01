@@ -29,7 +29,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Collection method syntax | Stable | `v.push(1)` style lowering to stdlib calls |
 | Macros (MVP) | Beta | `macro_rules!` parsed; `vec![...]` lowers to array literal; unknown macros report diagnostics |
 | `#[derive(...)]` (MVP) | Beta | Supports `Clone`, `Debug`, `Eq` via generated method lowering/runtime helpers |
-| Const generics (syntax MVP) | Beta | Parses `const N: usize` in generic params; full compile-time const evaluation pending |
+| Const generics (MVP) | Beta | Const params, const exprs, semantic checks, HM typing, monomorphization, JS/WASM fixed-array codegen |
 | GADTs (syntax MVP) | Planned | Variant result types parse but emit unsupported diagnostic |
 | Higher-kinded types (syntax MVP) | Planned | `F<_>` parses but emits unsupported diagnostic |
 

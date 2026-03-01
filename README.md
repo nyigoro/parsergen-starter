@@ -53,13 +53,45 @@ pnpm add -D lumina-lang
 
 ## 🚀 Getting Started (Lumina)
 
-Lumina is a full toolchain: multi-file parsing, semantic checks, IR optimization, and codegen.
+Lumina is a full toolchain: parser, semantic checks, HM inference, IR optimization, JS/WASM codegen, and LSP.
+
+Create `hello.lm`:
+
+```lumina
+import { io, str } from "@std";
+
+fn main() -> void {
+  let name = "Lumina";
+  io.println("Hello {name}");
+  io.println(str.concat("2 + 3 = ", str.from_int(2 + 3)));
+}
+```
+
+Compile and run:
+
+```bash
+lumina check hello.lm
+lumina compile hello.lm --target cjs --ast-js --out hello.cjs
+node hello.cjs
+```
+
+For a full walkthrough, read `docs/GETTING_STARTED.md`.
 
 ## 🧪 Tests
 
 ```bash
 npm test
 ```
+
+## 📚 Documentation
+
+- `docs/GETTING_STARTED.md` — installation and first program
+- `docs/USING_LUMINA.md` — CLI + language usage guide
+- `docs/LEARNING_PATH.md` — lesson-based learning track
+- `docs/lessons/` — detailed hands-on tutorials
+- `docs/CAPABILITIES.md` — feature/status matrix
+- `docs/STDLIB.md` — standard library reference
+- `docs/DOCS_MAINTENANCE.md` — how to keep docs current as features land
 
 ## 🧰 CLI
 
