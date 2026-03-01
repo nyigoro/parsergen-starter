@@ -7,7 +7,44 @@ export interface LuminaTypeHole {
   location?: Location;
 }
 
-export type LuminaTypeExpr = LuminaType | LuminaTypeHole;
+export interface LuminaConstLiteral extends LuminaNode {
+  type: 'ConstLiteral';
+  value: number;
+  location?: Location;
+}
+
+export interface LuminaConstBinary extends LuminaNode {
+  type: 'ConstBinary';
+  op: '+' | '-' | '*' | '/';
+  left: LuminaConstExpr;
+  right: LuminaConstExpr;
+  location?: Location;
+}
+
+export interface LuminaConstParam extends LuminaNode {
+  type: 'ConstParam';
+  name: string;
+  location?: Location;
+}
+
+export type LuminaConstExpr = LuminaConstLiteral | LuminaConstBinary | LuminaConstParam;
+
+export interface LuminaArrayType {
+  kind: 'array';
+  element: LuminaTypeExpr;
+  size?: LuminaConstExpr;
+  location?: Location;
+}
+
+export type LuminaTypeExpr = LuminaType | LuminaTypeHole | LuminaArrayType;
+
+export interface LuminaTypeParam {
+  name: string;
+  bound?: LuminaTypeExpr[];
+  isConst?: boolean;
+  constType?: 'usize' | 'i32' | 'i64';
+  higherKindArity?: number;
+}
 
 export interface LuminaNode {
   id?: number;
@@ -70,7 +107,7 @@ export interface LuminaTypeDecl {
   name: string;
   body: LuminaTypeField[];
   visibility?: 'public' | 'private';
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   extern?: boolean;
   externModule?: string;
   location?: Location;
@@ -79,7 +116,7 @@ export interface LuminaTypeDecl {
 export interface LuminaTraitDecl {
   type: 'TraitDecl';
   name: string;
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   superTraits?: LuminaTypeExpr[];
   methods: LuminaTraitMethod[];
   associatedTypes?: LuminaTraitAssocType[];
@@ -92,7 +129,7 @@ export interface LuminaTraitMethod {
   name: string;
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   body?: LuminaBlock | null;
   location?: Location;
 }
@@ -108,7 +145,7 @@ export interface LuminaImplDecl {
   type: 'ImplDecl';
   traitType: LuminaTypeExpr;
   forType: LuminaTypeExpr;
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   methods: LuminaFnDecl[];
   associatedTypes?: LuminaImplAssocType[];
   visibility?: 'public' | 'private';
@@ -128,7 +165,7 @@ export interface LuminaStructDecl {
   body: LuminaTypeField[];
   derives?: string[];
   visibility?: 'public' | 'private';
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   location?: Location;
 }
 
@@ -137,7 +174,7 @@ export interface LuminaEnumDecl {
   name: string;
   variants: LuminaEnumVariant[];
   visibility?: 'public' | 'private';
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   location?: Location;
 }
 
@@ -163,7 +200,7 @@ export interface LuminaFnDecl {
   body: LuminaBlock;
   visibility?: 'public' | 'private';
   extern?: boolean;
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   externModule?: string;
   location?: Location;
 }
@@ -408,7 +445,7 @@ export interface LuminaLambda {
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
   body: LuminaBlock;
-  typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  typeParams?: LuminaTypeParam[];
   location?: Location;
 }
 

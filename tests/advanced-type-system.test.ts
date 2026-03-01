@@ -29,8 +29,9 @@ describe('advanced type system syntax (mvp)', () => {
     if (!fixed || fixed.type !== 'StructDecl') return;
 
     expect(fixed.typeParams?.length).toBe(2);
-    expect((fixed.typeParams?.[1] as { const?: boolean } | undefined)?.const).toBe(true);
-    expect(fixed.body[0]?.typeName).toBe('Array<T,N>');
+    expect(fixed.typeParams?.[1]?.isConst).toBe(true);
+    expect(fixed.typeParams?.[1]?.constType).toBe('usize');
+    expect(typeof fixed.body[0]?.typeName).toBe('object');
 
     const build = ast.body.find((stmt) => stmt.type === 'FnDecl' && stmt.name === 'build');
     expect(build?.type).toBe('FnDecl');
@@ -95,4 +96,3 @@ describe('advanced type system syntax (mvp)', () => {
     expect(sem.diagnostics.some((diag) => diag.code === 'UNSUPPORTED_HKT')).toBe(true);
   });
 });
-

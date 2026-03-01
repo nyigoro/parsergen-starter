@@ -17,6 +17,8 @@ import {
 import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
 import { normalizeTypeForComparison, normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
+import { ConstEvaluator } from './const-eval.js';
+import type { ConstExpr as TypeConstExpr } from './types.js';
 import {
   createStdModuleRegistry,
   getPreludeExports,
@@ -212,11 +214,34 @@ const SELF_TYPE_NAME = 'Self';
 const isTypeHoleExpr = (typeName: LuminaTypeExpr): typeName is LuminaTypeHole =>
   typeof typeName === 'object' && !!typeName && (typeName as LuminaTypeHole).kind === 'TypeHole';
 
+const renderConstExpr = (expr: import('./ast.js').LuminaConstExpr | undefined): string => {
+  if (!expr) return '_';
+  switch (expr.type) {
+    case 'ConstLiteral':
+      return String(expr.value);
+    case 'ConstParam':
+      return expr.name;
+    case 'ConstBinary':
+      return `${renderConstExpr(expr.left)}${expr.op}${renderConstExpr(expr.right)}`;
+    default:
+      return '_';
+  }
+};
+
 const resolveTypeExpr = (typeName: LuminaTypeExpr | null | undefined): LuminaType | null => {
   if (!typeName) return null;
   if (isTypeHoleExpr(typeName)) return 'any';
-  if (typeof typeName === 'string' && typeName === 'unit') return 'void';
-  return typeName;
+  if (typeof typeName === 'object' && (typeName as { kind?: string }).kind === 'array') {
+    const arrayType = typeName as import('./ast.js').LuminaArrayType;
+    const elementType = resolveTypeExpr(arrayType.element) ?? 'any';
+    const sizeExpr = renderConstExpr(arrayType.size);
+    return `Array<${elementType},${sizeExpr}>`;
+  }
+  if (typeof typeName === 'string') {
+    if (typeName === 'unit') return 'void';
+    return typeName;
+  }
+  return 'any';
 };
 
 const defaultLocation: Location = {
@@ -730,6 +755,104 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     }
   };
 
+  const validateConstExpr = (
+    expr: import('./ast.js').LuminaConstExpr,
+    availableParams: Set<string>,
+    location?: Location
+  ): void => {
+    switch (expr.type) {
+      case 'ConstLiteral':
+        return;
+      case 'ConstParam':
+        if (!availableParams.has(expr.name)) {
+          diagnostics.push(
+            diagAt(
+              `Const parameter '${expr.name}' is not declared in type parameters`,
+              expr.location ?? location,
+              'error',
+              'CONST-UNBOUND-PARAM'
+            )
+          );
+        }
+        return;
+      case 'ConstBinary':
+        validateConstExpr(expr.left, availableParams, location);
+        validateConstExpr(expr.right, availableParams, location);
+        return;
+      default:
+        return;
+    }
+  };
+
+  const validateConstExprInType = (
+    typeExpr: LuminaTypeExpr | null | undefined,
+    availableConstParams: Set<string>,
+    location?: Location
+  ): void => {
+    if (!typeExpr || typeof typeExpr === 'string' || isTypeHoleExpr(typeExpr)) return;
+    if ((typeExpr as { kind?: string }).kind === 'array') {
+      const arrayType = typeExpr as import('./ast.js').LuminaArrayType;
+      if (arrayType.size) {
+        validateConstExpr(arrayType.size, availableConstParams, location ?? arrayType.location);
+      }
+      validateConstExprInType(arrayType.element, availableConstParams, location ?? arrayType.location);
+    }
+  };
+
+  const validateConstGenericDecl = (
+    typeParams: Array<{ name: string; bound?: LuminaType[]; isConst?: boolean; constType?: string }> | undefined,
+    location?: Location
+  ): void => {
+    if (!typeParams || typeParams.length === 0) return;
+    const validConstTypes = new Set(['usize', 'i32', 'i64']);
+
+    let seenConst = false;
+    const names = new Set<string>();
+
+    for (const param of typeParams) {
+      if (names.has(param.name)) {
+        diagnostics.push(
+          diagAt(`Duplicate type/const parameter: ${param.name}`, location, 'error', 'CONST-DUPLICATE')
+        );
+      }
+      names.add(param.name);
+
+      if (param.isConst) {
+        seenConst = true;
+        if (!param.constType) {
+          diagnostics.push(
+            diagAt(
+              `Const parameter '${param.name}' must have explicit type (usize, i32, or i64)`,
+              location,
+              'error',
+              'CONST-NO-TYPE'
+            )
+          );
+          continue;
+        }
+        if (!validConstTypes.has(param.constType)) {
+          diagnostics.push(
+            diagAt(
+              `Const parameter type must be usize, i32, or i64. Got: ${param.constType}`,
+              location,
+              'error',
+              'CONST-INVALID-TYPE'
+            )
+          );
+        }
+      } else if (seenConst) {
+        diagnostics.push(
+          diagAt(
+            `Type parameter '${param.name}' should come before const parameters`,
+            location,
+            'warning',
+            'CONST-ORDER'
+          )
+        );
+      }
+    }
+  };
+
   for (const stmt of program.body) {
     switch (stmt.type) {
       case 'FnDecl':
@@ -744,18 +867,42 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
         break;
     }
 
-    if (stmt.type !== 'EnumDecl') continue;
-    for (const variant of stmt.variants ?? []) {
-      if (!variant.resultType) continue;
-      diagnostics.push(
-        diagAt(
-          `GADT variant result type on '${stmt.name}.${variant.name}' is parsed but not type-checked yet`,
-          variant.location ?? stmt.location,
-          'error',
-          'UNSUPPORTED_GADT'
-        )
+    if (stmt.type === 'StructDecl' || stmt.type === 'EnumDecl') {
+      const declTypeParams = stmt.typeParams as Array<{
+        name: string;
+        bound?: LuminaType[];
+        isConst?: boolean;
+        constType?: string;
+      }> | undefined;
+      validateConstGenericDecl(declTypeParams, stmt.location);
+      const availableConstParams = new Set(
+        (declTypeParams ?? []).filter((param) => param.isConst).map((param) => param.name)
       );
+      if (stmt.type === 'StructDecl') {
+        for (const field of stmt.body ?? []) {
+          validateConstExprInType(field.typeName, availableConstParams, field.location ?? stmt.location);
+        }
+      } else {
+        for (const variant of stmt.variants ?? []) {
+          for (const paramType of variant.params ?? []) {
+            validateConstExprInType(paramType, availableConstParams, variant.location ?? stmt.location);
+          }
+          if (variant.resultType) {
+            diagnostics.push(
+              diagAt(
+                `GADT variant result type on '${stmt.name}.${variant.name}' is parsed but not type-checked yet`,
+                variant.location ?? stmt.location,
+                'error',
+                'UNSUPPORTED_GADT'
+              )
+            );
+            validateConstExprInType(variant.resultType, availableConstParams, variant.location ?? stmt.location);
+          }
+        }
+      }
+      continue;
     }
+
   }
 }
 
@@ -3295,8 +3442,26 @@ function typeCheckExpr(
   if (expr.type === 'Number') return inferNumberType(expr);
   if (expr.type === 'Boolean') return 'bool';
   if (expr.type === 'ArrayLiteral') {
+    const expectedParsed = expectedType ? parseTypeName(expectedType) : null;
+    const expectsFixedArray = expectedParsed?.base === 'Array' && expectedParsed.args.length >= 2;
+    const expectedElementType = expectsFixedArray ? expectedParsed.args[0] : null;
+    const expectedSizeExpr = expectsFixedArray ? expectedParsed.args[1] : null;
+
     if (expr.elements.length === 0) {
-      const expectedParsed = expectedType ? parseTypeName(expectedType) : null;
+      if (expectsFixedArray && expectedElementType && expectedSizeExpr) {
+        const expectedSize = evaluateConstExprText(expectedSizeExpr, new Map());
+        if (expectedSize !== null && expectedSize !== 0) {
+          diagnostics.push(
+            diagAt(
+              `Array literal has wrong size. Expected ${expectedSize} elements, got 0`,
+              expr.location,
+              'error',
+              'ARRAY-SIZE-MISMATCH'
+            )
+          );
+        }
+        return `Array<${expectedElementType},0>`;
+      }
       if (expectedParsed && expectedParsed.base === 'Vec' && expectedParsed.args.length === 1) {
         return expectedType as LuminaType;
       }
@@ -3321,7 +3486,7 @@ function typeCheckExpr(
       );
       if (elementType) elementTypes.push(elementType);
     }
-    if (elementTypes.length === 0) return 'Vec<any>';
+    if (elementTypes.length === 0) return expectsFixedArray && expectedElementType ? `Array<${expectedElementType},0>` : 'Vec<any>';
     let unified = elementTypes[0];
     for (let i = 1; i < elementTypes.length; i += 1) {
       const current = elementTypes[i];
@@ -3340,18 +3505,52 @@ function typeCheckExpr(
         !isTypeAssignable(current, unified, symbols, options?.typeParams) &&
         !isTypeAssignable(unified, current, symbols, options?.typeParams)
       ) {
-        diagnostics.push(
-          diagAt(
-            `Array elements must have compatible types. Expected '${formatTypeForDiagnostic(unified)}', found '${formatTypeForDiagnostic(current)}'`,
-            expr.elements[i]?.location ?? expr.location,
-            'error',
-            'ARRAY-TYPE-MISMATCH'
-          )
-        );
+        if (expectsFixedArray) {
+          diagnostics.push(
+            diagAt(`Array element type mismatch`, expr.elements[i]?.location ?? expr.location, 'error', 'ARRAY-ELEM-TYPE')
+          );
+        } else {
+          diagnostics.push(
+            diagAt(
+              `Array elements must have compatible types. Expected '${formatTypeForDiagnostic(unified)}', found '${formatTypeForDiagnostic(current)}'`,
+              expr.elements[i]?.location ?? expr.location,
+              'error',
+              'ARRAY-TYPE-MISMATCH'
+            )
+          );
+        }
         unified = 'any';
       }
     }
     const finalElement = isErrorTypeName(unified) ? 'any' : unified;
+    if (expectsFixedArray && expectedElementType && expectedSizeExpr) {
+      const expectedSize = evaluateConstExprText(expectedSizeExpr, new Map());
+      const actualSize = expr.elements.length;
+      if (expectedSize !== null && expectedSize !== actualSize) {
+        diagnostics.push(
+          diagAt(
+            `Array literal has wrong size. Expected ${expectedSize} elements, got ${actualSize}`,
+            expr.location,
+            'error',
+            'ARRAY-SIZE-MISMATCH'
+          )
+        );
+      }
+      const parsedExpectedElem = parseTypeName(expectedElementType);
+      const expectedElemIsUnresolvedTypeParam =
+        !!parsedExpectedElem &&
+        parsedExpectedElem.args.length === 0 &&
+        isValidTypeParam(parsedExpectedElem.base) &&
+        !symbols.has(parsedExpectedElem.base) &&
+        !(options?.typeParams?.has(parsedExpectedElem.base) ?? false);
+      if (
+        !expectedElemIsUnresolvedTypeParam &&
+        !isTypeAssignable(finalElement, expectedElementType, symbols, options?.typeParams)
+      ) {
+        diagnostics.push(diagAt(`Array element type mismatch`, expr.location, 'error', 'ARRAY-ELEM-TYPE'));
+      }
+      return `Array<${expectedElementType},${actualSize}>`;
+    }
     return `Vec<${finalElement}>`;
   }
   if (expr.type === 'ArrayRepeatLiteral') {
@@ -4893,11 +5092,23 @@ function typeCheckExpr(
         diagnostics.push(diagAt(`Unknown field '${field.name}' on '${expr.name}'`, field.location ?? expr.location));
         continue;
       }
-      const actual = typeCheckExpr(field.value, symbols, diagnostics, scope, options, expected, resolving, pendingDeps, currentFunction, di);
+      const resolvedForField = substituteConstParamsInType(substituteTypeParams(expected, mapping), mapping);
+      const actual = typeCheckExpr(
+        field.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        resolvedForField,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di
+      );
       if (actual) {
         unifyTypes(expected, actual, mapping);
       }
-      const resolvedExpected = substituteTypeParams(expected, mapping);
+      const resolvedExpected = substituteConstParamsInType(substituteTypeParams(expected, mapping), mapping);
       if (actual && !isTypeAssignable(actual, resolvedExpected, symbols, options?.typeParams)) {
         diagnostics.push(
           diagAt(
@@ -6205,6 +6416,11 @@ function isKnownType(
   if (typeParams.has(typeName)) return true;
   const parsed = parseTypeName(typeName);
   if (!parsed) return false;
+  if (parsed.base === 'Array') {
+    if (parsed.args.length !== 2) return false;
+    if (!isKnownType(parsed.args[0], symbols, typeParams, traitNames, allowTraits)) return false;
+    return isKnownConstTypeArg(parsed.args[1], typeParams);
+  }
   const assoc = parseAssociatedType(parsed.base);
   if (assoc && typeParams.has(assoc.owner)) return true;
   if (allowTraits && traitNames?.has(parsed.base)) {
@@ -6233,9 +6449,29 @@ function isKnownType(
     }
   }
   for (const arg of parsed.args) {
-    if (!isKnownType(arg, symbols, typeParams, traitNames, allowTraits)) return false;
+    if (isKnownType(arg, symbols, typeParams, traitNames, allowTraits)) continue;
+    if (isKnownConstTypeArg(arg, typeParams)) continue;
+    return false;
   }
   return true;
+}
+
+function isKnownConstTypeArg(arg: string, typeParams: Set<string>): boolean {
+  const expr = parseConstExprText(arg);
+  if (!expr) return false;
+  const visit = (node: TypeConstExpr): boolean => {
+    switch (node.kind) {
+      case 'const-literal':
+        return true;
+      case 'const-param':
+        return typeParams.has(node.name);
+      case 'const-binary':
+        return visit(node.left) && visit(node.right);
+      default:
+        return false;
+    }
+  };
+  return visit(expr);
 }
 
 function parseAssociatedType(base: string): { owner: string; name: string } | null {
@@ -6463,6 +6699,70 @@ function isTypeAssignable(
   return true;
 }
 
+function parseConstExprText(text: string): TypeConstExpr | null {
+  const tokens = text.match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+  if (!tokens || tokens.length === 0) return null;
+  let index = 0;
+
+  const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
+  const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
+
+  const parsePrimary = (): TypeConstExpr | null => {
+    const token = consume();
+    if (!token) return null;
+    if (/^\d+$/.test(token)) return { kind: 'const-literal', value: Number(token) };
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return { kind: 'const-param', name: token };
+    if (token === '(') {
+      const expr = parseAddSub();
+      if (peek() !== ')') return null;
+      consume();
+      return expr;
+    }
+    return null;
+  };
+
+  const parseMulDiv = (): TypeConstExpr | null => {
+    let left = parsePrimary();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '*' && op !== '/') break;
+      consume();
+      const right = parsePrimary();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseAddSub = (): TypeConstExpr | null => {
+    let left = parseMulDiv();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '+' && op !== '-') break;
+      consume();
+      const right = parseMulDiv();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parsed = parseAddSub();
+  if (!parsed) return null;
+  if (index !== tokens.length) return null;
+  return parsed;
+}
+
+function evaluateConstExprText(text: string, bindings: Map<string, number>): number | null {
+  const expr = parseConstExprText(text);
+  if (!expr) return null;
+  const evaluator = new ConstEvaluator();
+  for (const [name, value] of bindings.entries()) evaluator.bind(name, value);
+  return evaluator.evaluate(expr);
+}
+
 function unifyTypes(paramType: LuminaType, argType: LuminaType, mapping: Map<string, LuminaType>) {
   const paramNorm = normalizeTypeForComparison(paramType);
   const argNorm = normalizeTypeForComparison(argType);
@@ -6492,6 +6792,29 @@ function substituteTypeParams(typeName: LuminaType, mapping: Map<string, LuminaT
   if (parsed.args.length === 0) return parsed.base;
   const args = parsed.args.map((arg) => substituteTypeParams(arg, mapping));
   return `${parsed.base}<${args.join(',')}>`;
+}
+
+function extractNumericConstBindings(mapping: Map<string, LuminaType>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [key, value] of mapping.entries()) {
+    const text = String(value).trim();
+    if (/^-?\d+$/.test(text)) out.set(key, Number(text));
+  }
+  return out;
+}
+
+function substituteConstParamsInType(typeName: LuminaType, mapping: Map<string, LuminaType>): LuminaType {
+  const parsed = parseTypeName(typeName);
+  if (!parsed) return typeName;
+  if (parsed.args.length === 0) return parsed.base;
+
+  const substitutedArgs = parsed.args.map((arg) => substituteTypeParams(arg, mapping));
+  if (parsed.base === 'Array' && substitutedArgs.length >= 2) {
+    const numericBindings = extractNumericConstBindings(mapping);
+    const evaluated = evaluateConstExprText(substitutedArgs[1], numericBindings);
+    if (evaluated !== null) substitutedArgs[1] = String(evaluated);
+  }
+  return `${parsed.base}<${substitutedArgs.join(',')}>`;
 }
 
 type CfgNode = { id: number; label: string };

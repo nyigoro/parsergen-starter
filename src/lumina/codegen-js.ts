@@ -8,6 +8,10 @@ import {
   type LuminaTraitDecl,
   type LuminaTraitMethod,
   type LuminaBlock,
+  type LuminaStructDecl,
+  type LuminaTypeExpr,
+  type LuminaConstExpr,
+  type LuminaArrayType,
 } from './ast.js';
 import { SourceMapGenerator, type RawSourceMap } from 'source-map';
 import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
@@ -22,6 +26,34 @@ const isIntegerTypeName = (typeName: string): boolean =>
   typeName === 'int' || typeName.startsWith('i') || typeName.startsWith('u');
 
 const isFloatTypeName = (typeName: string): boolean => typeName === 'f32' || typeName === 'f64' || typeName === 'float';
+
+const splitTypeArgs = (input: string): string[] => {
+  const result: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of input) {
+    if (ch === '<') depth += 1;
+    if (ch === '>') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      result.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) result.push(current.trim());
+  return result;
+};
+
+const parseTypeName = (typeName: string): { base: string; args: string[] } | null => {
+  const trimmed = typeName.trim();
+  const idx = trimmed.indexOf('<');
+  if (idx === -1) return { base: trimmed, args: [] };
+  if (!trimmed.endsWith('>')) return null;
+  const base = trimmed.slice(0, idx);
+  const inner = trimmed.slice(idx + 1, -1);
+  return { base, args: splitTypeArgs(inner) };
+};
 
 export interface CodegenJsOptions {
   target?: 'esm' | 'cjs';
@@ -76,11 +108,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -132,8 +164,14 @@ class JSGenerator {
         'function __lumina_slice(str, start, end, inclusive) { const actualStart = start ?? 0; const actualEnd = end ?? str.length; const finalEnd = inclusive ? actualEnd + 1 : actualEnd; if (actualStart < 0 || actualStart > str.length) { throw new Error(`String slice start index ${actualStart} out of bounds`); } if (finalEnd < 0 || finalEnd > str.length) { throw new Error(`String slice end index ${finalEnd} out of bounds`); } return str.substring(actualStart, finalEnd); }'
       );
       this.builder.append('\n');
+      this.builder.append('function __lumina_fixed_array(size, initializer) { const arr = new Array(Math.max(0, Math.trunc(size))); if (typeof initializer === "function") { for (let i = 0; i < arr.length; i++) arr[i] = initializer(i); } return arr; }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_array_bounds_check(array, index, expectedSize) { const idx = Math.trunc(Number(index)); if (expectedSize !== undefined && array.length !== expectedSize) { throw new Error(`Array size mismatch: expected ${expectedSize}, got ${array.length}`); } if (idx < 0 || idx >= array.length) { throw new Error(`Array index out of bounds: ${idx} (array length: ${array.length})`); } }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_array_literal(elements, expectedSize) { if (expectedSize !== undefined && elements.length !== expectedSize) { throw new Error(`Array literal has wrong size: expected ${expectedSize}, got ${elements.length}`); } return elements; }');
+      this.builder.append('\n');
       this.builder.append(
-        'function __lumina_index(target, index) { if (typeof target === "string" && index && typeof index === "object" && "start" in index) { const start = index.start == null ? 0 : Math.max(0, index.start); const endBase = index.end == null ? target.length : Math.max(0, index.end); return __lumina_slice(target, start, endBase, index.inclusive); } return target ? target[index] : undefined; }'
+        'function __lumina_index(target, index, expectedSize) { if (typeof target === "string" && index && typeof index === "object" && "start" in index) { const start = index.start == null ? 0 : Math.max(0, index.start); const endBase = index.end == null ? target.length : Math.max(0, index.end); return __lumina_slice(target, start, endBase, index.inclusive); } if (Array.isArray(target)) { __lumina_array_bounds_check(target, index, expectedSize); return target[Math.trunc(Number(index))]; } return target ? target[index] : undefined; }'
       );
       this.builder.append('\n');
       this.builder.append('function __lumina_clone(value) { if (value == null || typeof value !== "object") return value; if (Array.isArray(value)) return value.map((entry) => __lumina_clone(entry)); return { ...value }; }');
@@ -159,18 +197,18 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
+          'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
         );
       } else {
         this.builder.append(
-          'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
+          'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
         );
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
+        this.builder.append('module.exports = { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
       } else {
-        this.builder.append('export { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
+        this.builder.append('export { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
       }
     }
     this.builder.append('\n');
@@ -376,10 +414,13 @@ class JSGenerator {
         this.emitImplDecl(stmt);
         return;
       }
+      case 'StructDecl': {
+        this.emitStructDecl(stmt);
+        return;
+      }
       case 'TypeDecl':
       case 'MacroRulesDecl':
       case 'TraitDecl':
-      case 'StructDecl':
       case 'EnumDecl':
       case 'Import':
       case 'ErrorNode':
@@ -456,6 +497,140 @@ class JSGenerator {
         }
       }
     }
+  }
+
+  private emitStructDecl(stmt: LuminaStructDecl): void {
+    const pad = this.pad();
+    const fieldNames = stmt.body.map((field) => field.name);
+    this.builder.append(
+      `${pad}class ${stmt.name} {`,
+      stmt.type,
+      stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+    );
+    this.builder.append('\n');
+    this.indentLevel++;
+    this.builder.append(`${this.pad()}constructor(${fieldNames.join(', ')}) {\n`);
+    this.indentLevel++;
+    for (const field of stmt.body) {
+      const fixedSize = this.getFixedArraySize(field.typeName);
+      if (fixedSize !== null) {
+        this.builder.append(
+          `${this.pad()}if (!Array.isArray(${field.name}) || ${field.name}.length !== ${fixedSize}) {\n`
+        );
+        this.indentLevel++;
+        this.builder.append(
+          `${this.pad()}throw new Error(${JSON.stringify(
+            `Array field "${field.name}" must have exactly ${fixedSize} elements`
+          )} + ", got " + (${field.name}?.length ?? "unknown"));\n`
+        );
+        this.indentLevel--;
+        this.builder.append(`${this.pad()}}\n`);
+      }
+      this.builder.append(`${this.pad()}this.${field.name} = ${field.name};\n`);
+    }
+    this.indentLevel--;
+    this.builder.append(`${this.pad()}}\n`);
+    this.indentLevel--;
+    this.builder.append(`${pad}}\n`);
+  }
+
+  private getFixedArraySize(typeExpr: LuminaTypeExpr | null | undefined): number | null {
+    if (!typeExpr) return null;
+    if (typeof typeExpr === 'string') {
+      const parsed = parseTypeName(typeExpr);
+      if (!parsed || parsed.base !== 'Array' || parsed.args.length < 2) return null;
+      return this.evaluateConstSizeText(parsed.args[1]);
+    }
+    if ((typeExpr as LuminaArrayType).kind === 'array') {
+      const arrayExpr = typeExpr as LuminaArrayType;
+      if (!arrayExpr.size) return null;
+      return this.evaluateConstSize(arrayExpr.size);
+    }
+    return null;
+  }
+
+  private evaluateConstSize(expr: LuminaConstExpr): number | null {
+    switch (expr.type) {
+      case 'ConstLiteral':
+        return expr.value;
+      case 'ConstBinary': {
+        const left = this.evaluateConstSize(expr.left);
+        const right = this.evaluateConstSize(expr.right);
+        if (left === null || right === null) return null;
+        switch (expr.op) {
+          case '+':
+            return left + right;
+          case '-':
+            return left - right;
+          case '*':
+            return left * right;
+          case '/':
+            return right === 0 ? null : Math.floor(left / right);
+          default:
+            return null;
+        }
+      }
+      case 'ConstParam':
+      default:
+        return null;
+    }
+  }
+
+  private evaluateConstSizeText(text: string): number | null {
+    const trimmed = text.trim();
+    if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+    const tokens = trimmed.match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+    if (!tokens || tokens.length === 0) return null;
+    if (tokens.some((token) => /^[A-Za-z_]/.test(token))) return null;
+    let index = 0;
+    const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
+    const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
+    const parsePrimary = (): number | null => {
+      const token = consume();
+      if (!token) return null;
+      if (/^-?\d+$/.test(token)) return Number(token);
+      if (token === '(') {
+        const inner = parseAddSub();
+        if (peek() !== ')') return null;
+        consume();
+        return inner;
+      }
+      return null;
+    };
+    const parseMulDiv = (): number | null => {
+      let left = parsePrimary();
+      if (left === null) return null;
+      while (true) {
+        const op = peek();
+        if (op !== '*' && op !== '/') break;
+        consume();
+        const right = parsePrimary();
+        if (right === null) return null;
+        if (op === '*') left *= right;
+        else {
+          if (right === 0) return null;
+          left = Math.floor(left / right);
+        }
+      }
+      return left;
+    };
+    const parseAddSub = (): number | null => {
+      let left = parseMulDiv();
+      if (left === null) return null;
+      while (true) {
+        const op = peek();
+        if (op !== '+' && op !== '-') break;
+        consume();
+        const right = parseMulDiv();
+        if (right === null) return null;
+        if (op === '+') left += right;
+        else left -= right;
+      }
+      return left;
+    };
+    const value = parseAddSub();
+    if (value === null || index !== tokens.length) return null;
+    return Math.trunc(value);
   }
 
   private emitDefaultTraitMethod(

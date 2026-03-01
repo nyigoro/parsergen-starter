@@ -26,6 +26,8 @@ import {
   type ModuleRegistry,
 } from './module-registry.js';
 import { type LuminaTypeExpr, type LuminaTypeHole } from './ast.js';
+import { ConstEvaluator } from './const-eval.js';
+import type { ConstExpr as TypeConstExpr } from './types.js';
 
 export interface InferResult {
   type?: Type;
@@ -136,6 +138,82 @@ function isLossyNumericCast(from: PrimitiveName, to: PrimitiveName): boolean {
     }
   }
   return false;
+}
+
+function parseConstExprText(text: string): TypeConstExpr | null {
+  const tokens = text.match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+  if (!tokens || tokens.length === 0) return null;
+  let index = 0;
+  const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
+  const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
+
+  const parsePrimary = (): TypeConstExpr | null => {
+    const token = consume();
+    if (!token) return null;
+    if (/^\d+$/.test(token)) return { kind: 'const-literal', value: Number(token) };
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return { kind: 'const-param', name: token };
+    if (token === '(') {
+      const inner = parseAddSub();
+      if (peek() !== ')') return null;
+      consume();
+      return inner;
+    }
+    return null;
+  };
+
+  const parseMulDiv = (): TypeConstExpr | null => {
+    let left = parsePrimary();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '*' && op !== '/') break;
+      consume();
+      const right = parsePrimary();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseAddSub = (): TypeConstExpr | null => {
+    let left = parseMulDiv();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '+' && op !== '-') break;
+      consume();
+      const right = parseMulDiv();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parsed = parseAddSub();
+  if (!parsed || index !== tokens.length) return null;
+  return parsed;
+}
+
+function evaluateConstExprText(text: string): number | null {
+  const expr = parseConstExprText(text);
+  if (!expr) return null;
+  const evaluator = new ConstEvaluator();
+  return evaluator.evaluate(expr);
+}
+
+function extractExpectedArrayInfo(expectedType: Type | undefined, subst: Subst): { elem: Type; sizeText: string } | null {
+  if (!expectedType) return null;
+  const pruned = prune(expectedType, subst);
+  if (pruned.kind !== 'adt' || pruned.name !== 'Array' || pruned.params.length < 2) return null;
+  const elem = pruned.params[0];
+  const sizeType = prune(pruned.params[1], subst);
+  if (sizeType.kind === 'adt' && sizeType.params.length === 0) {
+    return { elem, sizeText: sizeType.name };
+  }
+  if (sizeType.kind === 'primitive') {
+    return { elem, sizeText: sizeType.name };
+  }
+  return { elem, sizeText: 'unknown' };
 }
 
 type LooseLocation =
@@ -398,7 +476,9 @@ function inferFunctionBody(
       fnEnv.extend(param.name, { kind: 'scheme', variables: [], type: t });
     }
   });
-  for (const bodyStmt of stmt.body.body) {
+  for (let index = 0; index < stmt.body.body.length; index += 1) {
+    const bodyStmt = stmt.body.body[index];
+    const isTailExpr = index === stmt.body.body.length - 1 && bodyStmt.type === 'ExprStmt';
     inferStatement(
       bodyStmt,
       fnEnv,
@@ -414,7 +494,7 @@ function inferFunctionBody(
       holeInfoByVar,
       moduleBindings,
       inferredCalls,
-      undefined,
+      isTailExpr ? signature.returnType : undefined,
       isAsync
     );
   }
@@ -461,7 +541,9 @@ function inferStatement(
         }
       });
       const { paramTypes, returnType, typeParamIds } = signature;
-      for (const bodyStmt of stmt.body.body) {
+      for (let index = 0; index < stmt.body.body.length; index += 1) {
+        const bodyStmt = stmt.body.body[index];
+        const isTailExpr = index === stmt.body.body.length - 1 && bodyStmt.type === 'ExprStmt';
         inferStatement(
           bodyStmt,
           fnEnv,
@@ -477,7 +559,7 @@ function inferStatement(
           holeInfoByVar,
           moduleBindings,
           inferredCalls,
-          undefined,
+          isTailExpr ? returnType : undefined,
           isAsync
         );
       }
@@ -1059,10 +1141,12 @@ function inferExpr(
       return recordExprType(expr, inferNumberLiteralType(expr), subst);
     case 'ArrayLiteral': {
       const expectedPruned = expectedType ? prune(expectedType, subst) : null;
-      const expectedElem =
+      const expectedVecElem =
         expectedPruned && expectedPruned.kind === 'adt' && expectedPruned.name === 'Vec' && expectedPruned.params.length === 1
           ? expectedPruned.params[0]
           : null;
+      const expectedArrayInfo = extractExpectedArrayInfo(expectedType, subst);
+      const expectedElem = expectedArrayInfo?.elem ?? expectedVecElem;
       let elemType: Type | null = expectedElem;
       for (const element of expr.elements) {
         const inferredElement = inferChild(element, elemType ?? undefined);
@@ -1077,6 +1161,33 @@ function inferExpr(
         });
       }
       const finalElemType = elemType ?? freshTypeVar();
+      if (expectedArrayInfo) {
+        const expectedSize = evaluateConstExprText(expectedArrayInfo.sizeText);
+        const actualSize = expr.elements.length;
+        if (expectedSize !== null && expectedSize !== actualSize) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'CONST-SIZE-MISMATCH',
+            message: `Array size mismatch: expected ${expectedSize}, got ${actualSize}`,
+            source: 'lumina',
+            location: diagLocation(expr.location),
+          });
+        }
+        const sizeName = expectedArrayInfo.sizeText;
+        const arrayType: Type = {
+          kind: 'adt',
+          name: 'Array',
+          params: [finalElemType, { kind: 'adt', name: sizeName, params: [] }],
+        };
+        if (expectedType) {
+          tryUnify(arrayType, expectedType, subst, diagnostics, {
+            location: expr.location,
+            note: 'Array literal must match expected array type',
+          });
+        }
+        return recordExprType(expr, arrayType, subst);
+      }
+
       const vecType: Type = { kind: 'adt', name: 'Vec', params: [finalElemType] };
       if (expectedType) {
         tryUnify(vecType, expectedType, subst, diagnostics, {
@@ -1088,16 +1199,46 @@ function inferExpr(
     }
     case 'ArrayRepeatLiteral': {
       const expectedPruned = expectedType ? prune(expectedType, subst) : null;
-      const expectedElem =
+      const expectedVecElem =
         expectedPruned && expectedPruned.kind === 'adt' && expectedPruned.name === 'Vec' && expectedPruned.params.length === 1
           ? expectedPruned.params[0]
           : null;
+      const expectedArrayInfo = extractExpectedArrayInfo(expectedType, subst);
+      const expectedElem = expectedArrayInfo?.elem ?? expectedVecElem;
       const valueType = inferChild(expr.value, expectedElem ?? undefined) ?? expectedElem ?? freshTypeVar();
       const countType = inferChild(expr.count, { kind: 'primitive', name: 'i32' }) ?? freshTypeVar();
       tryUnify(countType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
         location: expr.count.location,
         note: 'Array repeat count must be i32',
       });
+      if (expectedArrayInfo && expr.count.type === 'Number') {
+        const expectedSize = evaluateConstExprText(expectedArrayInfo.sizeText);
+        const actualSize = Math.trunc(expr.count.value);
+        if (expectedSize !== null && expectedSize !== actualSize) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'CONST-SIZE-MISMATCH',
+            message: `Array size mismatch: expected ${expectedSize}, got ${actualSize}`,
+            source: 'lumina',
+            location: diagLocation(expr.location),
+          });
+        }
+      }
+      if (expectedArrayInfo) {
+        const countName = expectedArrayInfo.sizeText;
+        const arrayType: Type = {
+          kind: 'adt',
+          name: 'Array',
+          params: [valueType, { kind: 'adt', name: countName, params: [] }],
+        };
+        if (expectedType) {
+          tryUnify(arrayType, expectedType, subst, diagnostics, {
+            location: expr.location,
+            note: 'Array repeat literal must match expected array type',
+          });
+        }
+        return recordExprType(expr, arrayType, subst);
+      }
       const vecType: Type = { kind: 'adt', name: 'Vec', params: [valueType] };
       if (expectedType) {
         tryUnify(vecType, expectedType, subst, diagnostics, {
@@ -2715,6 +2856,48 @@ function isTypeHoleExpr(typeName: LuminaTypeExpr): typeName is LuminaTypeHole {
   return typeof typeName === 'object' && !!typeName && (typeName as LuminaTypeHole).kind === 'TypeHole';
 }
 
+function renderConstExpr(expr: import('./ast.js').LuminaConstExpr | undefined): string {
+  if (!expr) return '_';
+  switch (expr.type) {
+    case 'ConstLiteral':
+      return String(expr.value);
+    case 'ConstParam':
+      return expr.name;
+    case 'ConstBinary':
+      return `${renderConstExpr(expr.left)}${expr.op}${renderConstExpr(expr.right)}`;
+    default:
+      return '_';
+  }
+}
+
+function constTypeToText(type: Type): string | null {
+  const t = prune(type, new Map());
+  if (t.kind === 'adt' && t.params.length === 0) return t.name;
+  if (t.kind === 'primitive') return t.name;
+  return null;
+}
+
+function renderConstExprWithTypeParams(
+  expr: import('./ast.js').LuminaConstExpr | undefined,
+  typeParams: Map<string, Type>
+): string {
+  if (!expr) return '_';
+  switch (expr.type) {
+    case 'ConstLiteral':
+      return String(expr.value);
+    case 'ConstParam': {
+      const bound = typeParams.get(expr.name);
+      if (!bound) return expr.name;
+      const text = constTypeToText(bound);
+      return text ?? expr.name;
+    }
+    case 'ConstBinary':
+      return `${renderConstExprWithTypeParams(expr.left, typeParams)}${expr.op}${renderConstExprWithTypeParams(expr.right, typeParams)}`;
+    default:
+      return '_';
+  }
+}
+
 function parseTypeName(
   typeName: LuminaTypeExpr,
   holeInfoByVar?: Map<number, HoleInfo>,
@@ -2730,6 +2913,12 @@ function parseTypeName(
     return variable;
   }
   if (typeof typeName !== 'string') {
+    if ((typeName as { kind?: string }).kind === 'array') {
+      const arr = typeName as import('./ast.js').LuminaArrayType;
+      const elemType = parseTypeName(arr.element, holeInfoByVar, holeInfo, defaultLocation);
+      const sizeText = renderConstExpr(arr.size);
+      return { kind: 'adt', name: 'Array', params: [elemType, { kind: 'adt', name: sizeText, params: [] }] };
+    }
     return { kind: 'primitive', name: 'any' };
   }
   if (typeName === 'unit') {
@@ -3339,6 +3528,12 @@ function parseTypeNameWithEnv(
     return variable;
   }
   if (typeof typeName !== 'string') {
+    if ((typeName as { kind?: string }).kind === 'array') {
+      const arr = typeName as import('./ast.js').LuminaArrayType;
+      const elemType = parseTypeNameWithEnv(arr.element, typeParams, holeInfoByVar, holeInfo, defaultLocation);
+      const sizeText = renderConstExprWithTypeParams(arr.size, typeParams);
+      return { kind: 'adt', name: 'Array', params: [elemType, { kind: 'adt', name: sizeText, params: [] }] };
+    }
     return { kind: 'primitive', name: 'any' };
   }
   const baseIdx = typeName.indexOf('<');

@@ -1,4 +1,5 @@
 import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRPhi, type IRReturn, type IRExprStmt, type IRBinary, type IRCast, type IRNumber, type IRString, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr, type IRStructLiteral } from './ir.js';
+import type { LuminaProgram, LuminaStatement, LuminaBlock, LuminaIf, LuminaExpr } from './ast.js';
 
 export function optimizeIR(node: IRNode): IRNode | null {
   const constants = new Map<string, IRNode>();
@@ -950,4 +951,49 @@ function removeUnusedFunctions(program: IRProgram): IRProgram {
   });
 
   return { ...program, body };
+}
+
+const isBoundsCheckCondition = (expr: LuminaExpr): boolean => {
+  if (expr.type !== 'Binary') return false;
+  if (expr.op !== '<' && expr.op !== '<=') return false;
+  if (expr.right.type !== 'Member') return false;
+  return expr.right.property === 'length';
+};
+
+const optimizeBlockForArrays = (block: LuminaBlock): LuminaBlock => {
+  const optimizedBody: LuminaStatement[] = [];
+  for (const stmt of block.body) {
+    if (stmt.type === 'If') {
+      const ifStmt = stmt as LuminaIf;
+      if (isBoundsCheckCondition(ifStmt.condition)) {
+        optimizedBody.push(...ifStmt.thenBlock.body);
+        continue;
+      }
+      optimizedBody.push({
+        ...ifStmt,
+        thenBlock: optimizeBlockForArrays(ifStmt.thenBlock),
+        elseBlock: ifStmt.elseBlock ? optimizeBlockForArrays(ifStmt.elseBlock) : ifStmt.elseBlock,
+      });
+      continue;
+    }
+    if (stmt.type === 'Block') {
+      optimizedBody.push(optimizeBlockForArrays(stmt));
+      continue;
+    }
+    optimizedBody.push(stmt);
+  }
+  return { ...block, body: optimizedBody };
+};
+
+export function optimizeConstArrayAccess(program: LuminaProgram): LuminaProgram {
+  return {
+    ...program,
+    body: program.body.map((stmt) => {
+      if (stmt.type !== 'FnDecl') return stmt;
+      return {
+        ...stmt,
+        body: optimizeBlockForArrays(stmt.body),
+      };
+    }),
+  };
 }

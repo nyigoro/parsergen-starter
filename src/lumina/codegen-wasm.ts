@@ -1,5 +1,14 @@
 import { type Diagnostic } from '../parser/index.js';
-import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaFnDecl } from './ast.js';
+import {
+  type LuminaProgram,
+  type LuminaStatement,
+  type LuminaExpr,
+  type LuminaFnDecl,
+  type LuminaStructDecl,
+  type LuminaTypeExpr,
+  type LuminaConstExpr,
+  type LuminaArrayType,
+} from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { prune, type Type, normalizePrimitiveName } from './types.js';
 
@@ -12,6 +21,32 @@ const normalizeTargetTypeName = (name: string): string => {
 const isUnsignedTypeName = (name: string): boolean => name.startsWith('u');
 const isFloatTypeName = (name: string): boolean => name === 'f32' || name === 'f64' || name === 'float';
 import { type Location } from '../utils/index.js';
+
+const splitTypeArgs = (input: string): string[] => {
+  const result: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of input) {
+    if (ch === '<') depth += 1;
+    if (ch === '>') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      result.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) result.push(current.trim());
+  return result;
+};
+
+const parseTypeName = (typeName: string): { base: string; args: string[] } | null => {
+  const trimmed = typeName.trim();
+  const idx = trimmed.indexOf('<');
+  if (idx === -1) return { base: trimmed, args: [] };
+  if (!trimmed.endsWith('>')) return null;
+  return { base: trimmed.slice(0, idx), args: splitTypeArgs(trimmed.slice(idx + 1, -1)) };
+};
 
 type WasmValType = 'i32' | 'f64';
 
@@ -38,6 +73,7 @@ export function generateWATFromAst(
 
   const builder = new WasmBuilder(diagnostics, infer.subst, infer.inferredExprs, infer.inferredFnParams);
   const functions = program.body.filter((stmt): stmt is LuminaFnDecl => stmt.type === 'FnDecl');
+  const structs = program.body.filter((stmt): stmt is LuminaStructDecl => stmt.type === 'StructDecl');
 
   builder.append('(module');
   builder.append('  (import "env" "print_int" (func $print_int (param i32)))');
@@ -46,6 +82,9 @@ export function generateWATFromAst(
   builder.append('  (import "env" "abs_int" (func $abs_int (param i32) (result i32)))');
   builder.append('  (import "env" "abs_float" (func $abs_float (param f64) (result f64)))');
   builder.append('  (memory (export "memory") 1)');
+  for (const struct of structs) {
+    builder.append(builder.emitStructLayout(struct));
+  }
   for (const fn of functions) {
     builder.append(builder.emitFunction(fn));
   }
@@ -84,6 +123,157 @@ class WasmBuilder {
 
   toString(): string {
     return this.lines.join('\n') + '\n';
+  }
+
+  emitStructLayout(struct: LuminaStructDecl): string {
+    const fieldLayouts: Array<{ name: string; offset: number; size: number }> = [];
+    let offset = 0;
+    for (const field of struct.body) {
+      const fieldSize = this.calculateTypeSize(field.typeName, field.location ?? struct.location);
+      fieldLayouts.push({ name: field.name, offset, size: fieldSize });
+      offset += fieldSize;
+    }
+    const totalSize = offset;
+    const lines: string[] = [];
+    lines.push(`  ;; Struct ${struct.name}`);
+    lines.push(`  ;; Total size: ${totalSize} bytes`);
+    lines.push(`  (func $${struct.name}_new (result i32)`);
+    lines.push('    i32.const 0');
+    lines.push('  )');
+    for (const field of fieldLayouts) {
+      lines.push(`  ;;   field ${field.name}: offset ${field.offset}, size ${field.size}`);
+    }
+    return lines.join('\n');
+  }
+
+  private calculateTypeSize(typeExpr: LuminaTypeExpr, location?: Location): number {
+    if (typeof typeExpr === 'string') {
+      const parsed = parseTypeName(typeExpr);
+      if (parsed && parsed.base === 'Array' && parsed.args.length >= 2) {
+        const elementSize = this.calculateTypeSize(parsed.args[0], location);
+        const length = this.evaluateConstSizeText(parsed.args[1], location);
+        if (length === null) return elementSize;
+        return elementSize * length;
+      }
+      return this.getPrimitiveSize(typeExpr);
+    }
+    if ((typeExpr as LuminaArrayType).kind === 'array') {
+      const arrayExpr = typeExpr as LuminaArrayType;
+      const elementSize = this.calculateTypeSize(arrayExpr.element, location ?? arrayExpr.location);
+      const length = arrayExpr.size ? this.evaluateConstSize(arrayExpr.size, location ?? arrayExpr.location) : null;
+      if (length === null) return elementSize;
+      return elementSize * length;
+    }
+    return 4;
+  }
+
+  private getPrimitiveSize(typeName: string): number {
+    const normalized = normalizeTargetTypeName(typeName);
+    const sizes: Record<string, number> = {
+      i8: 1,
+      u8: 1,
+      i16: 2,
+      u16: 2,
+      i32: 4,
+      u32: 4,
+      int: 4,
+      usize: 4,
+      f32: 4,
+      f64: 8,
+      float: 8,
+      i64: 8,
+      u64: 8,
+      i128: 16,
+      u128: 16,
+    };
+    return sizes[normalized] ?? 4;
+  }
+
+  private evaluateConstSize(expr: LuminaConstExpr, location?: Location): number | null {
+    switch (expr.type) {
+      case 'ConstLiteral':
+        return expr.value;
+      case 'ConstParam':
+        return null;
+      case 'ConstBinary': {
+        const left = this.evaluateConstSize(expr.left, location ?? expr.location);
+        const right = this.evaluateConstSize(expr.right, location ?? expr.location);
+        if (left === null || right === null) return null;
+        switch (expr.op) {
+          case '+':
+            return left + right;
+          case '-':
+            return left - right;
+          case '*':
+            return left * right;
+          case '/':
+            if (right === 0) return null;
+            return Math.floor(left / right);
+          default:
+            return null;
+        }
+      }
+      default:
+        return null;
+    }
+  }
+
+  private evaluateConstSizeText(text: string, location?: Location): number | null {
+    const tokens = text.trim().match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+    if (!tokens || tokens.length === 0) return null;
+    if (tokens.some((token) => /^[A-Za-z_]/.test(token))) return null;
+    let index = 0;
+    const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
+    const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
+    const parsePrimary = (): number | null => {
+      const token = consume();
+      if (!token) return null;
+      if (/^\d+$/.test(token)) return Number(token);
+      if (token === '(') {
+        const inner = parseAddSub();
+        if (peek() !== ')') return null;
+        consume();
+        return inner;
+      }
+      return null;
+    };
+    const parseMulDiv = (): number | null => {
+      let left = parsePrimary();
+      if (left === null) return null;
+      while (true) {
+        const op = peek();
+        if (op !== '*' && op !== '/') break;
+        consume();
+        const right = parsePrimary();
+        if (right === null) return null;
+        if (op === '*') left *= right;
+        else {
+          if (right === 0) {
+            this.reportUnsupported('const division by zero', location);
+            return null;
+          }
+          left = Math.floor(left / right);
+        }
+      }
+      return left;
+    };
+    const parseAddSub = (): number | null => {
+      let left = parseMulDiv();
+      if (left === null) return null;
+      while (true) {
+        const op = peek();
+        if (op !== '+' && op !== '-') break;
+        consume();
+        const right = parseMulDiv();
+        if (right === null) return null;
+        if (op === '+') left += right;
+        else left -= right;
+      }
+      return left;
+    };
+    const value = parseAddSub();
+    if (value === null || index !== tokens.length) return null;
+    return value;
   }
 
   emitFunction(fn: LuminaFnDecl): string {
@@ -274,10 +464,34 @@ class WasmBuilder {
         return this.emitBinary(expr);
       case 'Call':
         return this.emitCall(expr);
+      case 'Index':
+        return this.emitIndex(expr);
       default:
         this.reportUnsupported(expr.type, expr.location);
         return ['unreachable'];
     }
+  }
+
+  private emitIndex(expr: Extract<LuminaExpr, { type: 'Index' }>): string[] {
+    const objectType = typeof expr.object.id === 'number' ? this.exprTypes.get(expr.object.id) : undefined;
+    const arrayInfo = this.extractArrayTypeInfo(objectType, expr.location);
+    const indexExpr = this.emitExpr(expr.index);
+    const lines: string[] = [];
+    if (arrayInfo && arrayInfo.length !== null) {
+      lines.push(...indexExpr);
+      lines.push(`i32.const ${arrayInfo.length}`);
+      lines.push('i32.ge_u');
+      lines.push('if');
+      lines.push('  unreachable');
+      lines.push('end');
+    }
+    lines.push(...this.emitExpr(expr.object));
+    lines.push(...indexExpr);
+    lines.push(`i32.const ${arrayInfo?.elementSize ?? 4}`);
+    lines.push('i32.mul');
+    lines.push('i32.add');
+    lines.push(arrayInfo?.elementWasm === 'f64' ? 'f64.load' : 'i32.load');
+    return lines;
   }
 
   private emitNumber(expr: { value: number; location?: Location; id?: number }): string {
@@ -357,8 +571,31 @@ class WasmBuilder {
       }
       if (normalized === 'void') return null;
     }
+    if (pruned.kind === 'adt' && pruned.name === 'Array') {
+      return 'i32';
+    }
     this.reportUnsupported(`type '${this.formatType(pruned)}'`, location);
     return null;
+  }
+
+  private extractArrayTypeInfo(
+    type: Type | undefined,
+    location?: Location
+  ): { length: number | null; elementSize: number; elementWasm: WasmValType } | null {
+    if (!type) return null;
+    const pruned = prune(type, this.subst);
+    if (pruned.kind !== 'adt' || pruned.name !== 'Array' || pruned.params.length < 2) return null;
+    const element = prune(pruned.params[0], this.subst);
+    const size = prune(pruned.params[1], this.subst);
+    const elementWasm = this.typeToWasm(element, location) ?? 'i32';
+    const elementSize = elementWasm === 'f64' ? 8 : 4;
+    let length: number | null = null;
+    if (size.kind === 'adt' && size.params.length === 0) {
+      length = this.evaluateConstSizeText(size.name, location);
+    } else if (size.kind === 'primitive') {
+      length = this.evaluateConstSizeText(size.name, location);
+    }
+    return { length, elementSize, elementWasm };
   }
 
   private formatType(type: Type): string {

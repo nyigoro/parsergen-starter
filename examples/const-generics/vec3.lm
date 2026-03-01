@@ -1,0 +1,16 @@
+struct Vec3 {
+  data: [f64; 3]
+}
+
+fn make_vec3(x: f64, y: f64, z: f64) -> Vec3 {
+  Vec3 { data: [x, y, z] }
+}
+
+fn main() -> f64 {
+  let v = make_vec3(1.0, 2.0, 3.0);
+  match v.data[0] {
+    Some(x) => x,
+    None => 0.0
+  }
+}
+

@@ -19,6 +19,11 @@ export type PrimitiveName =
   | 'f32'
   | 'f64';
 
+export type ConstExpr =
+  | { kind: 'const-literal'; value: number }
+  | { kind: 'const-param'; name: string }
+  | { kind: 'const-binary'; op: '+' | '-' | '*' | '/'; left: ConstExpr; right: ConstExpr };
+
 const integerPrimList: PrimitiveName[] = [
   'int',
   'i8',
@@ -65,7 +70,8 @@ export type Type =
   | { kind: 'primitive'; name: PrimitiveName }
   | { kind: 'function'; args: Type[]; returnType: Type }
   | { kind: 'variable'; id: number }
-  | { kind: 'adt'; name: string; params: Type[] }
+  | { kind: 'adt'; name: string; params: Type[]; constArgs?: ConstExpr[] }
+  | { kind: 'array'; element: Type; size?: ConstExpr }
   | { kind: 'row'; fields: Map<string, Type>; tail: Type | null }
   | { kind: 'hole'; location?: Location }
   | { kind: 'promise'; inner: Type };
@@ -159,6 +165,9 @@ export function occursIn(target: Type, type: Type, subst: Subst): boolean {
   if (t.kind === 'adt') {
     return t.params.some(param => occursIn(target, param, subst));
   }
+  if (t.kind === 'array') {
+    return occursIn(target, t.element, subst);
+  }
   if (t.kind === 'row') {
     for (const field of t.fields.values()) {
       if (occursIn(target, field, subst)) return true;
@@ -180,6 +189,10 @@ export function normalizeTypeName(type: Type): string {
       if (type.params.length === 0) return base;
       const params = type.params.map(normalizeTypeName).join('_');
       return `${base}_${params}`;
+    }
+    case 'array': {
+      const inner = normalizeTypeName(type.element);
+      return `Array_${inner}`;
     }
     case 'function': {
       const args = type.args.map(normalizeTypeName).join('_') || 'Unit';
@@ -228,6 +241,9 @@ function occursInWithBarrier(
   if (t.kind === 'adt') {
     const nextBarrier = passedBarrier || wrapperSet.has(t.name);
     return t.params.some(param => occursInWithBarrier(target, param, subst, nextBarrier, wrapperSet));
+  }
+  if (t.kind === 'array') {
+    return occursInWithBarrier(target, t.element, subst, passedBarrier, wrapperSet);
   }
   if (t.kind === 'row') {
     for (const field of t.fields.values()) {
@@ -283,6 +299,11 @@ export function unify(
     if (leftName !== rightName) {
       throw new UnificationError('mismatch', left, right, trace);
     }
+    return;
+  }
+
+  if (left.kind === 'array' && right.kind === 'array') {
+    unify(left.element, right.element, subst, wrappers, trace, rowResolver);
     return;
   }
 

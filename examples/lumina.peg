@@ -230,15 +230,26 @@ TypeName
   / path:TypePath _ args:TypeArgs? {
       const base = path.join("::");
       if (!args) return base;
-      const rendered = args.map(arg => typeof arg === "string" ? arg : "_");
+      const rendered = args.map(arg => {
+        if (typeof arg === "string") return arg;
+        if (arg && typeof arg === "object" && arg.type && String(arg.type).startsWith("Const")) {
+          const toText = (node) => {
+            if (!node || typeof node !== "object") return "_";
+            if (node.type === "ConstLiteral") return String(node.value);
+            if (node.type === "ConstParam") return node.name;
+            if (node.type === "ConstBinary") return `${toText(node.left)}${node.op}${toText(node.right)}`;
+            return "_";
+          };
+          return toText(arg);
+        }
+        return "_";
+      });
       return `${base}<${rendered.join(",")}>`;
     }
 
 ArrayTypeName
-  = "[" _ elem:TypeName _ ";" _ count:TypeName _ "]" {
-      const elemText = typeof elem === "string" ? elem : "_";
-      const countText = typeof count === "string" ? count : "_";
-      return `Array<${elemText},${countText}>`;
+  = "[" _ elem:TypeName _ ";" _ size:ConstTypeExpr _ "]" {
+      return { kind: "array", element: elem, size, location: location() };
     }
 
 TupleTypeName
@@ -271,20 +282,46 @@ ReturnType
   = "->" _ type:TypeName { return type; }
 
 TypeArgs
-  = "<" _ head:TypeName tail:(_ "," _ TypeName)* _ ">" { return [head].concat(tail.map(t => t[3])); }
+  = "<" _ head:TypeArg tail:(_ "," _ TypeArg)* _ ">" { return [head].concat(tail.map(t => t[3])); }
+
+TypeArg
+  = TypeName
+  / constExpr:ConstTypeExpr { return constExpr; }
 
 TypeParams
   = "<" _ head:TypeParam tail:(_ "," _ TypeParam)* _ ">" { return [head].concat(tail.map(t => t[3])); }
 
 TypeParam
-  = "const" __ name:IdName _ ":" _ typeName:TypeName {
-      return { name: name.name, const: true, constType: typeName };
+  = "const" __ name:IdName _ ":" _ typeName:("usize" / "i32" / "i64") {
+      return { name: name.name, isConst: true, constType: typeName };
     }
   / name:IdName _ "<" _ head:"_" tail:(_ "," _ "_")* _ ">" {
-      return { name: name.name, higherKindArity: 1 + tail.length };
+      return { name: name.name, isConst: false, higherKindArity: 1 + tail.length };
     }
-  / name:IdName _ ":" _ bound:TypeBounds { return { name: name.name, bound }; }
-  / name:IdName { return { name: name.name }; }
+  / name:IdName _ ":" _ bound:TypeBounds { return { name: name.name, bound, isConst: false }; }
+  / name:IdName { return { name: name.name, isConst: false }; }
+
+ConstTypeExpr
+  = head:ConstTypeTerm tail:(_ ("+" / "-") _ ConstTypeTerm)* {
+      return tail.reduce((acc, t) => createNode("ConstBinary", { op: t[1], left: acc, right: t[3] }, location), head);
+    }
+
+ConstTypeTerm
+  = head:ConstTypePrimary tail:(_ ("*" / "/") _ ConstTypePrimary)* {
+      return tail.reduce((acc, t) => createNode("ConstBinary", { op: t[1], left: acc, right: t[3] }, location), head);
+    }
+
+ConstTypePrimary
+  = value:IntConstLiteral {
+      return createNode("ConstLiteral", { value }, location);
+    }
+  / node:IdName {
+      return createNode("ConstParam", { name: node.name, location: node.location }, location);
+    }
+  / "(" _ expr:ConstTypeExpr _ ")" { return expr; }
+
+IntConstLiteral
+  = digits:$([0-9] [0-9_]*) { return parseInt(digits.replace(/_/g, ""), 10); }
 
 TypeBounds
   = head:TypeName tail:(_ ("&" / "+") _ TypeName)* { return [head].concat(tail.map(t => t[3])); }

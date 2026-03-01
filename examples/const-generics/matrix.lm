@@ -1,0 +1,16 @@
+struct Matrix<T, const ROWS: usize, const COLS: usize> {
+  data: [T; ROWS * COLS]
+}
+
+fn make_matrix_2x3() -> Matrix<i32, 2, 3> {
+  Matrix { data: [1, 2, 3, 4, 5, 6] }
+}
+
+fn main() -> i32 {
+  let m = make_matrix_2x3();
+  match m.data[5] {
+    Some(v) => v,
+    None => 0
+  }
+}
+

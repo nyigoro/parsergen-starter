@@ -262,7 +262,41 @@ const isRangeValue = (
 
 const clampIndex = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
-export const __lumina_index = (target: unknown, index: unknown): unknown => {
+export const __lumina_fixed_array = <T>(
+  size: number,
+  initializer?: (index: number) => T
+): T[] => {
+  const normalized = Math.max(0, Math.trunc(size));
+  const arr = new Array<T>(normalized);
+  if (initializer) {
+    for (let i = 0; i < normalized; i += 1) {
+      arr[i] = initializer(i);
+    }
+  }
+  return arr;
+};
+
+export const __lumina_array_bounds_check = (
+  array: unknown[],
+  index: number,
+  expectedSize?: number
+): void => {
+  if (expectedSize !== undefined && array.length !== expectedSize) {
+    throw new Error(`Array size mismatch: expected ${expectedSize}, got ${array.length}`);
+  }
+  if (index < 0 || index >= array.length) {
+    throw new Error(`Array index out of bounds: ${index} (array length: ${array.length})`);
+  }
+};
+
+export const __lumina_array_literal = <T>(elements: T[], expectedSize?: number): T[] => {
+  if (expectedSize !== undefined && elements.length !== expectedSize) {
+    throw new Error(`Array literal has wrong size: expected ${expectedSize}, got ${elements.length}`);
+  }
+  return elements;
+};
+
+export const __lumina_index = (target: unknown, index: unknown, expectedSize?: number): unknown => {
   if (typeof target === 'string' && isRangeValue(index)) {
     const length = target.length;
     const start = index.start == null ? 0 : clampIndex(Math.trunc(index.start), 0, length);
@@ -282,7 +316,9 @@ export const __lumina_index = (target: unknown, index: unknown): unknown => {
   }
 
   if (Array.isArray(target)) {
-    return target[Math.trunc(Number(index))];
+    const normalizedIndex = Math.trunc(Number(index));
+    __lumina_array_bounds_check(target, normalizedIndex, expectedSize);
+    return target[normalizedIndex];
   }
 
   if (target && typeof target === 'object') {
