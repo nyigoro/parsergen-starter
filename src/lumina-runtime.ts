@@ -2942,6 +2942,16 @@ const normalizeVNodeChildren = (input: VNodeInput): VNode[] => {
     }
     return out;
   }
+  if (input && typeof input === 'object' && !isVNode(input)) {
+    const iterator = (input as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
+    if (typeof iterator === 'function') {
+      const out: VNode[] = [];
+      for (const child of input as Iterable<unknown>) {
+        out.push(...normalizeVNodeChildren(child as VNodeInput));
+      }
+      return out;
+    }
+  }
   if (input === null || input === undefined || input === false) return [];
   if (typeof input === 'object' && input !== null && isVNode(input)) {
     return [input];
@@ -3733,6 +3743,36 @@ export const render = {
   text: (value: unknown): VNode => vnodeText(value),
   element: (tag: string, props?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
     vnodeElement(tag, props, children),
+  props_empty: (): Record<string, unknown> => ({}),
+  props_class: (className: string): Record<string, unknown> => ({ className }),
+  props_on_click: (handler: (() => unknown) | null | undefined): Record<string, unknown> => ({
+    onClick: typeof handler === 'function' ? handler : () => undefined,
+  }),
+  props_on_click_delta: (signal: Signal<number>, delta: number): Record<string, unknown> => ({
+    onClick: () => {
+      signal.set(signal.get() + delta);
+    },
+  }),
+  props_on_click_inc: (signal: Signal<number>): Record<string, unknown> => ({
+    onClick: () => {
+      signal.set(signal.get() + 1);
+    },
+  }),
+  props_on_click_dec: (signal: Signal<number>): Record<string, unknown> => ({
+    onClick: () => {
+      signal.set(signal.get() - 1);
+    },
+  }),
+  props_merge: (left: unknown, right: unknown): Record<string, unknown> => {
+    const lhs = left && typeof left === 'object' ? (left as Record<string, unknown>) : {};
+    const rhs = right && typeof right === 'object' ? (right as Record<string, unknown>) : {};
+    return { ...lhs, ...rhs };
+  },
+  dom_get_element_by_id: (id: string): unknown => {
+    const doc = (globalThis as { document?: { getElementById?: (value: string) => unknown } }).document;
+    if (!doc || typeof doc.getElementById !== 'function') return null;
+    return doc.getElementById(id);
+  },
   fragment: (children: VNodeInput = []): VNode => vnodeFragment(children),
   is_vnode: (value: unknown): boolean => isVNode(value),
   serialize: (node: VNode): string => serializeVNode(node),
@@ -3793,6 +3833,16 @@ export const vnode = (tag: string, attrs?: Record<string, unknown> | null, child
 export const text = (value: unknown): VNode => render.text(value);
 export const mount_reactive = (renderer: unknown, container: unknown, view: () => VNode): ReactiveRenderRoot =>
   render.mount_reactive(renderer, container, view);
+export const props_empty = (): Record<string, unknown> => render.props_empty();
+export const props_class = (className: string): Record<string, unknown> => render.props_class(className);
+export const props_on_click = (handler: (() => unknown) | null | undefined): Record<string, unknown> =>
+  render.props_on_click(handler);
+export const props_on_click_delta = (signal: Signal<number>, delta: number): Record<string, unknown> =>
+  render.props_on_click_delta(signal, delta);
+export const props_on_click_inc = (signal: Signal<number>): Record<string, unknown> => render.props_on_click_inc(signal);
+export const props_on_click_dec = (signal: Signal<number>): Record<string, unknown> => render.props_on_click_dec(signal);
+export const props_merge = (left: unknown, right: unknown): Record<string, unknown> => render.props_merge(left, right);
+export const dom_get_element_by_id = (id: string): unknown => render.dom_get_element_by_id(id);
 
 export const reactive = {
   createSignal,

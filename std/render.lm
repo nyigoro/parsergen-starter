@@ -12,6 +12,38 @@ pub fn vnode(tag: string, attrs: any, children: any) -> VNode {
   render.element(tag, attrs, children)
 }
 
+pub fn props_empty() -> any {
+  render.props_empty()
+}
+
+pub fn props_class(className: string) -> any {
+  render.props_class(className)
+}
+
+pub fn props_on_click(handler: fn() -> any) -> any {
+  render.props_on_click(handler)
+}
+
+pub fn props_on_click_delta(signal: Signal<i32>, delta: i32) -> any {
+  render.props_on_click_delta(signal, delta)
+}
+
+pub fn props_on_click_inc(signal: Signal<i32>) -> any {
+  render.props_on_click_inc(signal)
+}
+
+pub fn props_on_click_dec(signal: Signal<i32>) -> any {
+  render.props_on_click_dec(signal)
+}
+
+pub fn props_merge(left: any, right: any) -> any {
+  render.props_merge(left, right)
+}
+
+pub fn dom_get_element_by_id(id: string) -> any {
+  render.dom_get_element_by_id(id)
+}
+
 pub fn createDomRenderer() -> Renderer {
   render.createDomRenderer()
 }

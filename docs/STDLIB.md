@@ -354,7 +354,7 @@ Runs a block without collecting reactive dependencies.
 
 ### VNode Primitives
 
-### text(value: String) -> VNode
+### text(value: Any) -> VNode
 Creates a text node.
 
 ### element(tag: String, props: Any, children: Any) -> VNode
@@ -362,6 +362,30 @@ Creates an element node.
 
 ### fragment(children: Any) -> VNode
 Creates a fragment node.
+
+### props_empty() -> Any
+Creates an empty props object.
+
+### props_class(className: String) -> Any
+Creates props with `className`.
+
+### props_on_click(handler: fn() -> Any) -> Any
+Creates props with `onClick` handler.
+
+### props_on_click_delta(signal: Signal<Int>, delta: Int) -> Any
+Creates props with `onClick` that updates signal by `delta`.
+
+### props_on_click_inc(signal: Signal<Int>) -> Any
+Creates props with `onClick` that increments signal by 1.
+
+### props_on_click_dec(signal: Signal<Int>) -> Any
+Creates props with `onClick` that decrements signal by 1.
+
+### props_merge(left: Any, right: Any) -> Any
+Merges two props objects.
+
+### dom_get_element_by_id(id: String) -> Any
+Returns `document.getElementById(id)` when available.
 
 ### is_vnode(value: Any) -> Bool
 Checks if a value is a VNode.

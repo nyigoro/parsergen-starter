@@ -1,24 +1,28 @@
-import { createSignal, get, set, createEffect } from "@std/reactive";
-import { vnode, text, mount_reactive, createDomRenderer } from "@std/render";
+import { createSignal, get } from "@std/reactive";
+import {
+  vnode,
+  text,
+  createDomRenderer,
+  mount_reactive,
+  props_empty,
+  props_on_click_inc,
+  props_on_click_dec,
+  dom_get_element_by_id
+} from "@std/render";
 
 fn counterView(count: Signal<i32>) -> VNode {
-  vnode("div", 0, [
-    text("Count: "),
-    text(get(count))
-  ])
+  return vnode("div", props_empty(), [
+    vnode("button", props_on_click_dec(count), [text("-")]),
+    text(get(count)),
+    vnode("button", props_on_click_inc(count), [text("+")])
+  ]);
 }
 
 pub fn main() -> void {
-  let count = createSignal(0);
+  let container = dom_get_element_by_id("app");
   let renderer = createDomRenderer();
-  let container = 0;
-  let mounted = mount_reactive(renderer, container, || counterView(count));
-  let _ = mounted;
-
-  let fx = createEffect(|| {
-    println("counter changed");
-  });
-
-  set(count, get(count) + 1);
-  let __ = fx;
+  let count = createSignal(0);
+  let _mounted = mount_reactive(renderer, container, || counterView(count));
 }
+
+main();

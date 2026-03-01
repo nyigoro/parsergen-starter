@@ -3009,9 +3009,18 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const childrenT = freshTypeVar();
     const fragmentChildrenT = freshTypeVar();
     const rendererFactoryT = freshTypeVar();
+    const clickReturnT = freshTypeVar();
     const textType: Type = fnType([textValueT], vnodeT);
     const elementType: Type = fnType([primitive('string'), attrsT, childrenT], vnodeT);
     const fragmentType: Type = fnType([fragmentChildrenT], vnodeT);
+    const propsEmptyType: Type = fnType([], primitive('any'));
+    const propsClassType: Type = fnType([primitive('string')], primitive('any'));
+    const propsOnClickType: Type = fnType([fnType([], clickReturnT)], primitive('any'));
+    const propsOnClickDeltaType: Type = fnType([adt('Signal', [primitive('int')]), primitive('int')], primitive('any'));
+    const propsOnClickIncType: Type = fnType([adt('Signal', [primitive('int')])], primitive('any'));
+    const propsOnClickDecType: Type = fnType([adt('Signal', [primitive('int')])], primitive('any'));
+    const propsMergeType: Type = fnType([primitive('any'), primitive('any')], primitive('any'));
+    const domGetElementByIdType: Type = fnType([primitive('string')], primitive('any'));
     const isVNodeType: Type = fnType([primitive('any')], primitive('bool'));
     const serializeType: Type = fnType([vnodeT], primitive('string'));
     const parseType: Type = fnType([primitive('string')], vnodeT);
@@ -3209,6 +3218,94 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'VNode',
             schemeFromVars(elementType, [attrsT, childrenT]),
             ['tag', 'props', 'children'],
+            'std://render'
+          ),
+        ],
+        [
+          'props_empty',
+          moduleFunctionWithScheme(
+            'props_empty',
+            [],
+            'any',
+            schemeFromVars(propsEmptyType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'props_class',
+          moduleFunctionWithScheme(
+            'props_class',
+            ['string'],
+            'any',
+            schemeFromVars(propsClassType, []),
+            ['className'],
+            'std://render'
+          ),
+        ],
+        [
+          'props_on_click',
+          moduleFunctionWithScheme(
+            'props_on_click',
+            ['fn() -> any'],
+            'any',
+            schemeFromVars(propsOnClickType, [clickReturnT]),
+            ['handler'],
+            'std://render'
+          ),
+        ],
+        [
+          'props_on_click_delta',
+          moduleFunctionWithScheme(
+            'props_on_click_delta',
+            ['Signal<int>', 'int'],
+            'any',
+            schemeFromVars(propsOnClickDeltaType, []),
+            ['signal', 'delta'],
+            'std://render'
+          ),
+        ],
+        [
+          'props_on_click_inc',
+          moduleFunctionWithScheme(
+            'props_on_click_inc',
+            ['Signal<int>'],
+            'any',
+            schemeFromVars(propsOnClickIncType, []),
+            ['signal'],
+            'std://render'
+          ),
+        ],
+        [
+          'props_on_click_dec',
+          moduleFunctionWithScheme(
+            'props_on_click_dec',
+            ['Signal<int>'],
+            'any',
+            schemeFromVars(propsOnClickDecType, []),
+            ['signal'],
+            'std://render'
+          ),
+        ],
+        [
+          'props_merge',
+          moduleFunctionWithScheme(
+            'props_merge',
+            ['any', 'any'],
+            'any',
+            schemeFromVars(propsMergeType, []),
+            ['left', 'right'],
+            'std://render'
+          ),
+        ],
+        [
+          'dom_get_element_by_id',
+          moduleFunctionWithScheme(
+            'dom_get_element_by_id',
+            ['string'],
+            'any',
+            schemeFromVars(domGetElementByIdType, []),
+            ['id'],
             'std://render'
           ),
         ],

@@ -98,4 +98,41 @@ describe('runtime render module', () => {
   test('create_renderer validates shape', () => {
     expect(() => render.create_renderer({})).toThrow('Renderer.mount must be a function');
   });
+
+  test('DOM bridge helpers create props and resolve container', () => {
+    const plus = jest.fn();
+    const minus = jest.fn();
+    const combined = render.props_merge(
+      render.props_class('counter'),
+      render.props_on_click(() => plus())
+    ) as { className?: string; onClick?: () => void };
+
+    expect(combined.className).toBe('counter');
+    expect(typeof combined.onClick).toBe('function');
+    combined.onClick?.();
+    expect(plus).toHaveBeenCalledTimes(1);
+
+    const signal = render.signal(2);
+    const deltaProps = render.props_on_click_delta(signal, 3) as { onClick?: () => void };
+    deltaProps.onClick?.();
+    expect(render.get(signal)).toBe(5);
+    const incProps = render.props_on_click_inc(signal) as { onClick?: () => void };
+    incProps.onClick?.();
+    expect(render.get(signal)).toBe(6);
+    const decProps = render.props_on_click_dec(signal) as { onClick?: () => void };
+    decProps.onClick?.();
+    expect(render.get(signal)).toBe(5);
+
+    const documentLike = {
+      getElementById: (id: string) => (id === 'app' ? { id, clicked: minus } : null),
+    };
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = documentLike;
+    try {
+      expect(render.dom_get_element_by_id('app')).toEqual({ id: 'app', clicked: minus });
+      expect(render.dom_get_element_by_id('missing')).toBeNull();
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
+    }
+  });
 });

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumina Counter</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #f4f7fb 0%, #e7edf5 45%, #dce4f0 100%);
+      color: #14213d;
+    }
+    #app > div {
+      width: min(92vw, 420px);
+      padding: 2rem 1.5rem;
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: 0 16px 34px rgba(20, 33, 61, 0.16);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+    }
+    button {
+      width: 3.25rem;
+      height: 3.25rem;
+      border: none;
+      border-radius: 999px;
+      font-size: 1.75rem;
+      line-height: 1;
+      cursor: pointer;
+      background: #1d4ed8;
+      color: #ffffff;
+      transition: transform 120ms ease, background 120ms ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      background: #1e40af;
+    }
+    button:active {
+      transform: translateY(0);
+      background: #1e3a8a;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./main.generated.js"></script>
+</body>
+</html>

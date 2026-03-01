@@ -1,14 +1,44 @@
 # Render Core (`@std/render`)
 
-`@std/render` provides Lumina's frontend/runtime primitives:
+Lumina's UI runtime is organized as a three-layer architecture so the same reactive view logic can target different platforms.
 
-- Fine-grained reactivity (`Signal<T>`, `Memo<T>`, `Effect`)
-- Platform-agnostic VNodes (`VNode`)
-- Renderer contract (`Renderer`, `RenderRoot`)
+## Architecture
 
-This layer is intentionally host-neutral. It does not depend on DOM APIs and can be used for browser, server rendering, terminal UIs, or custom targets.
+### Layer 1: Reactive Logic Core
 
-For idiomatic language-level state API, use `@std/reactive` (`createSignal`, `createMemo`, `createEffect`, `get`, `set`).
+State and dependency tracking live in runtime primitives:
+
+- `Signal<T>`
+- `Memo<T>`
+- `Effect`
+- `batch` / `untrack`
+
+This layer has no DOM assumptions.
+
+### Layer 2: Abstract UI Tree
+
+Views compile to platform-neutral `VNode` trees:
+
+- `render.text(value)`
+- `render.element(tag, props, children)`
+- `render.fragment(children)`
+
+The tree is serializable and can be rendered by any compatible target.
+
+### Layer 3: Target Renderers
+
+A renderer implements mount/update/unmount behavior for a host:
+
+- DOM (`create_dom_renderer`)
+- SSR (`create_ssr_renderer` + `render_to_string`)
+- Canvas (`create_canvas_renderer`)
+- Terminal (`create_terminal_renderer`)
+
+## Long-Term Vision
+
+Keep components and reactivity portable while swapping only the rendering target. The objective is one view model that can run in browser, server, graphics, and CLI environments with predictable semantics and minimal host-specific code.
+
+For idiomatic language-level state APIs, use `@std/reactive` (`createSignal`, `createMemo`, `createEffect`, `get`, `set`).
 
 ## Reactivity Model
 
@@ -124,6 +154,30 @@ fn main() {
   render.set(count, 2);
   render.dispose_effect(fx);
 }
+```
+
+### Browser Counter Example (Lumina)
+
+```lumina
+import { createSignal, get } from "@std/reactive";
+import { vnode, text, createDomRenderer, mount_reactive, props_on_click_dec, props_on_click_inc, props_class, dom_get_element_by_id } from "@std/render";
+
+fn view(count: Signal<i32>) -> VNode {
+  return vnode("div", props_class("counter"), [
+    vnode("button", props_on_click_dec(count), [text("-")]),
+    vnode("span", props_class("count"), [text(get(count))]),
+    vnode("button", props_on_click_inc(count), [text("+")]),
+  ]);
+}
+
+fn main() -> void {
+  let count = createSignal(0);
+  let root = dom_get_element_by_id("app");
+  let renderer = createDomRenderer();
+  let _mounted = mount_reactive(renderer, root, || view(count));
+}
+
+main();
 ```
 
 See complete examples in `examples/dom-render/`:
