@@ -2694,6 +2694,413 @@ export const sync = {
     value.compare_exchange(expected, replacement),
 };
 
+type ReactiveCleanup = () => void;
+type ReactiveSource = { observers: Set<ReactiveComputation> };
+
+let activeComputation: ReactiveComputation | null = null;
+const pendingEffects = new Set<ReactiveComputation>();
+let effectFlushPending = false;
+let batchDepth = 0;
+
+const runMicrotask = (fn: () => void): void => {
+  const queue = (globalThis as { queueMicrotask?: (cb: () => void) => void }).queueMicrotask;
+  if (typeof queue === 'function') {
+    queue(fn);
+    return;
+  }
+  Promise.resolve().then(fn);
+};
+
+const flushEffects = (): void => {
+  if (pendingEffects.size === 0) return;
+  const toRun = Array.from(pendingEffects);
+  pendingEffects.clear();
+  for (const computation of toRun) {
+    computation.run();
+  }
+  if (pendingEffects.size > 0 && batchDepth === 0) {
+    scheduleEffectsFlush();
+  }
+};
+
+const scheduleEffectsFlush = (): void => {
+  if (batchDepth > 0 || effectFlushPending) return;
+  effectFlushPending = true;
+  runMicrotask(() => {
+    effectFlushPending = false;
+    flushEffects();
+  });
+};
+
+const trackReactiveSource = (source: ReactiveSource): void => {
+  if (!activeComputation) return;
+  if (activeComputation.isDisposed()) return;
+  if (source.observers.has(activeComputation)) return;
+  source.observers.add(activeComputation);
+  activeComputation.dependencies.add(source);
+};
+
+const clearComputationDependencies = (computation: ReactiveComputation): void => {
+  for (const dep of computation.dependencies) {
+    dep.observers.delete(computation);
+  }
+  computation.dependencies.clear();
+};
+
+class ReactiveComputation {
+  readonly dependencies = new Set<ReactiveSource>();
+  private cleanups: ReactiveCleanup[] = [];
+  private disposed = false;
+  private running = false;
+
+  constructor(
+    private readonly runner: (onCleanup: (cleanup: ReactiveCleanup) => void) => void,
+    private readonly kind: 'memo' | 'effect',
+    private readonly onInvalidate?: () => void
+  ) {}
+
+  isDisposed(): boolean {
+    return this.disposed;
+  }
+
+  private runCleanups(): void {
+    const cleanups = this.cleanups;
+    this.cleanups = [];
+    for (const cleanup of cleanups) {
+      try {
+        cleanup();
+      } catch {
+        // Swallow cleanup failures to avoid tearing down the graph.
+      }
+    }
+  }
+
+  run(): void {
+    if (this.disposed || this.running) return;
+    this.running = true;
+    this.runCleanups();
+    clearComputationDependencies(this);
+    const previous = activeComputation;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- active dependency collector for this execution frame.
+    activeComputation = this;
+    try {
+      this.runner((cleanup) => {
+        if (!this.disposed) this.cleanups.push(cleanup);
+      });
+    } finally {
+      activeComputation = previous;
+      this.running = false;
+    }
+  }
+
+  invalidate(): void {
+    if (this.disposed) return;
+    if (this.onInvalidate) {
+      this.onInvalidate();
+      return;
+    }
+    if (this.kind === 'effect') {
+      pendingEffects.add(this);
+      scheduleEffectsFlush();
+      return;
+    }
+    this.run();
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    pendingEffects.delete(this);
+    this.runCleanups();
+    clearComputationDependencies(this);
+  }
+}
+
+const notifyReactiveObservers = (source: ReactiveSource): void => {
+  const observers = Array.from(source.observers);
+  for (const observer of observers) {
+    observer.invalidate();
+  }
+};
+
+export class Signal<T> implements ReactiveSource {
+  observers = new Set<ReactiveComputation>();
+  private value: T;
+
+  constructor(initial: T) {
+    this.value = __lumina_clone(initial);
+  }
+
+  get(): T {
+    trackReactiveSource(this);
+    return __lumina_clone(this.value);
+  }
+
+  peek(): T {
+    return __lumina_clone(this.value);
+  }
+
+  set(next: T): boolean {
+    const cloned = __lumina_clone(next);
+    if (runtimeEquals(this.value, cloned)) return false;
+    this.value = cloned;
+    notifyReactiveObservers(this);
+    return true;
+  }
+
+  update(updater: (value: T) => T): T {
+    const next = updater(this.get());
+    this.set(next);
+    return this.get();
+  }
+}
+
+export class Memo<T> implements ReactiveSource {
+  observers = new Set<ReactiveComputation>();
+  private readonly compute: () => T;
+  private readonly computation: ReactiveComputation;
+  private value!: T;
+  private ready = false;
+  private stale = true;
+
+  constructor(compute: () => T) {
+    this.compute = compute;
+    this.computation = new ReactiveComputation(
+      () => {
+        const next = __lumina_clone(this.compute());
+        const changed = !this.ready || !runtimeEquals(this.value, next);
+        this.value = next;
+        this.ready = true;
+        this.stale = false;
+        if (changed) {
+          notifyReactiveObservers(this);
+        }
+      },
+      'memo',
+      () => {
+        this.stale = true;
+        notifyReactiveObservers(this);
+      }
+    );
+  }
+
+  private ensureFresh(): void {
+    if (!this.ready || this.stale) {
+      this.computation.run();
+    }
+  }
+
+  get(): T {
+    this.ensureFresh();
+    trackReactiveSource(this);
+    return __lumina_clone(this.value);
+  }
+
+  peek(): T {
+    this.ensureFresh();
+    return __lumina_clone(this.value);
+  }
+
+  dispose(): void {
+    this.computation.dispose();
+    this.observers.clear();
+  }
+}
+
+export class Effect {
+  private readonly computation: ReactiveComputation;
+
+  constructor(effectFn: (onCleanup: (cleanup: ReactiveCleanup) => void) => void | ReactiveCleanup) {
+    this.computation = new ReactiveComputation((onCleanup) => {
+      const cleanup = effectFn(onCleanup);
+      if (typeof cleanup === 'function') onCleanup(cleanup);
+    }, 'effect');
+    this.computation.run();
+  }
+
+  dispose(): void {
+    this.computation.dispose();
+  }
+}
+
+export interface VNode {
+  kind: 'text' | 'element' | 'fragment';
+  tag?: string;
+  key?: string | number;
+  text?: string;
+  props?: Record<string, unknown>;
+  children?: VNode[];
+}
+
+type VNodeInput = VNode | string | number | boolean | null | undefined | VNodeInput[];
+
+const normalizeVNodeChildren = (input: VNodeInput): VNode[] => {
+  if (Array.isArray(input)) {
+    const out: VNode[] = [];
+    for (const child of input) {
+      out.push(...normalizeVNodeChildren(child));
+    }
+    return out;
+  }
+  if (input === null || input === undefined || input === false) return [];
+  if (typeof input === 'object' && input !== null && isVNode(input)) {
+    return [input];
+  }
+  return [vnodeText(input)];
+};
+
+const sanitizeProps = (props: Record<string, unknown> | null | undefined): Record<string, unknown> => {
+  if (!props) return {};
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+};
+
+export const isVNode = (value: unknown): value is VNode => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<VNode>;
+  return candidate.kind === 'text' || candidate.kind === 'element' || candidate.kind === 'fragment';
+};
+
+export const vnodeText = (value: unknown): VNode => ({
+  kind: 'text',
+  text: value == null ? '' : String(value),
+});
+
+export const vnodeElement = (
+  tag: string,
+  props?: Record<string, unknown> | null,
+  children: VNodeInput = []
+): VNode => ({
+  kind: 'element',
+  tag,
+  key: typeof props?.key === 'string' || typeof props?.key === 'number' ? props.key : undefined,
+  props: sanitizeProps(props),
+  children: normalizeVNodeChildren(children),
+});
+
+export const vnodeFragment = (children: VNodeInput = []): VNode => ({
+  kind: 'fragment',
+  children: normalizeVNodeChildren(children),
+});
+
+export const serializeVNode = (node: VNode): string => JSON.stringify(node);
+
+export const parseVNode = (json: string): VNode => {
+  const parsed = JSON.parse(json) as unknown;
+  if (!isVNode(parsed)) throw new Error('Invalid VNode payload');
+  return parsed;
+};
+
+export interface Renderer {
+  mount: (node: VNode, container: unknown) => void;
+  patch?: (prev: VNode | null, next: VNode, container: unknown) => void;
+  unmount?: (container: unknown) => void;
+}
+
+export class RenderRoot {
+  private current: VNode | null = null;
+
+  constructor(
+    private readonly renderer: Renderer,
+    private readonly container: unknown
+  ) {}
+
+  mount(node: VNode): void {
+    this.current = node;
+    this.renderer.mount(node, this.container);
+  }
+
+  update(node: VNode): void {
+    if (!this.current) {
+      this.mount(node);
+      return;
+    }
+    if (typeof this.renderer.patch === 'function') {
+      this.renderer.patch(this.current, node, this.container);
+    } else {
+      this.renderer.mount(node, this.container);
+    }
+    this.current = node;
+  }
+
+  unmount(): void {
+    if (typeof this.renderer.unmount === 'function') {
+      this.renderer.unmount(this.container);
+    }
+    this.current = null;
+  }
+}
+
+const coerceRenderer = (candidate: unknown): Renderer => {
+  if (!candidate || typeof candidate !== 'object') {
+    throw new Error('Renderer must be an object with a mount function');
+  }
+  const renderer = candidate as Renderer;
+  if (typeof renderer.mount !== 'function') {
+    throw new Error('Renderer.mount must be a function');
+  }
+  if (renderer.patch && typeof renderer.patch !== 'function') {
+    throw new Error('Renderer.patch must be a function when provided');
+  }
+  if (renderer.unmount && typeof renderer.unmount !== 'function') {
+    throw new Error('Renderer.unmount must be a function when provided');
+  }
+  return renderer;
+};
+
+export const render = {
+  signal: <T>(initial: T): Signal<T> => new Signal<T>(initial),
+  get: <T>(signal: Signal<T>): T => signal.get(),
+  peek: <T>(signal: Signal<T>): T => signal.peek(),
+  set: <T>(signal: Signal<T>, value: T): boolean => signal.set(value),
+  update_signal: <T>(signal: Signal<T>, updater: (value: T) => T): T => signal.update(updater),
+  memo: <T>(compute: () => T): Memo<T> => new Memo<T>(compute),
+  memo_get: <T>(memo: Memo<T>): T => memo.get(),
+  memo_peek: <T>(memo: Memo<T>): T => memo.peek(),
+  memo_dispose: <T>(memo: Memo<T>): void => memo.dispose(),
+  effect: (fn: (onCleanup: (cleanup: ReactiveCleanup) => void) => void | ReactiveCleanup): Effect => new Effect(fn),
+  dispose_effect: (effect: Effect): void => effect.dispose(),
+  batch: <T>(fn: () => T): T => {
+    batchDepth += 1;
+    try {
+      return fn();
+    } finally {
+      batchDepth = Math.max(0, batchDepth - 1);
+      if (batchDepth === 0) {
+        flushEffects();
+      }
+    }
+  },
+  untrack: <T>(fn: () => T): T => {
+    const previous = activeComputation;
+    activeComputation = null;
+    try {
+      return fn();
+    } finally {
+      activeComputation = previous;
+    }
+  },
+  text: (value: unknown): VNode => vnodeText(value),
+  element: (tag: string, props?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
+    vnodeElement(tag, props, children),
+  fragment: (children: VNodeInput = []): VNode => vnodeFragment(children),
+  is_vnode: (value: unknown): boolean => isVNode(value),
+  serialize: (node: VNode): string => serializeVNode(node),
+  parse: (json: string): VNode => parseVNode(json),
+  create_renderer: (renderer: unknown): Renderer => coerceRenderer(renderer),
+  create_root: (renderer: unknown, container: unknown): RenderRoot => new RenderRoot(coerceRenderer(renderer), container),
+  mount: (renderer: unknown, container: unknown, node: VNode): RenderRoot => {
+    const root = new RenderRoot(coerceRenderer(renderer), container);
+    root.mount(node);
+    return root;
+  },
+  update: (root: RenderRoot, node: VNode): void => root.update(node),
+  unmount: (root: RenderRoot): void => root.unmount(),
+};
+
 export function __set(obj: Record<string, unknown>, prop: string, value: unknown) {
   obj[prop] = value;
   return value;

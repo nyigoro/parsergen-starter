@@ -21,6 +21,12 @@ extern type Thread from "@std/thread";
 extern type Mutex from "@std/sync";
 extern type Semaphore from "@std/sync";
 extern type AtomicI32 from "@std/sync";
+extern type Signal<T> from "@std/render";
+extern type Memo<T> from "@std/render";
+extern type Effect from "@std/render";
+extern type VNode from "@std/render";
+extern type Renderer from "@std/render";
+extern type RenderRoot from "@std/render";
 struct FileMetadata { isFile: bool, isDirectory: bool, size: int, modifiedMs: int }
 type Map<K, V> = { size: int };
 enum Option<T> { Some(T), None }

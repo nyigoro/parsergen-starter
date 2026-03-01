@@ -93,6 +93,7 @@ npm test
 - `docs/ECOSYSTEM.md` — ecosystem status and contribution model
 - `docs/CAPABILITIES.md` — feature/status matrix
 - `docs/STDLIB.md` — standard library reference
+- `docs/RENDER.md` — reactivity + renderer core primitives
 - `docs/DOCS_MAINTENANCE.md` — how to keep docs current as features land
 
 ## 🧰 CLI

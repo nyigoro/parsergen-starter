@@ -2979,6 +2979,314 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const renderModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const signalT = adt('Signal', [t]);
+    const memoT = adt('Memo', [t]);
+    const effectT = adt('Effect');
+    const vnodeT = adt('VNode');
+    const rendererT = adt('Renderer');
+    const renderRootT = adt('RenderRoot');
+    const thunkT = fnType([], t);
+    const effectFnT = fnType([], primitive('void'));
+    const updaterT = fnType([t], t);
+
+    const signalCtorType: Type = fnType([t], signalT);
+    const signalGetType: Type = fnType([signalT], t);
+    const signalSetType: Type = fnType([signalT, t], primitive('bool'));
+    const signalUpdateType: Type = fnType([signalT, updaterT], t);
+    const memoCtorType: Type = fnType([thunkT], memoT);
+    const memoGetType: Type = fnType([memoT], t);
+    const memoDisposeType: Type = fnType([memoT], primitive('void'));
+    const effectCtorType: Type = fnType([effectFnT], effectT);
+    const effectDisposeType: Type = fnType([effectT], primitive('void'));
+    const batchType: Type = fnType([thunkT], t);
+    const untrackType: Type = fnType([thunkT], t);
+    const textType: Type = fnType([primitive('string')], vnodeT);
+    const elementType: Type = fnType([primitive('string'), primitive('any'), primitive('any')], vnodeT);
+    const fragmentType: Type = fnType([primitive('any')], vnodeT);
+    const isVNodeType: Type = fnType([primitive('any')], primitive('bool'));
+    const serializeType: Type = fnType([vnodeT], primitive('string'));
+    const parseType: Type = fnType([primitive('string')], vnodeT);
+    const createRendererType: Type = fnType([primitive('any')], rendererT);
+    const createRootType: Type = fnType([rendererT, primitive('any')], renderRootT);
+    const mountType: Type = fnType([rendererT, primitive('any'), vnodeT], renderRootT);
+    const updateType: Type = fnType([renderRootT, vnodeT], primitive('void'));
+    const unmountType: Type = fnType([renderRootT], primitive('void'));
+
+    return {
+      kind: 'module',
+      name: 'render',
+      moduleId: 'std://render',
+      exports: new Map([
+        [
+          'signal',
+          moduleFunctionWithScheme(
+            'signal',
+            ['any'],
+            'Signal<any>',
+            schemeFromVars(signalCtorType, [t]),
+            ['initial'],
+            'std://render'
+          ),
+        ],
+        [
+          'get',
+          moduleFunctionWithScheme(
+            'get',
+            ['Signal<any>'],
+            'any',
+            schemeFromVars(signalGetType, [t]),
+            ['signal'],
+            'std://render'
+          ),
+        ],
+        [
+          'peek',
+          moduleFunctionWithScheme(
+            'peek',
+            ['Signal<any>'],
+            'any',
+            schemeFromVars(signalGetType, [t]),
+            ['signal'],
+            'std://render'
+          ),
+        ],
+        [
+          'set',
+          moduleFunctionWithScheme(
+            'set',
+            ['Signal<any>', 'any'],
+            'bool',
+            schemeFromVars(signalSetType, [t]),
+            ['signal', 'value'],
+            'std://render'
+          ),
+        ],
+        [
+          'update_signal',
+          moduleFunctionWithScheme(
+            'update_signal',
+            ['Signal<any>', 'fn(any) -> any'],
+            'any',
+            schemeFromVars(signalUpdateType, [t]),
+            ['signal', 'updater'],
+            'std://render'
+          ),
+        ],
+        [
+          'memo',
+          moduleFunctionWithScheme(
+            'memo',
+            ['fn() -> any'],
+            'Memo<any>',
+            schemeFromVars(memoCtorType, [t]),
+            ['compute'],
+            'std://render'
+          ),
+        ],
+        [
+          'memo_get',
+          moduleFunctionWithScheme(
+            'memo_get',
+            ['Memo<any>'],
+            'any',
+            schemeFromVars(memoGetType, [t]),
+            ['memo'],
+            'std://render'
+          ),
+        ],
+        [
+          'memo_peek',
+          moduleFunctionWithScheme(
+            'memo_peek',
+            ['Memo<any>'],
+            'any',
+            schemeFromVars(memoGetType, [t]),
+            ['memo'],
+            'std://render'
+          ),
+        ],
+        [
+          'memo_dispose',
+          moduleFunctionWithScheme(
+            'memo_dispose',
+            ['Memo<any>'],
+            'void',
+            schemeFromVars(memoDisposeType, [t]),
+            ['memo'],
+            'std://render'
+          ),
+        ],
+        [
+          'effect',
+          moduleFunctionWithScheme(
+            'effect',
+            ['fn() -> void'],
+            'Effect',
+            schemeFromVars(effectCtorType, []),
+            ['run'],
+            'std://render'
+          ),
+        ],
+        [
+          'dispose_effect',
+          moduleFunctionWithScheme(
+            'dispose_effect',
+            ['Effect'],
+            'void',
+            schemeFromVars(effectDisposeType, []),
+            ['effect'],
+            'std://render'
+          ),
+        ],
+        [
+          'batch',
+          moduleFunctionWithScheme(
+            'batch',
+            ['fn() -> any'],
+            'any',
+            schemeFromVars(batchType, [t]),
+            ['block'],
+            'std://render'
+          ),
+        ],
+        [
+          'untrack',
+          moduleFunctionWithScheme(
+            'untrack',
+            ['fn() -> any'],
+            'any',
+            schemeFromVars(untrackType, [t]),
+            ['block'],
+            'std://render'
+          ),
+        ],
+        [
+          'text',
+          moduleFunctionWithScheme(
+            'text',
+            ['string'],
+            'VNode',
+            schemeFromVars(textType, []),
+            ['value'],
+            'std://render'
+          ),
+        ],
+        [
+          'element',
+          moduleFunctionWithScheme(
+            'element',
+            ['string', 'any', 'any'],
+            'VNode',
+            schemeFromVars(elementType, []),
+            ['tag', 'props', 'children'],
+            'std://render'
+          ),
+        ],
+        [
+          'fragment',
+          moduleFunctionWithScheme(
+            'fragment',
+            ['any'],
+            'VNode',
+            schemeFromVars(fragmentType, []),
+            ['children'],
+            'std://render'
+          ),
+        ],
+        [
+          'is_vnode',
+          moduleFunctionWithScheme(
+            'is_vnode',
+            ['any'],
+            'bool',
+            schemeFromVars(isVNodeType, []),
+            ['value'],
+            'std://render'
+          ),
+        ],
+        [
+          'serialize',
+          moduleFunctionWithScheme(
+            'serialize',
+            ['VNode'],
+            'string',
+            schemeFromVars(serializeType, []),
+            ['node'],
+            'std://render'
+          ),
+        ],
+        [
+          'parse',
+          moduleFunctionWithScheme(
+            'parse',
+            ['string'],
+            'VNode',
+            schemeFromVars(parseType, []),
+            ['json'],
+            'std://render'
+          ),
+        ],
+        [
+          'create_renderer',
+          moduleFunctionWithScheme(
+            'create_renderer',
+            ['any'],
+            'Renderer',
+            schemeFromVars(createRendererType, []),
+            ['renderer'],
+            'std://render'
+          ),
+        ],
+        [
+          'create_root',
+          moduleFunctionWithScheme(
+            'create_root',
+            ['Renderer', 'any'],
+            'RenderRoot',
+            schemeFromVars(createRootType, []),
+            ['renderer', 'container'],
+            'std://render'
+          ),
+        ],
+        [
+          'mount',
+          moduleFunctionWithScheme(
+            'mount',
+            ['Renderer', 'any', 'VNode'],
+            'RenderRoot',
+            schemeFromVars(mountType, []),
+            ['renderer', 'container', 'node'],
+            'std://render'
+          ),
+        ],
+        [
+          'update',
+          moduleFunctionWithScheme(
+            'update',
+            ['RenderRoot', 'VNode'],
+            'void',
+            schemeFromVars(updateType, []),
+            ['root', 'node'],
+            'std://render'
+          ),
+        ],
+        [
+          'unmount',
+          moduleFunctionWithScheme(
+            'unmount',
+            ['RenderRoot'],
+            'void',
+            schemeFromVars(unmountType, []),
+            ['root'],
+            'std://render'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const preludeJoinT = freshTypeVar();
   const preludeJoinAllType: Type = fnType(
     [adt('Vec', [promiseType(preludeJoinT)])],
@@ -3086,6 +3394,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['async_channel', asyncChannelModule],
       ['thread', threadModule],
       ['sync', syncModule],
+      ['render', renderModule],
       ['fs', fsModule],
       ['path', pathModule],
       ['env', envModule],
@@ -3128,6 +3437,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/async_channel', asyncChannelModule);
   registry.set('@std/thread', threadModule);
   registry.set('@std/sync', syncModule);
+  registry.set('@std/render', renderModule);
   registry.set('@prelude', preludeModule);
   return registry;
 }

@@ -273,6 +273,88 @@ Alias for `time.sleep(ms)` for timeout/race flows.
 ### join_all<T>(values: Vec<Promise<T>>) -> Promise<Vec<T>>
 Waits for all promises and returns results in input order.
 
+## @std/render
+
+Core frontend/runtime primitives for reactive UI layers. The module is platform-agnostic: it models state, virtual nodes, and renderer contracts without DOM assumptions.
+
+### Reactive Primitives
+
+### signal<T>(initial: T) -> Signal<T>
+Creates writable reactive state.
+
+### get<T>(signal: Signal<T>) -> T
+Reads signal value and tracks dependencies.
+
+### peek<T>(signal: Signal<T>) -> T
+Reads signal value without dependency tracking.
+
+### set<T>(signal: Signal<T>, value: T) -> Bool
+Writes signal value and notifies dependents when it changes.
+
+### update_signal<T>(signal: Signal<T>, updater: fn(T) -> T) -> T
+Updates signal from previous value.
+
+### memo<T>(compute: fn() -> T) -> Memo<T>
+Creates a derived reactive value with fine-grained dependency tracking.
+
+### memo_get<T>(memo: Memo<T>) -> T
+Reads memo value (tracked).
+
+### memo_peek<T>(memo: Memo<T>) -> T
+Reads memo value without tracking.
+
+### memo_dispose<T>(memo: Memo<T>) -> Void
+Disposes memo computation and subscriptions.
+
+### effect(run: fn() -> Void) -> Effect
+Runs side-effects whenever tracked dependencies change.
+
+### dispose_effect(effect: Effect) -> Void
+Stops an effect and runs final cleanup.
+
+### batch<T>(block: fn() -> T) -> T
+Batches multiple writes into one effect flush.
+
+### untrack<T>(block: fn() -> T) -> T
+Runs a block without collecting reactive dependencies.
+
+### VNode Primitives
+
+### text(value: String) -> VNode
+Creates a text node.
+
+### element(tag: String, props: Any, children: Any) -> VNode
+Creates an element node.
+
+### fragment(children: Any) -> VNode
+Creates a fragment node.
+
+### is_vnode(value: Any) -> Bool
+Checks if a value is a VNode.
+
+### serialize(node: VNode) -> String
+Serializes a VNode tree for SSR or transport.
+
+### parse(json: String) -> VNode
+Parses serialized VNode payload.
+
+### Renderer Contract
+
+### create_renderer(candidate: Any) -> Renderer
+Validates and wraps a renderer implementation. Renderer must provide `mount(node, container)`. Optional hooks: `patch(prev, next, container)` and `unmount(container)`.
+
+### create_root(renderer: Renderer, container: Any) -> RenderRoot
+Creates a render root state holder.
+
+### mount(renderer: Renderer, container: Any, node: VNode) -> RenderRoot
+Mounts a VNode and returns render root.
+
+### update(root: RenderRoot, node: VNode) -> Void
+Patches/re-mounts root with new VNode.
+
+### unmount(root: RenderRoot) -> Void
+Unmounts current tree from root container.
+
 ## Duration Helpers
 
 Numeric method helpers for millisecond durations:

@@ -8,6 +8,7 @@
 - `ECOSYSTEM.md` — ecosystem status, package guidance, and contribution model
 - `CAPABILITIES.md` — feature matrix and status
 - `STDLIB.md` — standard library APIs
+- `RENDER.md` — reactivity, VNode model, and renderer contract
 - `NUMERIC_TYPES.md` — numeric type system
 - `ERROR_HANDLING.md` — `Result` and `?` operator
 - `CONST_GENERICS.md` — const generics and fixed-size arrays
