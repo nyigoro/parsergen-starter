@@ -325,8 +325,40 @@ function buildCollectionRewriteActions(uri: string, range: Range, snippet: strin
 
 function methodModules(method: string): string[] {
   const modules = new Set<string>();
-  if (['push', 'get', 'len', 'pop', 'clear', 'map', 'filter', 'fold', 'for_each'].includes(method)) {
+  if (
+    [
+      'push',
+      'get',
+      'len',
+      'pop',
+      'clear',
+      'map',
+      'filter',
+      'fold',
+      'for_each',
+      'any',
+      'all',
+      'find',
+      'position',
+      'take',
+      'skip',
+      'zip',
+      'enumerate',
+    ].includes(method)
+  ) {
     modules.add('vec');
+  }
+  if (['push_front', 'push_back', 'pop_front', 'pop_back', 'len', 'clear'].includes(method)) {
+    modules.add('deque');
+  }
+  if (['insert', 'get', 'remove', 'contains_key', 'len', 'clear', 'keys', 'values', 'entries'].includes(method)) {
+    modules.add('btreemap');
+  }
+  if (['insert', 'contains', 'remove', 'len', 'clear', 'values'].includes(method)) {
+    modules.add('btreeset');
+  }
+  if (['push', 'pop', 'peek', 'len', 'clear'].includes(method)) {
+    modules.add('priority_queue');
   }
   if (['insert', 'get', 'remove', 'contains_key', 'len', 'clear', 'keys', 'values'].includes(method)) {
     modules.add('hashmap');

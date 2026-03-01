@@ -179,6 +179,13 @@ const visitExpr = (
     case 'ArrayLiteral':
       for (const element of expr.elements) visitExpr(element, ctx, genericFns, hm);
       return;
+    case 'ArrayRepeatLiteral':
+      visitExpr(expr.value, ctx, genericFns, hm);
+      visitExpr(expr.count, ctx, genericFns, hm);
+      return;
+    case 'MacroInvoke':
+      for (const arg of expr.args) visitExpr(arg, ctx, genericFns, hm);
+      return;
     case 'Binary':
       visitExpr(expr.left, ctx, genericFns, hm);
       visitExpr(expr.right, ctx, genericFns, hm);
@@ -193,6 +200,12 @@ const visitExpr = (
       visitExpr(expr.value, ctx, genericFns, hm);
       for (const arm of expr.arms) {
         if (arm.guard) visitExpr(arm.guard, ctx, genericFns, hm);
+        visitExpr(arm.body, ctx, genericFns, hm);
+      }
+      return;
+    case 'SelectExpr':
+      for (const arm of expr.arms) {
+        visitExpr(arm.value, ctx, genericFns, hm);
         visitExpr(arm.body, ctx, genericFns, hm);
       }
       return;
@@ -304,6 +317,7 @@ const visitStatement = (
       return;
     case 'TraitDecl':
     case 'ImplDecl':
+    case 'MacroRulesDecl':
       return;
     default:
       return;
@@ -350,6 +364,13 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
     case 'ArrayLiteral':
       expr.elements.forEach((element) => substituteTypesInExpr(element, mapping));
       return;
+    case 'ArrayRepeatLiteral':
+      substituteTypesInExpr(expr.value, mapping);
+      substituteTypesInExpr(expr.count, mapping);
+      return;
+    case 'MacroInvoke':
+      expr.args.forEach((arg) => substituteTypesInExpr(arg, mapping));
+      return;
     case 'Binary':
       substituteTypesInExpr(expr.left, mapping);
       substituteTypesInExpr(expr.right, mapping);
@@ -367,6 +388,12 @@ const substituteTypesInExpr = (expr: LuminaExpr, mapping: Map<string, LuminaType
       substituteTypesInExpr(expr.value, mapping);
       for (const arm of expr.arms) {
         if (arm.guard) substituteTypesInExpr(arm.guard, mapping);
+        substituteTypesInExpr(arm.body, mapping);
+      }
+      return;
+    case 'SelectExpr':
+      for (const arm of expr.arms) {
+        substituteTypesInExpr(arm.value, mapping);
         substituteTypesInExpr(arm.body, mapping);
       }
       return;
@@ -476,6 +503,7 @@ const substituteTypesInStatement = (stmt: LuminaStatement, mapping: Map<string, 
       return;
     case 'TraitDecl':
     case 'ImplDecl':
+    case 'MacroRulesDecl':
       return;
     default:
       return;
@@ -623,6 +651,12 @@ export function rewriteCallSites(
         visitExprForRewrite(expr.value);
         for (const arm of expr.arms) {
           if (arm.guard) visitExprForRewrite(arm.guard);
+          visitExprForRewrite(arm.body);
+        }
+        return;
+      case 'SelectExpr':
+        for (const arm of expr.arms) {
+          visitExprForRewrite(arm.value);
           visitExprForRewrite(arm.body);
         }
         return;

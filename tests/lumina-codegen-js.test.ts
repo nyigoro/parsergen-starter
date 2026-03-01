@@ -43,4 +43,31 @@ describe('Lumina AST JS codegen', () => {
     expect(code).toContain('const v =');
     expect(code).toContain('__match_result_');
   });
+
+  test('registers Hash/Eq trait impls and tags struct literals', () => {
+    const program = `
+      trait Hash { fn hash(self: Self) -> u64; }
+      trait Eq { fn eq(self: Self, other: Self) -> bool; }
+
+      struct Point { x: i32, y: i32 }
+
+      impl Hash for Point {
+        fn hash(self: Point) -> u64 { return 1u64; }
+      }
+
+      impl Eq for Point {
+        fn eq(self: Point, other: Point) -> bool { return self.x == other.x && self.y == other.y; }
+      }
+
+      fn make() -> Point {
+        Point { x: 1, y: 2 }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast);
+    expect(code).toContain('__lumina_register_trait_impl("Hash", "Point"');
+    expect(code).toContain('__lumina_register_trait_impl("Eq", "Point"');
+    expect(code).toContain('__lumina_struct("Point"');
+  });
 });

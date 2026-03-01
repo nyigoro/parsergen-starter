@@ -76,11 +76,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -92,11 +92,27 @@ class JSGenerator {
       this.builder.append('\n');
       this.builder.append('const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };');
       this.builder.append('\n');
+      this.builder.append('const path = { join: (a, b) => `${a}/${b}`, is_absolute: () => false, extension: () => ({ $tag: "None" }), dirname: (v) => v, basename: (v) => v, normalize: (v) => v };');
+      this.builder.append('\n');
+      this.builder.append('const env = { var: () => ({ $tag: "Err", $payload: "No env runtime" }), set_var: () => ({ $tag: "Err", $payload: "No env runtime" }), remove_var: () => ({ $tag: "Err", $payload: "No env runtime" }), args: () => [], cwd: () => ({ $tag: "Err", $payload: "No env runtime" }) };');
+      this.builder.append('\n');
+      this.builder.append('const process = { spawn: () => ({ $tag: "Err", $payload: "No process runtime" }), exit: () => {}, cwd: () => "", pid: () => -1 };');
+      this.builder.append('\n');
+      this.builder.append('const json = { to_string: () => ({ $tag: "Err", $payload: "No json runtime" }), to_pretty_string: () => ({ $tag: "Err", $payload: "No json runtime" }), from_string: () => ({ $tag: "Err", $payload: "No json runtime" }), parse: () => ({ $tag: "Err", $payload: "No json runtime" }) };');
+      this.builder.append('\n');
       this.builder.append('const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };');
       this.builder.append('\n');
       this.builder.append(
         'const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };'
       );
+      this.builder.append('\n');
+      this.builder.append('const channel = { new: () => ({ sender: {}, receiver: {} }) };');
+      this.builder.append('\n');
+      this.builder.append('const async_channel = channel;');
+      this.builder.append('\n');
+      this.builder.append('const timeout = async (ms) => await time.sleep(ms);');
+      this.builder.append('\n');
+      this.builder.append('const join_all = async (values) => { const arr = Array.isArray(values) ? values : (values && values[Symbol.iterator]) ? Array.from(values) : []; return await Promise.all(arr.map((v) => Promise.resolve(v))); };');
       this.builder.append('\n');
       this.builder.append(
         'const regex = { isValid: () => false, test: async () => ({ $tag: "Err", $payload: "No regex runtime" }), find: () => ({ $tag: "None" }), findAll: async () => ({ $tag: "Err", $payload: "No regex runtime" }), replace: async () => ({ $tag: "Err", $payload: "No regex runtime" }) };'
@@ -119,6 +135,16 @@ class JSGenerator {
       this.builder.append(
         'function __lumina_index(target, index) { if (typeof target === "string" && index && typeof index === "object" && "start" in index) { const start = index.start == null ? 0 : Math.max(0, index.start); const endBase = index.end == null ? target.length : Math.max(0, index.end); return __lumina_slice(target, start, endBase, index.inclusive); } return target ? target[index] : undefined; }'
       );
+      this.builder.append('\n');
+      this.builder.append('function __lumina_clone(value) { if (value == null || typeof value !== "object") return value; if (Array.isArray(value)) return value.map((entry) => __lumina_clone(entry)); return { ...value }; }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_debug(value) { return __lumina_stringify(value); }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_eq(left, right) { return JSON.stringify(left) === JSON.stringify(right); }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_struct(_name, fields) { return fields; }');
+      this.builder.append('\n');
+      this.builder.append('function __lumina_register_trait_impl(_trait, _type, _fn) {}');
     }
     if (this.usesTryHelper) {
       this.builder.append(tryHelperSource());
@@ -133,18 +159,18 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'module.exports = { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
+          'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
         );
       } else {
         this.builder.append(
-          'export { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };'
+          'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
         );
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
+        this.builder.append('module.exports = { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
       } else {
-        this.builder.append('export { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };');
+        this.builder.append('export { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
       }
     }
     this.builder.append('\n');
@@ -351,6 +377,7 @@ class JSGenerator {
         return;
       }
       case 'TypeDecl':
+      case 'MacroRulesDecl':
       case 'TraitDecl':
       case 'StructDecl':
       case 'EnumDecl':
@@ -396,11 +423,21 @@ class JSGenerator {
     const traitType = typeof stmt.traitType === 'string' ? stmt.traitType : 'Trait';
     const forType = typeof stmt.forType === 'string' ? stmt.forType : 'Unknown';
     const traitName = traitType.split('<')[0];
+    const forTypeBase = forType.includes('<') ? forType.slice(0, forType.indexOf('<')) : forType;
     const traitDecl = this.traitDecls.get(traitName);
     const implemented = new Set(stmt.methods.map((method) => method.name));
     for (const method of stmt.methods) {
       const mangledName = mangleTraitMethodName(traitType, forType, method.name);
       this.emitFunctionDecl(mangledName, method);
+      const registerTrait =
+        (traitName === 'Hash' && method.name === 'hash') ||
+        (traitName === 'Eq' && method.name === 'eq') ||
+        (traitName === 'Ord' && method.name === 'cmp');
+      if (registerTrait) {
+        this.builder.append(
+          `${this.pad()}__lumina_register_trait_impl(${JSON.stringify(traitName)}, ${JSON.stringify(forTypeBase)}, ${mangledName});\n`
+        );
+      }
     }
     if (traitDecl) {
       for (const method of traitDecl.methods) {
@@ -408,6 +445,15 @@ class JSGenerator {
         if (implemented.has(method.name)) continue;
         const mangledName = mangleTraitMethodName(traitType, forType, method.name);
         this.emitDefaultTraitMethod(mangledName, traitType, forType, method);
+        const registerTrait =
+          (traitName === 'Hash' && method.name === 'hash') ||
+          (traitName === 'Eq' && method.name === 'eq') ||
+          (traitName === 'Ord' && method.name === 'cmp');
+        if (registerTrait) {
+          this.builder.append(
+            `${this.pad()}__lumina_register_trait_impl(${JSON.stringify(traitName)}, ${JSON.stringify(forTypeBase)}, ${mangledName});\n`
+          );
+        }
       }
     }
   }
@@ -680,6 +726,17 @@ class JSGenerator {
         parts.push(']');
         return withBase(concat(...parts));
       }
+      case 'ArrayRepeatLiteral': {
+        return withBase(
+          concat(
+            'vec.from(Array.from({ length: Math.max(0, Math.trunc(',
+            this.emitExpr(expr.count),
+            ')) }, () => ',
+            this.emitExpr(expr.value),
+            '))'
+          )
+        );
+      }
       case 'Lambda': {
         const params = expr.params.map((param) => param.name).join(', ');
         const asyncKeyword = expr.async ? 'async ' : '';
@@ -772,6 +829,10 @@ class JSGenerator {
         const index = this.emitExpr(expr.index);
         return withBase(concat('__lumina_index(', object, ', ', index, ')'));
       }
+      case 'MacroInvoke': {
+        const message = JSON.stringify(`Unsupported macro invocation '${expr.name}!' (macro expansion is not implemented)`);
+        return withBase({ code: `(() => { throw new Error(${message}); })()`, mappings: [] });
+      }
       case 'Identifier':
         return withBase({ code: expr.name, mappings: [] });
       case 'Move':
@@ -850,6 +911,37 @@ class JSGenerator {
         if (expr.enumName && isUpperIdent(expr.enumName)) {
           return this.emitEnumConstruct(expr.enumName, expr.callee.name, expr.args, baseLoc);
         }
+        const helperReceiverExpr =
+          expr.receiver ||
+          (expr.enumName && !isUpperIdent(expr.enumName)
+            ? ({ type: 'Identifier', name: expr.enumName } as LuminaExpr)
+            : null);
+
+        if (helperReceiverExpr && expr.args.length === 0) {
+          const receiverExpr = this.emitExpr(helperReceiverExpr);
+          switch (expr.callee.name) {
+            case 'clone':
+              return withBase(concat('__lumina_clone(', receiverExpr, ')'));
+            case 'debug':
+              return withBase(concat('__lumina_debug(', receiverExpr, ')'));
+            case 'millis':
+            case 'milliseconds':
+              return withBase(concat('Math.trunc(', receiverExpr, ')'));
+            case 'seconds':
+              return withBase(concat('(Math.trunc(', receiverExpr, ') * 1000)'));
+            case 'minutes':
+              return withBase(concat('(Math.trunc(', receiverExpr, ') * 60000)'));
+            case 'hours':
+              return withBase(concat('(Math.trunc(', receiverExpr, ') * 3600000)'));
+            default:
+              break;
+          }
+        }
+        if (helperReceiverExpr && expr.callee.name === 'eq' && expr.args.length === 1) {
+          return withBase(
+            concat('__lumina_eq(', this.emitExpr(helperReceiverExpr), ', ', this.emitExpr(expr.args[0]), ')')
+          );
+        }
         if (expr.receiver) {
           const parts: Array<string | EmitResult> = [this.emitExpr(expr.receiver), '.', expr.callee.name, '('];
           expr.args.forEach((arg, idx) => {
@@ -875,17 +967,44 @@ class JSGenerator {
         return withBase(concat(this.emitExpr(expr.object), '.', expr.property));
       }
       case 'StructLiteral': {
-        const parts: Array<string | EmitResult> = ['{ '];
+        const parts: Array<string | EmitResult> = ['__lumina_struct(', JSON.stringify(expr.name), ', { '];
         expr.fields.forEach((field, idx) => {
           if (idx > 0) parts.push(', ');
           parts.push(`${field.name}: `);
           parts.push(this.emitExpr(field.value));
         });
-        parts.push(' }');
+        parts.push(' })');
         return withBase(concat(...parts));
       }
       case 'MatchExpr':
         return withBase(this.emitMatchExpr(expr.value, expr.arms));
+      case 'SelectExpr': {
+        if (!expr.arms || expr.arms.length === 0) {
+          return withBase({ code: 'undefined', mappings: [] });
+        }
+        const armParts: Array<string | EmitResult> = [];
+        expr.arms.forEach((arm, idx) => {
+          if (idx > 0) armParts.push(', ');
+          const valueExpr = this.emitExpr(arm.value);
+          const bodyExpr = this.emitExpr(arm.body);
+          if (arm.binding && arm.binding !== '_') {
+            armParts.push(
+              concat(
+                '(async () => { const __select_value = await ',
+                valueExpr,
+                '; const ',
+                arm.binding,
+                ' = __select_value; return ',
+                bodyExpr,
+                '; })()'
+              )
+            );
+          } else {
+            armParts.push(concat('(async () => { await ', valueExpr, '; return ', bodyExpr, '; })()'));
+          }
+        });
+        return withBase(concat('(await Promise.race([', ...armParts, ']))'));
+      }
       case 'IsExpr': {
         const value = this.emitExpr(expr.value);
         const variant = JSON.stringify(expr.variant);
@@ -1109,21 +1228,27 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
     case 'Binary':
       return exprUsesTry(expr.left) || exprUsesTry(expr.right);
     case 'Call':
-      return expr.args.some(exprUsesTry);
+      return expr.args.some(exprUsesTry) || (expr.receiver ? exprUsesTry(expr.receiver) : false);
     case 'Member':
       return exprUsesTry(expr.object);
     case 'StructLiteral':
       return expr.fields.some((field) => exprUsesTry(field.value));
     case 'MatchExpr':
       return exprUsesTry(expr.value) || expr.arms.some((arm) => (arm.guard ? exprUsesTry(arm.guard) : false) || exprUsesTry(arm.body));
+    case 'SelectExpr':
+      return expr.arms.some((arm) => exprUsesTry(arm.value) || exprUsesTry(arm.body));
     case 'Move':
       return exprUsesTry(expr.target);
     case 'InterpolatedString':
       return expr.parts.some((part) => typeof part !== 'string' && exprUsesTry(part));
     case 'ArrayLiteral':
       return expr.elements.some((element) => exprUsesTry(element));
+    case 'ArrayRepeatLiteral':
+      return exprUsesTry(expr.value) || exprUsesTry(expr.count);
     case 'TupleLiteral':
       return expr.elements.some((element) => exprUsesTry(element));
+    case 'MacroInvoke':
+      return expr.args.some((arg) => exprUsesTry(arg));
     case 'Range':
       return (expr.start ? exprUsesTry(expr.start) : false) || (expr.end ? exprUsesTry(expr.end) : false);
     case 'Index':

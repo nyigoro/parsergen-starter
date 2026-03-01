@@ -83,4 +83,69 @@ describe('Trait Registry', () => {
     const { diagnostics } = analyzeLumina(ast);
     expect(hasDiagnostic(diagnostics as Diagnostic[], 'TRAIT-006', 'error')).toBe(true);
   });
+
+  it('supports supertraits and enforces required impls', () => {
+    const source = `
+      enum Ordering { Less, Equal, Greater }
+
+      trait Eq {
+        fn eq(self: Self, other: Self) -> bool;
+      }
+
+      trait Ord : Eq {
+        fn cmp(self: Self, other: Self) -> Ordering;
+      }
+
+      struct Point {
+        x: i32,
+        y: i32
+      }
+
+      impl Ord for Point {
+        fn cmp(self: Point, other: Point) -> Ordering {
+          Ordering.Equal
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const { diagnostics } = analyzeLumina(ast);
+    expect(hasDiagnostic(diagnostics as Diagnostic[], 'TRAIT-015', 'error')).toBe(true);
+  });
+
+  it('accepts Ord impl when supertrait impl exists', () => {
+    const source = `
+      enum Ordering { Less, Equal, Greater }
+
+      trait Eq {
+        fn eq(self: Self, other: Self) -> bool;
+      }
+
+      trait Ord : Eq {
+        fn cmp(self: Self, other: Self) -> Ordering;
+      }
+
+      struct Point {
+        x: i32,
+        y: i32
+      }
+
+      impl Eq for Point {
+        fn eq(self: Point, other: Point) -> bool {
+          self.x == other.x && self.y == other.y
+        }
+      }
+
+      impl Ord for Point {
+        fn cmp(self: Point, other: Point) -> Ordering {
+          Ordering.Equal
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const { diagnostics } = analyzeLumina(ast);
+    const errors = diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

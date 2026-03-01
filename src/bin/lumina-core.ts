@@ -993,7 +993,14 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
   const visitExpr = (expr: unknown): boolean => {
     if (!expr || typeof expr !== 'object') return false;
     const node = expr as { type?: string; [key: string]: unknown };
-    if (node.type === 'Lambda' || node.type === 'ArrayLiteral' || node.type === 'TupleLiteral') return true;
+    if (
+      node.type === 'Lambda' ||
+      node.type === 'ArrayLiteral' ||
+      node.type === 'TupleLiteral' ||
+      node.type === 'SelectExpr'
+    ) {
+      return true;
+    }
     switch (node.type) {
       case 'Binary':
         return visitExpr(node.left) || visitExpr(node.right);
@@ -1032,6 +1039,13 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
       case 'InterpolatedString':
         return Array.isArray(node.parts)
           ? node.parts.some((part) => typeof part === 'object' && part !== null && visitExpr(part))
+          : false;
+      case 'SelectExpr':
+        return Array.isArray(node.arms)
+          ? node.arms.some((arm) => {
+              const armNode = arm as { value?: unknown; body?: unknown };
+              return visitExpr(armNode.value) || visitExpr(armNode.body);
+            })
           : false;
       case 'Range':
         return visitExpr(node.start) || visitExpr(node.end);

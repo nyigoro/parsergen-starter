@@ -6,6 +6,7 @@ export function normalizeTypeNameForDisplay(typeName: string): string {
   const aliases: Record<string, string> = {
     int: 'i32',
     float: 'f64',
+    usize: 'u32',
     unit: 'void',
   };
 
@@ -20,6 +21,7 @@ export function normalizeTypeForDisplay(type: string): string {
   return type
     .replace(/\bint\b/g, 'i32')
     .replace(/\bfloat\b/g, 'f64')
+    .replace(/\busize\b/g, 'u32')
     .replace(/\bunit\b/g, 'void');
 }
 

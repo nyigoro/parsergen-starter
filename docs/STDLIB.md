@@ -178,6 +178,76 @@ Creates directories for `path` (Node). Returns `Err` in browsers.
 ### removeFile(path: String) -> Promise<Result<Void, String>>
 Removes a file path (Node). Returns `Err` in browsers.
 
+## @std/path
+
+### join(left: String, right: String) -> String
+Joins two path segments using runtime-specific separators.
+
+### is_absolute(value: String) -> Bool
+Returns `true` when the path is absolute.
+
+### extension(value: String) -> Option<String>
+Returns file extension without the leading `.`.
+
+### dirname(value: String) -> String
+Returns the directory name part.
+
+### basename(value: String) -> String
+Returns the final path segment.
+
+### normalize(value: String) -> String
+Normalizes path separators and `.` / `..` segments.
+
+## @std/env
+
+### var(name: String) -> Result<String, String>
+Returns environment variable value, or `Err` when missing/unavailable.
+
+### set_var(name: String, value: String) -> Result<Void, String>
+Sets an environment variable (Node runtime).
+
+### remove_var(name: String) -> Result<Void, String>
+Removes an environment variable (Node runtime).
+
+### args() -> Vec<String>
+Returns CLI arguments (excluding executable and script path).
+
+### cwd() -> Result<String, String>
+Returns current working directory, or `Err` if unavailable.
+
+## @std/process
+
+### spawn(command: String, args: Vec<String>) -> Result<ProcessOutput, String>
+Runs a child process and returns:
+- `status: Int`
+- `success: Bool`
+- `stdout: String`
+- `stderr: String`
+
+### exit(code: Int) -> Void
+Exits current process with status code.
+
+### cwd() -> String
+Returns current working directory.
+
+### pid() -> Int
+Returns process id.
+
+## @std/json
+
+### to_string(value: Any) -> Result<String, String>
+Serializes a value to JSON.
+
+### to_pretty_string(value: Any) -> Result<String, String>
+Serializes a value to formatted JSON.
+
+### from_string<T>(source: String) -> Result<T, String>
+Parses JSON text into a value.
+Type parameter `T` is compile-time only; runtime validation/derive-based decoding is not yet implemented.
+
+### parse<T>(source: String) -> Result<T, String>
+Alias of `from_string`.
+
 ## @std/time
 
 ### nowMs() -> Int
@@ -194,6 +264,27 @@ Returns elapsed milliseconds since `instantNow()` value.
 
 ### sleep(ms: Int) -> Promise<Void>
 Async sleep/delay helper.
+
+## @std/async
+
+### timeout(ms: Int) -> Promise<Void>
+Alias for `time.sleep(ms)` for timeout/race flows.
+
+### join_all<T>(values: Vec<Promise<T>>) -> Promise<Vec<T>>
+Waits for all promises and returns results in input order.
+
+## Duration Helpers
+
+Numeric method helpers for millisecond durations:
+
+- `n.millis()` / `n.milliseconds()` -> `Int`
+- `n.seconds()` -> `n * 1000`
+- `n.minutes()` -> `n * 60000`
+- `n.hours()` -> `n * 3600000`
+
+```lumina
+await timeout(5.seconds());
+```
 
 ## @std/regex
 
@@ -269,6 +360,51 @@ Reduces the vector into a single value.
 ### for_each<T>(vec: Vec<T>, action: fn(T) -> Void) -> Void
 Applies `action` to every element.
 
+### any<T>(vec: Vec<T>, predicate: fn(T) -> Bool) -> Bool
+Returns `true` if any element satisfies `predicate`.
+
+### all<T>(vec: Vec<T>, predicate: fn(T) -> Bool) -> Bool
+Returns `true` if all elements satisfy `predicate`.
+
+### find<T>(vec: Vec<T>, predicate: fn(T) -> Bool) -> Option<T>
+Returns the first matching element as `Some`, or `None` if no match.
+
+### position<T>(vec: Vec<T>, predicate: fn(T) -> Bool) -> Option<Int>
+Returns the index of the first matching element, or `None` if no match.
+
+### take<T>(vec: Vec<T>, count: Int) -> Vec<T>
+Returns a new vector containing the first `count` elements.
+
+### skip<T>(vec: Vec<T>, count: Int) -> Vec<T>
+Returns a new vector without the first `count` elements.
+
+### zip<T, U>(left: Vec<T>, right: Vec<U>) -> Vec<Tuple<T, U>>
+Returns pairs from two vectors, truncated to the shorter length.
+
+### enumerate<T>(vec: Vec<T>) -> Vec<Tuple<Int, T>>
+Returns `(index, value)` pairs for each element.
+
+### Iterator Ergonomics Example
+```lumina
+let v = [1, 2, 3, 4, 5];
+
+// Predicates
+v.any(|x| x > 3);        // true
+v.all(|x| x > 0);        // true
+
+// Finding
+v.find(|x| x % 2 == 0);  // Some(2)
+v.position(|x| x == 3);  // Some(2)
+
+// Combining
+v.zip([10, 20, 30]);     // [(1,10), (2,20), (3,30)]
+v.enumerate();           // [(0,1), (1,2), (2,3), ...]
+
+// Slicing
+v.take(3);               // [1, 2, 3]
+v.skip(2);               // [3, 4, 5]
+```
+
 ## @std/hashmap
 
 ### new<K, V>() -> HashMap<K, V>
@@ -320,6 +456,126 @@ Removes all values from the set.
 
 ### values<T>(set: HashSet<T>) -> Vec<T>
 Returns a vector of all values.
+
+## @std/deque
+
+### new<T>() -> Deque<T>
+Creates an empty double-ended queue.
+
+### push_front<T>(deque: Deque<T>, value: T) -> Void
+Pushes a value to the front.
+
+### push_back<T>(deque: Deque<T>, value: T) -> Void
+Pushes a value to the back.
+
+### pop_front<T>(deque: Deque<T>) -> Option<T>
+Pops from the front, or `None` if empty.
+
+### pop_back<T>(deque: Deque<T>) -> Option<T>
+Pops from the back, or `None` if empty.
+
+### len<T>(deque: Deque<T>) -> Int
+Returns the number of items.
+
+### clear<T>(deque: Deque<T>) -> Void
+Removes all items.
+
+## @std/btreemap
+
+### new<K, V>() -> BTreeMap<K, V>
+Creates an empty ordered map.
+
+### insert<K, V>(map: BTreeMap<K, V>, key: K, value: V) -> Option<V>
+Inserts a key/value pair and returns the previous value if present.
+
+### get<K, V>(map: BTreeMap<K, V>, key: K) -> Option<V>
+Returns the value for a key, or `None` when missing.
+
+### remove<K, V>(map: BTreeMap<K, V>, key: K) -> Option<V>
+Removes a key and returns its previous value if present.
+
+### contains_key<K, V>(map: BTreeMap<K, V>, key: K) -> Bool
+Checks whether a key exists.
+
+### len<K, V>(map: BTreeMap<K, V>) -> Int
+Returns the number of entries.
+
+### clear<K, V>(map: BTreeMap<K, V>) -> Void
+Removes all entries.
+
+### keys<K, V>(map: BTreeMap<K, V>) -> Vec<K>
+Returns keys in sorted order.
+
+### values<K, V>(map: BTreeMap<K, V>) -> Vec<V>
+Returns values in key-sorted order.
+
+### entries<K, V>(map: BTreeMap<K, V>) -> Vec<Tuple<K, V>>
+Returns `(key, value)` tuples in sorted key order.
+
+## @std/btreeset
+
+### new<T>() -> BTreeSet<T>
+Creates an empty ordered set.
+
+### insert<T>(set: BTreeSet<T>, value: T) -> Bool
+Inserts a value and returns true when newly added.
+
+### contains<T>(set: BTreeSet<T>, value: T) -> Bool
+Checks whether a value exists.
+
+### remove<T>(set: BTreeSet<T>, value: T) -> Bool
+Removes a value and returns true when it existed.
+
+### len<T>(set: BTreeSet<T>) -> Int
+Returns the number of items.
+
+### clear<T>(set: BTreeSet<T>) -> Void
+Removes all items.
+
+### values<T>(set: BTreeSet<T>) -> Vec<T>
+Returns values in sorted order.
+
+## @std/priority_queue
+
+### new<T>() -> PriorityQueue<T>
+Creates an empty min-heap priority queue.
+
+### push<T>(queue: PriorityQueue<T>, value: T) -> Void
+Pushes a value.
+
+### pop<T>(queue: PriorityQueue<T>) -> Option<T>
+Pops the smallest value, or `None` if empty.
+
+### peek<T>(queue: PriorityQueue<T>) -> Option<T>
+Returns the smallest value without removing it.
+
+### len<T>(queue: PriorityQueue<T>) -> Int
+Returns the number of items.
+
+### clear<T>(queue: PriorityQueue<T>) -> Void
+Removes all items.
+
+## Custom Key Traits
+
+Collections support user-defined key semantics via traits implemented in Lumina:
+
+```lumina
+trait Hash {
+  fn hash(self: Self) -> u64;
+}
+
+trait Eq {
+  fn eq(self: Self, other: Self) -> bool;
+}
+
+trait Ord : Eq {
+  fn cmp(self: Self, other: Self) -> Ordering;
+}
+```
+
+- `HashMap` / `HashSet` use `Hash` + `Eq` when available for struct keys.
+- `BTreeMap` / `BTreeSet` / `PriorityQueue` use `Ord` when available.
+- If no custom trait impl exists for a key type, runtime falls back to structural behavior.
 
 ## @std/channel
 
@@ -487,6 +743,29 @@ async fn main() -> i32 {
   let _j1: i32 = Result.unwrap_or(0, await p1.join());
   let _j2: i32 = Result.unwrap_or(0, await p2.join());
   total
+}
+```
+
+## @std/async_channel
+
+`@std/async_channel` is an alias of `@std/channel` with the same API.
+
+Use it when you want explicit async naming:
+
+```lumina
+import { async_channel } from "@std";
+
+async fn main() -> i32 {
+  let ch = async_channel.new<i32>();
+  let tx = ch.sender;
+  let rx = ch.receiver;
+
+  await tx.send(1);
+  match await rx.recv() {
+    Some(v) => io.println(str.from_int(v)),
+    None => io.println("closed")
+  }
+  0
 }
 ```
 

@@ -21,6 +21,7 @@ export interface LuminaProgram extends LuminaNode {
 
 export type LuminaStatement = (
   | LuminaImport
+  | LuminaMacroRulesDecl
   | LuminaTraitDecl
   | LuminaImplDecl
   | LuminaTypeDecl
@@ -57,6 +58,13 @@ export interface LuminaImport {
   location?: Location;
 }
 
+export interface LuminaMacroRulesDecl {
+  type: 'MacroRulesDecl';
+  name: string;
+  body: string;
+  location?: Location;
+}
+
 export interface LuminaTypeDecl {
   type: 'TypeDecl';
   name: string;
@@ -72,6 +80,7 @@ export interface LuminaTraitDecl {
   type: 'TraitDecl';
   name: string;
   typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
+  superTraits?: LuminaTypeExpr[];
   methods: LuminaTraitMethod[];
   associatedTypes?: LuminaTraitAssocType[];
   visibility?: 'public' | 'private';
@@ -117,6 +126,7 @@ export interface LuminaStructDecl {
   type: 'StructDecl';
   name: string;
   body: LuminaTypeField[];
+  derives?: string[];
   visibility?: 'public' | 'private';
   typeParams?: Array<{ name: string; bound?: LuminaTypeExpr[] }>;
   location?: Location;
@@ -134,6 +144,7 @@ export interface LuminaEnumDecl {
 export interface LuminaEnumVariant {
   name: string;
   params: LuminaTypeExpr[];
+  resultType?: LuminaTypeExpr | null;
   location?: Location;
 }
 
@@ -348,6 +359,13 @@ export interface LuminaMatchArmExpr {
   location?: Location;
 }
 
+export interface LuminaSelectArm {
+  binding: string | null;
+  value: LuminaExpr;
+  body: LuminaExpr;
+  location?: Location;
+}
+
 export type LuminaExpr = (
   | LuminaBinary
   | LuminaLambda
@@ -360,12 +378,15 @@ export type LuminaExpr = (
   | LuminaStructLiteral
   | LuminaRange
   | LuminaArrayLiteral
+  | LuminaArrayRepeatLiteral
   | LuminaTupleLiteral
+  | LuminaMacroInvoke
   | LuminaIndex
   | LuminaIsExpr
   | LuminaNumber
   | LuminaString
   | LuminaInterpolatedString
+  | LuminaSelectExpr
   | LuminaBoolean
   | LuminaIdentifier
   | LuminaMatchExpr
@@ -418,6 +439,12 @@ export interface LuminaInterpolatedString {
   location?: Location;
 }
 
+export interface LuminaSelectExpr {
+  type: 'SelectExpr';
+  arms: LuminaSelectArm[];
+  location?: Location;
+}
+
 export interface LuminaRange {
   type: 'Range';
   start: LuminaExpr | null;
@@ -432,9 +459,24 @@ export interface LuminaArrayLiteral {
   location?: Location;
 }
 
+export interface LuminaArrayRepeatLiteral {
+  type: 'ArrayRepeatLiteral';
+  value: LuminaExpr;
+  count: LuminaExpr;
+  location?: Location;
+}
+
 export interface LuminaTupleLiteral {
   type: 'TupleLiteral';
   elements: LuminaExpr[];
+  location?: Location;
+}
+
+export interface LuminaMacroInvoke {
+  type: 'MacroInvoke';
+  name: string;
+  args: LuminaExpr[];
+  delimiter: '[]' | '()' | '{}';
   location?: Location;
 }
 

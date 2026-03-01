@@ -30,6 +30,34 @@ describe('method syntax', () => {
     expect(errors).toHaveLength(0);
   });
 
+  it('supports rich Vec iterator method calls', () => {
+    const source = `
+      import { vec } from "@std";
+
+      fn main() -> i32 {
+        let v = [1, 2, 3, 4, 5];
+        let _any = v.any(|x| x > 3);
+        let _all = v.all(|x| x > 0);
+        let _find = v.find(|x| x % 2 == 0);
+        let _pos = v.position(|x| x == 3);
+        let _zip = v.zip([10, 20, 30]);
+        let _enum = v.enumerate();
+        let _take = v.take(3);
+        let _skip = v.skip(2);
+        v.fold(0, |acc, x| acc + x)
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+
+    const inferred = inferProgram(ast);
+    const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(hmErrors).toHaveLength(0);
+  });
+
   it('supports HashMap method calls', () => {
     const source = `
       import { hashmap } from "@std";
@@ -151,6 +179,51 @@ describe('method syntax', () => {
 
         let _a = await rx.recv();
         let _b = await rx.recv();
+        0
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const analysis = analyzeLumina(ast);
+    const errors = analysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+
+    const inferred = inferProgram(ast);
+    const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(hmErrors).toHaveLength(0);
+  });
+
+  it('supports deque/btreemap/btreeset/priority_queue method syntax', () => {
+    const source = `
+      import { deque, btreemap, btreeset, priority_queue } from "@std";
+
+      fn main() -> i32 {
+        let d: Deque<i32> = deque.new();
+        d.push_front(1);
+        d.push_back(2);
+        let _pf = d.pop_front();
+        let _pb = d.pop_back();
+
+        let m: BTreeMap<i32, string> = btreemap.new();
+        m.insert(3, "c");
+        m.insert(1, "a");
+        m.insert(2, "b");
+        let _mv = m.get(2);
+        let _me = m.entries();
+
+        let s: BTreeSet<i32> = btreeset.new();
+        s.insert(3);
+        s.insert(1);
+        s.insert(2);
+        let _sv = s.values();
+
+        let q: PriorityQueue<i32> = priority_queue.new();
+        q.push(5);
+        q.push(1);
+        q.push(3);
+        let _qp = q.peek();
+        let _qv = q.pop();
+
         0
       }
     `.trim() + '\n';

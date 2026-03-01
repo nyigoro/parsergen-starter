@@ -4,10 +4,16 @@ extern fn max(a: int, b: int) -> int from "math";
 extern fn min(a: int, b: int) -> int from "math";
 extern fn len(value: string) -> int from "string";
 extern fn upper(value: string) -> string from "string";
+extern fn timeout(ms: int) -> Promise<void> from "@std/async";
+extern fn join_all<T>(values: Vec<Promise<T>>) -> Promise<Vec<T>> from "@std/async";
 type List<T> = { length: int };
 extern type Vec<T> from "@std/vec";
 extern type HashMap<K, V> from "@std/hashmap";
 extern type HashSet<T> from "@std/hashset";
+extern type Deque<T> from "@std/deque";
+extern type BTreeMap<K, V> from "@std/btreemap";
+extern type BTreeSet<T> from "@std/btreeset";
+extern type PriorityQueue<T> from "@std/priority_queue";
 extern type Sender<T> from "@std/channel";
 extern type Receiver<T> from "@std/channel";
 struct Channel<T> { sender: Sender<T>, receiver: Receiver<T> }

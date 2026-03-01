@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import nodePath from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 export type LuminaEnumLike =
   | { $tag: string; $payload?: unknown }
@@ -25,8 +26,13 @@ const getEnumPayload = (value: LuminaEnumLike): unknown => {
 };
 
 const isNodeRuntime = (): boolean =>
-  typeof process !== 'undefined' &&
-  typeof (process as { versions?: { node?: string } }).versions?.node === 'string';
+  typeof (globalThis as { process?: unknown }).process !== 'undefined' &&
+  typeof (globalThis as { process?: { versions?: { node?: string } } }).process?.versions?.node === 'string';
+
+const getNodeProcess = (): NodeJS.Process | null => {
+  const candidate = (globalThis as { process?: NodeJS.Process }).process;
+  return candidate ?? null;
+};
 
 const blockedHttpHosts = new Set([
   'localhost',
@@ -68,10 +74,50 @@ const validateHttpUrl = (rawUrl: string): string => {
   return parsed.toString();
 };
 
+type RuntimeTraitName = 'Hash' | 'Eq' | 'Ord';
+
+const runtimeTraitImpls = {
+  Hash: new Map<string, (self: unknown) => unknown>(),
+  Eq: new Map<string, (self: unknown, other: unknown) => boolean>(),
+  Ord: new Map<string, (self: unknown, other: unknown) => unknown>(),
+} as const;
+
+const normalizeTraitTypeName = (typeName: string): string => {
+  const trimmed = typeName.trim();
+  const idx = trimmed.indexOf('<');
+  return idx === -1 ? trimmed : trimmed.slice(0, idx).trim();
+};
+
+const getRuntimeTypeTag = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = (value as { __lumina_type?: unknown }).__lumina_type;
+  return typeof candidate === 'string' ? candidate : null;
+};
+
+export const __lumina_register_trait_impl = (
+  traitName: RuntimeTraitName,
+  forType: string,
+  impl: ((...args: unknown[]) => unknown) | unknown
+): void => {
+  const targetType = normalizeTraitTypeName(forType);
+  if (!targetType) return;
+  if (traitName === 'Hash' && typeof impl === 'function') {
+    runtimeTraitImpls.Hash.set(targetType, impl as (self: unknown) => unknown);
+    return;
+  }
+  if (traitName === 'Eq' && typeof impl === 'function') {
+    runtimeTraitImpls.Eq.set(targetType, impl as (self: unknown, other: unknown) => boolean);
+    return;
+  }
+  if (traitName === 'Ord' && typeof impl === 'function') {
+    runtimeTraitImpls.Ord.set(targetType, impl as (self: unknown, other: unknown) => unknown);
+  }
+};
+
 const supportsColor = (): boolean => {
   if (typeof window !== 'undefined') return false;
   if (!isNodeRuntime()) return false;
-  const stdout = (process as { stdout?: { isTTY?: boolean } }).stdout;
+  const stdout = getNodeProcess()?.stdout;
   return Boolean(stdout && stdout.isTTY);
 };
 
@@ -246,6 +292,173 @@ export const __lumina_index = (target: unknown, index: unknown): unknown => {
   return undefined;
 };
 
+export const __lumina_struct = <T extends Record<string, unknown>>(typeName: string, fields: T): T => {
+  try {
+    Object.defineProperty(fields, '__lumina_type', {
+      value: normalizeTraitTypeName(typeName),
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+  } catch {
+    (fields as Record<string, unknown>).__lumina_type = normalizeTraitTypeName(typeName);
+  }
+  return fields;
+};
+
+const normalizeRuntimeValue = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'function') return `[Function${value.name ? ` ${value.name}` : ''}]`;
+  if (Array.isArray(value)) return value.map((item) => normalizeRuntimeValue(item));
+  if (typeof value === 'object') {
+    if (isEnumLike(value)) {
+      const tag = getEnumTag(value);
+      const payload = getEnumPayload(value);
+      return { $enum: tag, value: normalizeRuntimeValue(payload) };
+    }
+    const typeTag = getRuntimeTypeTag(value);
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    const out: Record<string, unknown> = {};
+    if (typeTag) out.__lumina_type = typeTag;
+    for (const key of keys) {
+      out[key] = normalizeRuntimeValue(obj[key]);
+    }
+    return out;
+  }
+  return String(value);
+};
+
+const stableRuntimeHash = (value: unknown): string => JSON.stringify(normalizeRuntimeValue(value));
+
+const deepRuntimeEqual = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!deepRuntimeEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const aTag = getRuntimeTypeTag(a);
+  const bTag = getRuntimeTypeTag(b);
+  if (aTag !== bTag) return false;
+  if (isEnumLike(a) || isEnumLike(b)) {
+    if (!isEnumLike(a) || !isEnumLike(b)) return false;
+    if (getEnumTag(a) !== getEnumTag(b)) return false;
+    return deepRuntimeEqual(getEnumPayload(a), getEnumPayload(b));
+  }
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const aKeys = Object.keys(aObj);
+  const bKeys = Object.keys(bObj);
+  if (aKeys.length !== bKeys.length) return false;
+  aKeys.sort();
+  bKeys.sort();
+  for (let i = 0; i < aKeys.length; i += 1) {
+    if (aKeys[i] !== bKeys[i]) return false;
+  }
+  for (const key of aKeys) {
+    if (!deepRuntimeEqual(aObj[key], bObj[key])) return false;
+  }
+  return true;
+};
+
+const runtimeHashValue = (value: unknown): string => {
+  const typeTag = getRuntimeTypeTag(value);
+  if (typeTag) {
+    const hashImpl = runtimeTraitImpls.Hash.get(typeTag);
+    if (hashImpl) {
+      try {
+        return `${typeTag}:${String(hashImpl(value))}`;
+      } catch {
+        return `${typeTag}:${stableRuntimeHash(value)}`;
+      }
+    }
+  }
+  return stableRuntimeHash(value);
+};
+
+const runtimeEquals = (left: unknown, right: unknown): boolean => {
+  if (left === right) return true;
+  const leftTag = getRuntimeTypeTag(left);
+  const rightTag = getRuntimeTypeTag(right);
+  if (leftTag && rightTag && leftTag === rightTag) {
+    const eqImpl = runtimeTraitImpls.Eq.get(leftTag);
+    if (eqImpl) {
+      try {
+        return !!eqImpl(left, right);
+      } catch {
+        return false;
+      }
+    }
+  }
+  return deepRuntimeEqual(left, right);
+};
+
+const cloneFallback = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((entry) => cloneFallback(entry));
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = cloneFallback(entry);
+  }
+  const typeTag = getRuntimeTypeTag(value);
+  if (typeTag) {
+    try {
+      Object.defineProperty(out, '__lumina_type', {
+        value: typeTag,
+        enumerable: false,
+        writable: false,
+        configurable: false,
+      });
+    } catch {
+      out.__lumina_type = typeTag;
+    }
+  }
+  return out;
+};
+
+export const __lumina_clone = <T>(value: T): T => {
+  const cloneFn = (globalThis as { structuredClone?: <U>(entry: U) => U }).structuredClone;
+  if (typeof cloneFn === 'function') {
+    try {
+      return cloneFn(value);
+    } catch {
+      // fallback below
+    }
+  }
+  return cloneFallback(value) as T;
+};
+
+export const __lumina_debug = (value: unknown): string => formatValue(value, { color: false });
+export const __lumina_eq = (left: unknown, right: unknown): boolean => runtimeEquals(left, right);
+
+const orderingToNumber = (value: unknown): number => {
+  if (typeof value === 'number') return value < 0 ? -1 : value > 0 ? 1 : 0;
+  if (typeof value === 'bigint') return value < 0n ? -1 : value > 0n ? 1 : 0;
+  if (typeof value === 'string') {
+    const text = value.toLowerCase();
+    if (text === 'less') return -1;
+    if (text === 'equal') return 0;
+    if (text === 'greater') return 1;
+  }
+  if (isEnumLike(value)) {
+    const tag = getEnumTag(value).toLowerCase();
+    if (tag === 'less') return -1;
+    if (tag === 'equal') return 0;
+    if (tag === 'greater') return 1;
+  }
+  return 0;
+};
+
 const toJsonValue = (value: unknown, seen: WeakSet<object>): unknown => {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -280,7 +493,7 @@ const renderArgs = (args: unknown[]): string => args.map((arg) => formatValue(ar
 
 const writeStdout = (text: string, newline: boolean) => {
   if (isNodeRuntime()) {
-    const stdout = (process as { stdout?: { write?: (chunk: string) => void } }).stdout;
+    const stdout = getNodeProcess()?.stdout;
     if (stdout?.write) {
       stdout.write(text + (newline ? '\n' : ''));
       return;
@@ -292,7 +505,7 @@ const writeStdout = (text: string, newline: boolean) => {
 
 const writeStderr = (text: string, newline: boolean) => {
   if (isNodeRuntime()) {
-    const stderr = (process as { stderr?: { write?: (chunk: string) => void } }).stderr;
+    const stderr = getNodeProcess()?.stderr;
     if (stderr?.write) {
       stderr.write(text + (newline ? '\n' : ''));
       return;
@@ -314,7 +527,7 @@ const readStdinLines = (): string[] => {
     return stdinCache;
   }
   if (isNodeRuntime()) {
-    const stdin = (process as { stdin?: { read?: () => unknown; setEncoding?: (enc: string) => void } }).stdin;
+    const stdin = getNodeProcess()?.stdin;
     const isTty = (stdin as { isTTY?: boolean } | undefined)?.isTTY;
     if (isTty !== true) {
       try {
@@ -388,7 +601,8 @@ export const io = {
       return Option.Some(value);
     }
     if (isNodeRuntime()) {
-      const stdin = (process as { stdin?: { isTTY?: boolean } }).stdin;
+      const nodeProcess = getNodeProcess();
+      const stdin = nodeProcess?.stdin;
       if (stdin && stdin.isTTY !== true) {
         const lines = readStdinLines();
         if (stdinIndex >= lines.length) return Option.None;
@@ -398,8 +612,8 @@ export const io = {
       if (stdin?.isTTY) {
         const readline = await import('node:readline');
         const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
+          input: nodeProcess?.stdin,
+          output: nodeProcess?.stdout,
         });
         return await new Promise((resolve) => {
           rl.question('', (answer) => {
@@ -577,6 +791,136 @@ export const fs = {
   },
 };
 
+export const path = {
+  join: (left: string, right: string): string => nodePath.join(String(left), String(right)),
+  is_absolute: (value: string): boolean => nodePath.isAbsolute(String(value)),
+  extension: (value: string) => {
+    const ext = nodePath.extname(String(value));
+    if (!ext) return Option.None;
+    return Option.Some(ext.startsWith('.') ? ext.slice(1) : ext);
+  },
+  dirname: (value: string): string => nodePath.dirname(String(value)),
+  basename: (value: string): string => nodePath.basename(String(value)),
+  normalize: (value: string): string => nodePath.normalize(String(value)),
+};
+
+export const env = {
+  var: (name: string) => {
+    const nodeProcess = getNodeProcess();
+    if (!nodeProcess) {
+      return Result.Err('Environment variables are not available in this runtime');
+    }
+    const value = nodeProcess.env?.[String(name)];
+    if (value === undefined) {
+      return Result.Err(`Environment variable '${name}' is not set`);
+    }
+    return Result.Ok(String(value));
+  },
+  set_var: (name: string, value: string) => {
+    const nodeProcess = getNodeProcess();
+    if (!nodeProcess) {
+      return Result.Err('Environment variables are not available in this runtime');
+    }
+    nodeProcess.env[String(name)] = String(value);
+    return Result.Ok(undefined);
+  },
+  remove_var: (name: string) => {
+    const nodeProcess = getNodeProcess();
+    if (!nodeProcess) {
+      return Result.Err('Environment variables are not available in this runtime');
+    }
+    delete nodeProcess.env[String(name)];
+    return Result.Ok(undefined);
+  },
+  args: (): string[] => {
+    const nodeProcess = getNodeProcess();
+    if (!nodeProcess) return [];
+    return nodeProcess.argv.slice(2);
+  },
+  cwd: () => {
+    const nodeProcess = getNodeProcess();
+    if (!nodeProcess) {
+      return Result.Err('Current working directory is not available in this runtime');
+    }
+    return Result.Ok(nodeProcess.cwd());
+  },
+};
+
+export const process = {
+  spawn: (command: string, args: unknown = []) => {
+    if (!isNodeRuntime()) {
+      return Result.Err('Process spawning is not available in this runtime');
+    }
+    const commandText = String(command).trim();
+    if (!commandText) {
+      return Result.Err('Process command must be a non-empty string');
+    }
+    const argv = toIterableValues(args).map((part) => String(part));
+    try {
+      const output = spawnSync(commandText, argv, {
+        encoding: 'utf8',
+        shell: false,
+        windowsHide: true,
+      });
+      if (output.error) {
+        return Result.Err(output.error.message || String(output.error));
+      }
+      return Result.Ok({
+        status: typeof output.status === 'number' ? Math.trunc(output.status) : -1,
+        success: output.status === 0,
+        stdout: typeof output.stdout === 'string' ? output.stdout : String(output.stdout ?? ''),
+        stderr: typeof output.stderr === 'string' ? output.stderr : String(output.stderr ?? ''),
+      });
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  },
+  exit: (code: number = 0) => {
+    const nodeProcess = getNodeProcess();
+    if (!nodeProcess) return;
+    nodeProcess.exit(Math.trunc(code));
+  },
+  cwd: (): string => {
+    const nodeProcess = getNodeProcess();
+    return nodeProcess ? nodeProcess.cwd() : '';
+  },
+  pid: (): number => {
+    const nodeProcess = getNodeProcess();
+    return nodeProcess ? Math.trunc(nodeProcess.pid) : -1;
+  },
+};
+
+export const json = {
+  to_string: (value: unknown) => {
+    try {
+      return Result.Ok(JSON.stringify(value));
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  },
+  to_pretty_string: (value: unknown) => {
+    try {
+      return Result.Ok(toJsonString(value, true));
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  },
+  from_string: (source: string) => {
+    try {
+      return Result.Ok(JSON.parse(String(source)));
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  },
+  parse: (source: string) => {
+    try {
+      return Result.Ok(JSON.parse(String(source)));
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  },
+};
+
 export const http = {
   fetch: async (request: unknown) => {
     if (typeof fetch !== 'function') {
@@ -683,6 +1027,17 @@ export const time = {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, Math.max(0, Math.trunc(ms)));
     }),
+};
+
+const toIterableValues = (value: unknown): unknown[] => {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    const iteratorFn = (value as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
+    if (typeof iteratorFn === 'function') {
+      return Array.from(value as Iterable<unknown>);
+    }
+  }
+  return [];
 };
 
 const compileRegex = (pattern: string, flags: string = ''): RegExp | null => {
@@ -914,10 +1269,102 @@ export class Vec<T> {
     this.data = [];
   }
 
+  map<U>(mapper: (value: T) => U): Vec<U> {
+    const out = Vec.new<U>();
+    for (const item of this.data) {
+      out.push(mapper(item));
+    }
+    return out;
+  }
+
+  filter(predicate: (value: T) => boolean): Vec<T> {
+    const out = Vec.new<T>();
+    for (const item of this.data) {
+      if (predicate(item)) out.push(item);
+    }
+    return out;
+  }
+
+  fold<U>(init: U, folder: (acc: U, value: T) => U): U {
+    let acc = init;
+    for (const item of this.data) {
+      acc = folder(acc, item);
+    }
+    return acc;
+  }
+
+  for_each(action: (value: T) => void): void {
+    for (const item of this.data) {
+      action(item);
+    }
+  }
+
+  any(predicate: (value: T) => boolean): boolean {
+    return this.data.some(predicate);
+  }
+
+  all(predicate: (value: T) => boolean): boolean {
+    return this.data.every(predicate);
+  }
+
+  find(predicate: (value: T) => boolean) {
+    const found = this.data.find(predicate);
+    return found === undefined ? Option.None : Option.Some(found);
+  }
+
+  position(predicate: (value: T) => boolean) {
+    const idx = this.data.findIndex(predicate);
+    return idx >= 0 ? Option.Some(idx) : Option.None;
+  }
+
+  take(n: number): Vec<T> {
+    const out = Vec.new<T>();
+    const count = Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+    for (let i = 0; i < Math.min(count, this.data.length); i += 1) {
+      out.push(this.data[i]);
+    }
+    return out;
+  }
+
+  skip(n: number): Vec<T> {
+    const out = Vec.new<T>();
+    const count = Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+    for (let i = Math.min(count, this.data.length); i < this.data.length; i += 1) {
+      out.push(this.data[i]);
+    }
+    return out;
+  }
+
+  zip<U>(other: Vec<U>): Vec<[T, U]> {
+    const out = Vec.new<[T, U]>();
+    const size = Math.min(this.data.length, other.data.length);
+    for (let i = 0; i < size; i += 1) {
+      out.push([this.data[i], other.data[i]]);
+    }
+    return out;
+  }
+
+  enumerate(): Vec<[number, T]> {
+    const out = Vec.new<[number, T]>();
+    for (let i = 0; i < this.data.length; i += 1) {
+      out.push([i, this.data[i]]);
+    }
+    return out;
+  }
+
   [Symbol.iterator]() {
     return this.data[Symbol.iterator]();
   }
 }
+
+export const timeout = async (ms: number): Promise<void> => {
+  await time.sleep(ms);
+};
+
+export const join_all = async <T>(values: unknown): Promise<Vec<T>> => {
+  const resolved = await Promise.all(toIterableValues(values).map((item) => Promise.resolve(item)));
+  return Vec.from(resolved as T[]);
+};
 
 export const vec = {
   new: <T>() => Vec.new<T>(),
@@ -927,88 +1374,122 @@ export const vec = {
   len: <T>(v: Vec<T>) => v.len(),
   pop: <T>(v: Vec<T>) => v.pop(),
   clear: <T>(v: Vec<T>) => v.clear(),
-  map: <T, U>(v: Vec<T>, f: (value: T) => U) => {
-    const out = Vec.new<U>();
-    for (const item of v) {
-      out.push(f(item));
-    }
-    return out;
-  },
-  filter: <T>(v: Vec<T>, pred: (value: T) => boolean) => {
-    const out = Vec.new<T>();
-    for (const item of v) {
-      if (pred(item)) out.push(item);
-    }
-    return out;
-  },
-  fold: <T, U>(v: Vec<T>, init: U, f: (acc: U, value: T) => U) => {
-    let acc = init;
-    for (const item of v) {
-      acc = f(acc, item);
-    }
-    return acc;
-  },
-  for_each: <T>(v: Vec<T>, f: (value: T) => void) => {
-    for (const item of v) {
-      f(item);
-    }
-  },
+  map: <T, U>(v: Vec<T>, f: (value: T) => U) => v.map(f),
+  filter: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.filter(pred),
+  fold: <T, U>(v: Vec<T>, init: U, f: (acc: U, value: T) => U) => v.fold(init, f),
+  for_each: <T>(v: Vec<T>, f: (value: T) => void) => v.for_each(f),
+  any: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.any(pred),
+  all: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.all(pred),
+  find: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.find(pred),
+  position: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.position(pred),
+  take: <T>(v: Vec<T>, n: number) => v.take(n),
+  skip: <T>(v: Vec<T>, n: number) => v.skip(n),
+  zip: <T, U>(v: Vec<T>, other: Vec<U>) => v.zip(other),
+  enumerate: <T>(v: Vec<T>) => v.enumerate(),
 };
 
 export class HashMap<K, V> {
-  private map: Map<K, V>;
+  private buckets: Map<string, Array<{ key: K; value: V }>>;
+  private sizeValue: number;
 
   constructor() {
-    this.map = new Map();
+    this.buckets = new Map();
+    this.sizeValue = 0;
   }
 
   static new<K, V>(): HashMap<K, V> {
     return new HashMap<K, V>();
   }
 
+  private getBucket(key: K): Array<{ key: K; value: V }> {
+    const hash = runtimeHashValue(key);
+    const existing = this.buckets.get(hash);
+    if (existing) return existing;
+    const next: Array<{ key: K; value: V }> = [];
+    this.buckets.set(hash, next);
+    return next;
+  }
+
+  private lookupBucket(key: K): Array<{ key: K; value: V }> | null {
+    const hash = runtimeHashValue(key);
+    return this.buckets.get(hash) ?? null;
+  }
+
   insert(key: K, value: V) {
-    const had = this.map.has(key);
-    const old = this.map.get(key);
-    this.map.set(key, value);
-    return had ? Option.Some(old as V) : Option.None;
+    const bucket = this.getBucket(key);
+    for (let i = 0; i < bucket.length; i += 1) {
+      const current = bucket[i];
+      if (runtimeEquals(current.key, key)) {
+        const old = current.value;
+        current.value = value;
+        return Option.Some(old);
+      }
+    }
+    bucket.push({ key, value });
+    this.sizeValue += 1;
+    return Option.None;
   }
 
   get(key: K) {
-    if (!this.map.has(key)) return Option.None;
-    return Option.Some(this.map.get(key) as V);
+    const bucket = this.lookupBucket(key);
+    if (!bucket) return Option.None;
+    for (const entry of bucket) {
+      if (runtimeEquals(entry.key, key)) {
+        return Option.Some(entry.value);
+      }
+    }
+    return Option.None;
   }
 
   remove(key: K) {
-    if (!this.map.has(key)) return Option.None;
-    const value = this.map.get(key) as V;
-    this.map.delete(key);
-    return Option.Some(value);
+    const hash = runtimeHashValue(key);
+    const bucket = this.buckets.get(hash);
+    if (!bucket || bucket.length === 0) return Option.None;
+    for (let i = 0; i < bucket.length; i += 1) {
+      if (runtimeEquals(bucket[i].key, key)) {
+        const [removed] = bucket.splice(i, 1);
+        if (bucket.length === 0) this.buckets.delete(hash);
+        this.sizeValue -= 1;
+        return Option.Some(removed.value);
+      }
+    }
+    return Option.None;
   }
 
   contains_key(key: K): boolean {
-    return this.map.has(key);
+    const bucket = this.lookupBucket(key);
+    if (!bucket) return false;
+    for (const entry of bucket) {
+      if (runtimeEquals(entry.key, key)) return true;
+    }
+    return false;
   }
 
   len(): number {
-    return this.map.size;
+    return this.sizeValue;
   }
 
   clear(): void {
-    this.map.clear();
+    this.buckets.clear();
+    this.sizeValue = 0;
   }
 
   keys(): Vec<K> {
     const v = Vec.new<K>();
-    for (const key of this.map.keys()) {
-      v.push(key);
+    for (const bucket of this.buckets.values()) {
+      for (const entry of bucket) {
+        v.push(entry.key);
+      }
     }
     return v;
   }
 
   values(): Vec<V> {
     const v = Vec.new<V>();
-    for (const value of this.map.values()) {
-      v.push(value);
+    for (const bucket of this.buckets.values()) {
+      for (const entry of bucket) {
+        v.push(entry.value);
+      }
     }
     return v;
   }
@@ -1072,6 +1553,308 @@ export const hashset = {
   len: <T>(s: HashSet<T>) => s.len(),
   clear: <T>(s: HashSet<T>) => s.clear(),
   values: <T>(s: HashSet<T>) => s.values(),
+};
+
+export class Deque<T> {
+  private data: T[];
+
+  constructor() {
+    this.data = [];
+  }
+
+  static new<T>(): Deque<T> {
+    return new Deque<T>();
+  }
+
+  push_front(value: T): void {
+    this.data.unshift(value);
+  }
+
+  push_back(value: T): void {
+    this.data.push(value);
+  }
+
+  pop_front() {
+    if (this.data.length === 0) return Option.None;
+    const value = this.data.shift() as T;
+    return Option.Some(value);
+  }
+
+  pop_back() {
+    if (this.data.length === 0) return Option.None;
+    const value = this.data.pop() as T;
+    return Option.Some(value);
+  }
+
+  len(): number {
+    return this.data.length;
+  }
+
+  clear(): void {
+    this.data = [];
+  }
+}
+
+export const deque = {
+  new: <T>() => Deque.new<T>(),
+  push_front: <T>(d: Deque<T>, value: T) => d.push_front(value),
+  push_back: <T>(d: Deque<T>, value: T) => d.push_back(value),
+  pop_front: <T>(d: Deque<T>) => d.pop_front(),
+  pop_back: <T>(d: Deque<T>) => d.pop_back(),
+  len: <T>(d: Deque<T>) => d.len(),
+  clear: <T>(d: Deque<T>) => d.clear(),
+};
+
+const compareBTreeKeys = (left: unknown, right: unknown): number => {
+  if (left === right) return 0;
+  const leftTag = getRuntimeTypeTag(left);
+  const rightTag = getRuntimeTypeTag(right);
+  if (leftTag && rightTag && leftTag === rightTag) {
+    const ordImpl = runtimeTraitImpls.Ord.get(leftTag);
+    if (ordImpl) {
+      try {
+        return orderingToNumber(ordImpl(left, right));
+      } catch {
+        // fall through to default compare
+      }
+    }
+  }
+  if (left == null && right != null) return -1;
+  if (left != null && right == null) return 1;
+  const leftType = typeof left;
+  const rightType = typeof right;
+  if (leftType === rightType && (leftType === 'number' || leftType === 'bigint' || leftType === 'string' || leftType === 'boolean')) {
+    return left < right ? -1 : 1;
+  }
+  const leftText = formatValue(left, { color: false });
+  const rightText = formatValue(right, { color: false });
+  if (leftText === rightText) return 0;
+  return leftText < rightText ? -1 : 1;
+};
+
+type BTreeEntry<K, V> = { key: K; value: V };
+
+export class BTreeMap<K, V> {
+  private entries: Array<BTreeEntry<K, V>>;
+
+  constructor() {
+    this.entries = [];
+  }
+
+  static new<K, V>(): BTreeMap<K, V> {
+    return new BTreeMap<K, V>();
+  }
+
+  private lowerBound(key: K): number {
+    let lo = 0;
+    let hi = this.entries.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (compareBTreeKeys(this.entries[mid].key, key) < 0) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  insert(key: K, value: V) {
+    const idx = this.lowerBound(key);
+    if (idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0) {
+      const previous = this.entries[idx].value;
+      this.entries[idx].value = value;
+      return Option.Some(previous);
+    }
+    this.entries.splice(idx, 0, { key, value });
+    return Option.None;
+  }
+
+  get(key: K) {
+    const idx = this.lowerBound(key);
+    if (idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0) {
+      return Option.Some(this.entries[idx].value);
+    }
+    return Option.None;
+  }
+
+  remove(key: K) {
+    const idx = this.lowerBound(key);
+    if (idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0) {
+      const [removed] = this.entries.splice(idx, 1);
+      return Option.Some(removed.value);
+    }
+    return Option.None;
+  }
+
+  contains_key(key: K): boolean {
+    const idx = this.lowerBound(key);
+    return idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0;
+  }
+
+  len(): number {
+    return this.entries.length;
+  }
+
+  clear(): void {
+    this.entries = [];
+  }
+
+  keys(): Vec<K> {
+    const out = Vec.new<K>();
+    for (const entry of this.entries) out.push(entry.key);
+    return out;
+  }
+
+  values(): Vec<V> {
+    const out = Vec.new<V>();
+    for (const entry of this.entries) out.push(entry.value);
+    return out;
+  }
+
+  entries_vec(): Vec<[K, V]> {
+    const out = Vec.new<[K, V]>();
+    for (const entry of this.entries) out.push([entry.key, entry.value]);
+    return out;
+  }
+}
+
+export const btreemap = {
+  new: <K, V>() => BTreeMap.new<K, V>(),
+  insert: <K, V>(m: BTreeMap<K, V>, k: K, v: V) => m.insert(k, v),
+  get: <K, V>(m: BTreeMap<K, V>, k: K) => m.get(k),
+  remove: <K, V>(m: BTreeMap<K, V>, k: K) => m.remove(k),
+  contains_key: <K, V>(m: BTreeMap<K, V>, k: K) => m.contains_key(k),
+  len: <K, V>(m: BTreeMap<K, V>) => m.len(),
+  clear: <K, V>(m: BTreeMap<K, V>) => m.clear(),
+  keys: <K, V>(m: BTreeMap<K, V>) => m.keys(),
+  values: <K, V>(m: BTreeMap<K, V>) => m.values(),
+  entries: <K, V>(m: BTreeMap<K, V>) => m.entries_vec(),
+};
+
+export class BTreeSet<T> {
+  private map: BTreeMap<T, undefined>;
+
+  constructor() {
+    this.map = BTreeMap.new<T, undefined>();
+  }
+
+  static new<T>(): BTreeSet<T> {
+    return new BTreeSet<T>();
+  }
+
+  insert(value: T): boolean {
+    const old = this.map.insert(value, undefined);
+    return old === Option.None;
+  }
+
+  contains(value: T): boolean {
+    return this.map.contains_key(value);
+  }
+
+  remove(value: T): boolean {
+    return this.map.remove(value) !== Option.None;
+  }
+
+  len(): number {
+    return this.map.len();
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+
+  values(): Vec<T> {
+    return this.map.keys();
+  }
+}
+
+export const btreeset = {
+  new: <T>() => BTreeSet.new<T>(),
+  insert: <T>(s: BTreeSet<T>, v: T) => s.insert(v),
+  contains: <T>(s: BTreeSet<T>, v: T) => s.contains(v),
+  remove: <T>(s: BTreeSet<T>, v: T) => s.remove(v),
+  len: <T>(s: BTreeSet<T>) => s.len(),
+  clear: <T>(s: BTreeSet<T>) => s.clear(),
+  values: <T>(s: BTreeSet<T>) => s.values(),
+};
+
+export class PriorityQueue<T> {
+  private heap: T[];
+
+  constructor() {
+    this.heap = [];
+  }
+
+  static new<T>(): PriorityQueue<T> {
+    return new PriorityQueue<T>();
+  }
+
+  private swap(i: number, j: number): void {
+    const tmp = this.heap[i];
+    this.heap[i] = this.heap[j];
+    this.heap[j] = tmp;
+  }
+
+  private bubbleUp(index: number): void {
+    let idx = index;
+    while (idx > 0) {
+      const parent = (idx - 1) >> 1;
+      if (compareBTreeKeys(this.heap[parent], this.heap[idx]) <= 0) break;
+      this.swap(parent, idx);
+      idx = parent;
+    }
+  }
+
+  private bubbleDown(index: number): void {
+    let idx = index;
+    const size = this.heap.length;
+    while (true) {
+      const left = (idx << 1) + 1;
+      const right = left + 1;
+      let smallest = idx;
+      if (left < size && compareBTreeKeys(this.heap[left], this.heap[smallest]) < 0) smallest = left;
+      if (right < size && compareBTreeKeys(this.heap[right], this.heap[smallest]) < 0) smallest = right;
+      if (smallest === idx) break;
+      this.swap(idx, smallest);
+      idx = smallest;
+    }
+  }
+
+  push(value: T): void {
+    this.heap.push(value);
+    this.bubbleUp(this.heap.length - 1);
+  }
+
+  pop() {
+    if (this.heap.length === 0) return Option.None;
+    const head = this.heap[0];
+    const last = this.heap.pop() as T;
+    if (this.heap.length > 0) {
+      this.heap[0] = last;
+      this.bubbleDown(0);
+    }
+    return Option.Some(head);
+  }
+
+  peek() {
+    if (this.heap.length === 0) return Option.None;
+    return Option.Some(this.heap[0]);
+  }
+
+  len(): number {
+    return this.heap.length;
+  }
+
+  clear(): void {
+    this.heap = [];
+  }
+}
+
+export const priority_queue = {
+  new: <T>() => PriorityQueue.new<T>(),
+  push: <T>(q: PriorityQueue<T>, value: T) => q.push(value),
+  pop: <T>(q: PriorityQueue<T>) => q.pop(),
+  peek: <T>(q: PriorityQueue<T>) => q.peek(),
+  len: <T>(q: PriorityQueue<T>) => q.len(),
+  clear: <T>(q: PriorityQueue<T>) => q.clear(),
 };
 
 export class LuminaPanic extends Error {
@@ -1515,6 +2298,8 @@ export const channel = {
   },
 };
 
+export const async_channel = channel;
+
 type OptionLike = { $tag: string; $payload?: unknown };
 
 interface NodeWorkerLike {
@@ -1538,7 +2323,7 @@ const isUrlLike = (specifier: string): boolean => /^[a-z]+:/i.test(specifier);
 
 const resolveNodeWorkerSpecifier = (specifier: string): string => {
   if (isUrlLike(specifier)) return specifier;
-  return path.resolve(specifier);
+  return nodePath.resolve(specifier);
 };
 
 const createThreadWorker = async (specifier: string): Promise<ThreadWorker> => {

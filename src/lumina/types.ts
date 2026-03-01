@@ -15,6 +15,7 @@ export type PrimitiveName =
   | 'u32'
   | 'u64'
   | 'u128'
+  | 'usize'
   | 'f32'
   | 'f64';
 
@@ -30,6 +31,7 @@ const integerPrimList: PrimitiveName[] = [
   'u32',
   'u64',
   'u128',
+  'usize',
 ];
 
 const floatPrimList: PrimitiveName[] = ['float', 'f32', 'f64'];
@@ -41,6 +43,7 @@ export const numericPrimitives = new Set<PrimitiveName>([...integerPrimList, ...
 export function normalizePrimitiveName(name: PrimitiveName): PrimitiveName {
   if (name === 'int') return 'i32';
   if (name === 'float') return 'f64';
+  if (name === 'usize') return 'u32';
   return name;
 }
 

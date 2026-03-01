@@ -1,4 +1,4 @@
-import { hashmap, Option } from '../src/lumina-runtime';
+import { hashmap, Option, __lumina_register_trait_impl, __lumina_struct } from '../src/lumina-runtime';
 
 const unwrapOption = (value: unknown) => value as { $tag?: string; $payload?: unknown };
 
@@ -75,5 +75,26 @@ describe('HashMap<K,V>', () => {
 
     hashmap.clear(map);
     expect(hashmap.len(map)).toBe(0);
+  });
+
+  it('supports custom Hash/Eq trait behavior for struct keys', () => {
+    __lumina_register_trait_impl('Hash', 'Point', (self: unknown) => {
+      const point = self as { x: number; y: number };
+      return point.x * 31 + point.y;
+    });
+    __lumina_register_trait_impl('Eq', 'Point', (left: unknown, right: unknown) => {
+      const a = left as { x: number; y: number };
+      const b = right as { x: number; y: number };
+      return a.x === b.x && a.y === b.y;
+    });
+
+    const map = hashmap.new<{ x: number; y: number }, string>();
+    const p1 = __lumina_struct('Point', { x: 1, y: 2 });
+    const p2 = __lumina_struct('Point', { x: 1, y: 2 });
+
+    hashmap.insert(map, p1, 'first');
+    const found = hashmap.get(map, p2);
+    expect(unwrapOption(found).$tag).toBe('Some');
+    expect(unwrapOption(found).$payload).toBe('first');
   });
 });

@@ -7,7 +7,7 @@
 
   function expectedStatementTokens() {
     return [
-      "fn", "async", "struct", "enum", "type", "extern", "import", "pub", "trait", "impl",
+      "fn", "async", "struct", "enum", "type", "extern", "import", "pub", "trait", "impl", "macro_rules",
       "let", "if", "while", "match", "return",
       "identifier", "number", "string", "true", "false",
       "{", "}"
@@ -52,6 +52,7 @@ InvalidStatement
 
 Statement
   = Import
+  / MacroRulesDecl
   / TraitDecl
   / ImplDecl
   / StructDecl
@@ -80,6 +81,29 @@ Import
       return createNode("Import", { spec, source }, location);
     }
 
+MacroRulesDecl
+  = "macro_rules" _ "!" _ node:IdName _ "{" body:MacroRulesBody "}" _ ";"? {
+      return createNode("MacroRulesDecl", { name: node.name, body, location: node.location }, location);
+    }
+
+MacroRulesBody
+  = parts:MacroRulesPart* { return parts.join(""); }
+
+MacroRulesPart
+  = MacroRulesBrace
+  / MacroRulesBracket
+  / MacroRulesParen
+  / text:$(!("}" / "]" / ")") .) { return text; }
+
+MacroRulesBrace
+  = "{" inner:MacroRulesPart* "}" { return "{" + inner.join("") + "}"; }
+
+MacroRulesBracket
+  = "[" inner:MacroRulesPart* "]" { return "[" + inner.join("") + "]"; }
+
+MacroRulesParen
+  = "(" inner:MacroRulesPart* ")" { return "(" + inner.join("") + ")"; }
+
 ImportSpec
   = "{" _ list:ImportList _ "}" { return list; }
   / NamespaceImport
@@ -101,14 +125,14 @@ TypeDecl
     }
 
 TraitDecl
-  = visibility:Visibility? _ "trait" _ node:IdName _ tparams:TypeParams? _ "{" _ items:TraitItemList? _ "}" _ ";"? {
+  = visibility:Visibility? _ "trait" _ node:IdName _ tparams:TypeParams? _ supers:(_ ":" _ TypeBounds)? _ "{" _ items:TraitItemList? _ "}" _ ";"? {
       const methods = [];
       const associatedTypes = [];
       for (const item of items || []) {
         if (item && item.type === "TraitMethod") methods.push(item);
         if (item && item.type === "TraitAssocType") associatedTypes.push(item);
       }
-      return createNode("TraitDecl", { name: node.name, typeParams: tparams || [], methods, associatedTypes, visibility: visibility ?? "private", location: node.location }, location);
+      return createNode("TraitDecl", { name: node.name, typeParams: tparams || [], superTraits: supers ? supers[3] : [], methods, associatedTypes, visibility: visibility ?? "private", location: node.location }, location);
     }
 
 TraitItemList
@@ -166,9 +190,19 @@ AdtTypeDecl
     }
 
 StructDecl
-  = visibility:Visibility? _ "struct" _ node:IdName _ tparams:TypeParams? _ "{" _ fields:TypeFieldList? _ "}" _ ";"? {
-      return createNode("StructDecl", { name: node.name, body: fields || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
+  = derives:DeriveAttr* visibility:Visibility? _ "struct" _ node:IdName _ tparams:TypeParams? _ "{" _ fields:TypeFieldList? _ "}" _ ";"? {
+      const deriveList = [];
+      for (const item of derives || []) {
+        if (Array.isArray(item)) deriveList.push(...item);
+      }
+      return createNode("StructDecl", { name: node.name, body: fields || [], derives: deriveList, typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
     }
+
+DeriveAttr
+  = "#[" _ "derive" _ "(" _ names:DeriveList? _ ")" _ "]" _ { return names || []; }
+
+DeriveList
+  = head:IdName tail:(_ "," _ IdName)* _ ","? { return [head.name].concat(tail.map(t => t[3].name)); }
 
 EnumDecl
   = visibility:Visibility? _ "enum" _ node:IdName _ tparams:TypeParams? _ "{" _ variants:EnumVariantList? _ "}" _ ";"? {
@@ -191,12 +225,20 @@ TypeField
 
 TypeName
   = "_" { return { kind: "TypeHole", location: location() }; }
+  / ArrayTypeName
   / TupleTypeName
   / path:TypePath _ args:TypeArgs? {
       const base = path.join("::");
       if (!args) return base;
       const rendered = args.map(arg => typeof arg === "string" ? arg : "_");
       return `${base}<${rendered.join(",")}>`;
+    }
+
+ArrayTypeName
+  = "[" _ elem:TypeName _ ";" _ count:TypeName _ "]" {
+      const elemText = typeof elem === "string" ? elem : "_";
+      const countText = typeof count === "string" ? count : "_";
+      return `Array<${elemText},${countText}>`;
     }
 
 TupleTypeName
@@ -235,7 +277,13 @@ TypeParams
   = "<" _ head:TypeParam tail:(_ "," _ TypeParam)* _ ">" { return [head].concat(tail.map(t => t[3])); }
 
 TypeParam
-  = name:IdName _ ":" _ bound:TypeBounds { return { name: name.name, bound }; }
+  = "const" __ name:IdName _ ":" _ typeName:TypeName {
+      return { name: name.name, const: true, constType: typeName };
+    }
+  / name:IdName _ "<" _ head:"_" tail:(_ "," _ "_")* _ ">" {
+      return { name: name.name, higherKindArity: 1 + tail.length };
+    }
+  / name:IdName _ ":" _ bound:TypeBounds { return { name: name.name, bound }; }
   / name:IdName { return { name: name.name }; }
 
 TypeBounds
@@ -245,7 +293,9 @@ EnumVariantList
   = head:EnumVariant tail:(_ "," _ EnumVariant)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 EnumVariant
-  = node:IdName _ params:EnumVariantParams? { return { name: node.name, params: params || [], location: node.location }; }
+  = node:IdName _ params:EnumVariantParams? _ resultType:(_ ":" _ TypeName)? {
+      return { name: node.name, params: params || [], resultType: resultType ? resultType[3] : null, location: node.location };
+    }
 
 EnumVariantParams
   = "(" _ head:TypeName tail:(_ "," _ TypeName)* _ ")" { return [head].concat(tail.map(t => t[3])); }
@@ -404,7 +454,7 @@ Add
     }
 
 Mul
-  = head:Primary tail:(_ ("*" / "/") _ Primary)* {
+  = head:Primary tail:(_ ("*" / "/" / "%") _ Primary)* {
       const loc = location();
       return tail.reduce((acc, t) => createNode("Binary", { op: t[1], left: acc, right: t[3], location: loc }, location), head);
     }
@@ -452,7 +502,10 @@ PostfixPart
   / _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" { return { kind: "call", args: args || [], typeArgs: targs || [] }; }
 
 PrimaryAtom
-  = MatchExpr
+  = SelectExpr
+  / MatchExpr
+  / MacroVecLiteral
+  / ArrayRepeatLiteral
   / ArrayLiteral
   / TupleLiteral
   / StructLiteral
@@ -469,6 +522,33 @@ PrimaryAtom
   / Boolean
   / "(" _ expr:Expr _ ")" { return expr; }
 
+SelectExpr
+  = "select" _ "!" _ "{" _ arms:SelectArmList? _ "}" {
+      return createNode("SelectExpr", { arms: arms || [] }, location);
+    }
+
+SelectArmList
+  = head:SelectArm tail:(_ "," _ SelectArm)* _ ","? {
+      return [head].concat(tail.map(t => t[3]));
+    }
+
+SelectArm
+  = binding:SelectBinding _ "=" _ value:Expr _ "=>" _ body:Expr {
+      return { binding, value, body, location: location() };
+    }
+
+SelectBinding
+  = "_" { return null; }
+  / node:IdName { return node.name; }
+
+MacroVecLiteral
+  = macro:IdName _ "!" _ "[" _ elements:ArrayElements? _ "]" {
+      if (macro.name === "vec") {
+        return createNode("ArrayLiteral", { elements: elements || [] }, location);
+      }
+      return createNode("MacroInvoke", { name: macro.name, args: elements || [], delimiter: "[]", location: macro.location }, location);
+    }
+
 StructLiteral
   = name:IdName _ targs:TypeArgs? &(_ "{") _ "{" _ fields:StructLiteralFieldList? _ "}" {
       return createNode("StructLiteral", { name: name.name, typeArgs: targs || [], fields: fields || [], location: location() }, location);
@@ -477,6 +557,11 @@ StructLiteral
 ArrayLiteral
   = "[" _ elements:ArrayElements? _ "]" {
       return createNode("ArrayLiteral", { elements: elements || [] }, location);
+    }
+
+ArrayRepeatLiteral
+  = "[" _ value:Expr _ ";" _ count:Expr _ "]" {
+      return createNode("ArrayRepeatLiteral", { value, count }, location);
     }
 
 ArrayElements
@@ -557,7 +642,7 @@ StructLiteralField
 
 Keyword
   = ("fn" / "async" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "let" / "mut" / "ref" / "move"
-    / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is") ![a-zA-Z0-9_]
+    / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is" / "select" / "macro_rules") ![a-zA-Z0-9_]
 
 IdName
   = !Keyword name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }

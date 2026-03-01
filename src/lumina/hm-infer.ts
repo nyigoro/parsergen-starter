@@ -47,6 +47,7 @@ interface EnumInfo {
 interface StructInfo {
   typeParams: string[];
   fields: Map<string, LuminaTypeExpr>;
+  derives: string[];
 }
 
 type HoleOwnerKind = 'let' | 'fn-param' | 'fn-return';
@@ -82,6 +83,7 @@ const intBitWidths: Record<PrimitiveName, number> = {
   u32: 32,
   u64: 64,
   u128: 128,
+  usize: 32,
   int: 32,
   float: 64,
   f32: 32,
@@ -1084,6 +1086,40 @@ function inferExpr(
       }
       return recordExprType(expr, vecType, subst);
     }
+    case 'ArrayRepeatLiteral': {
+      const expectedPruned = expectedType ? prune(expectedType, subst) : null;
+      const expectedElem =
+        expectedPruned && expectedPruned.kind === 'adt' && expectedPruned.name === 'Vec' && expectedPruned.params.length === 1
+          ? expectedPruned.params[0]
+          : null;
+      const valueType = inferChild(expr.value, expectedElem ?? undefined) ?? expectedElem ?? freshTypeVar();
+      const countType = inferChild(expr.count, { kind: 'primitive', name: 'i32' }) ?? freshTypeVar();
+      tryUnify(countType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+        location: expr.count.location,
+        note: 'Array repeat count must be i32',
+      });
+      const vecType: Type = { kind: 'adt', name: 'Vec', params: [valueType] };
+      if (expectedType) {
+        tryUnify(vecType, expectedType, subst, diagnostics, {
+          location: expr.location,
+          note: 'Array repeat literal must match expected type',
+        });
+      }
+      return recordExprType(expr, vecType, subst);
+    }
+    case 'MacroInvoke': {
+      for (const arg of expr.args) {
+        inferChild(arg);
+      }
+      diagnostics.push({
+        severity: 'error',
+        code: 'HM_MACRO',
+        message: `Unknown macro '${expr.name}!'`,
+        source: 'lumina',
+        location: diagLocation(expr.location),
+      });
+      return recordExprType(expr, freshTypeVar(), subst);
+    }
     case 'TupleLiteral': {
       const items: Type[] = [];
       for (const element of expr.elements) {
@@ -1391,7 +1427,55 @@ function inferExpr(
         const resultType = freshTypeVar();
         let resolvedReceiverMethod = false;
         const receiverResolved = receiverType ? prune(receiverType, subst) : null;
+        if (receiverResolved && receiverResolved.kind === 'primitive') {
+          const receiverPrim = normalizePrimitiveName(receiverResolved.name);
+          if (isIntPrimitive(receiverPrim) || isFloatPrimitive(receiverPrim)) {
+            switch (expr.callee.name) {
+              case 'millis':
+              case 'milliseconds':
+              case 'seconds':
+              case 'minutes':
+              case 'hours':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Numeric duration helper returns i32 milliseconds`,
+                });
+                break;
+              default:
+                break;
+            }
+          }
+        }
         if (receiverResolved && receiverResolved.kind === 'adt') {
+          const structInfo = structRegistry?.get(receiverResolved.name);
+          const derivedTraits = new Set(structInfo?.derives ?? []);
+          if (derivedTraits.has('Clone') && expr.callee.name === 'clone') {
+            resolvedReceiverMethod = true;
+            tryUnify(resultType, receiverResolved, subst, diagnostics, {
+              location: expr.location,
+              note: `Clone::clone returns Self`,
+            });
+          } else if (derivedTraits.has('Debug') && expr.callee.name === 'debug') {
+            resolvedReceiverMethod = true;
+            tryUnify(resultType, { kind: 'primitive', name: 'string' }, subst, diagnostics, {
+              location: expr.location,
+              note: `Debug::debug returns string`,
+            });
+          } else if (derivedTraits.has('Eq') && expr.callee.name === 'eq') {
+            resolvedReceiverMethod = true;
+            if (argTypes[0]) {
+              tryUnify(argTypes[0], receiverResolved, subst, diagnostics, {
+                location: expr.location,
+                note: `Eq::eq expects other: Self`,
+              });
+            }
+            tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+              location: expr.location,
+              note: `Eq::eq returns bool`,
+            });
+          }
+
           if (receiverResolved.name === 'Vec' && receiverResolved.params.length === 1) {
             const elemType = receiverResolved.params[0];
             switch (expr.callee.name) {
@@ -1441,6 +1525,206 @@ function inferExpr(
                   location: expr.location,
                   note: `Vec.clear returns void`,
                 });
+                break;
+              case 'map': {
+                resolvedReceiverMethod = true;
+                const mappedType = freshTypeVar();
+                if (argTypes[0]) {
+                  tryUnify(
+                    argTypes[0],
+                    { kind: 'function', args: [elemType], returnType: mappedType },
+                    subst,
+                    diagnostics,
+                    {
+                      location: expr.location,
+                      note: `Vec.map expects fn(T) -> U`,
+                    }
+                  );
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [mappedType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.map returns Vec<U>`,
+                });
+                break;
+              }
+              case 'filter':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(
+                    argTypes[0],
+                    { kind: 'function', args: [elemType], returnType: { kind: 'primitive', name: 'bool' } },
+                    subst,
+                    diagnostics,
+                    {
+                      location: expr.location,
+                      note: `Vec.filter expects fn(T) -> bool`,
+                    }
+                  );
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.filter returns Vec<T>`,
+                });
+                break;
+              case 'fold': {
+                resolvedReceiverMethod = true;
+                const accType = argTypes[0] ?? freshTypeVar();
+                if (argTypes[1]) {
+                  tryUnify(
+                    argTypes[1],
+                    { kind: 'function', args: [accType, elemType], returnType: accType },
+                    subst,
+                    diagnostics,
+                    {
+                      location: expr.location,
+                      note: `Vec.fold expects fn(U, T) -> U`,
+                    }
+                  );
+                }
+                tryUnify(resultType, accType, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.fold returns accumulator type`,
+                });
+                break;
+              }
+              case 'for_each':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(
+                    argTypes[0],
+                    { kind: 'function', args: [elemType], returnType: { kind: 'primitive', name: 'void' } },
+                    subst,
+                    diagnostics,
+                    {
+                      location: expr.location,
+                      note: `Vec.for_each expects fn(T) -> void`,
+                    }
+                  );
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.for_each returns void`,
+                });
+                break;
+              case 'any':
+              case 'all':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(
+                    argTypes[0],
+                    { kind: 'function', args: [elemType], returnType: { kind: 'primitive', name: 'bool' } },
+                    subst,
+                    diagnostics,
+                    {
+                      location: expr.location,
+                      note: `Vec.${expr.callee.name} expects fn(T) -> bool`,
+                    }
+                  );
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.${expr.callee.name} returns bool`,
+                });
+                break;
+              case 'find':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(
+                    argTypes[0],
+                    { kind: 'function', args: [elemType], returnType: { kind: 'primitive', name: 'bool' } },
+                    subst,
+                    diagnostics,
+                    {
+                      location: expr.location,
+                      note: `Vec.find expects fn(T) -> bool`,
+                    }
+                  );
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.find returns Option<T>`,
+                });
+                break;
+              case 'position':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(
+                    argTypes[0],
+                    { kind: 'function', args: [elemType], returnType: { kind: 'primitive', name: 'bool' } },
+                    subst,
+                    diagnostics,
+                    {
+                      location: expr.location,
+                      note: `Vec.position expects fn(T) -> bool`,
+                    }
+                  );
+                }
+                tryUnify(
+                  resultType,
+                  { kind: 'adt', name: 'Option', params: [{ kind: 'primitive', name: 'i32' }] },
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Vec.position returns Option<i32>`,
+                  }
+                );
+                break;
+              case 'take':
+              case 'skip':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Vec.${expr.callee.name} count must be i32`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Vec.${expr.callee.name} returns Vec<T>`,
+                });
+                break;
+              case 'zip': {
+                resolvedReceiverMethod = true;
+                const otherElem = freshTypeVar();
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], { kind: 'adt', name: 'Vec', params: [otherElem] }, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Vec.zip expects Vec<U>`,
+                  });
+                }
+                tryUnify(
+                  resultType,
+                  {
+                    kind: 'adt',
+                    name: 'Vec',
+                    params: [{ kind: 'adt', name: 'Tuple', params: [elemType, otherElem] }],
+                  },
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Vec.zip returns Vec<Tuple<T,U>>`,
+                  }
+                );
+                break;
+              }
+              case 'enumerate':
+                resolvedReceiverMethod = true;
+                tryUnify(
+                  resultType,
+                  {
+                    kind: 'adt',
+                    name: 'Vec',
+                    params: [{ kind: 'adt', name: 'Tuple', params: [{ kind: 'primitive', name: 'i32' }, elemType] }],
+                  },
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `Vec.enumerate returns Vec<Tuple<i32,T>>`,
+                  }
+                );
                 break;
               default:
                 break;
@@ -1562,6 +1846,224 @@ function inferExpr(
                 tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [elemType] }, subst, diagnostics, {
                   location: expr.location,
                   note: `HashSet.values returns Vec<T>`,
+                });
+                break;
+              default:
+                break;
+            }
+          } else if (receiverResolved.name === 'Deque' && receiverResolved.params.length === 1) {
+            const elemType = receiverResolved.params[0];
+            switch (expr.callee.name) {
+              case 'push_front':
+              case 'push_back':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], elemType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `Deque.${expr.callee.name} expects element type`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Deque.${expr.callee.name} returns void`,
+                });
+                break;
+              case 'pop_front':
+              case 'pop_back':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Deque.${expr.callee.name} returns Option<T>`,
+                });
+                break;
+              case 'len':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Deque.len returns i32`,
+                });
+                break;
+              case 'clear':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `Deque.clear returns void`,
+                });
+                break;
+              default:
+                break;
+            }
+          } else if (receiverResolved.name === 'BTreeMap' && receiverResolved.params.length === 2) {
+            const [keyType, valueType] = receiverResolved.params;
+            switch (expr.callee.name) {
+              case 'insert':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], keyType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `BTreeMap.insert key must match K`,
+                  });
+                }
+                if (argTypes[1]) {
+                  tryUnify(argTypes[1], valueType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `BTreeMap.insert value must match V`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeMap.insert returns Option<V>`,
+                });
+                break;
+              case 'get':
+              case 'remove':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], keyType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `BTreeMap key argument must match K`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeMap lookup returns Option<V>`,
+                });
+                break;
+              case 'contains_key':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], keyType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `BTreeMap key argument must match K`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeMap.contains_key returns bool`,
+                });
+                break;
+              case 'len':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeMap.len returns i32`,
+                });
+                break;
+              case 'clear':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeMap.clear returns void`,
+                });
+                break;
+              case 'keys':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [keyType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeMap.keys returns Vec<K>`,
+                });
+                break;
+              case 'values':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [valueType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeMap.values returns Vec<V>`,
+                });
+                break;
+              case 'entries':
+                resolvedReceiverMethod = true;
+                tryUnify(
+                  resultType,
+                  { kind: 'adt', name: 'Vec', params: [{ kind: 'adt', name: 'Tuple', params: [keyType, valueType] }] },
+                  subst,
+                  diagnostics,
+                  {
+                    location: expr.location,
+                    note: `BTreeMap.entries returns Vec<Tuple<K,V>>`,
+                  }
+                );
+                break;
+              default:
+                break;
+            }
+          } else if (receiverResolved.name === 'BTreeSet' && receiverResolved.params.length === 1) {
+            const elemType = receiverResolved.params[0];
+            switch (expr.callee.name) {
+              case 'insert':
+              case 'contains':
+              case 'remove':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], elemType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `BTreeSet value argument must match T`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeSet method returns bool`,
+                });
+                break;
+              case 'len':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeSet.len returns i32`,
+                });
+                break;
+              case 'clear':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeSet.clear returns void`,
+                });
+                break;
+              case 'values':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Vec', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `BTreeSet.values returns Vec<T>`,
+                });
+                break;
+              default:
+                break;
+            }
+          } else if (receiverResolved.name === 'PriorityQueue' && receiverResolved.params.length === 1) {
+            const elemType = receiverResolved.params[0];
+            switch (expr.callee.name) {
+              case 'push':
+                resolvedReceiverMethod = true;
+                if (argTypes[0]) {
+                  tryUnify(argTypes[0], elemType, subst, diagnostics, {
+                    location: expr.location,
+                    note: `PriorityQueue.push expects element type`,
+                  });
+                }
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `PriorityQueue.push returns void`,
+                });
+                break;
+              case 'pop':
+              case 'peek':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'adt', name: 'Option', params: [elemType] }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `PriorityQueue.${expr.callee.name} returns Option<T>`,
+                });
+                break;
+              case 'len':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'i32' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `PriorityQueue.len returns i32`,
+                });
+                break;
+              case 'clear':
+                resolvedReceiverMethod = true;
+                tryUnify(resultType, { kind: 'primitive', name: 'void' }, subst, diagnostics, {
+                  location: expr.location,
+                  note: `PriorityQueue.clear returns void`,
                 });
                 break;
               default:
@@ -2053,6 +2555,72 @@ function inferExpr(
       const finalType = resultType ?? freshTypeVar();
       return recordExprType(expr, finalType, subst);
     }
+    case 'SelectExpr': {
+      if (!inAsync) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'SELECT_OUTSIDE_ASYNC',
+          message: `'select!' can only be used inside async functions`,
+          source: 'lumina',
+          location: diagLocation(expr.location),
+        });
+      }
+      if (!expr.arms || expr.arms.length === 0) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'SELECT_EMPTY',
+          message: 'select! requires at least one arm',
+          source: 'lumina',
+          location: diagLocation(expr.location),
+        });
+        return recordExprType(expr, expectedType ?? freshTypeVar(), subst);
+      }
+      const mergedType = expectedType ?? freshTypeVar();
+      for (const arm of expr.arms) {
+        const armPromiseType = inferExpr(
+          arm.value,
+          env,
+          subst,
+          diagnostics,
+          enumRegistry,
+          structRegistry,
+          moduleBindings,
+          inferredCalls,
+          undefined,
+          inAsync
+        );
+        const armValueType = freshTypeVar();
+        if (armPromiseType) {
+          tryUnify(armPromiseType, promiseType(armValueType), subst, diagnostics, {
+            location: arm.value.location ?? arm.location ?? expr.location,
+            note: `select! arm value must be Promise<T>`,
+          });
+        }
+        const armEnv = env.child();
+        if (arm.binding && arm.binding !== '_') {
+          armEnv.extend(arm.binding, { kind: 'scheme', variables: [], type: armValueType });
+        }
+        const armResultType = inferExpr(
+          arm.body,
+          armEnv,
+          subst,
+          diagnostics,
+          enumRegistry,
+          structRegistry,
+          moduleBindings,
+          inferredCalls,
+          mergedType,
+          inAsync
+        );
+        if (armResultType) {
+          tryUnify(armResultType, mergedType, subst, diagnostics, {
+            location: arm.body.location ?? arm.location ?? expr.location,
+            note: 'All select! arms must return the same type',
+          });
+        }
+      }
+      return recordExprType(expr, mergedType, subst);
+    }
     case 'StructLiteral': {
       if (!structRegistry) return null;
       const info = structRegistry.get(expr.name);
@@ -2184,6 +2752,7 @@ function parseTypeName(
     typeName === 'u32' ||
     typeName === 'u64' ||
     typeName === 'u128' ||
+    typeName === 'usize' ||
     typeName === 'f32' ||
     typeName === 'f64'
   ) {
@@ -2442,7 +3011,7 @@ function buildStructRegistry(program: LuminaProgram): Map<string, StructInfo> {
     for (const field of stmt.body) {
       fields.set(field.name, field.typeName);
     }
-    registry.set(stmt.name, { typeParams, fields });
+    registry.set(stmt.name, { typeParams, fields, derives: stmt.derives ?? [] });
   }
   return registry;
 }

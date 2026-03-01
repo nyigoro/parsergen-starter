@@ -319,6 +319,268 @@ export function createStdModuleRegistry(): ModuleRegistry {
     ]),
   };
 
+  const pathModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'path',
+    moduleId: 'std://path',
+    exports: new Map<string, ModuleExport>([
+      [
+        'join',
+        moduleFunction(
+          'join',
+          ['string', 'string'],
+          'string',
+          [primitive('string'), primitive('string')],
+          primitive('string'),
+          ['left', 'right'],
+          'std://path'
+        ),
+      ],
+      [
+        'is_absolute',
+        moduleFunction(
+          'is_absolute',
+          ['string'],
+          'bool',
+          [primitive('string')],
+          primitive('bool'),
+          ['value'],
+          'std://path'
+        ),
+      ],
+      [
+        'extension',
+        moduleFunction(
+          'extension',
+          ['string'],
+          'Option<string>',
+          [primitive('string')],
+          adt('Option', [primitive('string')]),
+          ['value'],
+          'std://path'
+        ),
+      ],
+      [
+        'dirname',
+        moduleFunction(
+          'dirname',
+          ['string'],
+          'string',
+          [primitive('string')],
+          primitive('string'),
+          ['value'],
+          'std://path'
+        ),
+      ],
+      [
+        'basename',
+        moduleFunction(
+          'basename',
+          ['string'],
+          'string',
+          [primitive('string')],
+          primitive('string'),
+          ['value'],
+          'std://path'
+        ),
+      ],
+      [
+        'normalize',
+        moduleFunction(
+          'normalize',
+          ['string'],
+          'string',
+          [primitive('string')],
+          primitive('string'),
+          ['value'],
+          'std://path'
+        ),
+      ],
+    ]),
+  };
+
+  const envModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'env',
+    moduleId: 'std://env',
+    exports: new Map<string, ModuleExport>([
+      [
+        'var',
+        moduleFunction(
+          'var',
+          ['string'],
+          'Result<string,string>',
+          [primitive('string')],
+          adt('Result', [primitive('string'), primitive('string')]),
+          ['name'],
+          'std://env'
+        ),
+      ],
+      [
+        'set_var',
+        moduleFunction(
+          'set_var',
+          ['string', 'string'],
+          'Result<void,string>',
+          [primitive('string'), primitive('string')],
+          adt('Result', [primitive('void'), primitive('string')]),
+          ['name', 'value'],
+          'std://env'
+        ),
+      ],
+      [
+        'remove_var',
+        moduleFunction(
+          'remove_var',
+          ['string'],
+          'Result<void,string>',
+          [primitive('string')],
+          adt('Result', [primitive('void'), primitive('string')]),
+          ['name'],
+          'std://env'
+        ),
+      ],
+      [
+        'args',
+        moduleFunction(
+          'args',
+          [],
+          'Vec<string>',
+          [],
+          adt('Vec', [primitive('string')]),
+          [],
+          'std://env'
+        ),
+      ],
+      [
+        'cwd',
+        moduleFunction(
+          'cwd',
+          [],
+          'Result<string,string>',
+          [],
+          adt('Result', [primitive('string'), primitive('string')]),
+          [],
+          'std://env'
+        ),
+      ],
+    ]),
+  };
+
+  const processModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'process',
+    moduleId: 'std://process',
+    exports: new Map<string, ModuleExport>([
+      [
+        'spawn',
+        moduleFunction(
+          'spawn',
+          ['string', 'Vec<string>'],
+          'Result<ProcessOutput,string>',
+          [primitive('string'), adt('Vec', [primitive('string')])],
+          adt('Result', [adt('ProcessOutput'), primitive('string')]),
+          ['command', 'args'],
+          'std://process'
+        ),
+      ],
+      [
+        'exit',
+        moduleFunction(
+          'exit',
+          ['int'],
+          'void',
+          [primitive('int')],
+          primitive('void'),
+          ['code'],
+          'std://process'
+        ),
+      ],
+      [
+        'cwd',
+        moduleFunction(
+          'cwd',
+          [],
+          'string',
+          [],
+          primitive('string'),
+          [],
+          'std://process'
+        ),
+      ],
+      [
+        'pid',
+        moduleFunction(
+          'pid',
+          [],
+          'int',
+          [],
+          primitive('int'),
+          [],
+          'std://process'
+        ),
+      ],
+    ]),
+  };
+
+  const jsonModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const fromStringType = fnType([primitive('string')], adt('Result', [t, primitive('string')]));
+    return {
+      kind: 'module',
+      name: 'json',
+      moduleId: 'std://json',
+      exports: new Map<string, ModuleExport>([
+        [
+          'to_string',
+          moduleFunction(
+            'to_string',
+            ['any'],
+            'Result<string,string>',
+            [primitive('any')],
+            adt('Result', [primitive('string'), primitive('string')]),
+            ['value'],
+            'std://json'
+          ),
+        ],
+        [
+          'to_pretty_string',
+          moduleFunction(
+            'to_pretty_string',
+            ['any'],
+            'Result<string,string>',
+            [primitive('any')],
+            adt('Result', [primitive('string'), primitive('string')]),
+            ['value'],
+            'std://json'
+          ),
+        ],
+        [
+          'from_string',
+          moduleFunctionWithScheme(
+            'from_string',
+            ['string'],
+            'Result<any,string>',
+            schemeFromVars(fromStringType, [t]),
+            ['source'],
+            'std://json'
+          ),
+        ],
+        [
+          'parse',
+          moduleFunctionWithScheme(
+            'parse',
+            ['string'],
+            'Result<any,string>',
+            schemeFromVars(fromStringType, [t]),
+            ['source'],
+            'std://json'
+          ),
+        ],
+      ]),
+    };
+  })();
+
   const httpModule: ModuleNamespace = {
     kind: 'module',
     name: 'http',
@@ -382,6 +644,45 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ],
     ]),
   };
+
+  const asyncModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const promiseT = promiseType(t);
+    const vecPromiseT = adt('Vec', [promiseT]);
+    const vecT = adt('Vec', [t]);
+    const timeoutType: Type = fnType([primitive('int')], promiseType(primitive('void')));
+    const joinAllType: Type = fnType([vecPromiseT], promiseType(vecT));
+
+    return {
+      kind: 'module',
+      name: 'async',
+      moduleId: 'std://async',
+      exports: new Map<string, ModuleExport>([
+        [
+          'timeout',
+          moduleFunctionWithScheme(
+            'timeout',
+            ['int'],
+            'Promise<void>',
+            schemeFromVars(timeoutType, []),
+            ['ms'],
+            'std://async'
+          ),
+        ],
+        [
+          'join_all',
+          moduleFunctionWithScheme(
+            'join_all',
+            ['Vec<Promise<any>>'],
+            'Promise<Vec<any>>',
+            schemeFromVars(joinAllType, [t]),
+            ['values'],
+            'std://async'
+          ),
+        ],
+      ]),
+    };
+  })();
 
   const regexModule: ModuleNamespace = {
     kind: 'module',
@@ -1033,6 +1334,11 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const vecT = adt('Vec', [t]);
     const vecU = adt('Vec', [u]);
     const optionT = adt('Option', [t]);
+    const tupleTU = adt('Tuple', [t, u]);
+    const tupleIntT = adt('Tuple', [primitive('int'), t]);
+    const vecTupleTU = adt('Vec', [tupleTU]);
+    const vecTupleIntT = adt('Vec', [tupleIntT]);
+    const optionInt = adt('Option', [primitive('int')]);
     const newType: Type = fnType([], vecT);
     const pushType: Type = fnType([vecT, t], primitive('void'));
     const getType: Type = fnType([vecT, primitive('int')], optionT);
@@ -1043,6 +1349,14 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const filterType: Type = fnType([vecT, fnType([t], primitive('bool'))], vecT);
     const foldType: Type = fnType([vecT, u, fnType([u, t], u)], u);
     const forEachType: Type = fnType([vecT, fnType([t], primitive('void'))], primitive('void'));
+    const anyType: Type = fnType([vecT, fnType([t], primitive('bool'))], primitive('bool'));
+    const allType: Type = fnType([vecT, fnType([t], primitive('bool'))], primitive('bool'));
+    const findType: Type = fnType([vecT, fnType([t], primitive('bool'))], optionT);
+    const positionType: Type = fnType([vecT, fnType([t], primitive('bool'))], optionInt);
+    const takeType: Type = fnType([vecT, primitive('int')], vecT);
+    const skipType: Type = fnType([vecT, primitive('int')], vecT);
+    const zipType: Type = fnType([vecT, vecU], vecTupleTU);
+    const enumerateType: Type = fnType([vecT], vecTupleIntT);
 
     return {
       kind: 'module',
@@ -1156,6 +1470,94 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'void',
             schemeFromVars(forEachType, [t]),
             ['values', 'action'],
+            'std://vec'
+          ),
+        ],
+        [
+          'any',
+          moduleFunctionWithScheme(
+            'any',
+            ['Vec<any>', 'any'],
+            'bool',
+            schemeFromVars(anyType, [t]),
+            ['values', 'predicate'],
+            'std://vec'
+          ),
+        ],
+        [
+          'all',
+          moduleFunctionWithScheme(
+            'all',
+            ['Vec<any>', 'any'],
+            'bool',
+            schemeFromVars(allType, [t]),
+            ['values', 'predicate'],
+            'std://vec'
+          ),
+        ],
+        [
+          'find',
+          moduleFunctionWithScheme(
+            'find',
+            ['Vec<any>', 'any'],
+            'Option<any>',
+            schemeFromVars(findType, [t]),
+            ['values', 'predicate'],
+            'std://vec'
+          ),
+        ],
+        [
+          'position',
+          moduleFunctionWithScheme(
+            'position',
+            ['Vec<any>', 'any'],
+            'Option<int>',
+            schemeFromVars(positionType, [t]),
+            ['values', 'predicate'],
+            'std://vec'
+          ),
+        ],
+        [
+          'take',
+          moduleFunctionWithScheme(
+            'take',
+            ['Vec<any>', 'int'],
+            'Vec<any>',
+            schemeFromVars(takeType, [t]),
+            ['values', 'count'],
+            'std://vec'
+          ),
+        ],
+        [
+          'skip',
+          moduleFunctionWithScheme(
+            'skip',
+            ['Vec<any>', 'int'],
+            'Vec<any>',
+            schemeFromVars(skipType, [t]),
+            ['values', 'count'],
+            'std://vec'
+          ),
+        ],
+        [
+          'zip',
+          moduleFunctionWithScheme(
+            'zip',
+            ['Vec<any>', 'Vec<any>'],
+            'Vec<Tuple<any,any>>',
+            schemeFromVars(zipType, [t, u]),
+            ['left', 'right'],
+            'std://vec'
+          ),
+        ],
+        [
+          'enumerate',
+          moduleFunctionWithScheme(
+            'enumerate',
+            ['Vec<any>'],
+            'Vec<Tuple<int,any>>',
+            schemeFromVars(enumerateType, [t]),
+            ['values'],
             'std://vec'
           ),
         ],
@@ -1380,6 +1782,366 @@ export function createStdModuleRegistry(): ModuleRegistry {
             schemeFromVars(valuesType, [t]),
             ['set'],
             'std://hashset'
+          ),
+        ],
+      ]),
+    };
+  })();
+
+  const dequeModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const dequeT = adt('Deque', [t]);
+    const optionT = adt('Option', [t]);
+    const newType: Type = fnType([], dequeT);
+    const pushFrontType: Type = fnType([dequeT, t], primitive('void'));
+    const pushBackType: Type = fnType([dequeT, t], primitive('void'));
+    const popFrontType: Type = fnType([dequeT], optionT);
+    const popBackType: Type = fnType([dequeT], optionT);
+    const lenType: Type = fnType([dequeT], primitive('int'));
+    const clearType: Type = fnType([dequeT], primitive('void'));
+
+    return {
+      kind: 'module',
+      name: 'deque',
+      moduleId: 'std://deque',
+      exports: new Map([
+        ['new', moduleFunctionWithScheme('new', [], 'Deque<any>', schemeFromVars(newType, [t]), [], 'std://deque')],
+        [
+          'push_front',
+          moduleFunctionWithScheme(
+            'push_front',
+            ['Deque<any>', 'any'],
+            'void',
+            schemeFromVars(pushFrontType, [t]),
+            ['deque', 'value'],
+            'std://deque'
+          ),
+        ],
+        [
+          'push_back',
+          moduleFunctionWithScheme(
+            'push_back',
+            ['Deque<any>', 'any'],
+            'void',
+            schemeFromVars(pushBackType, [t]),
+            ['deque', 'value'],
+            'std://deque'
+          ),
+        ],
+        [
+          'pop_front',
+          moduleFunctionWithScheme(
+            'pop_front',
+            ['Deque<any>'],
+            'Option<any>',
+            schemeFromVars(popFrontType, [t]),
+            ['deque'],
+            'std://deque'
+          ),
+        ],
+        [
+          'pop_back',
+          moduleFunctionWithScheme(
+            'pop_back',
+            ['Deque<any>'],
+            'Option<any>',
+            schemeFromVars(popBackType, [t]),
+            ['deque'],
+            'std://deque'
+          ),
+        ],
+        ['len', moduleFunctionWithScheme('len', ['Deque<any>'], 'int', schemeFromVars(lenType, [t]), ['deque'], 'std://deque')],
+        [
+          'clear',
+          moduleFunctionWithScheme(
+            'clear',
+            ['Deque<any>'],
+            'void',
+            schemeFromVars(clearType, [t]),
+            ['deque'],
+            'std://deque'
+          ),
+        ],
+      ]),
+    };
+  })();
+
+  const btreemapModule: ModuleNamespace = (() => {
+    const k = freshTypeVar();
+    const v = freshTypeVar();
+    const mapT = adt('BTreeMap', [k, v]);
+    const optionV = adt('Option', [v]);
+    const vecK = adt('Vec', [k]);
+    const vecV = adt('Vec', [v]);
+    const vecKV = adt('Vec', [adt('Tuple', [k, v])]);
+    const newType: Type = fnType([], mapT);
+    const insertType: Type = fnType([mapT, k, v], optionV);
+    const getType: Type = fnType([mapT, k], optionV);
+    const removeType: Type = fnType([mapT, k], optionV);
+    const containsType: Type = fnType([mapT, k], primitive('bool'));
+    const lenType: Type = fnType([mapT], primitive('int'));
+    const clearType: Type = fnType([mapT], primitive('void'));
+    const keysType: Type = fnType([mapT], vecK);
+    const valuesType: Type = fnType([mapT], vecV);
+    const entriesType: Type = fnType([mapT], vecKV);
+
+    return {
+      kind: 'module',
+      name: 'btreemap',
+      moduleId: 'std://btreemap',
+      exports: new Map([
+        ['new', moduleFunctionWithScheme('new', [], 'BTreeMap<any, any>', schemeFromVars(newType, [k, v]), [], 'std://btreemap')],
+        [
+          'insert',
+          moduleFunctionWithScheme(
+            'insert',
+            ['BTreeMap<any, any>', 'any', 'any'],
+            'Option<any>',
+            schemeFromVars(insertType, [k, v]),
+            ['map', 'key', 'value'],
+            'std://btreemap'
+          ),
+        ],
+        [
+          'get',
+          moduleFunctionWithScheme(
+            'get',
+            ['BTreeMap<any, any>', 'any'],
+            'Option<any>',
+            schemeFromVars(getType, [k, v]),
+            ['map', 'key'],
+            'std://btreemap'
+          ),
+        ],
+        [
+          'remove',
+          moduleFunctionWithScheme(
+            'remove',
+            ['BTreeMap<any, any>', 'any'],
+            'Option<any>',
+            schemeFromVars(removeType, [k, v]),
+            ['map', 'key'],
+            'std://btreemap'
+          ),
+        ],
+        [
+          'contains_key',
+          moduleFunctionWithScheme(
+            'contains_key',
+            ['BTreeMap<any, any>', 'any'],
+            'bool',
+            schemeFromVars(containsType, [k, v]),
+            ['map', 'key'],
+            'std://btreemap'
+          ),
+        ],
+        ['len', moduleFunctionWithScheme('len', ['BTreeMap<any, any>'], 'int', schemeFromVars(lenType, [k, v]), ['map'], 'std://btreemap')],
+        [
+          'clear',
+          moduleFunctionWithScheme(
+            'clear',
+            ['BTreeMap<any, any>'],
+            'void',
+            schemeFromVars(clearType, [k, v]),
+            ['map'],
+            'std://btreemap'
+          ),
+        ],
+        [
+          'keys',
+          moduleFunctionWithScheme(
+            'keys',
+            ['BTreeMap<any, any>'],
+            'Vec<any>',
+            schemeFromVars(keysType, [k, v]),
+            ['map'],
+            'std://btreemap'
+          ),
+        ],
+        [
+          'values',
+          moduleFunctionWithScheme(
+            'values',
+            ['BTreeMap<any, any>'],
+            'Vec<any>',
+            schemeFromVars(valuesType, [k, v]),
+            ['map'],
+            'std://btreemap'
+          ),
+        ],
+        [
+          'entries',
+          moduleFunctionWithScheme(
+            'entries',
+            ['BTreeMap<any, any>'],
+            'Vec<Tuple<any,any>>',
+            schemeFromVars(entriesType, [k, v]),
+            ['map'],
+            'std://btreemap'
+          ),
+        ],
+      ]),
+    };
+  })();
+
+  const btreesetModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const setT = adt('BTreeSet', [t]);
+    const vecT = adt('Vec', [t]);
+    const newType: Type = fnType([], setT);
+    const insertType: Type = fnType([setT, t], primitive('bool'));
+    const containsType: Type = fnType([setT, t], primitive('bool'));
+    const removeType: Type = fnType([setT, t], primitive('bool'));
+    const lenType: Type = fnType([setT], primitive('int'));
+    const clearType: Type = fnType([setT], primitive('void'));
+    const valuesType: Type = fnType([setT], vecT);
+
+    return {
+      kind: 'module',
+      name: 'btreeset',
+      moduleId: 'std://btreeset',
+      exports: new Map([
+        ['new', moduleFunctionWithScheme('new', [], 'BTreeSet<any>', schemeFromVars(newType, [t]), [], 'std://btreeset')],
+        [
+          'insert',
+          moduleFunctionWithScheme(
+            'insert',
+            ['BTreeSet<any>', 'any'],
+            'bool',
+            schemeFromVars(insertType, [t]),
+            ['set', 'value'],
+            'std://btreeset'
+          ),
+        ],
+        [
+          'contains',
+          moduleFunctionWithScheme(
+            'contains',
+            ['BTreeSet<any>', 'any'],
+            'bool',
+            schemeFromVars(containsType, [t]),
+            ['set', 'value'],
+            'std://btreeset'
+          ),
+        ],
+        [
+          'remove',
+          moduleFunctionWithScheme(
+            'remove',
+            ['BTreeSet<any>', 'any'],
+            'bool',
+            schemeFromVars(removeType, [t]),
+            ['set', 'value'],
+            'std://btreeset'
+          ),
+        ],
+        ['len', moduleFunctionWithScheme('len', ['BTreeSet<any>'], 'int', schemeFromVars(lenType, [t]), ['set'], 'std://btreeset')],
+        [
+          'clear',
+          moduleFunctionWithScheme(
+            'clear',
+            ['BTreeSet<any>'],
+            'void',
+            schemeFromVars(clearType, [t]),
+            ['set'],
+            'std://btreeset'
+          ),
+        ],
+        [
+          'values',
+          moduleFunctionWithScheme(
+            'values',
+            ['BTreeSet<any>'],
+            'Vec<any>',
+            schemeFromVars(valuesType, [t]),
+            ['set'],
+            'std://btreeset'
+          ),
+        ],
+      ]),
+    };
+  })();
+
+  const priorityQueueModule: ModuleNamespace = (() => {
+    const t = freshTypeVar();
+    const pqT = adt('PriorityQueue', [t]);
+    const optionT = adt('Option', [t]);
+    const newType: Type = fnType([], pqT);
+    const pushType: Type = fnType([pqT, t], primitive('void'));
+    const popType: Type = fnType([pqT], optionT);
+    const peekType: Type = fnType([pqT], optionT);
+    const lenType: Type = fnType([pqT], primitive('int'));
+    const clearType: Type = fnType([pqT], primitive('void'));
+
+    return {
+      kind: 'module',
+      name: 'priority_queue',
+      moduleId: 'std://priority_queue',
+      exports: new Map([
+        [
+          'new',
+          moduleFunctionWithScheme(
+            'new',
+            [],
+            'PriorityQueue<any>',
+            schemeFromVars(newType, [t]),
+            [],
+            'std://priority_queue'
+          ),
+        ],
+        [
+          'push',
+          moduleFunctionWithScheme(
+            'push',
+            ['PriorityQueue<any>', 'any'],
+            'void',
+            schemeFromVars(pushType, [t]),
+            ['queue', 'value'],
+            'std://priority_queue'
+          ),
+        ],
+        [
+          'pop',
+          moduleFunctionWithScheme(
+            'pop',
+            ['PriorityQueue<any>'],
+            'Option<any>',
+            schemeFromVars(popType, [t]),
+            ['queue'],
+            'std://priority_queue'
+          ),
+        ],
+        [
+          'peek',
+          moduleFunctionWithScheme(
+            'peek',
+            ['PriorityQueue<any>'],
+            'Option<any>',
+            schemeFromVars(peekType, [t]),
+            ['queue'],
+            'std://priority_queue'
+          ),
+        ],
+        [
+          'len',
+          moduleFunctionWithScheme(
+            'len',
+            ['PriorityQueue<any>'],
+            'int',
+            schemeFromVars(lenType, [t]),
+            ['queue'],
+            'std://priority_queue'
+          ),
+        ],
+        [
+          'clear',
+          moduleFunctionWithScheme(
+            'clear',
+            ['PriorityQueue<any>'],
+            'void',
+            schemeFromVars(clearType, [t]),
+            ['queue'],
+            'std://priority_queue'
           ),
         ],
       ]),
@@ -1867,6 +2629,13 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const asyncChannelModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'async_channel',
+    moduleId: 'std://async_channel',
+    exports: new Map(channelModule.exports),
+  };
+
   const threadModule: ModuleNamespace = (() => {
     const t = freshTypeVar();
     const threadT = adt('Thread');
@@ -2210,6 +2979,13 @@ export function createStdModuleRegistry(): ModuleRegistry {
     };
   })();
 
+  const preludeJoinT = freshTypeVar();
+  const preludeJoinAllType: Type = fnType(
+    [adt('Vec', [promiseType(preludeJoinT)])],
+    promiseType(adt('Vec', [preludeJoinT]))
+  );
+  const preludeTimeoutType: Type = fnType([primitive('int')], promiseType(primitive('void')));
+
   const preludeModule: ModuleNamespace = {
     kind: 'module',
     name: '@prelude',
@@ -2263,6 +3039,28 @@ export function createStdModuleRegistry(): ModuleRegistry {
           'std://prelude'
         ),
       ],
+      [
+        'timeout',
+        moduleFunctionWithScheme(
+          'timeout',
+          ['int'],
+          'Promise<void>',
+          schemeFromVars(preludeTimeoutType, []),
+          ['ms'],
+          'std://prelude'
+        ),
+      ],
+      [
+        'join_all',
+        moduleFunctionWithScheme(
+          'join_all',
+          ['Vec<Promise<any>>'],
+          'Promise<Vec<any>>',
+          schemeFromVars(preludeJoinAllType, [preludeJoinT]),
+          ['values'],
+          'std://prelude'
+        ),
+      ],
     ]),
   };
 
@@ -2280,12 +3078,22 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['vec', vecModule],
       ['hashmap', hashmapModule],
       ['hashset', hashsetModule],
+      ['deque', dequeModule],
+      ['btreemap', btreemapModule],
+      ['btreeset', btreesetModule],
+      ['priority_queue', priorityQueueModule],
       ['channel', channelModule],
+      ['async_channel', asyncChannelModule],
       ['thread', threadModule],
       ['sync', syncModule],
       ['fs', fsModule],
+      ['path', pathModule],
+      ['env', envModule],
+      ['process', processModule],
+      ['json', jsonModule],
       ['http', httpModule],
       ['time', timeModule],
+      ['async_util', asyncModule],
       ['regex', regexModule],
       ['crypto', cryptoModule],
     ]),
@@ -2294,8 +3102,14 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std', stdModule);
   registry.set('@std/io', ioModule);
   registry.set('@std/fs', fsModule);
+  registry.set('@std/path', pathModule);
+  registry.set('@std/env', envModule);
+  registry.set('@std/process', processModule);
+  registry.set('@std/json', jsonModule);
   registry.set('@std/http', httpModule);
   registry.set('@std/time', timeModule);
+  registry.set('@std/async', asyncModule);
+  registry.set('@std/async_util', asyncModule);
   registry.set('@std/regex', regexModule);
   registry.set('@std/crypto', cryptoModule);
   registry.set('@std/Option', optionModule);
@@ -2306,7 +3120,12 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/vec', vecModule);
   registry.set('@std/hashmap', hashmapModule);
   registry.set('@std/hashset', hashsetModule);
+  registry.set('@std/deque', dequeModule);
+  registry.set('@std/btreemap', btreemapModule);
+  registry.set('@std/btreeset', btreesetModule);
+  registry.set('@std/priority_queue', priorityQueueModule);
   registry.set('@std/channel', channelModule);
+  registry.set('@std/async_channel', asyncChannelModule);
   registry.set('@std/thread', threadModule);
   registry.set('@std/sync', syncModule);
   registry.set('@prelude', preludeModule);

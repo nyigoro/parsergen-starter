@@ -19,6 +19,7 @@ import { normalizeDiagnostic } from './diagnostics-util.js';
 import { normalizeTypeForComparison, normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
 import {
   createStdModuleRegistry,
+  getPreludeExports,
   resolveModuleBindings,
   type ModuleExport,
   type ModuleFunction,
@@ -50,6 +51,7 @@ export interface SymbolInfo {
   enumVariants?: Array<{ name: string; params: LuminaType[] }>;
   enumName?: string;
   structFields?: Map<string, LuminaType>;
+  derivedTraits?: string[];
 }
 
 export class SymbolTable {
@@ -98,6 +100,7 @@ export interface TraitAssocTypeInfo {
 export interface TraitInfo {
   name: string;
   typeParams: Array<{ name: string; bound?: LuminaType[] }>;
+  superTraits: LuminaType[];
   methods: Map<string, TraitMethodSig>;
   associatedTypes: Map<string, TraitAssocTypeInfo>;
   visibility?: 'public' | 'private';
@@ -140,11 +143,17 @@ const builtinTypes: Set<LuminaType> = new Set([
   'u32',
   'u64',
   'u128',
+  'usize',
   'f32',
   'f64',
   'Vec',
+  'Array',
+  'Deque',
   'HashMap',
   'HashSet',
+  'BTreeMap',
+  'BTreeSet',
+  'PriorityQueue',
   'Channel',
   'Sender',
   'Receiver',
@@ -153,6 +162,7 @@ const builtinTypes: Set<LuminaType> = new Set([
   'Mutex',
   'Semaphore',
   'AtomicI32',
+  'ProcessOutput',
   'Promise',
   'Range',
 ]);
@@ -170,6 +180,7 @@ const numericTypes: Set<LuminaType> = new Set([
   'u32',
   'u64',
   'u128',
+  'usize',
   'f32',
   'f64',
 ]);
@@ -177,6 +188,7 @@ const numericTypes: Set<LuminaType> = new Set([
 const normalizeNumericType = (type: LuminaType): LuminaType => {
   if (type === 'int') return 'i32';
   if (type === 'float') return 'f64';
+  if (type === 'usize') return 'u32';
   return type;
 };
 
@@ -424,8 +436,14 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
   let hmCallSignatures: Map<number, { args: LuminaType[]; returnType: LuminaType }> | undefined;
   let hmExprTypes: Map<number, string> | undefined;
   const registry = options?.moduleRegistry ?? (options?.moduleBindings ? undefined : createStdModuleRegistry());
-  const moduleBindings = options?.moduleBindings ?? resolveModuleBindings(program, registry);
-  const importedNames = options?.importedNames ?? new Set(moduleBindings.keys());
+  const explicitModuleBindings = options?.moduleBindings ?? resolveModuleBindings(program, registry);
+  const moduleBindings = new Map(explicitModuleBindings);
+  for (const exp of getPreludeExports(registry)) {
+    if (!moduleBindings.has(exp.name)) {
+      moduleBindings.set(exp.name, exp);
+    }
+  }
+  const importedNames = options?.importedNames ?? new Set(explicitModuleBindings.keys());
   let activeOptions: AnalyzeOptions | undefined = options
     ? { ...options, moduleBindings, importedNames }
     : { moduleBindings, importedNames };
@@ -479,6 +497,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         uri: options?.currentUri,
         typeParams: typeParams ?? [],
         structFields: fields,
+        derivedTraits: stmt.derives ?? [],
       });
     } else if (stmt.type === 'EnumDecl') {
       const typeParams = stmt.typeParams?.map((param) => ({
@@ -532,6 +551,8 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       });
     }
   }
+
+  reportAdvancedTypeFeatureDiagnostics(program, diagnostics);
 
   const traitRegistry = collectTraitRegistry(program, symbols, diagnostics, options);
   const traitMethodResolutions = new Map<number, TraitMethodResolution>();
@@ -687,6 +708,55 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
   collectUnusedBindingsLocal(rootScope, diagnostics, program.location);
 
   return { symbols, diagnostics, diGraphs: options?.diDebug ? diGraphs : undefined, hmCallSignatures, hmExprTypes, traitRegistry, traitMethodResolutions };
+}
+
+function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostics: Diagnostic[]): void {
+  const reportUnsupportedHkt = (
+    typeParams: Array<{ name: string; bound?: LuminaType[] }> | undefined,
+    location?: Location
+  ) => {
+    for (const param of typeParams ?? []) {
+      const arity = Number((param as unknown as { higherKindArity?: number }).higherKindArity ?? 0);
+      if (arity > 0) {
+        diagnostics.push(
+          diagAt(
+            `Higher-kinded type parameter '${param.name}<...>' is parsed but not type-checked yet`,
+            location,
+            'error',
+            'UNSUPPORTED_HKT'
+          )
+        );
+      }
+    }
+  };
+
+  for (const stmt of program.body) {
+    switch (stmt.type) {
+      case 'FnDecl':
+      case 'StructDecl':
+      case 'EnumDecl':
+      case 'TypeDecl':
+      case 'TraitDecl':
+      case 'ImplDecl':
+        reportUnsupportedHkt(stmt.typeParams as Array<{ name: string; bound?: LuminaType[] }> | undefined, stmt.location);
+        break;
+      default:
+        break;
+    }
+
+    if (stmt.type !== 'EnumDecl') continue;
+    for (const variant of stmt.variants ?? []) {
+      if (!variant.resultType) continue;
+      diagnostics.push(
+        diagAt(
+          `GADT variant result type on '${stmt.name}.${variant.name}' is parsed but not type-checked yet`,
+          variant.location ?? stmt.location,
+          'error',
+          'UNSUPPORTED_GADT'
+        )
+      );
+    }
+  }
 }
 
 function warnOnImportedShadow(
@@ -2207,6 +2277,7 @@ function typeCheckStatement(
       }
       return;
     }
+    case 'MacroRulesDecl':
     case 'Import':
       return;
     }
@@ -2314,6 +2385,13 @@ function typeCheckExpr(
         case 'ArrayLiteral':
           for (const element of node.elements) visitExprNode(element);
           return;
+        case 'ArrayRepeatLiteral':
+          visitExprNode(node.value);
+          visitExprNode(node.count);
+          return;
+        case 'MacroInvoke':
+          for (const arg of node.args) visitExprNode(arg);
+          return;
         case 'TupleLiteral':
           for (const element of node.elements) visitExprNode(element);
           return;
@@ -2328,6 +2406,12 @@ function typeCheckExpr(
           visitExprNode(node.value);
           for (const arm of node.arms) {
             visitExprNode(arm.body);
+          }
+          return;
+        case 'SelectExpr':
+          for (const arm of node.arms ?? []) {
+            if (arm?.value) visitExprNode(arm.value);
+            if (arm?.body) visitExprNode(arm.body);
           }
           return;
         case 'InterpolatedString':
@@ -2782,6 +2866,43 @@ function typeCheckExpr(
       return false;
     };
 
+    const receiverStruct = symbols.get(parsed.base);
+    const derivedTraits = new Set(receiverStruct?.derivedTraits ?? []);
+    if (derivedTraits.has('Clone') && callee === 'clone') {
+      ensureArity(0);
+      return receiverType;
+    }
+    if (derivedTraits.has('Debug') && callee === 'debug') {
+      ensureArity(0);
+      return 'string';
+    }
+    if (derivedTraits.has('Eq') && callee === 'eq') {
+      if (!ensureArity(1)) return 'bool';
+      if (!isTypeAssignable(actualArgs[0], receiverType, symbols, options?.typeParams)) {
+        reportCallArgMismatch(callee, 0, receiverType, actualArgs[0], args[0]?.location ?? callLocation, null);
+      }
+      return 'bool';
+    }
+
+    if (isIntTypeName(parsed.base) || isFloatTypeName(parsed.base)) {
+      if (callee === 'millis' || callee === 'milliseconds') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'seconds') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'minutes') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'hours') {
+        ensureArity(0);
+        return 'i32';
+      }
+    }
+
     if (parsed.base === 'Vec') {
       const elemType = parsed.args[0] ?? 'any';
       if (callee === 'push') {
@@ -2809,6 +2930,55 @@ function typeCheckExpr(
       if (callee === 'clear') {
         ensureArity(0);
         return 'void';
+      }
+      if (callee === 'map') {
+        ensureArity(1);
+        return 'Vec<any>';
+      }
+      if (callee === 'filter') {
+        ensureArity(1);
+        return `Vec<${elemType}>`;
+      }
+      if (callee === 'fold') {
+        if (!ensureArity(2)) return 'any';
+        return actualArgs[0] ?? 'any';
+      }
+      if (callee === 'for_each') {
+        ensureArity(1);
+        return 'void';
+      }
+      if (callee === 'any' || callee === 'all') {
+        ensureArity(1);
+        return 'bool';
+      }
+      if (callee === 'find') {
+        ensureArity(1);
+        return `Option<${elemType}>`;
+      }
+      if (callee === 'position') {
+        ensureArity(1);
+        return 'Option<i32>';
+      }
+      if (callee === 'take' || callee === 'skip') {
+        if (!ensureArity(1)) return `Vec<${elemType}>`;
+        if (!isIntTypeName(normalizeTypeForComparison(actualArgs[0]))) {
+          reportCallArgMismatch(callee, 0, 'i32', actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return `Vec<${elemType}>`;
+      }
+      if (callee === 'zip') {
+        if (!ensureArity(1)) return `Vec<Tuple<${elemType},any>>`;
+        const otherParsed = parseTypeName(actualArgs[0]);
+        if (otherParsed?.base !== 'Vec') {
+          reportCallArgMismatch(callee, 0, 'Vec<any>', actualArgs[0], args[0]?.location ?? callLocation, null);
+          return `Vec<Tuple<${elemType},any>>`;
+        }
+        const otherElem = otherParsed.args[0] ?? 'any';
+        return `Vec<Tuple<${elemType},${otherElem}>>`;
+      }
+      if (callee === 'enumerate') {
+        ensureArity(0);
+        return `Vec<Tuple<i32,${elemType}>>`;
       }
       return null;
     }
@@ -2879,6 +3049,128 @@ function typeCheckExpr(
       if (callee === 'values') {
         ensureArity(0);
         return `Vec<${elemType}>`;
+      }
+      return null;
+    }
+
+    if (parsed.base === 'Deque' && parsed.args.length >= 1) {
+      const elemType = parsed.args[0] ?? 'any';
+      if (callee === 'push_front' || callee === 'push_back') {
+        if (!ensureArity(1)) return 'void';
+        if (!isTypeAssignable(actualArgs[0], elemType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, elemType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'void';
+      }
+      if (callee === 'pop_front' || callee === 'pop_back') {
+        ensureArity(0);
+        return `Option<${elemType}>`;
+      }
+      if (callee === 'len') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'clear') {
+        ensureArity(0);
+        return 'void';
+      }
+      return null;
+    }
+
+    if (parsed.base === 'BTreeMap' && parsed.args.length >= 2) {
+      const keyType = parsed.args[0] ?? 'any';
+      const valueType = parsed.args[1] ?? 'any';
+      if (callee === 'insert') {
+        if (!ensureArity(2)) return `Option<${valueType}>`;
+        if (!isTypeAssignable(actualArgs[0], keyType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, keyType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        if (!isTypeAssignable(actualArgs[1], valueType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 1, valueType, actualArgs[1], args[1]?.location ?? callLocation, null);
+        }
+        return `Option<${valueType}>`;
+      }
+      if (callee === 'get' || callee === 'remove') {
+        if (!ensureArity(1)) return `Option<${valueType}>`;
+        if (!isTypeAssignable(actualArgs[0], keyType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, keyType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return `Option<${valueType}>`;
+      }
+      if (callee === 'contains_key') {
+        if (!ensureArity(1)) return 'bool';
+        if (!isTypeAssignable(actualArgs[0], keyType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, keyType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'bool';
+      }
+      if (callee === 'len') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'clear') {
+        ensureArity(0);
+        return 'void';
+      }
+      if (callee === 'keys') {
+        ensureArity(0);
+        return `Vec<${keyType}>`;
+      }
+      if (callee === 'values') {
+        ensureArity(0);
+        return `Vec<${valueType}>`;
+      }
+      if (callee === 'entries') {
+        ensureArity(0);
+        return `Vec<Tuple<${keyType},${valueType}>>`;
+      }
+      return null;
+    }
+
+    if (parsed.base === 'BTreeSet' && parsed.args.length >= 1) {
+      const elemType = parsed.args[0] ?? 'any';
+      if (callee === 'insert' || callee === 'contains' || callee === 'remove') {
+        if (!ensureArity(1)) return 'bool';
+        if (!isTypeAssignable(actualArgs[0], elemType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, elemType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'bool';
+      }
+      if (callee === 'len') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'clear') {
+        ensureArity(0);
+        return 'void';
+      }
+      if (callee === 'values') {
+        ensureArity(0);
+        return `Vec<${elemType}>`;
+      }
+      return null;
+    }
+
+    if (parsed.base === 'PriorityQueue' && parsed.args.length >= 1) {
+      const elemType = parsed.args[0] ?? 'any';
+      if (callee === 'push') {
+        if (!ensureArity(1)) return 'void';
+        if (!isTypeAssignable(actualArgs[0], elemType, symbols, options?.typeParams)) {
+          reportCallArgMismatch(callee, 0, elemType, actualArgs[0], args[0]?.location ?? callLocation, null);
+        }
+        return 'void';
+      }
+      if (callee === 'pop' || callee === 'peek') {
+        ensureArity(0);
+        return `Option<${elemType}>`;
+      }
+      if (callee === 'len') {
+        ensureArity(0);
+        return 'i32';
+      }
+      if (callee === 'clear') {
+        ensureArity(0);
+        return 'void';
       }
       return null;
     }
@@ -3062,6 +3354,49 @@ function typeCheckExpr(
     const finalElement = isErrorTypeName(unified) ? 'any' : unified;
     return `Vec<${finalElement}>`;
   }
+  if (expr.type === 'ArrayRepeatLiteral') {
+    const valueType =
+      typeCheckExpr(
+        expr.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      ) ?? 'any';
+    const countType =
+      typeCheckExpr(
+        expr.count,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        'i32',
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      ) ?? 'any';
+    if (!isIntTypeName(normalizeTypeForComparison(countType))) {
+      diagnostics.push(
+        diagAt(
+          `Array repeat count must be integer, found '${formatTypeForDiagnostic(countType)}'`,
+          expr.count.location ?? expr.location
+        )
+      );
+    }
+    return `Vec<${valueType}>`;
+  }
   if (expr.type === 'TupleLiteral') {
     const elementTypes: LuminaType[] = [];
     for (const element of expr.elements) {
@@ -3219,6 +3554,116 @@ function typeCheckExpr(
       }
     }
     return 'string';
+  }
+  if (expr.type === 'SelectExpr') {
+    const fnSym = currentFunction ? symbols.get(currentFunction) : undefined;
+    const isAsyncFn = !!fnSym?.async;
+    if (!isAsyncFn) {
+      diagnostics.push(
+        diagAt(
+          `'select!' can only be used inside async functions`,
+          expr.location,
+          'error',
+          'SELECT_OUTSIDE_ASYNC'
+        )
+      );
+    }
+    if (!expr.arms || expr.arms.length === 0) {
+      diagnostics.push(diagAt(`select! requires at least one arm`, expr.location, 'error', 'SELECT_EMPTY'));
+      return 'any';
+    }
+
+    let unifiedBodyType: LuminaType | null = null;
+
+    for (const arm of expr.arms) {
+      const armValueType = typeCheckExpr(
+        arm.value,
+        symbols,
+        diagnostics,
+        scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      );
+
+      let boundType: LuminaType = 'any';
+      if (armValueType) {
+        const parsedArmValue = parseTypeName(armValueType);
+        if (parsedArmValue && parsedArmValue.base === 'Promise' && parsedArmValue.args.length === 1) {
+          boundType = parsedArmValue.args[0] ?? 'any';
+        } else if (normalizeTypeForComparison(armValueType) !== 'any') {
+          diagnostics.push(
+            diagAt(
+              `select! arm expression must be Promise<T>, found '${formatTypeForDiagnostic(armValueType)}'`,
+              arm.value.location ?? arm.location ?? expr.location,
+              'error',
+              'SELECT_ARM_NOT_PROMISE'
+            )
+          );
+        }
+      }
+
+      const armSymbols = cloneSymbolTable(symbols);
+      const armScope = new Scope(scope);
+      const armDi = di ? di.clone() : undefined;
+      if (arm.binding && arm.binding !== '_') {
+        armSymbols.define({
+          name: arm.binding,
+          kind: 'variable',
+          type: boundType,
+          location: arm.location ?? expr.location,
+          mutable: false,
+        });
+        armScope.define(arm.binding, arm.location ?? expr.location);
+        armDi?.define(armScope, arm.binding, true);
+      }
+
+      const bodyType = typeCheckExpr(
+        arm.body,
+        armSymbols,
+        diagnostics,
+        armScope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        armDi,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      );
+
+      if (!bodyType) continue;
+      if (!unifiedBodyType) {
+        unifiedBodyType = bodyType;
+        continue;
+      }
+      const compatible =
+        isTypeAssignable(bodyType, unifiedBodyType, symbols, options?.typeParams) ||
+        isTypeAssignable(unifiedBodyType, bodyType, symbols, options?.typeParams);
+      if (!compatible) {
+        diagnostics.push(
+          diagAt(
+            `select! arm result type mismatch: expected '${formatTypeForDiagnostic(unifiedBodyType)}', found '${formatTypeForDiagnostic(bodyType)}'`,
+            arm.body.location ?? arm.location ?? expr.location,
+            'error',
+            'SELECT_ARM_TYPE_MISMATCH'
+          )
+        );
+        unifiedBodyType = 'any';
+      } else if (isTypeAssignable(unifiedBodyType, bodyType, symbols, options?.typeParams)) {
+        unifiedBodyType = bodyType;
+      }
+    }
+
+    return unifiedBodyType ?? 'any';
   }
   if (expr.type === 'Range') {
     const checkPart = (part: LuminaExpr | null, label: string) => {
@@ -3642,8 +4087,12 @@ function typeCheckExpr(
     const left = typeCheckExpr(expr.left, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     const right = typeCheckExpr(expr.right, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     if (!left || !right) return null;
+    const leftNormRaw = normalizeTypeForComparison(left);
+    const rightNormRaw = normalizeTypeForComparison(right);
+    const hasAny = leftNormRaw === 'any' || rightNormRaw === 'any';
     if (expr.op === '+' && left === 'string' && right === 'string') return 'string';
     if (expr.op === '&&' || expr.op === '||') {
+      if (hasAny) return 'bool';
       if (left !== 'bool' || right !== 'bool') {
         diagnostics.push(diagAt(`Operator '${expr.op}' requires bool operands`, expr.location));
         return null;
@@ -3655,6 +4104,7 @@ function typeCheckExpr(
       const rightNorm = normalizeNumericType(right);
       const numericLeft = isNumericTypeName(leftNorm);
       const numericRight = isNumericTypeName(rightNorm);
+      if (hasAny) return 'bool';
       if (numericLeft && numericRight) {
         if (leftNorm !== rightNorm) {
           diagnostics.push(diagAt(`Operator '${expr.op}' requires matching numeric operand types`, expr.location));
@@ -3669,6 +4119,7 @@ function typeCheckExpr(
       return 'bool';
     }
     if (expr.op === '<' || expr.op === '>' || expr.op === '<=' || expr.op === '>=') {
+      if (hasAny) return 'bool';
       const leftNorm = normalizeNumericType(left);
       const rightNorm = normalizeNumericType(right);
       if (!isNumericTypeName(leftNorm) || !isNumericTypeName(rightNorm) || leftNorm !== rightNorm) {
@@ -3677,6 +4128,7 @@ function typeCheckExpr(
       }
       return 'bool';
     }
+    if (hasAny) return 'any';
     const leftNorm = normalizeNumericType(left);
     const rightNorm = normalizeNumericType(right);
     if (!isNumericTypeName(leftNorm) || !isNumericTypeName(rightNorm) || leftNorm !== rightNorm) {
@@ -3685,6 +4137,12 @@ function typeCheckExpr(
     }
     return leftNorm;
   }
+    if (expr.type === 'MacroInvoke') {
+      for (const arg of expr.args) {
+        typeCheckExpr(arg, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
+      }
+      return unresolvedMember(`Unknown macro '${expr.name}!'`, expr.location, 'UNRESOLVED_MACRO');
+    }
     if (expr.type === 'Identifier') {
       const name = expr.name;
       scope?.read(name);
@@ -5118,6 +5576,24 @@ function collectTraitRegistry(
     const traitTypeParamSet = new Set(traitTypeParams.map((param) => param.name));
     const methods = new Map<string, TraitMethodSig>();
     const associatedTypes = new Map<string, TraitAssocTypeInfo>();
+    const superTraits: LuminaType[] = [];
+
+    for (const superTrait of stmt.superTraits ?? []) {
+      const known = ensureKnownType(superTrait, symbols, traitTypeParamSet, diagnostics, stmt.location, declaredTraitNames, true);
+      const resolved = resolveTypeExpr(superTrait) ?? 'any';
+      if (known === 'unknown') {
+        diagnostics.push(
+          diagAt(
+            `Unknown supertrait '${resolved}' for trait '${stmt.name}'`,
+            stmt.location,
+            'error',
+            'TRAIT-014'
+          )
+        );
+        continue;
+      }
+      superTraits.push(resolved);
+    }
 
     for (const assoc of stmt.associatedTypes ?? []) {
       if (associatedTypes.has(assoc.name)) {
@@ -5171,6 +5647,7 @@ function collectTraitRegistry(
     traits.set(stmt.name, {
       name: stmt.name,
       typeParams: traitTypeParams,
+      superTraits,
       methods,
       associatedTypes,
       visibility: stmt.visibility ?? 'private',
@@ -5378,6 +5855,34 @@ function collectTraitRegistry(
   for (const stmt of program.body) {
     if (stmt.type === 'ImplDecl') {
       registerImpl(stmt);
+    }
+  }
+
+  for (const impl of implsByKey.values()) {
+    const trait = traits.get(impl.traitName);
+    if (!trait || trait.superTraits.length === 0) continue;
+    const traitParsed = parseTypeName(impl.traitType);
+    const mapping = new Map<string, LuminaType>();
+    if (traitParsed) {
+      for (let i = 0; i < trait.typeParams.length; i++) {
+        const paramName = trait.typeParams[i]?.name;
+        if (!paramName) continue;
+        mapping.set(paramName, traitParsed.args[i] ?? 'any');
+      }
+    }
+    for (const superTrait of trait.superTraits) {
+      const concreteSuperTrait = substituteTypeParams(superTrait, mapping);
+      const requiredKey = `${normalizeTypeForComparison(concreteSuperTrait)}::${normalizeTypeForComparison(impl.forType)}`;
+      if (!implsByKey.has(requiredKey)) {
+        diagnostics.push(
+          diagAt(
+            `Impl '${impl.traitType} for ${impl.forType}' requires supertrait impl '${concreteSuperTrait} for ${impl.forType}'`,
+            impl.location,
+            'error',
+            'TRAIT-015'
+          )
+        );
+      }
     }
   }
 
@@ -5881,13 +6386,16 @@ function isImplicitlySendType(typeName: LuminaType, symbols: SymbolTable, seen: 
   if (
     parsed.base === 'Vec' ||
     parsed.base === 'List' ||
+    parsed.base === 'Deque' ||
+    parsed.base === 'PriorityQueue' ||
     parsed.base === 'HashSet' ||
+    parsed.base === 'BTreeSet' ||
     parsed.base === 'Option'
   ) {
     return parsed.args.every((arg) => isImplicitlySendType(arg, symbols, seen));
   }
 
-  if (parsed.base === 'HashMap' || parsed.base === 'Result') {
+  if (parsed.base === 'HashMap' || parsed.base === 'BTreeMap' || parsed.base === 'Result') {
     return parsed.args.every((arg) => isImplicitlySendType(arg, symbols, seen));
   }
 

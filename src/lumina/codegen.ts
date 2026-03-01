@@ -24,13 +24,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -56,10 +56,41 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
       'Runtime'
     );
     builder.append('\n');
+    builder.append(
+      `const path = { join: (a, b) => \`\${a}/\${b}\`, is_absolute: () => false, extension: () => ({ $tag: "None" }), dirname: (v) => v, basename: (v) => v, normalize: (v) => v };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const env = { var: () => ({ $tag: "Err", $payload: "No env runtime" }), set_var: () => ({ $tag: "Err", $payload: "No env runtime" }), remove_var: () => ({ $tag: "Err", $payload: "No env runtime" }), args: () => [], cwd: () => ({ $tag: "Err", $payload: "No env runtime" }) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const process = { spawn: () => ({ $tag: "Err", $payload: "No process runtime" }), exit: () => {}, cwd: () => "", pid: () => -1 };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const json = { to_string: () => ({ $tag: "Err", $payload: "No json runtime" }), to_pretty_string: () => ({ $tag: "Err", $payload: "No json runtime" }), from_string: () => ({ $tag: "Err", $payload: "No json runtime" }), parse: () => ({ $tag: "Err", $payload: "No json runtime" }) };`,
+      'Runtime'
+    );
+    builder.append('\n');
     builder.append(`const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };`, 'Runtime');
     builder.append('\n');
     builder.append(
       `const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(`const channel = { new: () => ({ sender: {}, receiver: {} }) };`, 'Runtime');
+    builder.append('\n');
+    builder.append(`const async_channel = channel;`, 'Runtime');
+    builder.append('\n');
+    builder.append(`const timeout = async (ms) => await time.sleep(ms);`, 'Runtime');
+    builder.append('\n');
+    builder.append(
+      `const join_all = async (values) => { const arr = Array.isArray(values) ? values : (values && values[Symbol.iterator]) ? Array.from(values) : []; return await Promise.all(arr.map((v) => Promise.resolve(v))); };`,
       'Runtime'
     );
     builder.append('\n');
@@ -92,6 +123,19 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
       'Runtime'
     );
     builder.append('\n');
+    builder.append(
+      `function __lumina_clone(value) { if (value == null || typeof value !== "object") return value; if (Array.isArray(value)) return value.map((entry) => __lumina_clone(entry)); return { ...value }; }`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(`function __lumina_debug(value) { return __lumina_stringify(value); }`, 'Runtime');
+    builder.append('\n');
+    builder.append(`function __lumina_eq(left, right) { return JSON.stringify(left) === JSON.stringify(right); }`, 'Runtime');
+    builder.append('\n');
+    builder.append(`function __lumina_struct(_name, fields) { return fields; }`, 'Runtime');
+    builder.append('\n');
+    builder.append(`function __lumina_register_trait_impl(_trait, _type, _fn) {}`, 'Runtime');
+    builder.append('\n');
   }
   if (usesTry) {
     builder.append(tryHelperSource(), 'Runtime');
@@ -105,16 +149,16 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       code +=
-        'module.exports = { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
+        'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
     } else {
       code +=
-        'export { io, str, math, list, vec, hashmap, hashset, channel, thread, sync, fs, http, time, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, LuminaPanic };\n';
+        'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
+      code += 'module.exports = { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
     } else {
-      code += 'export { io, str, math, fs, http, time, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index };\n';
+      code += 'export { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
     }
   }
 
@@ -452,13 +496,13 @@ function emitExpr(node: IRNode): EmitResult {
       return withBase(concat(...parts));
     }
     case 'StructLiteral': {
-      const parts: Array<string | EmitResult> = ['{ '];
+      const parts: Array<string | EmitResult> = ['__lumina_struct(', JSON.stringify(node.name), ', { '];
       node.fields.forEach((field, idx) => {
         if (idx > 0) parts.push(', ');
         parts.push(`${field.name}: `);
         parts.push(emitExpr(field.value));
       });
-      parts.push(' }');
+      parts.push(' })');
       return withBase(concat(...parts));
     }
       case 'MatchExpr': {
