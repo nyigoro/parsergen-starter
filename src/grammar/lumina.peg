@@ -225,6 +225,7 @@ TypeField
 
 TypeName
   = "_" { return { kind: "TypeHole", location: location() }; }
+  / FunctionTypeName
   / ArrayTypeName
   / TupleTypeName
   / path:TypePath _ args:TypeArgs? {
@@ -248,6 +249,12 @@ TypeName
         return "_";
       });
       return `${base}<${rendered.join(",")}>`;
+    }
+
+FunctionTypeName
+  = "fn" _ "(" _ params:TypeNameList? _ ")" _ "->" _ ret:TypeName {
+      const parts = (params || []).concat([ret]);
+      return `Fn<${parts.join(",")}>`;
     }
 
 ArrayTypeName

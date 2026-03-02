@@ -14,6 +14,8 @@ trait BiFunctor<F<_,_>> {
 }
 ```
 
+Lumina accepts `fn(A) -> B` in type positions and lowers it to internal function-type form for semantic + HM checking.
+
 ## Partial Type-Constructor Application
 
 Use `_` placeholders to keep constructor positions open:

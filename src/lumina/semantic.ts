@@ -7569,6 +7569,13 @@ function isKnownType(
     }
     return true;
   }
+  if (parsed.base === 'Fn') {
+    if (parsed.args.length < 1) return false;
+    for (const arg of parsed.args) {
+      if (!isKnownType(arg, symbols, typeParams, traitNames, allowTraits, allowBareConstructors)) return false;
+    }
+    return true;
+  }
   if (parsed.base === 'Promise') {
     if (parsed.args.length !== 1) return false;
     return isKnownType(parsed.args[0], symbols, typeParams, traitNames, allowTraits, allowBareConstructors);

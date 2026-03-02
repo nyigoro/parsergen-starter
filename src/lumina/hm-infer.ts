@@ -3255,6 +3255,13 @@ function parseTypeName(
   const base = typeName.slice(0, idx);
   const inner = typeName.slice(idx + 1, -1);
   const args = splitTypeArgs(inner).map((arg) => parseTypeName(arg, holeInfoByVar, holeInfo, defaultLocation));
+  if (base === 'Fn' && args.length >= 1) {
+    return {
+      kind: 'function',
+      args: args.slice(0, -1),
+      returnType: args[args.length - 1],
+    };
+  }
   if (base === 'Promise' && args.length === 1) {
     return promiseType(args[0]);
   }
@@ -3960,6 +3967,13 @@ function parseTypeNameWithEnv(
   }
   const inner = typeName.slice(baseIdx + 1, -1);
   const args = splitTypeArgs(inner).map(arg => parseTypeNameWithEnv(arg, typeParams, holeInfoByVar, holeInfo, defaultLocation));
+  if (base === 'Fn' && args.length >= 1) {
+    return {
+      kind: 'function',
+      args: args.slice(0, -1),
+      returnType: args[args.length - 1],
+    };
+  }
   if (base === 'Promise' && args.length === 1) {
     return promiseType(args[0]);
   }
