@@ -239,16 +239,180 @@ export function generateWATFromAst(
   builder.append('  (import "env" "str_from_float" (func $str_from_float (param f64) (result i32)))');
   builder.append('  (import "env" "str_from_bool" (func $str_from_bool (param i32) (result i32)))');
   builder.append('  (import "env" "str_from_handle" (func $str_from_handle (param i32) (result i32)))');
+  builder.append('  (import "env" "mem_retain" (func $mem_retain (param i32)))');
+  builder.append('  (import "env" "mem_release" (func $mem_release (param i32)))');
+  builder.append('  (import "env" "mem_stats_live" (func $mem_stats_live (result i32)))');
+  builder.append('  (import "env" "vec_new" (func $vec_new (result i32)))');
+  builder.append('  (import "env" "vec_len" (func $vec_len (param i32) (result i32)))');
+  builder.append('  (import "env" "vec_push" (func $vec_push (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_get_has" (func $vec_get_has (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_get" (func $vec_get (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_pop_has" (func $vec_pop_has (param i32) (result i32)))');
+  builder.append('  (import "env" "vec_pop" (func $vec_pop (param i32) (result i32)))');
+  builder.append('  (import "env" "vec_clear" (func $vec_clear (param i32)))');
+  builder.append('  (import "env" "vec_take" (func $vec_take (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_skip" (func $vec_skip (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_any_closure" (func $vec_any_closure (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_all_closure" (func $vec_all_closure (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_map_closure" (func $vec_map_closure (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_filter_closure" (func $vec_filter_closure (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_fold_closure" (func $vec_fold_closure (param i32 i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_find_has" (func $vec_find_has (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_find" (func $vec_find (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "vec_position" (func $vec_position (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_new" (func $hashmap_new (result i32)))');
+  builder.append('  (import "env" "hashmap_len" (func $hashmap_len (param i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_insert_has" (func $hashmap_insert_has (param i32 i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_insert_prev" (func $hashmap_insert_prev (param i32 i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_get_has" (func $hashmap_get_has (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_get" (func $hashmap_get (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_remove_has" (func $hashmap_remove_has (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_remove" (func $hashmap_remove (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_contains_key" (func $hashmap_contains_key (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashmap_clear" (func $hashmap_clear (param i32)))');
+  builder.append('  (import "env" "hashset_new" (func $hashset_new (result i32)))');
+  builder.append('  (import "env" "hashset_len" (func $hashset_len (param i32) (result i32)))');
+  builder.append('  (import "env" "hashset_insert" (func $hashset_insert (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashset_contains" (func $hashset_contains (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashset_remove" (func $hashset_remove (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "hashset_clear" (func $hashset_clear (param i32)))');
   builder.append('  (memory (export "memory") 1)');
   builder.append('  (global $heap_ptr (mut i32) (i32.const 4096))');
+  builder.append('  (global $free_head (mut i32) (i32.const 0))');
+  builder.append('  (func $__ensure_capacity (param $needed_end i32)');
+  builder.append('    (local $current_bytes i32)');
+  builder.append('    (local $required_pages i32)');
+  builder.append('    memory.size');
+  builder.append('    i32.const 65536');
+  builder.append('    i32.mul');
+  builder.append('    local.set $current_bytes');
+  builder.append('    local.get $needed_end');
+  builder.append('    local.get $current_bytes');
+  builder.append('    i32.gt_u');
+  builder.append('    if');
+  builder.append('      local.get $needed_end');
+  builder.append('      i32.const 65535');
+  builder.append('      i32.add');
+  builder.append('      i32.const 65536');
+  builder.append('      i32.div_u');
+  builder.append('      local.set $required_pages');
+  builder.append('      local.get $required_pages');
+  builder.append('      memory.size');
+  builder.append('      i32.sub');
+  builder.append('      memory.grow');
+  builder.append('      drop');
+  builder.append('    end');
+  builder.append('  )');
   builder.append('  (func $alloc (param $size i32) (result i32)');
-  builder.append('    (local $ptr i32)');
-  builder.append('    global.get $heap_ptr');
-  builder.append('    local.tee $ptr');
+  builder.append('    (local $aligned i32)');
+  builder.append('    (local $block i32)');
+  builder.append('    (local $prev i32)');
+  builder.append('    (local $curr i32)');
+  builder.append('    (local $curr_size i32)');
+  builder.append('    (local $next i32)');
+  builder.append('    (local $needed_end i32)');
   builder.append('    local.get $size');
+  builder.append('    i32.const 7');
   builder.append('    i32.add');
+  builder.append('    i32.const -8');
+  builder.append('    i32.and');
+  builder.append('    local.set $aligned');
+  builder.append('    local.get $aligned');
+  builder.append('    i32.eqz');
+  builder.append('    if');
+  builder.append('      i32.const 8');
+  builder.append('      local.set $aligned');
+  builder.append('    end');
+  builder.append('    i32.const 0');
+  builder.append('    local.set $prev');
+  builder.append('    global.get $free_head');
+  builder.append('    local.set $curr');
+  builder.append('    (block $search_done');
+  builder.append('      (loop $search');
+  builder.append('        local.get $curr');
+  builder.append('        i32.eqz');
+  builder.append('        br_if $search_done');
+  builder.append('        local.get $curr');
+  builder.append('        i32.load');
+  builder.append('        local.set $curr_size');
+  builder.append('        local.get $curr_size');
+  builder.append('        local.get $aligned');
+  builder.append('        i32.ge_u');
+  builder.append('        if');
+  builder.append('          local.get $curr');
+  builder.append('          i32.const 4');
+  builder.append('          i32.add');
+  builder.append('          i32.load');
+  builder.append('          local.set $next');
+  builder.append('          local.get $prev');
+  builder.append('          i32.eqz');
+  builder.append('          if');
+  builder.append('            local.get $next');
+  builder.append('            global.set $free_head');
+  builder.append('          else');
+  builder.append('            local.get $prev');
+  builder.append('            i32.const 4');
+  builder.append('            i32.add');
+  builder.append('            local.get $next');
+  builder.append('            i32.store');
+  builder.append('          end');
+  builder.append('          local.get $curr');
+  builder.append('          i32.const 8');
+  builder.append('          i32.add');
+  builder.append('          return');
+  builder.append('        end');
+  builder.append('        local.get $curr');
+  builder.append('        local.set $prev');
+  builder.append('        local.get $curr');
+  builder.append('        i32.const 4');
+  builder.append('        i32.add');
+  builder.append('        i32.load');
+  builder.append('        local.set $curr');
+  builder.append('        br $search');
+  builder.append('      )');
+  builder.append('    )');
+  builder.append('    global.get $heap_ptr');
+  builder.append('    local.set $block');
+  builder.append('    local.get $block');
+  builder.append('    i32.const 8');
+  builder.append('    i32.add');
+  builder.append('    local.get $aligned');
+  builder.append('    i32.add');
+  builder.append('    local.set $needed_end');
+  builder.append('    local.get $needed_end');
+  builder.append('    call $__ensure_capacity');
+  builder.append('    local.get $block');
+  builder.append('    local.get $aligned');
+  builder.append('    i32.store');
+  builder.append('    local.get $block');
+  builder.append('    i32.const 4');
+  builder.append('    i32.add');
+  builder.append('    i32.const 0');
+  builder.append('    i32.store');
+  builder.append('    local.get $needed_end');
   builder.append('    global.set $heap_ptr');
+  builder.append('    local.get $block');
+  builder.append('    i32.const 8');
+  builder.append('    i32.add');
+  builder.append('  )');
+  builder.append('  (func $free (param $ptr i32)');
+  builder.append('    (local $block i32)');
   builder.append('    local.get $ptr');
+  builder.append('    i32.eqz');
+  builder.append('    if');
+  builder.append('      return');
+  builder.append('    end');
+  builder.append('    local.get $ptr');
+  builder.append('    i32.const 8');
+  builder.append('    i32.sub');
+  builder.append('    local.set $block');
+  builder.append('    local.get $block');
+  builder.append('    i32.const 4');
+  builder.append('    i32.add');
+  builder.append('    global.get $free_head');
+  builder.append('    i32.store');
+  builder.append('    local.get $block');
+  builder.append('    global.set $free_head');
   builder.append('  )');
   for (const struct of structs) {
     builder.append(builder.emitStructLayout(struct));
@@ -267,6 +431,11 @@ export function generateWATFromAst(
     for (const fn of functions) {
       builder.append(`  (export "${fn.name}" (func $${fn.name}))`);
     }
+  }
+  builder.append('  (export "__alloc" (func $alloc))');
+  builder.append('  (export "__free" (func $free))');
+  for (const lambdaFn of builder.getSynthesizedLambdaFunctionNames()) {
+    builder.append(`  (export "${lambdaFn}" (func $${lambdaFn}))`);
   }
   builder.append(builder.emitStringDataSegments());
   builder.append(')');
@@ -400,6 +569,10 @@ class WasmBuilder {
       lines.push(this.emitFunction(this.createLambdaFunctionDecl(info)));
     }
     return lines.join('\n');
+  }
+
+  getSynthesizedLambdaFunctionNames(): string[] {
+    return this.synthesizedLambdas.map((info) => info.fnName);
   }
 
   private createLambdaFunctionDecl(info: WasmLambdaInfo): LuminaFnDecl {
@@ -559,14 +732,25 @@ class WasmBuilder {
           for (const s of stmt.thenBlock.body ?? []) visitStmt(s, new Set(scope));
           for (const s of stmt.elseBlock?.body ?? []) visitStmt(s, new Set(scope));
           return;
+        case 'IfLet': {
+          visitExpr(stmt.value, scope);
+          const thenScope = new Set(scope);
+          for (const name of this.collectPatternBindingNames(stmt.pattern)) thenScope.add(name);
+          for (const s of stmt.thenBlock.body ?? []) visitStmt(s, thenScope);
+          for (const s of stmt.elseBlock?.body ?? []) visitStmt(s, new Set(scope));
+          return;
+        }
         case 'While':
           visitExpr(stmt.condition, scope);
           for (const s of stmt.body.body ?? []) visitStmt(s, new Set(scope));
           return;
-        case 'WhileLet':
+        case 'WhileLet': {
           visitExpr(stmt.value, scope);
-          for (const s of stmt.body.body ?? []) visitStmt(s, new Set(scope));
+          const whileScope = new Set(scope);
+          for (const name of this.collectPatternBindingNames(stmt.pattern)) whileScope.add(name);
+          for (const s of stmt.body.body ?? []) visitStmt(s, whileScope);
           return;
+        }
         case 'For': {
           visitExpr(stmt.iterable, scope);
           const nested = new Set(scope);
@@ -992,6 +1176,78 @@ class WasmBuilder {
       locals.push(`(local $${name} ${wasmType})`);
       seen.add(name);
     };
+    const walkExpr = (expr: LuminaExpr) => {
+      switch (expr.type) {
+        case 'MatchExpr': {
+          addLocal(this.getMatchExprTempName(expr), 'i32');
+          for (const arm of expr.arms ?? []) {
+            for (const binding of this.collectPatternBindingNames(arm.pattern)) {
+              addLocal(binding, 'i32');
+            }
+            if (arm.guard) walkExpr(arm.guard);
+            walkExpr(arm.body);
+          }
+          walkExpr(expr.value);
+          return;
+        }
+        case 'Binary':
+          walkExpr(expr.left);
+          walkExpr(expr.right);
+          return;
+        case 'Call':
+          if (expr.receiver) walkExpr(expr.receiver);
+          for (const arg of expr.args ?? []) walkExpr(arg);
+          return;
+        case 'Member':
+          walkExpr(expr.object);
+          return;
+        case 'Index':
+          walkExpr(expr.object);
+          walkExpr(expr.index);
+          return;
+        case 'StructLiteral':
+          for (const field of expr.fields ?? []) walkExpr(field.value);
+          return;
+        case 'ArrayLiteral':
+        case 'TupleLiteral':
+          for (const element of expr.elements ?? []) walkExpr(element);
+          return;
+        case 'ArrayRepeatLiteral':
+          walkExpr(expr.value);
+          walkExpr(expr.count);
+          return;
+        case 'InterpolatedString':
+          for (const part of expr.parts ?? []) {
+            if (typeof part !== 'string') walkExpr(part);
+          }
+          return;
+        case 'Cast':
+          walkExpr(expr.expr);
+          return;
+        case 'Try':
+        case 'Await':
+          walkExpr(expr.value);
+          return;
+        case 'Move':
+          if (expr.target.type === 'Member') walkExpr(expr.target.object);
+          return;
+        case 'SelectExpr':
+          for (const arm of expr.arms ?? []) {
+            walkExpr(arm.value);
+            walkExpr(arm.body);
+          }
+          return;
+        case 'Range':
+          if (expr.start) walkExpr(expr.start);
+          if (expr.end) walkExpr(expr.end);
+          return;
+        case 'IsExpr':
+          walkExpr(expr.value);
+          return;
+        default:
+          return;
+      }
+    };
     addLocal('__enum_tmp', 'i32');
     addLocal('__tmp_i32', 'i32');
     const walk = (stmt: LuminaStatement) => {
@@ -1000,15 +1256,42 @@ class WasmBuilder {
         const type = typeof stmt.value?.id === 'number' ? this.exprTypes.get(stmt.value.id) : undefined;
         const wasmType = this.typeToWasm(type, stmt.location) ?? 'i32';
         addLocal(name, wasmType);
+        walkExpr(stmt.value);
+      } else if (stmt.type === 'IfLet') {
+        addLocal(this.getIfLetTempName(stmt), 'i32');
+        for (const binding of this.collectPatternBindingNames(stmt.pattern)) {
+          addLocal(binding, 'i32');
+        }
+        walkExpr(stmt.value);
+        stmt.thenBlock?.body?.forEach(walk);
+        stmt.elseBlock?.body?.forEach(walk);
+      } else if (stmt.type === 'WhileLet') {
+        addLocal(this.getWhileLetTempName(stmt), 'i32');
+        for (const binding of this.collectPatternBindingNames(stmt.pattern)) {
+          addLocal(binding, 'i32');
+        }
+        walkExpr(stmt.value);
+        stmt.body?.body?.forEach(walk);
       } else if (stmt.type === 'If') {
+        walkExpr(stmt.condition);
         stmt.thenBlock?.body?.forEach(walk);
         stmt.elseBlock?.body?.forEach(walk);
       } else if (stmt.type === 'While') {
+        walkExpr(stmt.condition);
+        stmt.body?.body?.forEach(walk);
+      } else if (stmt.type === 'For') {
+        addLocal(stmt.iterator, 'i32');
+        addLocal(this.getForEndTempName(stmt), 'i32');
+        walkExpr(stmt.iterable);
         stmt.body?.body?.forEach(walk);
       } else if (stmt.type === 'MatchStmt') {
+        walkExpr(stmt.value);
         const matchTemp = this.getMatchTempName(stmt);
         addLocal(matchTemp, 'i32');
         for (const arm of stmt.arms ?? []) {
+          for (const binding of this.collectPatternBindingNames(arm.pattern)) {
+            addLocal(binding, 'i32');
+          }
           if (arm.pattern.type === 'EnumPattern') {
             const enumName = arm.pattern.enumName;
             if (enumName) {
@@ -1026,10 +1309,18 @@ class WasmBuilder {
               }
             }
           }
+          if (arm.guard) walkExpr(arm.guard);
           arm.body?.body?.forEach(walk);
         }
       } else if (stmt.type === 'Block') {
         stmt.body?.forEach(walk);
+      } else if (stmt.type === 'Assign') {
+        if (stmt.target.type === 'Member') walkExpr(stmt.target.object);
+        walkExpr(stmt.value);
+      } else if (stmt.type === 'ExprStmt') {
+        walkExpr(stmt.expr);
+      } else if (stmt.type === 'Return') {
+        walkExpr(stmt.value);
       }
     };
     fn.body?.body?.forEach(walk);
@@ -1119,12 +1410,20 @@ class WasmBuilder {
         case 'If':
           lines.push(...this.emitIf(stmt));
           break;
+        case 'IfLet':
+          lines.push(...this.emitIfLet(stmt));
+          break;
         case 'While':
-          this.reportUnsupported(stmt.type, stmt.location);
-          lines.push('unreachable');
+          lines.push(...this.emitWhile(stmt));
+          break;
+        case 'WhileLet':
+          lines.push(...this.emitWhileLet(stmt));
+          break;
+        case 'For':
+          lines.push(...this.emitFor(stmt));
           break;
         case 'MatchStmt': {
-          const lowered = this.emitSimpleEnumMatchStmt(stmt);
+          const lowered = this.emitMatchStmt(stmt) ?? this.emitSimpleEnumMatchStmt(stmt);
           if (lowered) {
             lines.push(...lowered);
           } else {
@@ -1146,6 +1445,9 @@ class WasmBuilder {
             this.reportUnsupported(stmt.type, stmt.location);
             lines.push('unreachable');
           }
+          break;
+        case 'Block':
+          lines.push(...this.emitBlock(stmt.body ?? [], true));
           break;
         default:
           lines.push('nop');
@@ -1185,9 +1487,275 @@ class WasmBuilder {
     return lines;
   }
 
+  private resolvePatternEnumName(
+    pattern: Extract<LuminaMatchPattern, { type: 'EnumPattern' }>,
+    valueType?: Type
+  ): string | null {
+    if (pattern.enumName && this.enumLayout.has(pattern.enumName)) {
+      return pattern.enumName;
+    }
+    if (valueType) {
+      const pruned = prune(valueType, this.subst);
+      if (pruned.kind === 'adt' && this.enumLayout.has(pruned.name)) {
+        const variants = this.enumLayout.get(pruned.name);
+        if (variants?.has(pattern.variant)) return pruned.name;
+      }
+    }
+    const candidates: string[] = [];
+    for (const [enumName, variants] of this.enumLayout.entries()) {
+      if (variants.has(pattern.variant)) candidates.push(enumName);
+    }
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  private emitPatternConditionFromLocal(
+    pattern: LuminaMatchPattern,
+    valueLocal: string,
+    valueType?: Type
+  ): string[] | null {
+    switch (pattern.type) {
+      case 'WildcardPattern':
+      case 'BindingPattern':
+        return ['i32.const 1'];
+      case 'LiteralPattern': {
+        if (typeof pattern.value === 'number') {
+          return [`local.get $${valueLocal}`, `i32.const ${Math.trunc(pattern.value)}`, 'i32.eq'];
+        }
+        if (typeof pattern.value === 'boolean') {
+          return [`local.get $${valueLocal}`, `i32.const ${pattern.value ? 1 : 0}`, 'i32.eq'];
+        }
+        if (typeof pattern.value === 'string') {
+          return [
+            `local.get $${valueLocal}`,
+            ...this.emitExpr({ type: 'String', value: pattern.value, location: pattern.location }),
+            'call $str_eq',
+          ];
+        }
+        return null;
+      }
+      case 'EnumPattern': {
+        const enumName = this.resolvePatternEnumName(pattern, valueType);
+        if (!enumName) return null;
+        const variantInfo = this.resolveEnumVariantInfo(enumName, pattern.variant);
+        if (!variantInfo) return null;
+        const lines = [`local.get $${valueLocal}`];
+        if (this.enumUsesHeapRepresentation(enumName)) lines.push('i32.load');
+        lines.push(`i32.const ${variantInfo.tag}`, 'i32.eq');
+        return lines;
+      }
+      case 'TuplePattern':
+      case 'StructPattern':
+      default:
+        return null;
+    }
+  }
+
+  private emitPatternBindingsFromLocal(
+    pattern: LuminaMatchPattern,
+    valueLocal: string,
+    valueType?: Type
+  ): string[] | null {
+    switch (pattern.type) {
+      case 'WildcardPattern':
+      case 'LiteralPattern':
+        return [];
+      case 'BindingPattern':
+        return [`local.get $${valueLocal}`, `local.set $${pattern.name}`];
+      case 'EnumPattern': {
+        const enumName = this.resolvePatternEnumName(pattern, valueType);
+        if (!enumName) return null;
+        const variantInfo = this.resolveEnumVariantInfo(enumName, pattern.variant);
+        if (!variantInfo) return null;
+        const payloadBindings = this.extractSimpleEnumPatternBindings(pattern, variantInfo.arity);
+        if (!payloadBindings) return null;
+        const lines: string[] = [];
+        for (let i = 0; i < payloadBindings.length; i += 1) {
+          const binding = payloadBindings[i];
+          if (binding === '_') continue;
+          const payloadType = this.typeExprToWasm(variantInfo.params[i], pattern.location);
+          if (!payloadType) return null;
+          lines.push(
+            `local.get $${valueLocal}`,
+            `i32.const ${8 + i * 8}`,
+            'i32.add',
+            payloadType === 'f64' ? 'f64.load' : 'i32.load',
+            `local.set $${binding}`
+          );
+        }
+        return lines;
+      }
+      case 'TuplePattern':
+      case 'StructPattern':
+      default:
+        return null;
+    }
+  }
+
+  private emitIfLet(stmt: Extract<LuminaStatement, { type: 'IfLet' }>): string[] {
+    const valueType = typeof stmt.value.id === 'number' ? this.exprTypes.get(stmt.value.id) : undefined;
+    const tempName = this.getIfLetTempName(stmt);
+    const condLines = this.emitPatternConditionFromLocal(stmt.pattern, tempName, valueType);
+    const bindLines = this.emitPatternBindingsFromLocal(stmt.pattern, tempName, valueType);
+    if (!condLines || !bindLines) {
+      this.reportUnsupported('if let pattern in WASM backend', stmt.location);
+      return ['unreachable'];
+    }
+    const lines: string[] = [];
+    lines.push(...this.emitExpr(stmt.value));
+    lines.push(`local.set $${tempName}`);
+    lines.push(...condLines);
+    lines.push('(if');
+    lines.push('  (then');
+    for (const line of bindLines) lines.push(`    ${line}`);
+    const thenLines = this.emitBlock(stmt.thenBlock.body ?? [], true);
+    for (const line of thenLines) lines.push(`    ${line}`);
+    lines.push('  )');
+    if (stmt.elseBlock) {
+      lines.push('  (else');
+      const elseLines = this.emitBlock(stmt.elseBlock.body ?? [], true);
+      for (const line of elseLines) lines.push(`    ${line}`);
+      lines.push('  )');
+    }
+    lines.push(')');
+    return lines;
+  }
+
+  private emitWhile(stmt: Extract<LuminaStatement, { type: 'While' }>): string[] {
+    const suffix = this.nodeTempSuffix(stmt);
+    const loopLabel = `$while_loop_${suffix}`;
+    const exitLabel = `$while_exit_${suffix}`;
+    const lines: string[] = [];
+    lines.push(`(block ${exitLabel}`);
+    lines.push(`  (loop ${loopLabel}`);
+    lines.push(...this.emitExpr(stmt.condition).map((line) => `    ${line}`));
+    lines.push('    i32.eqz');
+    lines.push(`    br_if ${exitLabel}`);
+    const bodyLines = this.emitBlock(stmt.body.body ?? [], true);
+    for (const line of bodyLines) lines.push(`    ${line}`);
+    lines.push(`    br ${loopLabel}`);
+    lines.push('  )');
+    lines.push(')');
+    return lines;
+  }
+
+  private emitWhileLet(stmt: Extract<LuminaStatement, { type: 'WhileLet' }>): string[] {
+    const suffix = this.nodeTempSuffix(stmt);
+    const loopLabel = `$whilelet_loop_${suffix}`;
+    const exitLabel = `$whilelet_exit_${suffix}`;
+    const tempName = this.getWhileLetTempName(stmt);
+    const valueType = typeof stmt.value.id === 'number' ? this.exprTypes.get(stmt.value.id) : undefined;
+    const condLines = this.emitPatternConditionFromLocal(stmt.pattern, tempName, valueType);
+    const bindLines = this.emitPatternBindingsFromLocal(stmt.pattern, tempName, valueType);
+    if (!condLines || !bindLines) {
+      this.reportUnsupported('while let pattern in WASM backend', stmt.location);
+      return ['unreachable'];
+    }
+    const lines: string[] = [];
+    lines.push(`(block ${exitLabel}`);
+    lines.push(`  (loop ${loopLabel}`);
+    lines.push(...this.emitExpr(stmt.value).map((line) => `    ${line}`));
+    lines.push(`    local.set $${tempName}`);
+    lines.push(...condLines.map((line) => `    ${line}`));
+    lines.push('    i32.eqz');
+    lines.push(`    br_if ${exitLabel}`);
+    for (const line of bindLines) lines.push(`    ${line}`);
+    const bodyLines = this.emitBlock(stmt.body.body ?? [], true);
+    for (const line of bodyLines) lines.push(`    ${line}`);
+    lines.push(`    br ${loopLabel}`);
+    lines.push('  )');
+    lines.push(')');
+    return lines;
+  }
+
+  private emitFor(stmt: Extract<LuminaStatement, { type: 'For' }>): string[] {
+    if (stmt.iterable.type !== 'Range') {
+      this.reportUnsupported('for-loop iterable (only ranges are supported in WASM backend)', stmt.location);
+      return ['unreachable'];
+    }
+    const suffix = this.nodeTempSuffix(stmt);
+    const loopLabel = `$for_loop_${suffix}`;
+    const exitLabel = `$for_exit_${suffix}`;
+    const endTemp = this.getForEndTempName(stmt);
+    const lines: string[] = [];
+
+    const startLines = stmt.iterable.start ? this.emitExpr(stmt.iterable.start) : ['i32.const 0'];
+    lines.push(...startLines, `local.set $${stmt.iterator}`);
+
+    if (stmt.iterable.end) {
+      lines.push(...this.emitExpr(stmt.iterable.end), `local.set $${endTemp}`);
+    } else {
+      lines.push(`local.get $${stmt.iterator}`, `local.set $${endTemp}`);
+    }
+
+    const previousIterType = this.currentLocalTypes.get(stmt.iterator);
+    this.currentLocalTypes.set(stmt.iterator, { kind: 'primitive', name: 'i32' });
+    const bodyLines = this.emitBlock(stmt.body.body ?? [], true);
+    if (previousIterType) this.currentLocalTypes.set(stmt.iterator, previousIterType);
+    else this.currentLocalTypes.delete(stmt.iterator);
+
+    lines.push(`(block ${exitLabel}`);
+    lines.push(`  (loop ${loopLabel}`);
+    lines.push(`    local.get $${stmt.iterator}`);
+    lines.push(`    local.get $${endTemp}`);
+    lines.push(stmt.iterable.inclusive ? '    i32.gt_s' : '    i32.ge_s');
+    lines.push(`    br_if ${exitLabel}`);
+    for (const line of bodyLines) lines.push(`    ${line}`);
+    lines.push(`    local.get $${stmt.iterator}`);
+    lines.push('    i32.const 1');
+    lines.push('    i32.add');
+    lines.push(`    local.set $${stmt.iterator}`);
+    lines.push(`    br ${loopLabel}`);
+    lines.push('  )');
+    lines.push(')');
+    return lines;
+  }
+
   private getMatchTempName(stmt: Extract<LuminaStatement, { type: 'MatchStmt' }>): string {
     const base = stmt.location?.start?.offset ?? this.matchCounter++;
     return `__match_${base}`;
+  }
+
+  private nodeTempSuffix(node: { location?: Location; id?: number }): string {
+    if (node.location?.start?.offset != null) return String(node.location.start.offset);
+    if (typeof node.id === 'number') return String(node.id);
+    return String(this.matchCounter++);
+  }
+
+  private getIfLetTempName(stmt: Extract<LuminaStatement, { type: 'IfLet' }>): string {
+    return `__iflet_${this.nodeTempSuffix(stmt)}`;
+  }
+
+  private getWhileLetTempName(stmt: Extract<LuminaStatement, { type: 'WhileLet' }>): string {
+    return `__whilelet_${this.nodeTempSuffix(stmt)}`;
+  }
+
+  private getMatchExprTempName(expr: Extract<LuminaExpr, { type: 'MatchExpr' }>): string {
+    return `__match_expr_${this.nodeTempSuffix(expr)}`;
+  }
+
+  private getForEndTempName(stmt: Extract<LuminaStatement, { type: 'For' }>): string {
+    return `__for_end_${this.nodeTempSuffix(stmt)}`;
+  }
+
+  private collectPatternBindingNames(pattern: LuminaMatchPattern): string[] {
+    switch (pattern.type) {
+      case 'BindingPattern':
+        return pattern.name === '_' ? [] : [pattern.name];
+      case 'TuplePattern':
+        return pattern.elements.flatMap((element) => this.collectPatternBindingNames(element));
+      case 'StructPattern':
+        return pattern.fields.flatMap((field) => this.collectPatternBindingNames(field.pattern));
+      case 'EnumPattern': {
+        if (pattern.patterns && pattern.patterns.length > 0) {
+          return pattern.patterns.flatMap((nested) => this.collectPatternBindingNames(nested));
+        }
+        return pattern.bindings.filter((name) => name !== '_');
+      }
+      case 'WildcardPattern':
+      case 'LiteralPattern':
+      default:
+        return [];
+    }
   }
 
   private resolveEnumVariantInfo(enumName: string, variant: string): WasmEnumVariantInfo | null {
@@ -1375,6 +1943,81 @@ class WasmBuilder {
     return lines;
   }
 
+  private emitMatchStmt(stmt: Extract<LuminaStatement, { type: 'MatchStmt' }>): string[] | null {
+    const matchTemp = this.getMatchTempName(stmt);
+    const valueType = typeof stmt.value.id === 'number' ? this.exprTypes.get(stmt.value.id) : undefined;
+    const label = `$match_end_${this.nodeTempSuffix(stmt)}`;
+    const lines: string[] = [];
+    lines.push(...this.emitExpr(stmt.value));
+    lines.push(`local.set $${matchTemp}`);
+    lines.push(`(block ${label}`);
+    let hasFallback = false;
+
+    for (const arm of stmt.arms ?? []) {
+      if (arm.guard) return null;
+      const condLines = this.emitPatternConditionFromLocal(arm.pattern, matchTemp, valueType);
+      const bindLines = this.emitPatternBindingsFromLocal(arm.pattern, matchTemp, valueType);
+      if (!condLines || !bindLines) return null;
+      lines.push(...condLines.map((line) => `  ${line}`));
+      lines.push('  if');
+      for (const line of bindLines) lines.push(`    ${line}`);
+      const bodyLines = this.emitBlock(arm.body.body ?? [], true);
+      lines.push(...bodyLines.map((line) => `    ${line}`));
+      lines.push(`    br ${label}`);
+      lines.push('  end');
+      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern') {
+        hasFallback = true;
+        break;
+      }
+    }
+
+    if (!hasFallback) lines.push('  unreachable');
+    lines.push(')');
+    return lines;
+  }
+
+  private emitMatchExpr(expr: Extract<LuminaExpr, { type: 'MatchExpr' }>): string[] | null {
+    const valueType = typeof expr.value.id === 'number' ? this.exprTypes.get(expr.value.id) : undefined;
+    const resultType = this.typeToWasm(typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined, expr.location) ?? 'i32';
+    const tempName = this.getMatchExprTempName(expr);
+    const label = `$match_expr_end_${this.nodeTempSuffix(expr)}`;
+    const buildArm = (index: number): string[] | null => {
+      if (index >= expr.arms.length) {
+        return ['unreachable'];
+      }
+      const arm = expr.arms[index];
+      if (arm.guard) return null;
+      const condLines = this.emitPatternConditionFromLocal(arm.pattern, tempName, valueType);
+      const bindLines = this.emitPatternBindingsFromLocal(arm.pattern, tempName, valueType);
+      if (!condLines || !bindLines) return null;
+      const thenExpr = this.emitExpr(arm.body);
+      const elseExpr = buildArm(index + 1);
+      if (!elseExpr) return null;
+      const lines: string[] = [];
+      lines.push(...condLines);
+      lines.push(`(if (result ${resultType})`);
+      lines.push('  (then');
+      for (const line of bindLines) lines.push(`    ${line}`);
+      for (const line of thenExpr) lines.push(`    ${line}`);
+      lines.push('  )');
+      lines.push('  (else');
+      for (const line of elseExpr) lines.push(`    ${line}`);
+      lines.push('  )');
+      lines.push(')');
+      return lines;
+    };
+
+    const armLines = buildArm(0);
+    if (!armLines) return null;
+    return [
+      ...this.emitExpr(expr.value),
+      `local.set $${tempName}`,
+      `(block ${label} (result ${resultType})`,
+      ...armLines.map((line) => `  ${line}`),
+      ')',
+    ];
+  }
+
   private exprReturnsValue(expr: LuminaExpr): boolean {
     if (typeof expr.id !== 'number') return true;
     const type = this.exprTypes.get(expr.id);
@@ -1481,6 +2124,12 @@ class WasmBuilder {
         return this.emitBinary(expr);
       case 'Call':
         return this.emitCall(expr);
+      case 'MatchExpr': {
+        const lowered = this.emitMatchExpr(expr);
+        if (lowered) return lowered;
+        this.reportUnsupported('match expression pattern in WASM backend', expr.location);
+        return ['unreachable'];
+      }
       case 'SelectExpr':
         this.reportUnsupported('select expression (WASM backend currently has no async runtime)', expr.location, 'WASM-ASYNC-001');
         return ['i32.const 0'];
@@ -1609,6 +2258,11 @@ class WasmBuilder {
     lines.push('local.tee $__tmp_i32');
     lines.push(`i32.const ${info.id}`);
     lines.push('i32.store');
+    lines.push('local.get $__tmp_i32');
+    lines.push('i32.const 4');
+    lines.push('i32.add');
+    lines.push(`i32.const ${info.captures.length}`);
+    lines.push('i32.store');
     for (let i = 0; i < info.captures.length; i += 1) {
       const captureName = info.captures[i];
       const captureType = info.captureTypes[i];
@@ -1653,6 +2307,74 @@ class WasmBuilder {
       lines.push(...this.emitExpr(arg));
     }
     lines.push(`call $${info.fnName}`);
+    return lines;
+  }
+
+  private emitOptionFromHasValue(
+    hasLines: string[],
+    valueLines: string[],
+    payloadWasm: WasmValType = 'i32'
+  ): string[] {
+    const lines: string[] = [];
+    lines.push(...hasLines);
+    lines.push('(if (result i32)');
+    lines.push('  (then');
+    lines.push('    i32.const 16');
+    lines.push('    call $alloc');
+    lines.push('    local.tee $__enum_tmp');
+    lines.push('    i32.const 0');
+    lines.push('    i32.store');
+    lines.push('    local.get $__enum_tmp');
+    lines.push('    i32.const 8');
+    lines.push('    i32.add');
+    lines.push(...valueLines.map((line) => `    ${line}`));
+    lines.push(`    ${payloadWasm}.store`);
+    lines.push('    local.get $__enum_tmp');
+    lines.push('  )');
+    lines.push('  (else');
+    lines.push('    i32.const 8');
+    lines.push('    call $alloc');
+    lines.push('    local.tee $__enum_tmp');
+    lines.push('    i32.const 1');
+    lines.push('    i32.store');
+    lines.push('    local.get $__enum_tmp');
+    lines.push('  )');
+    lines.push(')');
+    return lines;
+  }
+
+  private emitOptionFromSentinel(
+    valueLines: string[],
+    sentinel: number
+  ): string[] {
+    const lines: string[] = [];
+    lines.push(...valueLines);
+    lines.push('local.tee $__tmp_i32');
+    lines.push(`i32.const ${sentinel}`);
+    lines.push('i32.ne');
+    lines.push('(if (result i32)');
+    lines.push('  (then');
+    lines.push('    i32.const 16');
+    lines.push('    call $alloc');
+    lines.push('    local.tee $__enum_tmp');
+    lines.push('    i32.const 0');
+    lines.push('    i32.store');
+    lines.push('    local.get $__enum_tmp');
+    lines.push('    i32.const 8');
+    lines.push('    i32.add');
+    lines.push('    local.get $__tmp_i32');
+    lines.push('    i32.store');
+    lines.push('    local.get $__enum_tmp');
+    lines.push('  )');
+    lines.push('  (else');
+    lines.push('    i32.const 8');
+    lines.push('    call $alloc');
+    lines.push('    local.tee $__enum_tmp');
+    lines.push('    i32.const 1');
+    lines.push('    i32.store');
+    lines.push('    local.get $__enum_tmp');
+    lines.push('  )');
+    lines.push(')');
     return lines;
   }
 
@@ -1823,8 +2545,25 @@ class WasmBuilder {
     if (methodName === 'toString' && args.length === 0) {
       return this.emitStringifiedExpr(receiverExpr);
     }
+    if (forType) {
+      const builtin = this.emitBuiltinCollectionMethod(forType, receiverExpr, methodName, args, location);
+      if (builtin) return builtin;
+    }
     this.reportUnsupported(`method call '${methodName}'`, location, 'WASM-TRAIT-001');
     return null;
+  }
+
+  private emitBuiltinCollectionMethod(
+    receiverType: string,
+    receiverExpr: LuminaExpr,
+    methodName: string,
+    args: LuminaExpr[],
+    location?: Location
+  ): string[] | null {
+    const moduleName =
+      receiverType === 'Vec' ? 'vec' : receiverType === 'HashMap' ? 'hashmap' : receiverType === 'HashSet' ? 'hashset' : null;
+    if (!moduleName) return null;
+    return this.emitNamespacedCall(moduleName, methodName, [receiverExpr, ...args], location);
   }
 
   private emitNamespacedCall(
@@ -1887,6 +2626,142 @@ class WasmBuilder {
           return lines;
         }
         lines.push(...this.emitStringifiedExpr(arg), 'call $print_string');
+        return lines;
+      }
+    }
+    if (namespace === 'vec') {
+      if (callee === 'new' && args.length === 0) return ['call $vec_new'];
+      if (callee === 'len' && args.length === 1) {
+        emitArgs();
+        lines.push('call $vec_len');
+        return lines;
+      }
+      if (callee === 'push' && args.length === 2) {
+        emitArgs();
+        lines.push('call $vec_push');
+        return lines;
+      }
+      if (callee === 'clear' && args.length === 1) {
+        emitArgs();
+        lines.push('call $vec_clear');
+        lines.push('i32.const 0');
+        return lines;
+      }
+      if (callee === 'take' && args.length === 2) {
+        emitArgs();
+        lines.push('call $vec_take');
+        return lines;
+      }
+      if (callee === 'skip' && args.length === 2) {
+        emitArgs();
+        lines.push('call $vec_skip');
+        return lines;
+      }
+      if (callee === 'get' && args.length === 2) {
+        const hasLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $vec_get_has'];
+        const valueLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $vec_get'];
+        return this.emitOptionFromHasValue(hasLines, valueLines);
+      }
+      if (callee === 'pop' && args.length === 1) {
+        const hasLines = [...this.emitExpr(args[0]), 'call $vec_pop_has'];
+        const valueLines = [...this.emitExpr(args[0]), 'call $vec_pop'];
+        return this.emitOptionFromHasValue(hasLines, valueLines);
+      }
+      if (callee === 'any' && args.length === 2) {
+        emitArgs();
+        lines.push('call $vec_any_closure');
+        return lines;
+      }
+      if (callee === 'all' && args.length === 2) {
+        emitArgs();
+        lines.push('call $vec_all_closure');
+        return lines;
+      }
+      if (callee === 'map' && args.length === 2) {
+        emitArgs();
+        lines.push('call $vec_map_closure');
+        return lines;
+      }
+      if (callee === 'filter' && args.length === 2) {
+        emitArgs();
+        lines.push('call $vec_filter_closure');
+        return lines;
+      }
+      if (callee === 'fold' && args.length === 3) {
+        emitArgs();
+        lines.push('call $vec_fold_closure');
+        return lines;
+      }
+      if (callee === 'find' && args.length === 2) {
+        const hasLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $vec_find_has'];
+        const valueLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $vec_find'];
+        return this.emitOptionFromHasValue(hasLines, valueLines);
+      }
+      if (callee === 'position' && args.length === 2) {
+        const posLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $vec_position'];
+        return this.emitOptionFromSentinel(posLines, -1);
+      }
+    }
+    if (namespace === 'hashmap') {
+      if (callee === 'new' && args.length === 0) return ['call $hashmap_new'];
+      if (callee === 'len' && args.length === 1) {
+        emitArgs();
+        lines.push('call $hashmap_len');
+        return lines;
+      }
+      if (callee === 'contains_key' && args.length === 2) {
+        emitArgs();
+        lines.push('call $hashmap_contains_key');
+        return lines;
+      }
+      if (callee === 'clear' && args.length === 1) {
+        emitArgs();
+        lines.push('call $hashmap_clear');
+        lines.push('i32.const 0');
+        return lines;
+      }
+      if (callee === 'insert' && args.length === 3) {
+        const hasLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), ...this.emitExpr(args[2]), 'call $hashmap_insert_has'];
+        const valueLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), ...this.emitExpr(args[2]), 'call $hashmap_insert_prev'];
+        return this.emitOptionFromHasValue(hasLines, valueLines);
+      }
+      if (callee === 'get' && args.length === 2) {
+        const hasLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $hashmap_get_has'];
+        const valueLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $hashmap_get'];
+        return this.emitOptionFromHasValue(hasLines, valueLines);
+      }
+      if (callee === 'remove' && args.length === 2) {
+        const hasLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $hashmap_remove_has'];
+        const valueLines = [...this.emitExpr(args[0]), ...this.emitExpr(args[1]), 'call $hashmap_remove'];
+        return this.emitOptionFromHasValue(hasLines, valueLines);
+      }
+    }
+    if (namespace === 'hashset') {
+      if (callee === 'new' && args.length === 0) return ['call $hashset_new'];
+      if (callee === 'len' && args.length === 1) {
+        emitArgs();
+        lines.push('call $hashset_len');
+        return lines;
+      }
+      if (callee === 'insert' && args.length === 2) {
+        emitArgs();
+        lines.push('call $hashset_insert');
+        return lines;
+      }
+      if (callee === 'contains' && args.length === 2) {
+        emitArgs();
+        lines.push('call $hashset_contains');
+        return lines;
+      }
+      if (callee === 'remove' && args.length === 2) {
+        emitArgs();
+        lines.push('call $hashset_remove');
+        return lines;
+      }
+      if (callee === 'clear' && args.length === 1) {
+        emitArgs();
+        lines.push('call $hashset_clear');
+        lines.push('i32.const 0');
         return lines;
       }
     }
@@ -1953,6 +2828,9 @@ class WasmBuilder {
       return 'i32';
     }
     if (pruned.kind === 'adt') {
+      if (pruned.name === 'Vec' || pruned.name === 'HashMap' || pruned.name === 'HashSet') {
+        return 'i32';
+      }
       const variants = this.enumLayout.get(pruned.name);
       if (variants) {
         return 'i32';

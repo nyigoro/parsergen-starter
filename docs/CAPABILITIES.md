@@ -116,3 +116,30 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 - [x] Closures/lambdas in WASM
 - [x] Error handling (`?` operator)
 - [x] Async/await support (clear "not supported" diagnostics path via `WASM-ASYNC-001`)
+
+### 1.2 Collections in WASM (Priority: P0)
+- [x] Vec operations (push, get, len, pop, clear, take, skip)
+- [x] HashMap operations (new/len/insert/get/remove/contains_key/clear)
+- [x] HashSet operations (new/len/insert/contains/remove/clear)
+- [x] Array indexing with bounds checks
+- [x] Iterator methods in WASM (any/all/map/filter/fold/find/position)
+
+### 1.3 Control Flow in WASM (Priority: P0)
+- [x] If/else statements
+- [x] While loops
+- [x] For loops (range loops)
+- [ ] Match expressions with all patterns (currently enum/literal/wildcard/binding patterns)
+- [ ] Break/continue (not yet available in language syntax)
+- [x] Return from nested contexts
+
+### 1.4 Memory Management (Priority: P1)
+- [x] String allocation in linear memory (host string ops now allocate/write string objects in WASM linear memory via exported allocator when available)
+- [x] Struct allocation (linear-memory bump allocator via `alloc`)
+- [x] Reference counting (if needed) (runtime hooks: `mem_retain` / `mem_release` / `mem_stats_live` for managed heap pointers)
+- [x] Garbage collection strategy (or explicit memory management) (explicit memory management: allocator + free-list + exported `__free`; no tracing GC)
+
+### 1.5 WASM Testing (Priority: P0)
+- [x] Comprehensive WASM codegen tests (50+ tests) (`tests/codegen-wasm-matrix.test.ts` + existing WASM codegen suites)
+- [x] Runtime behavior tests (not just compilation) (`tests/wasm-runtime-behavior.test.ts`, `tests/wasm-runtime.test.ts`, `tests/wasm-channel-runtime.test.ts`)
+- [x] Performance benchmarks vs JS (`scripts/benchmark/wasm-vs-js-bench.ts`, run with `npm run bench:wasm-vs-js`)
+- [x] Memory usage validation (`tests/wasm-memory-validation.test.ts`, `scripts/benchmark/wasm-memory-bench.ts`, run with `npm run bench:wasm-memory`)
