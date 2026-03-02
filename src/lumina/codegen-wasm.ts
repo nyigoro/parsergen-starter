@@ -4,6 +4,8 @@ import {
   type LuminaStatement,
   type LuminaExpr,
   type LuminaFnDecl,
+  type LuminaImplDecl,
+  type LuminaTraitDecl,
   type LuminaStructDecl,
   type LuminaTypeExpr,
   type LuminaConstExpr,
@@ -11,7 +13,7 @@ import {
   type LuminaMatchPattern,
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
-import { prune, type Type, normalizePrimitiveName } from './types.js';
+import { prune, type Type, type ConstExpr as TypeConstExpr, normalizePrimitiveName } from './types.js';
 
 const normalizeTargetTypeName = (name: string): string => {
   if (name === 'int') return 'i32';
@@ -75,9 +77,57 @@ interface WasmEnumVariantInfo {
 
 type WasmEnumLayout = Map<string, Map<string, WasmEnumVariantInfo>>;
 
+interface WasmStructFieldLayout {
+  name: string;
+  offset: number;
+  size: number;
+  wasmType: WasmValType;
+  typeName: LuminaTypeExpr;
+}
+
+interface WasmStructInfo {
+  totalSize: number;
+  fields: Map<string, WasmStructFieldLayout>;
+  orderedFields: WasmStructFieldLayout[];
+}
+
+type WasmStructLayout = Map<string, WasmStructInfo>;
+
+interface WasmTraitMethodDispatch {
+  traitName: string;
+  forType: string;
+  method: string;
+  wasmName: string;
+  fn: LuminaFnDecl;
+}
+
+type WasmTraitDispatchMap = Map<string, Map<string, WasmTraitMethodDispatch>>;
+
+interface WasmLambdaInfo {
+  id: number;
+  fnName: string;
+  lambda: Extract<LuminaExpr, { type: 'Lambda' }>;
+  captures: string[];
+  captureTypes: Type[];
+}
+
 const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
+};
+
+const sanitizeWasmIdent = (value: string): string =>
+  value.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || 'anon';
+
+const resolveTypeExprName = (typeExpr: LuminaTypeExpr): string => {
+  if (typeof typeExpr === 'string') {
+    const parsed = parseTypeName(typeExpr);
+    return parsed?.base ?? typeExpr;
+  }
+  if ((typeExpr as LuminaArrayType).kind === 'array') {
+    return 'Array';
+  }
+  return 'unknown';
 };
 
 export function generateWATFromAst(
@@ -101,8 +151,75 @@ export function generateWATFromAst(
     });
     enumLayout.set(stmt.name, variants);
   }
+  if (!enumLayout.has('Option')) {
+    enumLayout.set(
+      'Option',
+      new Map<string, WasmEnumVariantInfo>([
+        ['Some', { tag: 0, arity: 1, hasIndexedResult: false, params: ['i32'] }],
+        ['None', { tag: 1, arity: 0, hasIndexedResult: false, params: [] }],
+      ])
+    );
+  }
+  if (!enumLayout.has('Result')) {
+    enumLayout.set(
+      'Result',
+      new Map<string, WasmEnumVariantInfo>([
+        ['Ok', { tag: 0, arity: 1, hasIndexedResult: false, params: ['i32'] }],
+        ['Err', { tag: 1, arity: 1, hasIndexedResult: false, params: ['i32'] }],
+      ])
+    );
+  }
 
-  const builder = new WasmBuilder(diagnostics, infer.subst, infer.inferredExprs, infer.inferredFnParams, enumLayout);
+  const traitDecls = new Map<string, LuminaTraitDecl>();
+  const structDecls = new Map<string, LuminaStructDecl>();
+  const traitDispatch: WasmTraitDispatchMap = new Map();
+  const implMethods: WasmTraitMethodDispatch[] = [];
+
+  for (const stmt of program.body) {
+    if (stmt.type === 'TraitDecl') {
+      traitDecls.set(stmt.name, stmt);
+      continue;
+    }
+    if (stmt.type === 'StructDecl') {
+      structDecls.set(stmt.name, stmt);
+      continue;
+    }
+    if (stmt.type !== 'ImplDecl') continue;
+    const impl = stmt as LuminaImplDecl;
+    const traitName = resolveTypeExprName(impl.traitType);
+    const forTypeName = resolveTypeExprName(impl.forType);
+    for (const method of impl.methods ?? []) {
+      const wasmName = `${sanitizeWasmIdent(traitName)}_${sanitizeWasmIdent(forTypeName)}_${sanitizeWasmIdent(method.name)}`;
+      const inferredParams = infer.inferredFnParams.get(method.name);
+      if (inferredParams) {
+        infer.inferredFnParams.set(wasmName, inferredParams);
+      }
+      const dispatch: WasmTraitMethodDispatch = {
+        traitName,
+        forType: forTypeName,
+        method: method.name,
+        wasmName,
+        fn: {
+          ...method,
+          name: wasmName,
+        },
+      };
+      implMethods.push(dispatch);
+      if (!traitDispatch.has(forTypeName)) traitDispatch.set(forTypeName, new Map());
+      traitDispatch.get(forTypeName)!.set(method.name, dispatch);
+    }
+  }
+
+  const builder = new WasmBuilder(
+    diagnostics,
+    infer.subst,
+    infer.inferredExprs,
+    infer.inferredFnParams,
+    enumLayout,
+    structDecls,
+    traitDecls,
+    traitDispatch
+  );
   const functions = program.body.filter((stmt): stmt is LuminaFnDecl => stmt.type === 'FnDecl');
   const structs = program.body.filter((stmt): stmt is LuminaStructDecl => stmt.type === 'StructDecl');
 
@@ -110,10 +227,20 @@ export function generateWATFromAst(
   builder.append('  (import "env" "print_int" (func $print_int (param i32)))');
   builder.append('  (import "env" "print_float" (func $print_float (param f64)))');
   builder.append('  (import "env" "print_bool" (func $print_bool (param i32)))');
+  builder.append('  (import "env" "print_string" (func $print_string (param i32)))');
   builder.append('  (import "env" "abs_int" (func $abs_int (param i32) (result i32)))');
   builder.append('  (import "env" "abs_float" (func $abs_float (param f64) (result f64)))');
+  builder.append('  (import "env" "str_new" (func $str_new (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "str_concat" (func $str_concat (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "str_len" (func $str_len (param i32) (result i32)))');
+  builder.append('  (import "env" "str_slice" (func $str_slice (param i32 i32 i32 i32) (result i32)))');
+  builder.append('  (import "env" "str_eq" (func $str_eq (param i32 i32) (result i32)))');
+  builder.append('  (import "env" "str_from_int" (func $str_from_int (param i32) (result i32)))');
+  builder.append('  (import "env" "str_from_float" (func $str_from_float (param f64) (result i32)))');
+  builder.append('  (import "env" "str_from_bool" (func $str_from_bool (param i32) (result i32)))');
+  builder.append('  (import "env" "str_from_handle" (func $str_from_handle (param i32) (result i32)))');
   builder.append('  (memory (export "memory") 1)');
-  builder.append('  (global $heap_ptr (mut i32) (i32.const 1024))');
+  builder.append('  (global $heap_ptr (mut i32) (i32.const 4096))');
   builder.append('  (func $alloc (param $size i32) (result i32)');
   builder.append('    (local $ptr i32)');
   builder.append('    global.get $heap_ptr');
@@ -129,11 +256,19 @@ export function generateWATFromAst(
   for (const fn of functions) {
     builder.append(builder.emitFunction(fn));
   }
+  for (const implMethod of implMethods) {
+    builder.append(builder.emitFunction(implMethod.fn));
+  }
+  const lambdaFns = builder.emitSynthesizedLambdas();
+  if (lambdaFns.trim().length > 0) {
+    builder.append(lambdaFns);
+  }
   if (options.exportMain !== false) {
     for (const fn of functions) {
       builder.append(`  (export "${fn.name}" (func $${fn.name}))`);
     }
   }
+  builder.append(builder.emitStringDataSegments());
   builder.append(')');
 
   return { wat: builder.toString(), diagnostics };
@@ -146,20 +281,46 @@ class WasmBuilder {
   private exprTypes: Map<number, Type>;
   private fnParamTypes: Map<string, Type[]>;
   private enumLayout: WasmEnumLayout;
+  private structDecls: Map<string, LuminaStructDecl>;
+  private structLayout: WasmStructLayout = new Map();
+  private traitDecls: Map<string, LuminaTraitDecl>;
+  private traitDispatch: WasmTraitDispatchMap;
+  private traitDispatchByFn = new Map<string, WasmTraitMethodDispatch>();
   private matchCounter = 0;
+  private stringLiterals = new Map<string, { offset: number; bytes: number[] }>();
+  private nextStringOffset = 32;
+  private currentFunctionReturn: WasmValType | null = null;
+  private currentFunctionReturnType: Type | undefined;
+  private currentLocalTypes = new Map<string, Type>();
+  private localLambdaBindings = new Map<string, WasmLambdaInfo>();
+  private lambdaCounter = 0;
+  private lambdaByExprId = new Map<number, WasmLambdaInfo>();
+  private synthesizedLambdas: WasmLambdaInfo[] = [];
 
   constructor(
     diagnostics: Diagnostic[],
     subst: Map<number, Type>,
     exprTypes: Map<number, Type>,
     fnParamTypes: Map<string, Type[]>,
-    enumLayout: WasmEnumLayout
+    enumLayout: WasmEnumLayout,
+    structDecls: Map<string, LuminaStructDecl>,
+    traitDecls: Map<string, LuminaTraitDecl>,
+    traitDispatch: WasmTraitDispatchMap
   ) {
     this.diagnostics = diagnostics;
     this.subst = subst;
     this.exprTypes = exprTypes;
     this.fnParamTypes = fnParamTypes;
     this.enumLayout = enumLayout;
+    this.structDecls = structDecls;
+    this.traitDecls = traitDecls;
+    this.traitDispatch = traitDispatch;
+    for (const methods of traitDispatch.values()) {
+      for (const dispatch of methods.values()) {
+        this.traitDispatchByFn.set(dispatch.wasmName, dispatch);
+      }
+    }
+    this.initializeStructLayouts();
   }
 
   append(line: string) {
@@ -170,22 +331,292 @@ class WasmBuilder {
     return this.lines.join('\n') + '\n';
   }
 
-  emitStructLayout(struct: LuminaStructDecl): string {
-    const fieldLayouts: Array<{ name: string; offset: number; size: number }> = [];
-    let offset = 0;
-    for (const field of struct.body) {
-      const fieldSize = this.calculateTypeSize(field.typeName, field.location ?? struct.location);
-      fieldLayouts.push({ name: field.name, offset, size: fieldSize });
-      offset += fieldSize;
+  private initializeStructLayouts(): void {
+    for (const struct of this.structDecls.values()) {
+      const orderedFields: WasmStructFieldLayout[] = [];
+      const fieldMap = new Map<string, WasmStructFieldLayout>();
+      let offset = 0;
+      for (const field of struct.body) {
+        const wasmType = this.typeExprToWasm(field.typeName, field.location) ?? 'i32';
+        const size = this.calculateTypeSize(field.typeName, field.location ?? struct.location);
+        const info: WasmStructFieldLayout = {
+          name: field.name,
+          offset,
+          size,
+          wasmType,
+          typeName: field.typeName,
+        };
+        orderedFields.push(info);
+        fieldMap.set(field.name, info);
+        offset += size;
+      }
+      this.structLayout.set(struct.name, {
+        totalSize: offset,
+        fields: fieldMap,
+        orderedFields,
+      });
     }
-    const totalSize = offset;
+  }
+
+  private lookupStructFieldInfo(expr: Extract<LuminaExpr, { type: 'Member' }>): WasmStructFieldLayout | null {
+    const objectType =
+      (typeof expr.object.id === 'number' ? this.exprTypes.get(expr.object.id) : undefined) ??
+      (expr.object.type === 'Identifier' ? this.currentLocalTypes.get(expr.object.name) : undefined);
+    if (!objectType) return null;
+    const pruned = prune(objectType, this.subst);
+    if (pruned.kind !== 'adt') return null;
+    const struct = this.structLayout.get(pruned.name);
+    if (!struct) return null;
+    return struct.fields.get(expr.property) ?? null;
+  }
+
+  private allocStringLiteral(value: string): { offset: number; bytes: number[] } {
+    const existing = this.stringLiterals.get(value);
+    if (existing) return existing;
+    const bytes = Array.from(new TextEncoder().encode(value));
+    const offset = this.nextStringOffset;
+    this.nextStringOffset += bytes.length + 1;
+    const entry = { offset, bytes };
+    this.stringLiterals.set(value, entry);
+    return entry;
+  }
+
+  emitStringDataSegments(): string {
+    if (this.stringLiterals.size === 0) return '';
+    const lines: string[] = [];
+    for (const [value, entry] of this.stringLiterals.entries()) {
+      const escaped = Array.from(entry.bytes)
+        .map((b) => `\\${b.toString(16).padStart(2, '0')}`)
+        .join('');
+      lines.push(`  (data (i32.const ${entry.offset}) "${escaped}") ;; "${value.replace(/"/g, '\\"')}"`);
+    }
+    return lines.join('\n');
+  }
+
+  emitSynthesizedLambdas(): string {
+    const lines: string[] = [];
+    for (let i = 0; i < this.synthesizedLambdas.length; i += 1) {
+      const info = this.synthesizedLambdas[i];
+      lines.push(this.emitFunction(this.createLambdaFunctionDecl(info)));
+    }
+    return lines.join('\n');
+  }
+
+  private createLambdaFunctionDecl(info: WasmLambdaInfo): LuminaFnDecl {
+    const captureParams = info.captures.map((name) => ({
+      name,
+      typeName: null,
+    }));
+    const params = [...captureParams, ...(info.lambda.params ?? [])];
+    return {
+      type: 'FnDecl',
+      name: info.fnName,
+      async: !!info.lambda.async,
+      params,
+      returnType: info.lambda.returnType ?? null,
+      body: info.lambda.body,
+      typeParams: info.lambda.typeParams ?? [],
+      whereClauses: [],
+      extern: false,
+      visibility: 'private',
+      location: info.lambda.location,
+    };
+  }
+
+  private getOrCreateLambdaInfo(lambda: Extract<LuminaExpr, { type: 'Lambda' }>): WasmLambdaInfo {
+    const lambdaId = lambda.id;
+    if (typeof lambdaId === 'number') {
+      const existing = this.lambdaByExprId.get(lambdaId);
+      if (existing) return existing;
+    }
+    const captures = this.resolveLambdaCaptures(lambda);
+    const captureTypes = captures.map((name) => this.currentLocalTypes.get(name) ?? ({ kind: 'primitive', name: 'i32' } as Type));
+    const info: WasmLambdaInfo = {
+      id: ++this.lambdaCounter,
+      fnName: `__lambda_${this.lambdaCounter}`,
+      lambda,
+      captures,
+      captureTypes,
+    };
+    if (typeof lambdaId === 'number') {
+      this.lambdaByExprId.set(lambdaId, info);
+    }
+    const type = typeof lambdaId === 'number' ? this.exprTypes.get(lambdaId) : undefined;
+    const prunedType = type ? prune(type, this.subst) : undefined;
+    const paramTypes = prunedType?.kind === 'function' ? prunedType.args : [];
+    this.fnParamTypes.set(info.fnName, [...captureTypes, ...paramTypes]);
+    this.synthesizedLambdas.push(info);
+    return info;
+  }
+
+  private resolveLambdaCaptures(lambda: Extract<LuminaExpr, { type: 'Lambda' }>): string[] {
+    if (Array.isArray(lambda.captures) && lambda.captures.length > 0) {
+      return lambda.captures.filter((name) => this.currentLocalTypes.has(name));
+    }
+    const available = new Set(this.currentLocalTypes.keys());
+    const params = new Set((lambda.params ?? []).map((param) => param.name));
+    const captures = new Set<string>();
+
+    const visitExpr = (expr: LuminaExpr, scope: Set<string>) => {
+      switch (expr.type) {
+        case 'Identifier':
+          if (!scope.has(expr.name) && available.has(expr.name)) captures.add(expr.name);
+          return;
+        case 'Binary':
+          visitExpr(expr.left, scope);
+          visitExpr(expr.right, scope);
+          return;
+        case 'Call':
+          if (expr.receiver) visitExpr(expr.receiver, scope);
+          for (const arg of expr.args ?? []) visitExpr(arg, scope);
+          return;
+        case 'Member':
+          visitExpr(expr.object, scope);
+          return;
+        case 'Index':
+          visitExpr(expr.object, scope);
+          visitExpr(expr.index, scope);
+          return;
+        case 'StructLiteral':
+          for (const field of expr.fields ?? []) visitExpr(field.value, scope);
+          return;
+        case 'ArrayLiteral':
+          for (const element of expr.elements ?? []) visitExpr(element, scope);
+          return;
+        case 'TupleLiteral':
+          for (const element of expr.elements ?? []) visitExpr(element, scope);
+          return;
+        case 'ArrayRepeatLiteral':
+          visitExpr(expr.value, scope);
+          visitExpr(expr.count, scope);
+          return;
+        case 'InterpolatedString':
+          for (const part of expr.parts ?? []) {
+            if (typeof part !== 'string') visitExpr(part, scope);
+          }
+          return;
+        case 'Cast':
+          visitExpr(expr.expr, scope);
+          return;
+        case 'Try':
+          visitExpr(expr.value, scope);
+          return;
+        case 'Await':
+          visitExpr(expr.value, scope);
+          return;
+        case 'Move':
+          if (expr.target.type === 'Identifier' && !scope.has(expr.target.name) && available.has(expr.target.name)) {
+            captures.add(expr.target.name);
+          }
+          return;
+        case 'MatchExpr':
+          visitExpr(expr.value, scope);
+          for (const arm of expr.arms ?? []) {
+            if (arm.guard) visitExpr(arm.guard, scope);
+            visitExpr(arm.body, new Set(scope));
+          }
+          return;
+        case 'SelectExpr':
+          for (const arm of expr.arms ?? []) {
+            visitExpr(arm.value, scope);
+            const next = new Set(scope);
+            if (arm.binding && arm.binding !== '_') next.add(arm.binding);
+            visitExpr(arm.body, next);
+          }
+          return;
+        case 'Range':
+          if (expr.start) visitExpr(expr.start, scope);
+          if (expr.end) visitExpr(expr.end, scope);
+          return;
+        case 'IsExpr':
+          visitExpr(expr.value, scope);
+          return;
+        case 'Lambda':
+          return;
+        default:
+          return;
+      }
+    };
+
+    const visitStmt = (stmt: LuminaStatement, scope: Set<string>) => {
+      switch (stmt.type) {
+        case 'Let':
+          visitExpr(stmt.value, scope);
+          scope.add(stmt.name);
+          return;
+        case 'Assign':
+          if (stmt.target.type === 'Member') visitExpr(stmt.target.object, scope);
+          visitExpr(stmt.value, scope);
+          return;
+        case 'ExprStmt':
+          visitExpr(stmt.expr, scope);
+          return;
+        case 'Return':
+          visitExpr(stmt.value, scope);
+          return;
+        case 'If':
+          visitExpr(stmt.condition, scope);
+          for (const s of stmt.thenBlock.body ?? []) visitStmt(s, new Set(scope));
+          for (const s of stmt.elseBlock?.body ?? []) visitStmt(s, new Set(scope));
+          return;
+        case 'While':
+          visitExpr(stmt.condition, scope);
+          for (const s of stmt.body.body ?? []) visitStmt(s, new Set(scope));
+          return;
+        case 'WhileLet':
+          visitExpr(stmt.value, scope);
+          for (const s of stmt.body.body ?? []) visitStmt(s, new Set(scope));
+          return;
+        case 'For': {
+          visitExpr(stmt.iterable, scope);
+          const nested = new Set(scope);
+          nested.add(stmt.iterator);
+          for (const s of stmt.body.body ?? []) visitStmt(s, nested);
+          return;
+        }
+        case 'MatchStmt':
+          visitExpr(stmt.value, scope);
+          for (const arm of stmt.arms ?? []) {
+            if (arm.guard) visitExpr(arm.guard, scope);
+            for (const s of arm.body.body ?? []) visitStmt(s, new Set(scope));
+          }
+          return;
+        default:
+          return;
+      }
+    };
+
+    const scope = new Set(params);
+    for (const stmt of lambda.body.body ?? []) {
+      visitStmt(stmt, scope);
+    }
+    return Array.from(captures);
+  }
+
+  emitStructLayout(struct: LuminaStructDecl): string {
+    const layout = this.structLayout.get(struct.name);
+    if (!layout) return '';
     const lines: string[] = [];
     lines.push(`  ;; Struct ${struct.name}`);
-    lines.push(`  ;; Total size: ${totalSize} bytes`);
-    lines.push(`  (func $${struct.name}_new (result i32)`);
-    lines.push('    i32.const 0');
+    lines.push(`  ;; Total size: ${layout.totalSize} bytes`);
+    const params = layout.orderedFields.map((field) => `(param $${field.name} ${field.wasmType})`).join(' ');
+    lines.push(`  (func $${sanitizeWasmIdent(struct.name)}_new ${params} (result i32)`);
+    lines.push('    (local $__struct_ptr i32)');
+    lines.push(`    i32.const ${layout.totalSize}`);
+    lines.push('    call $alloc');
+    lines.push('    local.set $__struct_ptr');
+    for (const field of layout.orderedFields) {
+      lines.push('    local.get $__struct_ptr');
+      if (field.offset !== 0) {
+        lines.push(`    i32.const ${field.offset}`);
+        lines.push('    i32.add');
+      }
+      lines.push(`    local.get $${field.name}`);
+      lines.push(`    ${field.wasmType}.store`);
+    }
+    lines.push('    local.get $__struct_ptr');
     lines.push('  )');
-    for (const field of fieldLayouts) {
+    for (const field of layout.orderedFields) {
       lines.push(`  ;;   field ${field.name}: offset ${field.offset}, size ${field.size}`);
     }
     return lines.join('\n');
@@ -460,31 +891,59 @@ class WasmBuilder {
   }
 
   emitFunction(fn: LuminaFnDecl): string {
+    if (fn.async) {
+      this.reportUnsupported(
+        `async function '${fn.name}' (WASM backend currently supports synchronous functions only)`,
+        fn.location,
+        'WASM-ASYNC-001'
+      );
+    }
     const paramTypes = this.fnParamTypes.get(fn.name) ?? [];
     const params = fn.params.map((param, idx) => {
       const wasmType = this.typeToWasm(paramTypes[idx], param.location) ?? 'i32';
       return `(param $${param.name} ${wasmType})`;
     });
+    const prevLocalTypes = this.currentLocalTypes;
+    const prevLocalLambdas = this.localLambdaBindings;
+    this.currentLocalTypes = new Map();
+    this.localLambdaBindings = new Map();
+    const traitDispatch = this.traitDispatchByFn.get(fn.name);
+    fn.params.forEach((param, idx) => {
+      const type = paramTypes[idx];
+      if (type) this.currentLocalTypes.set(param.name, type);
+      if (!type && traitDispatch && idx === 0) {
+        this.currentLocalTypes.set(param.name, { kind: 'adt', name: traitDispatch.forType, params: [] });
+      }
+    });
 
-    const returnType = fn.returnType && fn.returnType !== 'void'
-      ? this.inferReturnType(fn)
-      : this.inferReturnType(fn);
+    const returnType = this.inferReturnType(fn);
+    this.currentFunctionReturn = returnType;
+    this.currentFunctionReturnType = this.inferFunctionReturnTypeNode(fn);
     const resultSig = returnType ? `(result ${returnType})` : '';
 
     const locals = this.collectLocals(fn);
     const localsDecl = locals.length > 0 ? `  ${locals.join(' ')}` : '';
 
-    const bodyLines = this.emitBlock(fn.body.body ?? []);
+    const bodyLines = this.emitBlock(fn.body.body ?? [], false);
     const lines = [
       `  (func $${fn.name} ${params.join(' ')} ${resultSig}`.trimEnd(),
       localsDecl,
       ...bodyLines.map((line) => `    ${line}`),
       '  )',
     ];
+    this.currentFunctionReturn = null;
+    this.currentFunctionReturnType = undefined;
+    this.currentLocalTypes = prevLocalTypes;
+    this.localLambdaBindings = prevLocalLambdas;
     return lines.join('\n');
   }
 
   private inferReturnType(fn: LuminaFnDecl): WasmValType | null {
+    const fromDecl = this.inferFunctionReturnTypeNode(fn);
+    if (fromDecl) {
+      const declared = this.typeToWasm(fromDecl, fn.location);
+      if (declared !== null) return declared;
+    }
     if (!fn.body?.body) return null;
     const returnStmt = fn.body.body.find((stmt) => stmt.type === 'Return');
     if (!returnStmt) return null;
@@ -492,6 +951,37 @@ class WasmBuilder {
     if (!retExpr || typeof retExpr.id !== 'number') return null;
     const type = this.exprTypes.get(retExpr.id);
     return this.typeToWasm(type, retExpr.location);
+  }
+
+  private inferFunctionReturnTypeNode(fn: LuminaFnDecl): Type | undefined {
+    if (fn.returnType === null) return undefined;
+    if (typeof fn.returnType === 'string') {
+      const parsed = parseTypeName(fn.returnType);
+      const base = parsed?.base ?? fn.returnType;
+      if (base === 'void') return { kind: 'primitive', name: 'void' };
+      if (
+        base === 'bool' ||
+        base === 'int' ||
+        base === 'i8' ||
+        base === 'i16' ||
+        base === 'i32' ||
+        base === 'u8' ||
+        base === 'u16' ||
+        base === 'u32' ||
+        base === 'usize' ||
+        base === 'f32' ||
+        base === 'f64' ||
+        base === 'float' ||
+        base === 'string'
+      ) {
+        return { kind: 'primitive', name: base as never };
+      }
+      return { kind: 'adt', name: base, params: [] };
+    }
+    if ((fn.returnType as LuminaArrayType).kind === 'array') {
+      return { kind: 'adt', name: 'Array', params: [] };
+    }
+    return undefined;
   }
 
   private collectLocals(fn: LuminaFnDecl): string[] {
@@ -503,6 +993,7 @@ class WasmBuilder {
       seen.add(name);
     };
     addLocal('__enum_tmp', 'i32');
+    addLocal('__tmp_i32', 'i32');
     const walk = (stmt: LuminaStatement) => {
       if (stmt.type === 'Let') {
         const name = stmt.name;
@@ -545,7 +1036,13 @@ class WasmBuilder {
     return locals;
   }
 
-  private emitBlock(statements: LuminaStatement[]): string[] {
+  private emitBlock(statements: LuminaStatement[], scoped: boolean = true): string[] {
+    const savedTypes = this.currentLocalTypes;
+    const savedLambdas = this.localLambdaBindings;
+    if (scoped) {
+      this.currentLocalTypes = new Map(savedTypes);
+      this.localLambdaBindings = new Map(savedLambdas);
+    }
     const lines: string[] = [];
     for (const stmt of statements) {
       switch (stmt.type) {
@@ -553,13 +1050,52 @@ class WasmBuilder {
           const exprLines = this.emitExpr(stmt.value);
           lines.push(...exprLines);
           lines.push(`local.set $${stmt.name}`);
+          if (typeof stmt.value.id === 'number') {
+            const inferred = this.exprTypes.get(stmt.value.id);
+            if (inferred) this.currentLocalTypes.set(stmt.name, inferred);
+          } else if (stmt.value.type === 'Identifier') {
+            const inherited = this.currentLocalTypes.get(stmt.value.name);
+            if (inherited) this.currentLocalTypes.set(stmt.name, inherited);
+            const lambda = this.localLambdaBindings.get(stmt.value.name);
+            if (lambda) this.localLambdaBindings.set(stmt.name, lambda);
+          } else if (stmt.value.type === 'StructLiteral') {
+            this.currentLocalTypes.set(stmt.name, { kind: 'adt', name: stmt.value.name, params: [] });
+          }
+          if (stmt.value.type === 'Lambda') {
+            this.localLambdaBindings.set(stmt.name, this.getOrCreateLambdaInfo(stmt.value));
+          } else if (stmt.value.type !== 'Identifier') {
+            this.localLambdaBindings.delete(stmt.name);
+          }
           break;
         }
         case 'Assign': {
-          const exprLines = this.emitExpr(stmt.value);
-          lines.push(...exprLines);
           if (stmt.target.type === 'Identifier') {
+            const exprLines = this.emitExpr(stmt.value);
+            lines.push(...exprLines);
             lines.push(`local.set $${stmt.target.name}`);
+            if (stmt.value.type === 'Lambda') {
+              this.localLambdaBindings.set(stmt.target.name, this.getOrCreateLambdaInfo(stmt.value));
+            } else if (stmt.value.type === 'Identifier') {
+              const lambda = this.localLambdaBindings.get(stmt.value.name);
+              if (lambda) this.localLambdaBindings.set(stmt.target.name, lambda);
+              else this.localLambdaBindings.delete(stmt.target.name);
+            } else {
+              this.localLambdaBindings.delete(stmt.target.name);
+            }
+          } else if (stmt.target.type === 'Member') {
+            const fieldInfo = this.lookupStructFieldInfo(stmt.target);
+            if (!fieldInfo) {
+              this.reportUnsupported('assignment target member', stmt.location);
+              lines.push('unreachable');
+              break;
+            }
+            lines.push(...this.emitExpr(stmt.target.object));
+            if (fieldInfo.offset !== 0) {
+              lines.push(`i32.const ${fieldInfo.offset}`);
+              lines.push('i32.add');
+            }
+            lines.push(...this.emitExpr(stmt.value));
+            lines.push(`${fieldInfo.wasmType}.store`);
           } else {
             this.reportUnsupported('assignment target', stmt.location);
             lines.push('unreachable');
@@ -616,6 +1152,10 @@ class WasmBuilder {
           break;
       }
     }
+    if (scoped) {
+      this.currentLocalTypes = savedTypes;
+      this.localLambdaBindings = savedLambdas;
+    }
     return lines;
   }
 
@@ -628,14 +1168,14 @@ class WasmBuilder {
     lines.push(...this.emitExpr(stmt.condition));
     lines.push('(if');
     lines.push('  (then');
-    const thenLines = this.emitBlock(stmt.thenBlock?.body ?? []);
+    const thenLines = this.emitBlock(stmt.thenBlock?.body ?? [], true);
     for (const line of thenLines) {
       lines.push(`    ${line}`);
     }
     lines.push('  )');
     if (stmt.elseBlock) {
       lines.push('  (else');
-      const elseLines = this.emitBlock(stmt.elseBlock.body ?? []);
+      const elseLines = this.emitBlock(stmt.elseBlock.body ?? [], true);
       for (const line of elseLines) {
         lines.push(`    ${line}`);
       }
@@ -685,9 +1225,22 @@ class WasmBuilder {
       if (base === 'f32' || base === 'f64' || base === 'float') {
         return 'f64';
       }
+      if (
+        base === 'string' ||
+        this.structLayout.has(base) ||
+        this.enumLayout.has(base) ||
+        base === 'Option' ||
+        base === 'Result'
+      ) {
+        return 'i32';
+      }
+      if (/^[A-Z][A-Za-z0-9_]*$/.test(base)) {
+        return 'i32';
+      }
       this.reportUnsupported(`enum payload type '${base}' in WASM backend`, location, 'WASM-GADT-001');
       return null;
     }
+    if ((typeExpr as LuminaArrayType).kind === 'array') return 'i32';
     this.reportUnsupported('non-string enum payload type in WASM backend', location, 'WASM-GADT-001');
     return null;
   }
@@ -836,7 +1389,23 @@ class WasmBuilder {
         return [this.emitNumber(expr)];
       case 'Boolean':
         return [`i32.const ${expr.value ? 1 : 0}`];
+      case 'String': {
+        const literal = this.allocStringLiteral(expr.value);
+        return [`i32.const ${literal.offset}`, `i32.const ${literal.bytes.length}`, 'call $str_new'];
+      }
+      case 'InterpolatedString':
+        return this.emitInterpolatedString(expr.parts ?? [], expr.location);
       case 'Member': {
+        const structField = this.lookupStructFieldInfo(expr);
+        if (structField) {
+          const lines = this.emitExpr(expr.object);
+          if (structField.offset !== 0) {
+            lines.push(`i32.const ${structField.offset}`);
+            lines.push('i32.add');
+          }
+          lines.push(`${structField.wasmType}.load`);
+          return lines;
+        }
         if (expr.object.type !== 'Identifier') {
           this.reportUnsupported('member expression', expr.location);
           return ['unreachable'];
@@ -861,10 +1430,14 @@ class WasmBuilder {
         return [`i32.const ${variantInfo.tag}`];
       }
       case 'Try':
-        this.reportUnsupported('try operator', expr.location);
-        return ['unreachable'];
+        return this.emitTryExpr(expr.value, expr.location);
       case 'Identifier':
         return [`local.get $${expr.name}`];
+      case 'Await':
+        this.reportUnsupported('await expression (WASM backend currently has no async runtime)', expr.location, 'WASM-ASYNC-001');
+        return this.emitExpr(expr.value);
+      case 'Lambda':
+        return this.emitLambdaExpr(expr);
       case 'IsExpr': {
         const enumName = expr.enumName;
         if (!enumName) {
@@ -908,16 +1481,199 @@ class WasmBuilder {
         return this.emitBinary(expr);
       case 'Call':
         return this.emitCall(expr);
+      case 'SelectExpr':
+        this.reportUnsupported('select expression (WASM backend currently has no async runtime)', expr.location, 'WASM-ASYNC-001');
+        return ['i32.const 0'];
+      case 'Range':
+        this.reportUnsupported('standalone range expression in WASM backend', expr.location);
+        return ['i32.const 0'];
       case 'Index':
         return this.emitIndex(expr);
+      case 'StructLiteral':
+        return this.emitStructLiteral(expr);
       default:
         this.reportUnsupported(expr.type, expr.location);
         return ['unreachable'];
     }
   }
 
+  private emitInterpolatedString(
+    parts: Array<string | LuminaExpr>,
+    location?: Location
+  ): string[] {
+    if (parts.length === 0) {
+      return ['i32.const 0', 'i32.const 0', 'call $str_new'];
+    }
+    const lines: string[] = [];
+    let initialized = false;
+    for (const part of parts) {
+      const partLines =
+        typeof part === 'string' ? this.emitExpr({ type: 'String', value: part, location }) : this.emitStringifiedExpr(part);
+      if (!initialized) {
+        lines.push(...partLines);
+        initialized = true;
+        continue;
+      }
+      lines.push('local.set $__tmp_i32');
+      lines.push(...partLines);
+      lines.push('local.get $__tmp_i32');
+      lines.push('call $str_concat');
+    }
+    return lines;
+  }
+
+  private emitStringifiedExpr(expr: LuminaExpr): string[] {
+    const lines = this.emitExpr(expr);
+    const type = typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined;
+    const wasmType = this.typeToWasm(type, expr.location) ?? 'i32';
+    const pruned = type ? prune(type, this.subst) : null;
+    if (pruned?.kind === 'primitive' && normalizePrimitiveName(pruned.name) === 'string') {
+      return lines;
+    }
+    if (wasmType === 'f64') return [...lines, 'call $str_from_float'];
+    if (pruned?.kind === 'primitive' && normalizePrimitiveName(pruned.name) === 'bool') {
+      return [...lines, 'call $str_from_bool'];
+    }
+    if (pruned?.kind === 'primitive' && normalizePrimitiveName(pruned.name) !== 'string') {
+      return [...lines, 'call $str_from_int'];
+    }
+    return [...lines, 'call $str_from_handle'];
+  }
+
+  private emitTryExpr(value: LuminaExpr, location?: Location): string[] {
+    const resultType = typeof value.id === 'number' ? this.exprTypes.get(value.id) : undefined;
+    if (!resultType) {
+      this.reportUnsupported('try operator without inferred result type', location, 'WASM-TRY-001');
+      return ['unreachable'];
+    }
+    const pruned = prune(resultType, this.subst);
+    if (pruned.kind !== 'adt' || pruned.name !== 'Result' || pruned.params.length < 2) {
+      this.reportUnsupported('try operator outside Result context', location, 'WASM-TRY-001');
+      return ['unreachable'];
+    }
+    if (this.currentFunctionReturn !== 'i32') {
+      this.reportUnsupported('try operator requires Result-returning WASM function', location, 'WASM-TRY-001');
+      return ['unreachable'];
+    }
+    const okType = prune(pruned.params[0], this.subst);
+    const okWasm = this.typeToWasm(okType, location) ?? 'i32';
+    const lines: string[] = [];
+    lines.push(...this.emitExpr(value));
+    lines.push('local.tee $__tmp_i32');
+    lines.push('i32.load');
+    lines.push('i32.const 0');
+    lines.push('i32.eq');
+    lines.push(`(if (result ${okWasm})`);
+    lines.push('  (then');
+    lines.push('    local.get $__tmp_i32');
+    lines.push('    i32.const 8');
+    lines.push('    i32.add');
+    lines.push(`    ${okWasm}.load`);
+    lines.push('  )');
+    lines.push('  (else');
+    lines.push('    local.get $__tmp_i32');
+    lines.push('    return');
+    lines.push(`    ${okWasm}.const 0`);
+    lines.push('  )');
+    lines.push(')');
+    return lines;
+  }
+
+  private emitStructLiteral(expr: Extract<LuminaExpr, { type: 'StructLiteral' }>): string[] {
+    const struct = this.structLayout.get(expr.name);
+    if (!struct) {
+      this.reportUnsupported(`struct literal '${expr.name}'`, expr.location);
+      return ['unreachable'];
+    }
+    const fieldByName = new Map(expr.fields.map((field) => [field.name, field.value]));
+    const lines: string[] = [];
+    for (const field of struct.orderedFields) {
+      const valueExpr = fieldByName.get(field.name);
+      if (!valueExpr) {
+        this.reportUnsupported(`missing field '${field.name}' in struct literal '${expr.name}'`, expr.location);
+        lines.push(field.wasmType === 'f64' ? 'f64.const 0' : 'i32.const 0');
+        continue;
+      }
+      lines.push(...this.emitExpr(valueExpr));
+    }
+    lines.push(`call $${sanitizeWasmIdent(expr.name)}_new`);
+    return lines;
+  }
+
+  private emitLambdaExpr(lambda: Extract<LuminaExpr, { type: 'Lambda' }>): string[] {
+    const info = this.getOrCreateLambdaInfo(lambda);
+    const lines: string[] = [];
+    const envSize = 8 + info.captures.length * 8;
+    lines.push(`i32.const ${envSize}`);
+    lines.push('call $alloc');
+    lines.push('local.tee $__tmp_i32');
+    lines.push(`i32.const ${info.id}`);
+    lines.push('i32.store');
+    for (let i = 0; i < info.captures.length; i += 1) {
+      const captureName = info.captures[i];
+      const captureType = info.captureTypes[i];
+      const wasmType = this.typeToWasm(captureType, lambda.location) ?? 'i32';
+      lines.push('local.get $__tmp_i32');
+      lines.push(`i32.const ${8 + i * 8}`);
+      lines.push('i32.add');
+      if (this.currentLocalTypes.has(captureName)) {
+        lines.push(`local.get $${captureName}`);
+      } else {
+        lines.push(wasmType === 'f64' ? 'f64.const 0' : 'i32.const 0');
+      }
+      lines.push(`${wasmType}.store`);
+    }
+    lines.push('local.get $__tmp_i32');
+    return lines;
+  }
+
+  private emitClosureInvoke(
+    closureLocalName: string,
+    info: WasmLambdaInfo,
+    args: LuminaExpr[]
+  ): string[] {
+    const lines: string[] = [];
+    lines.push(`local.get $${closureLocalName}`);
+    lines.push('local.tee $__tmp_i32');
+    lines.push('i32.load');
+    lines.push(`i32.const ${info.id}`);
+    lines.push('i32.ne');
+    lines.push('if');
+    lines.push('  unreachable');
+    lines.push('end');
+    for (let i = 0; i < info.captures.length; i += 1) {
+      const captureType = info.captureTypes[i];
+      const wasmType = this.typeToWasm(captureType, info.lambda.location) ?? 'i32';
+      lines.push('local.get $__tmp_i32');
+      lines.push(`i32.const ${8 + i * 8}`);
+      lines.push('i32.add');
+      lines.push(`${wasmType}.load`);
+    }
+    for (const arg of args) {
+      lines.push(...this.emitExpr(arg));
+    }
+    lines.push(`call $${info.fnName}`);
+    return lines;
+  }
+
   private emitIndex(expr: Extract<LuminaExpr, { type: 'Index' }>): string[] {
     const objectType = typeof expr.object.id === 'number' ? this.exprTypes.get(expr.object.id) : undefined;
+    const prunedObject = objectType ? prune(objectType, this.subst) : undefined;
+    if (expr.index.type === 'Range') {
+      if (prunedObject?.kind === 'primitive' && normalizePrimitiveName(prunedObject.name) === 'string') {
+        const startLines = expr.index.start ? this.emitExpr(expr.index.start) : ['i32.const 0'];
+        const endLines = expr.index.end ? this.emitExpr(expr.index.end) : ['i32.const -1'];
+        return [
+          ...this.emitExpr(expr.object),
+          ...startLines,
+          ...endLines,
+          `i32.const ${expr.index.inclusive ? 1 : 0}`,
+          'call $str_slice',
+        ];
+      }
+      this.reportUnsupported('range index on non-string value', expr.location);
+      return ['unreachable'];
+    }
     const arrayInfo = this.extractArrayTypeInfo(objectType, expr.location);
     const indexExpr = this.emitExpr(expr.index);
     const lines: string[] = [];
@@ -955,6 +1711,24 @@ class WasmBuilder {
     id?: number;
   }): string[] {
     const type = typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined;
+    const leftType = typeof expr.left.id === 'number' ? this.exprTypes.get(expr.left.id) : undefined;
+    const rightType = typeof expr.right.id === 'number' ? this.exprTypes.get(expr.right.id) : undefined;
+    const leftPruned = leftType ? prune(leftType, this.subst) : null;
+    const rightPruned = rightType ? prune(rightType, this.subst) : null;
+    const isLeftString = leftPruned?.kind === 'primitive' && normalizePrimitiveName(leftPruned.name) === 'string';
+    const isRightString = rightPruned?.kind === 'primitive' && normalizePrimitiveName(rightPruned.name) === 'string';
+    if (expr.op === '+' && (isLeftString || isRightString)) {
+      const left = isLeftString ? this.emitExpr(expr.left) : this.emitStringifiedExpr(expr.left);
+      const right = isRightString ? this.emitExpr(expr.right) : this.emitStringifiedExpr(expr.right);
+      return [...left, ...right, 'call $str_concat'];
+    }
+    if ((expr.op === '==' || expr.op === '!=') && isLeftString && isRightString) {
+      const opLines = [...this.emitExpr(expr.left), ...this.emitExpr(expr.right), 'call $str_eq'];
+      if (expr.op === '!=') {
+        opLines.push('i32.eqz');
+      }
+      return opLines;
+    }
     const wasmType = this.typeToWasm(type, expr.location) ?? 'i32';
     const op = this.mapBinaryOp(expr.op, wasmType);
     return [...this.emitExpr(expr.left), ...this.emitExpr(expr.right), op];
@@ -963,33 +1737,162 @@ class WasmBuilder {
   private emitCall(expr: Extract<LuminaExpr, { type: 'Call' }>): string[] {
     if (expr.enumName) {
       const variantInfo = this.resolveEnumVariantInfo(expr.enumName, expr.callee.name);
-      if (!variantInfo) {
-        this.reportUnsupported(`unknown enum variant '${expr.enumName}.${expr.callee.name}'`, expr.location, 'WASM-GADT-001');
-        return ['unreachable'];
-      }
-      const argCount = expr.args?.length ?? 0;
-      if (variantInfo.arity !== argCount) {
-        this.reportUnsupported(
-          `enum constructor '${expr.enumName}.${expr.callee.name}' arity mismatch in WASM backend`,
-          expr.location,
-          'WASM-GADT-001'
-        );
-        return ['unreachable'];
-      }
-      if (variantInfo.arity === 0) {
-        if (this.enumUsesHeapRepresentation(expr.enumName)) {
-          return this.emitEnumAlloc(expr.enumName, variantInfo, [], expr.location);
+      if (variantInfo) {
+        const argCount = expr.args?.length ?? 0;
+        if (variantInfo.arity !== argCount) {
+          this.reportUnsupported(
+            `enum constructor '${expr.enumName}.${expr.callee.name}' arity mismatch in WASM backend`,
+            expr.location,
+            'WASM-GADT-001'
+          );
+          return ['unreachable'];
         }
-        return [`i32.const ${variantInfo.tag}`];
+        if (variantInfo.arity === 0) {
+          if (this.enumUsesHeapRepresentation(expr.enumName)) {
+            return this.emitEnumAlloc(expr.enumName, variantInfo, [], expr.location);
+          }
+          return [`i32.const ${variantInfo.tag}`];
+        }
+        return this.emitEnumAlloc(expr.enumName, variantInfo, expr.args ?? [], expr.location);
       }
-      return this.emitEnumAlloc(expr.enumName, variantInfo, expr.args ?? [], expr.location);
+      if (this.currentLocalTypes.has(expr.enumName)) {
+        const dispatched = this.emitReceiverDispatch(
+          { type: 'Identifier', name: expr.enumName, location: expr.location },
+          expr.callee.name,
+          expr.args ?? [],
+          expr.location
+        );
+        if (dispatched) return dispatched;
+      }
+      return this.emitNamespacedCall(expr.enumName, expr.callee.name, expr.args ?? [], expr.location);
     }
+
+    if (expr.receiver) {
+      const dispatched = this.emitReceiverDispatch(expr.receiver, expr.callee.name, expr.args ?? [], expr.location);
+      if (dispatched) return dispatched;
+      return ['unreachable'];
+    }
+
+    const boundLambda = this.localLambdaBindings.get(expr.callee.name);
+    if (boundLambda) {
+      return this.emitClosureInvoke(expr.callee.name, boundLambda, expr.args ?? []);
+    }
+
     const args: string[] = [];
     for (const arg of expr.args ?? []) {
       args.push(...this.emitExpr(arg));
     }
-    args.push(`call $${expr.callee.name}`);
+    args.push(`call $${sanitizeWasmIdent(expr.callee.name)}`);
     return args;
+  }
+
+  private emitReceiverDispatch(
+    receiverExpr: LuminaExpr,
+    methodName: string,
+    args: LuminaExpr[],
+    location?: Location
+  ): string[] | null {
+    const receiverType =
+      (typeof receiverExpr.id === 'number' ? this.exprTypes.get(receiverExpr.id) : undefined) ??
+      (receiverExpr.type === 'Identifier' ? this.currentLocalTypes.get(receiverExpr.name) : undefined);
+    const pruned = receiverType ? prune(receiverType, this.subst) : undefined;
+    const forType = pruned?.kind === 'adt' ? pruned.name : null;
+    let dispatched: WasmTraitMethodDispatch | undefined;
+    if (forType) {
+      const methodMap = this.traitDispatch.get(forType);
+      dispatched = methodMap?.get(methodName);
+    }
+    if (!dispatched) {
+      const fallback: WasmTraitMethodDispatch[] = [];
+      for (const methods of this.traitDispatch.values()) {
+        const candidate = methods.get(methodName);
+        if (candidate) fallback.push(candidate);
+      }
+      if (fallback.length === 1) {
+        dispatched = fallback[0];
+      }
+    }
+    if (dispatched) {
+      const lines: string[] = [...this.emitExpr(receiverExpr)];
+      for (const arg of args) {
+        lines.push(...this.emitExpr(arg));
+      }
+      lines.push(`call $${dispatched.wasmName}`);
+      return lines;
+    }
+    if (methodName === 'toString' && args.length === 0) {
+      return this.emitStringifiedExpr(receiverExpr);
+    }
+    this.reportUnsupported(`method call '${methodName}'`, location, 'WASM-TRAIT-001');
+    return null;
+  }
+
+  private emitNamespacedCall(
+    namespace: string,
+    callee: string,
+    args: LuminaExpr[],
+    location?: Location
+  ): string[] {
+    const lines: string[] = [];
+    const emitArgs = () => {
+      for (const arg of args) lines.push(...this.emitExpr(arg));
+    };
+    if (namespace === 'str') {
+      if (callee === 'concat' && args.length === 2) {
+        emitArgs();
+        lines.push('call $str_concat');
+        return lines;
+      }
+      if (callee === 'len' && args.length === 1) {
+        emitArgs();
+        lines.push('call $str_len');
+        return lines;
+      }
+      if (callee === 'from_int' && args.length === 1) {
+        emitArgs();
+        lines.push('call $str_from_int');
+        return lines;
+      }
+      if ((callee === 'from_float' || callee === 'from_f64') && args.length === 1) {
+        emitArgs();
+        lines.push('call $str_from_float');
+        return lines;
+      }
+      if (callee === 'from_bool' && args.length === 1) {
+        emitArgs();
+        lines.push('call $str_from_bool');
+        return lines;
+      }
+    }
+    if (namespace === 'io') {
+      if ((callee === 'println' || callee === 'print') && args.length === 1) {
+        const arg = args[0];
+        const argType = typeof arg.id === 'number' ? this.exprTypes.get(arg.id) : undefined;
+        const pruned = argType ? prune(argType, this.subst) : undefined;
+        if (pruned?.kind === 'primitive') {
+          const normalized = normalizePrimitiveName(pruned.name);
+          if (normalized === 'string') {
+            lines.push(...this.emitExpr(arg), 'call $print_string');
+            return lines;
+          }
+          if (normalized === 'bool') {
+            lines.push(...this.emitExpr(arg), 'call $print_bool');
+            return lines;
+          }
+          if (normalized === 'f32' || normalized === 'f64') {
+            lines.push(...this.emitExpr(arg), 'call $print_float');
+            return lines;
+          }
+          lines.push(...this.emitExpr(arg), 'call $print_int');
+          return lines;
+        }
+        lines.push(...this.emitStringifiedExpr(arg), 'call $print_string');
+        return lines;
+      }
+    }
+
+    this.reportUnsupported(`module call '${namespace}.${callee}'`, location);
+    return ['unreachable'];
   }
 
   private mapBinaryOp(op: string, wasmType: WasmValType): string {
@@ -1003,6 +1906,8 @@ class WasmBuilder {
         return `${prefix}.mul`;
       case '/':
         return wasmType === 'f64' ? 'f64.div' : 'i32.div_s';
+      case '%':
+        return wasmType === 'f64' ? 'f64.div' : 'i32.rem_s';
       case '==':
         return `${prefix}.eq`;
       case '!=':
@@ -1015,6 +1920,10 @@ class WasmBuilder {
         return wasmType === 'f64' ? 'f64.gt' : 'i32.gt_s';
       case '>=':
         return wasmType === 'f64' ? 'f64.ge' : 'i32.ge_s';
+      case '&&':
+        return 'i32.and';
+      case '||':
+        return 'i32.or';
       default:
         return `${prefix}.add`;
     }
@@ -1025,6 +1934,7 @@ class WasmBuilder {
     const pruned = prune(type, this.subst);
     if (pruned.kind === 'primitive') {
       const normalized = normalizePrimitiveName(pruned.name);
+      if (normalized === 'string') return 'i32';
       if (normalized === 'bool') return 'i32';
       if (normalized === 'i8' || normalized === 'i16' || normalized === 'i32' || normalized === 'u8' || normalized === 'u16' || normalized === 'u32') {
         return 'i32';
@@ -1038,6 +1948,7 @@ class WasmBuilder {
       }
       if (normalized === 'void') return null;
     }
+    if (pruned.kind === 'array') return 'i32';
     if (pruned.kind === 'adt' && pruned.name === 'Array') {
       return 'i32';
     }
@@ -1046,7 +1957,14 @@ class WasmBuilder {
       if (variants) {
         return 'i32';
       }
+      if (this.structLayout.has(pruned.name)) {
+        return 'i32';
+      }
+      if (pruned.name === 'Option' || pruned.name === 'Result') {
+        return 'i32';
+      }
     }
+    if (pruned.kind === 'function') return 'i32';
     this.reportUnsupported(`type '${this.formatType(pruned)}'`, location);
     return null;
   }
@@ -1057,6 +1975,16 @@ class WasmBuilder {
   ): { length: number | null; elementSize: number; elementWasm: WasmValType } | null {
     if (!type) return null;
     const pruned = prune(type, this.subst);
+    if (pruned.kind === 'array') {
+      const elementWasm = this.typeToWasm(pruned.element, location) ?? 'i32';
+      const elementSize = elementWasm === 'f64' ? 8 : 4;
+      let length: number | null = null;
+      if (pruned.size) {
+        const sizeValue = this.evaluateConstSizeText(this.formatConstExpr(pruned.size), location);
+        if (sizeValue !== null) length = sizeValue;
+      }
+      return { length, elementSize, elementWasm };
+    }
     if (pruned.kind !== 'adt' || pruned.name !== 'Array' || pruned.params.length < 2) return null;
     const element = prune(pruned.params[0], this.subst);
     const size = prune(pruned.params[1], this.subst);
@@ -1069,6 +1997,38 @@ class WasmBuilder {
       length = this.evaluateConstSizeText(size.name, location);
     }
     return { length, elementSize, elementWasm };
+  }
+
+  private formatConstExpr(expr: TypeConstExpr): string {
+    const node = expr as {
+      kind: string;
+      value?: number | boolean;
+      name?: string;
+      op?: string;
+      left?: TypeConstExpr;
+      right?: TypeConstExpr;
+      args?: TypeConstExpr[];
+      condition?: TypeConstExpr;
+      thenExpr?: TypeConstExpr;
+      elseExpr?: TypeConstExpr;
+      expr?: TypeConstExpr;
+    };
+    switch (node.kind) {
+      case 'const-literal':
+        return String(node.value);
+      case 'const-param':
+        return String(node.name ?? '');
+      case 'const-unary':
+        return `${node.op ?? ''}${node.expr ? this.formatConstExpr(node.expr) : ''}`;
+      case 'const-binary':
+        return `${node.left ? this.formatConstExpr(node.left) : ''}${node.op ?? ''}${node.right ? this.formatConstExpr(node.right) : ''}`;
+      case 'const-call':
+        return `${node.name ?? ''}(${(node.args ?? []).map((arg) => this.formatConstExpr(arg)).join(',')})`;
+      case 'const-if':
+        return `if ${node.condition ? this.formatConstExpr(node.condition) : ''} { ${node.thenExpr ? this.formatConstExpr(node.thenExpr) : ''} } else { ${node.elseExpr ? this.formatConstExpr(node.elseExpr) : ''} }`;
+      default:
+        return '';
+    }
   }
 
   private formatType(type: Type): string {

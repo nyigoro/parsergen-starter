@@ -100,8 +100,19 @@ This document tracks the current state of the Lumina language/tooling and near�
 - Real‑world utility: working JSON parser
 
 ## Near‑Term Roadmap (Next 3–5)
-1. **WASM backend completeness** (broader AST/IR coverage + parity with JS path)
+1. **WASM backend completeness** (**P0 release gate**: broader AST/IR coverage + parity with JS path; all items below must be completed before WASM is marked Stable)
 2. **Package registry** (publish/discovery workflow for Lumina packages)
 3. **Borrow safety polish** (branch-merge borrow checks + stronger diagnostics)
 4. **Advanced IDE refactors** (rename-safe transforms, extraction across modules)
 5. **Function overloading / numeric API cleanup** (abs/absf → unified surface)
+
+### P0 Release Gate: Core Language Features in WASM (Must Complete Entirely)
+- [x] String operations (beyond numerics)
+- [x] String interpolation codegen
+- [x] String slicing in WASM
+- [x] Struct construction and field access
+- [x] Enum construction and pattern matching
+- [x] Trait method dispatch in WASM
+- [x] Closures/lambdas in WASM
+- [x] Error handling (`?` operator)
+- [x] Async/await support (clear "not supported" diagnostics path via `WASM-ASYNC-001`)

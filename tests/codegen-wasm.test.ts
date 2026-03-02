@@ -98,4 +98,141 @@ describe('WASM codegen (WAT)', () => {
     expect(result.wat).toContain('i32.add');
     expect(result.wat).toContain('i32.load');
   });
+
+  it('supports struct construction + field load/store', () => {
+    const source = `
+      struct Counter {
+        value: i32
+      }
+
+      fn bump(c: Counter) -> i32 {
+        let mut local = c;
+        local.value = local.value + 1;
+        return local.value;
+      }
+
+      fn main() -> i32 {
+        let c = Counter { value: 1 };
+        return bump(c);
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+    expect(result.wat).toContain('(func $Counter_new');
+    expect(result.wat).toContain('i32.store');
+    expect(result.wat).toContain('i32.load');
+  });
+
+  it('supports string interpolation and slicing helpers', () => {
+    const source = `
+      fn main() -> string {
+        let name = "Lumina";
+        let msg = "Hello {name}";
+        return msg[0..4];
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('call $str_concat');
+    expect(result.wat).toContain('call $str_slice');
+    expect(result.wat).toContain('(data (i32.const');
+  });
+
+  it('emits trait impl functions and static dispatch for receiver calls', () => {
+    const source = `
+      trait Printable {
+        fn print(self: Self) -> string;
+      }
+
+      struct User {
+        name: string
+      }
+
+      impl Printable for User {
+        fn print(self: Self) -> string {
+          str.concat("User: ", self.name)
+        }
+      }
+
+      fn main() -> string {
+        let u = User { name: "A" };
+        return u.print();
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.wat).toContain('(func $Printable_User_print');
+    expect(result.wat).toContain('call $Printable_User_print');
+    expect(result.diagnostics.some((d) => d.code === 'WASM-TRAIT-001')).toBe(false);
+  });
+
+  it('supports Result try-operator lowering with early return', () => {
+    const source = `
+      enum Result<T, E> {
+        Ok(T),
+        Err(E)
+      }
+
+      fn compute(v: i32) -> Result<i32, string> {
+        if v > 0 {
+          return Result.Ok(v);
+        } else {
+          return Result.Err("bad");
+        }
+      }
+
+      fn main() -> Result<i32, string> {
+        let value = compute(3)?;
+        return Result.Ok(value + 1);
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('(if (result i32)');
+    expect(result.wat).toContain('return');
+  });
+
+  it('reports clear async/await diagnostics for unsupported WASM async runtime path', () => {
+    const source = `
+      async fn main() -> int {
+        let v = await compute();
+        return v;
+      }
+
+      async fn compute() -> int {
+        return 1;
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.some((d) => d.code === 'WASM-ASYNC-001')).toBe(true);
+  });
+
+  it('supports lambda closures with captured locals', () => {
+    const source = `
+      fn main() -> i32 {
+        let base = 2;
+        let add = |x| x + base;
+        return add(3);
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const hardErrors = result.diagnostics.filter((d) => d.severity === 'error' && d.code !== 'WASM-ASYNC-001');
+    expect(hardErrors).toHaveLength(0);
+    expect(result.wat).toContain('(func $__lambda_');
+    expect(result.wat).toContain('call $__lambda_');
+    expect(result.diagnostics.some((d) => d.code === 'WASM-CLOSURE-001')).toBe(false);
+  });
 });
