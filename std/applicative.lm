@@ -1,0 +1,30 @@
+import { applicative } from "@std";
+
+pub trait Applicative<F<_>> {
+  fn pure<A>(value: A) -> F<A>;
+  fn ap<A, B>(fns: F<fn(A) -> B>, value: F<A>) -> F<B>;
+}
+
+pub fn pure_option<A>(value: A) -> Option<A> {
+  applicative.pure_option(value)
+}
+
+pub fn pure_result<A, E>(value: A) -> Result<A, E> {
+  applicative.pure_result(value)
+}
+
+pub fn pure_vec<A>(value: A) -> Vec<A> {
+  applicative.pure_vec(value)
+}
+
+pub fn ap_option<A, B>(fns: Option<fn(A) -> B>, value: Option<A>) -> Option<B> {
+  applicative.ap_option(fns, value)
+}
+
+pub fn ap_result<A, E, B>(fns: Result<fn(A) -> B, E>, value: Result<A, E>) -> Result<B, E> {
+  applicative.ap_result(fns, value)
+}
+
+pub fn ap_vec<A, B>(fns: Vec<fn(A) -> B>, values: Vec<A>) -> Vec<B> {
+  applicative.ap_vec(fns, values)
+}

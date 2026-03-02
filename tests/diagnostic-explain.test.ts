@@ -19,5 +19,10 @@ describe('diagnostic explanations', () => {
     expect(output).toContain('LUM-002');
     expect(output).toContain('How to fix:');
   });
-});
 
+  test('includes HKT kind-mismatch explanation', () => {
+    const info = getDiagnosticExplanation('HKT-001');
+    expect(info.code).toBe('HKT-001');
+    expect(info.summary).toContain('kind');
+  });
+});

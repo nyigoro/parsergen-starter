@@ -1,0 +1,29 @@
+import { monad } from "@std";
+
+pub trait Monad<M<_>> {
+  fn flat_map<A, B>(value: M<A>, mapper: fn(A) -> M<B>) -> M<B>;
+}
+
+pub fn flat_map_option<A, B>(value: Option<A>, mapper: fn(A) -> Option<B>) -> Option<B> {
+  monad.flat_map_option(value, mapper)
+}
+
+pub fn flat_map_result<A, E, B>(value: Result<A, E>, mapper: fn(A) -> Result<B, E>) -> Result<B, E> {
+  monad.flat_map_result(value, mapper)
+}
+
+pub fn flat_map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> Vec<B>) -> Vec<B> {
+  monad.flat_map_vec(values, mapper)
+}
+
+pub fn join_option<A>(value: Option<Option<A>>) -> Option<A> {
+  monad.join_option(value)
+}
+
+pub fn join_result<A, E>(value: Result<Result<A, E>, E>) -> Result<A, E> {
+  monad.join_result(value)
+}
+
+pub fn join_vec<A>(values: Vec<Vec<A>>) -> Vec<A> {
+  monad.join_vec(values)
+}

@@ -498,6 +498,55 @@ Encrypts with AES-GCM and returns base64 payload (`iv + ciphertext`).
 ### aesGcmDecrypt(key: String, payload: String) -> Promise<Result<String, String>>
 Decrypts base64 payload from `aesGcmEncrypt`.
 
+## @std/functor
+
+Container mapping helpers aligned with `Functor<F<_>>` patterns.
+
+### map_option<A, B>(value: Option<A>, mapper: fn(A) -> B) -> Option<B>
+### map_result<A, E, B>(value: Result<A, E>, mapper: fn(A) -> B) -> Result<B, E>
+### map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> B) -> Vec<B>
+### map_hashmap_values<K, V, U>(values: HashMap<K, V>, mapper: fn(V) -> U) -> HashMap<K, U>
+
+## @std/applicative
+
+Applicative-style lifting and function application helpers.
+
+### pure_option<A>(value: A) -> Option<A>
+### pure_result<A, E>(value: A) -> Result<A, E>
+### pure_vec<A>(value: A) -> Vec<A>
+### ap_option<A, B>(fns: Option<fn(A) -> B>, value: Option<A>) -> Option<B>
+### ap_result<A, E, B>(fns: Result<fn(A) -> B, E>, value: Result<A, E>) -> Result<B, E>
+### ap_vec<A, B>(fns: Vec<fn(A) -> B>, values: Vec<A>) -> Vec<B>
+
+## @std/monad
+
+Flat-mapping and join helpers for common monadic containers.
+
+### flat_map_option<A, B>(value: Option<A>, mapper: fn(A) -> Option<B>) -> Option<B>
+### flat_map_result<A, E, B>(value: Result<A, E>, mapper: fn(A) -> Result<B, E>) -> Result<B, E>
+### flat_map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> Vec<B>) -> Vec<B>
+### join_option<A>(value: Option<Option<A>>) -> Option<A>
+### join_result<A, E>(value: Result<Result<A, E>, E>) -> Result<A, E>
+### join_vec<A>(values: Vec<Vec<A>>) -> Vec<A>
+
+## @std/foldable
+
+Folding helpers for containers.
+
+### fold_option<A, B>(value: Option<A>, init: B, folder: fn(B, A) -> B) -> B
+### fold_result<A, E, B>(value: Result<A, E>, init: B, folder: fn(B, A) -> B) -> B
+### fold_vec<A, B>(values: Vec<A>, init: B, folder: fn(B, A) -> B) -> B
+### fold_hashmap_values<K, V, B>(values: HashMap<K, V>, init: B, folder: fn(B, V) -> B) -> B
+
+## @std/traversable
+
+Traverse/sequence helpers for vectors into `Option` and `Result`.
+
+### traverse_vec_option<A, B>(values: Vec<A>, mapper: fn(A) -> Option<B>) -> Option<Vec<B>>
+### traverse_vec_result<A, E, B>(values: Vec<A>, mapper: fn(A) -> Result<B, E>) -> Result<Vec<B>, E>
+### sequence_vec_option<A>(values: Vec<Option<A>>) -> Option<Vec<A>>
+### sequence_vec_result<A, E>(values: Vec<Result<A, E>>) -> Result<Vec<A>, E>
+
 ## @std/vec
 
 ### new<T>() -> Vec<T>

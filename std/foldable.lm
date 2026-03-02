@@ -1,0 +1,21 @@
+import { foldable } from "@std";
+
+pub trait Foldable<F<_>> {
+  fn fold<A, B>(value: F<A>, init: B, folder: fn(B, A) -> B) -> B;
+}
+
+pub fn fold_option<A, B>(value: Option<A>, init: B, folder: fn(B, A) -> B) -> B {
+  foldable.fold_option(value, init, folder)
+}
+
+pub fn fold_result<A, E, B>(value: Result<A, E>, init: B, folder: fn(B, A) -> B) -> B {
+  foldable.fold_result(value, init, folder)
+}
+
+pub fn fold_vec<A, B>(values: Vec<A>, init: B, folder: fn(B, A) -> B) -> B {
+  foldable.fold_vec(values, init, folder)
+}
+
+pub fn fold_hashmap_values<K, V, B>(values: HashMap<K, V>, init: B, folder: fn(B, V) -> B) -> B {
+  foldable.fold_hashmap_values(values, init, folder)
+}

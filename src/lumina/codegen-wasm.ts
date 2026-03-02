@@ -8,6 +8,7 @@ import {
   type LuminaTypeExpr,
   type LuminaConstExpr,
   type LuminaArrayType,
+  type LuminaMatchPattern,
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { prune, type Type, normalizePrimitiveName } from './types.js';

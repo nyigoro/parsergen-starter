@@ -12,4 +12,5 @@
 - `NUMERIC_TYPES.md` — numeric type system
 - `ERROR_HANDLING.md` — `Result` and `?` operator
 - `CONST_GENERICS.md` — const generics and fixed-size arrays
+- `HKTS.md` — higher-kinded types and kind checking
 - `DOCS_MAINTENANCE.md` — policy for keeping docs current

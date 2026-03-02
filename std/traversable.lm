@@ -1,0 +1,21 @@
+import { traversable } from "@std";
+
+pub trait Traversable<F<_>> {
+  fn traverse_option<A, B>(values: F<A>, mapper: fn(A) -> Option<B>) -> Option<F<B>>;
+}
+
+pub fn traverse_vec_option<A, B>(values: Vec<A>, mapper: fn(A) -> Option<B>) -> Option<Vec<B>> {
+  traversable.traverse_vec_option(values, mapper)
+}
+
+pub fn traverse_vec_result<A, E, B>(values: Vec<A>, mapper: fn(A) -> Result<B, E>) -> Result<Vec<B>, E> {
+  traversable.traverse_vec_result(values, mapper)
+}
+
+pub fn sequence_vec_option<A>(values: Vec<Option<A>>) -> Option<Vec<A>> {
+  traversable.sequence_vec_option(values)
+}
+
+pub fn sequence_vec_result<A, E>(values: Vec<Result<A, E>>) -> Result<Vec<A>, E> {
+  traversable.sequence_vec_result(values)
+}

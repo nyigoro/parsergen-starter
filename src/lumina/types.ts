@@ -202,7 +202,9 @@ export function occursIn(target: Type, type: Type, subst: Subst): boolean {
 const sanitizeTypeSegment = (value: string): string =>
   value.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
 
-const isHktApplyType = (type: Type): type is { kind: 'adt'; name: string; params: Type[] } =>
+const isHktApplyType = (
+  type: Type
+): type is { kind: 'adt'; name: typeof HKT_APPLY_TYPE_NAME; params: Type[]; constArgs?: ConstExpr[] } =>
   type.kind === 'adt' && type.name === HKT_APPLY_TYPE_NAME;
 
 export function normalizeTypeName(type: Type): string {

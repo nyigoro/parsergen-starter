@@ -1,0 +1,21 @@
+import { functor } from "@std";
+
+pub trait Functor<F<_>> {
+  fn map<A, B>(value: F<A>, mapper: fn(A) -> B) -> F<B>;
+}
+
+pub fn map_option<A, B>(value: Option<A>, mapper: fn(A) -> B) -> Option<B> {
+  functor.map_option(value, mapper)
+}
+
+pub fn map_result<A, E, B>(value: Result<A, E>, mapper: fn(A) -> B) -> Result<B, E> {
+  functor.map_result(value, mapper)
+}
+
+pub fn map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> B) -> Vec<B> {
+  functor.map_vec(values, mapper)
+}
+
+pub fn map_hashmap_values<K, V, U>(values: HashMap<K, V>, mapper: fn(V) -> U) -> HashMap<K, U> {
+  functor.map_hashmap_values(values, mapper)
+}

@@ -806,7 +806,19 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     name: string;
     bound?: LuminaTypeExpr[];
     higherKindArity?: number;
+    isConst?: boolean;
   };
+
+  type TypeCtorParamSpec =
+    | { kind: 'type'; arity: number }
+    | { kind: 'const' };
+
+  interface TypeCtorSpec {
+    params: TypeCtorParamSpec[];
+    location?: Location;
+  }
+
+  const normalizeArity = (arity: number | undefined): number => Math.max(0, Math.trunc(Number(arity ?? 0)));
 
   const collectTypeParamArities = (
     typeParams: ReadonlyArray<TypeParamLike> | undefined
@@ -814,9 +826,9 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     const arities = new Map<string, number>();
     for (const param of typeParams ?? []) {
       const inferred = inferTypeParamKinds([param]).get(param.name);
-      const fromArity = Number(param.higherKindArity ?? 0);
+      const fromArity = normalizeArity(param.higherKindArity);
       if (!inferred) {
-        arities.set(param.name, Math.max(0, Math.trunc(fromArity)));
+        arities.set(param.name, fromArity);
         continue;
       }
       const asText = formatKind(inferred);
@@ -843,27 +855,180 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     return `${Array.from({ length: arity }, () => '*').join(' -> ')} -> *`;
   };
 
-  const validateHktTypeExpr = (
+  const builtinCtorSpecs = new Map<string, TypeCtorSpec>([
+    ['Option', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Result', { params: [{ kind: 'type', arity: 0 }, { kind: 'type', arity: 0 }] }],
+    ['Vec', { params: [{ kind: 'type', arity: 0 }] }],
+    ['List', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Box', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Array', { params: [{ kind: 'type', arity: 0 }, { kind: 'const' }] }],
+    ['Deque', { params: [{ kind: 'type', arity: 0 }] }],
+    ['HashMap', { params: [{ kind: 'type', arity: 0 }, { kind: 'type', arity: 0 }] }],
+    ['HashSet', { params: [{ kind: 'type', arity: 0 }] }],
+    ['BTreeMap', { params: [{ kind: 'type', arity: 0 }, { kind: 'type', arity: 0 }] }],
+    ['BTreeSet', { params: [{ kind: 'type', arity: 0 }] }],
+    ['PriorityQueue', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Promise', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Sender', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Receiver', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Channel', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Signal', { params: [{ kind: 'type', arity: 0 }] }],
+    ['Memo', { params: [{ kind: 'type', arity: 0 }] }],
+  ]);
+
+  const declaredCtorSpecs = new Map<string, TypeCtorSpec>(builtinCtorSpecs);
+  const addCtorSpec = (
+    name: string,
+    typeParams: ReadonlyArray<TypeParamLike> | undefined,
+    location?: Location
+  ) => {
+    const params: TypeCtorParamSpec[] = [];
+    for (const param of typeParams ?? []) {
+      if (param.isConst) {
+        params.push({ kind: 'const' });
+      } else {
+        params.push({ kind: 'type', arity: normalizeArity(param.higherKindArity) });
+      }
+    }
+    declaredCtorSpecs.set(name, { params, location });
+  };
+
+  for (const stmt of program.body) {
+    if (
+      stmt.type === 'TypeDecl' ||
+      stmt.type === 'StructDecl' ||
+      stmt.type === 'EnumDecl' ||
+      stmt.type === 'TraitDecl'
+    ) {
+      addCtorSpec(stmt.name, stmt.typeParams as TypeParamLike[] | undefined, stmt.location);
+    }
+  }
+
+  const kindDiagKeys = new Set<string>();
+  const kindHelp = (expectedArity: number, actualArity: number): string | null => {
+    if (expectedArity === 1 && actualArity === 0) {
+      return 'Use a unary type constructor such as `Option`, `Vec`, or a partial application like `Result<_, E>`.';
+    }
+    if (expectedArity > actualArity) {
+      return 'Apply fewer concrete type arguments or use `_` placeholders to keep constructor positions open.';
+    }
+    if (expectedArity < actualArity) {
+      return 'Provide enough type arguments so the expression resolves to a concrete type (`*`) in this position.';
+    }
+    return null;
+  };
+
+  const reportKindMismatch = (
+    subject: string,
+    expectedArity: number,
+    actualArity: number,
+    location?: Location,
+    ctorDeclLocation?: Location
+  ) => {
+    const key = `${location?.start?.offset ?? -1}|${subject}|${expectedArity}|${actualArity}`;
+    if (kindDiagKeys.has(key)) return;
+    kindDiagKeys.add(key);
+
+    const expectedKind = formatKindFromArity(expectedArity);
+    const actualKind = formatKindFromArity(actualArity);
+    const related: DiagnosticRelatedInformation[] = [];
+    if (ctorDeclLocation) {
+      related.push({
+        location: ctorDeclLocation,
+        message: `Constructor '${subject}' is declared here`,
+      });
+    }
+    const help = kindHelp(expectedArity, actualArity);
+    if (help) {
+      related.push({
+        location: location ?? defaultLocation,
+        message: `Help: ${help}`,
+      });
+    }
+    diagnostics.push(
+      diagAt(
+        `Kind mismatch for '${subject}'. Expected kind '${expectedKind}' but found '${actualKind}'`,
+        location,
+        'error',
+        'HKT-001',
+        related.length > 0 ? related : undefined
+      )
+    );
+  };
+
+  const resolveCtorSpec = (
+    baseName: string,
+    typeParamArities: Map<string, number>
+  ): TypeCtorSpec | null => {
+    const localArity = typeParamArities.get(baseName);
+    if (typeof localArity === 'number') {
+      return {
+        params: Array.from({ length: localArity }, () => ({ kind: 'type', arity: 0 } as TypeCtorParamSpec)),
+      };
+    }
+    const direct = declaredCtorSpecs.get(baseName);
+    if (direct) return direct;
+    if (baseName.includes('::')) {
+      const shortName = baseName.split('::').pop() ?? baseName;
+      const short = declaredCtorSpecs.get(shortName);
+      if (short) return short;
+    }
+    return null;
+  };
+
+  const inferTypeExprArity = (
     typeExpr: LuminaTypeExpr | null | undefined,
     typeParamArities: Map<string, number>,
+    expectedArity: number,
     location?: Location
-  ): void => {
-    if (!typeExpr || isTypeHoleExpr(typeExpr)) return;
+  ): number => {
+    if (!typeExpr || isTypeHoleExpr(typeExpr)) {
+      if (expectedArity !== 0) {
+        reportKindMismatch('_', expectedArity, 0, location);
+      }
+      return 0;
+    }
     if (typeof typeExpr === 'object' && (typeExpr as { kind?: string }).kind === 'array') {
       const arr = typeExpr as import('./ast.js').LuminaArrayType;
-      validateHktTypeExpr(arr.element, typeParamArities, arr.location ?? location);
-      return;
+      inferTypeExprArity(arr.element, typeParamArities, 0, arr.location ?? location);
+      if (expectedArity !== 0) {
+        reportKindMismatch('array', expectedArity, 0, arr.location ?? location);
+      }
+      return 0;
     }
-    if (typeof typeExpr !== 'string') return;
+    if (typeof typeExpr !== 'string') {
+      if (expectedArity !== 0) {
+        reportKindMismatch('type', expectedArity, 0, location);
+      }
+      return 0;
+    }
 
     const parsed = parseTypeName(typeExpr);
-    if (!parsed) return;
+    if (!parsed) {
+      if (expectedArity !== 0) {
+        reportKindMismatch(typeExpr, expectedArity, 0, location);
+      }
+      return 0;
+    }
 
-    const expectedArity = typeParamArities.get(parsed.base);
-    if (typeof expectedArity === 'number' && parsed.args.length !== expectedArity) {
+    const ctor = resolveCtorSpec(parsed.base, typeParamArities);
+    if (!ctor) {
+      for (const arg of parsed.args) {
+        if (arg.trim() === '_') continue;
+        inferTypeExprArity(arg, typeParamArities, 0, location);
+      }
+      if (expectedArity !== 0) {
+        reportKindMismatch(parsed.base, expectedArity, 0, location);
+      }
+      return 0;
+    }
+
+    let unresolvedTypeParams = 0;
+    if (parsed.args.length > ctor.params.length) {
+      const totalTypeSlots = ctor.params.filter((slot) => slot.kind === 'type').length;
       diagnostics.push(
         diagAt(
-          `Kind mismatch for '${parsed.base}'. Expected kind '${formatKindFromArity(expectedArity)}' (arity ${expectedArity}) but found ${parsed.args.length} type argument${parsed.args.length === 1 ? '' : 's'}`,
+          `Kind mismatch for '${parsed.base}'. Expected at most ${ctor.params.length} argument slot${ctor.params.length === 1 ? '' : 's'} (${totalTypeSlots} type parameter${totalTypeSlots === 1 ? '' : 's'}) but found ${parsed.args.length}`,
           location,
           'error',
           'HKT-001'
@@ -871,9 +1036,44 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
       );
     }
 
-    for (const arg of parsed.args) {
-      validateHktTypeExpr(arg, typeParamArities, location);
+    for (let i = 0; i < parsed.args.length; i++) {
+      const argText = parsed.args[i];
+      const slot = ctor.params[i];
+      if (!slot) {
+        if (argText.trim() !== '_') {
+          inferTypeExprArity(argText, typeParamArities, 0, location);
+        }
+        continue;
+      }
+      if (slot.kind === 'const') {
+        continue;
+      }
+      if (argText.trim() === '_') {
+        unresolvedTypeParams += 1;
+        continue;
+      }
+      inferTypeExprArity(argText, typeParamArities, slot.arity, location);
     }
+
+    for (let i = parsed.args.length; i < ctor.params.length; i++) {
+      if (ctor.params[i]?.kind === 'type') {
+        unresolvedTypeParams += 1;
+      }
+    }
+
+    if (expectedArity !== unresolvedTypeParams) {
+      reportKindMismatch(parsed.base, expectedArity, unresolvedTypeParams, location, ctor.location);
+    }
+
+    return unresolvedTypeParams;
+  };
+
+  const validateHktTypeExpr = (
+    typeExpr: LuminaTypeExpr | null | undefined,
+    typeParamArities: Map<string, number>,
+    location?: Location
+  ): void => {
+    inferTypeExprArity(typeExpr, typeParamArities, 0, location);
   };
 
   const validateTypeParamBounds = (
@@ -883,7 +1083,7 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
   ): void => {
     for (const param of typeParams ?? []) {
       for (const bound of param.bound ?? []) {
-        validateHktTypeExpr(bound, typeParamArities, location);
+        inferTypeExprArity(bound, typeParamArities, 0, location);
       }
     }
   };

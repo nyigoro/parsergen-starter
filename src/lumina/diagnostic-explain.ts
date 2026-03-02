@@ -49,6 +49,17 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
       'Check index constraints in enum variant result types.',
     ],
   },
+  'HKT-001': {
+    code: 'HKT-001',
+    title: 'Kind mismatch',
+    summary: 'A type constructor is used with the wrong constructor kind (arity).',
+    why: 'Higher-kinded type parameters require constructors of a specific shape, for example `* -> *`.',
+    howToFix: [
+      'Match the expected constructor kind in the position where the type is used.',
+      'If a constructor is too concrete, use partial application such as `Result<_, E>`.',
+      'Apply enough type arguments when a concrete type (`*`) is required.',
+    ],
+  },
   'TYPE-CAST': {
     code: 'TYPE-CAST',
     title: 'Invalid cast',
@@ -114,11 +125,11 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
     code: 'WASM-GADT-001',
     title: 'WASM GADT lowering limit',
     summary: 'The current WASM backend cannot lower this GADT/enum payload form.',
-    why: 'WASM codegen currently supports only discriminant-only enum lowering in this path.',
+    why: 'WASM codegen supports simple payload constructors/matches, but advanced pattern forms are still restricted.',
     howToFix: [
-      'Use the JavaScript backend for payload-carrying GADTs.',
-      'Restrict this WASM-targeted enum use to zero-payload variants.',
-      'Refactor complex pattern logic into numeric/tag-only representations.',
+      'Use the JavaScript backend for complex GADT patterns.',
+      'Keep WASM-targeted matches in the simple enum-pattern subset.',
+      'Refactor deeply nested/destructuring pattern logic into explicit steps.',
     ],
   },
   'ARRAY-SIZE-MISMATCH': {

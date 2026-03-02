@@ -46,5 +46,40 @@ describe('HKT kind checking', () => {
     const sem = analyzeLumina(ast);
     expect(sem.diagnostics.some((diag) => diag.code === 'HKT-001')).toBe(false);
   });
-});
 
+  it('accepts partial type-constructor application with placeholders', () => {
+    const source = `
+      trait Functor<F<_>> {}
+
+      struct Demo {}
+
+      impl Functor<Result<_, i32>> for Demo {}
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    expect(
+      sem.diagnostics.some(
+        (diag) => diag.code === 'HKT-001' && String(diag.message).includes("Result")
+      )
+    ).toBe(false);
+  });
+
+  it('reports concrete type used where constructor kind is required with help text', () => {
+    const source = `
+      trait Functor<F<_>> {}
+
+      struct Demo {}
+
+      impl Functor<i32> for Demo {}
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    const mismatch = sem.diagnostics.find((diag) => diag.code === 'HKT-001');
+    expect(mismatch).toBeDefined();
+    expect(mismatch?.message).toContain("Expected kind '* -> *'");
+    const relatedMessages = (mismatch?.relatedInformation ?? []).map((item) => item.message).join(' ');
+    expect(relatedMessages).toContain('Help:');
+  });
+});
