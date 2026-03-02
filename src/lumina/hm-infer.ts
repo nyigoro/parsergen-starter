@@ -43,7 +43,13 @@ export interface InferResult {
 
 interface EnumInfo {
   typeParams: string[];
-  variants: Map<string, LuminaTypeExpr[]>;
+  variants: Map<string, EnumVariantInfo>;
+}
+
+interface EnumVariantInfo {
+  params: LuminaTypeExpr[];
+  resultType?: LuminaTypeExpr | null;
+  existentialTypeParams?: string[];
 }
 
 interface StructInfo {
@@ -2554,8 +2560,8 @@ function inferExpr(
       if (!isValueObject && enumRegistry && objectName) {
         const info = enumRegistry.get(objectName);
         if (info) {
-          const variantParams = info.variants.get(expr.property);
-          if (!variantParams) {
+          const variantInfo = info.variants.get(expr.property);
+          if (!variantInfo) {
             diagnostics.push({
               severity: 'error',
               code: 'HM_ENUM_VARIANT',
@@ -2565,22 +2571,21 @@ function inferExpr(
             });
             return null;
           }
-          if (variantParams.length > 0) {
+          if (variantInfo.params.length > 0) {
             diagnostics.push({
               severity: 'error',
               code: 'HM_ENUM_VARIANT',
-              message: `Enum variant '${objectName}.${expr.property}' requires ${variantParams.length} arguments`,
+              message: `Enum variant '${objectName}.${expr.property}' requires ${variantInfo.params.length} arguments`,
               source: 'lumina',
               location: diagLocation(expr.location),
             });
             return null;
           }
-          const paramTypes = info.typeParams.map(() => freshTypeVar());
-          const enumType: Type = { kind: 'adt', name: objectName, params: paramTypes };
+          const instantiated = instantiateEnumVariantTypes(objectName, info, variantInfo);
           if (expectedType) {
-            tryUnify(enumType, expectedType, subst, diagnostics);
+            tryUnify(instantiated.resultType, expectedType, subst, diagnostics);
           }
-          return recordExprType(expr, enumType, subst);
+          return recordExprType(expr, instantiated.resultType, subst);
         }
       }
       const objectType = inferChild(expr.object);
@@ -3182,9 +3187,13 @@ function buildEnumRegistry(program: LuminaProgram): Map<string, EnumInfo> {
   for (const stmt of program.body) {
     if (stmt.type !== 'EnumDecl') continue;
     const typeParams = (stmt.typeParams ?? []).map(param => param.name);
-    const variants = new Map<string, LuminaTypeExpr[]>();
+    const variants = new Map<string, EnumVariantInfo>();
     for (const variant of stmt.variants) {
-      variants.set(variant.name, variant.params ?? []);
+      variants.set(variant.name, {
+        params: variant.params ?? [],
+        resultType: variant.resultType ?? null,
+        existentialTypeParams: (variant.existentialTypeParams ?? []).map((param) => param.name),
+      });
     }
     registry.set(stmt.name, { typeParams, variants });
   }
@@ -3203,6 +3212,33 @@ function buildStructRegistry(program: LuminaProgram): Map<string, StructInfo> {
     registry.set(stmt.name, { typeParams, fields, derives: stmt.derives ?? [] });
   }
   return registry;
+}
+
+function instantiateEnumVariantTypes(
+  enumName: string,
+  info: EnumInfo,
+  variant: EnumVariantInfo
+): {
+  enumType: Type;
+  resultType: Type;
+  paramTypes: Type[];
+  variantParamTypes: Type[];
+} {
+  const paramTypes = info.typeParams.map(() => freshTypeVar());
+  const typeParamMap = new Map<string, Type>();
+  info.typeParams.forEach((name, idx) => typeParamMap.set(name, paramTypes[idx]));
+
+  for (const name of variant.existentialTypeParams ?? []) {
+    typeParamMap.set(name, freshTypeVar());
+  }
+
+  const enumType: Type = { kind: 'adt', name: enumName, params: paramTypes };
+  const resultType = variant.resultType
+    ? parseTypeNameWithEnv(variant.resultType, typeParamMap)
+    : enumType;
+  const variantParamTypes = (variant.params ?? []).map((param) => parseTypeNameWithEnv(param, typeParamMap));
+
+  return { enumType, resultType, paramTypes, variantParamTypes };
 }
 
 function inferEnumConstructor(
@@ -3229,11 +3265,8 @@ function inferEnumConstructor(
     });
     return null;
   }
-  const paramTypes = info.typeParams.map(() => freshTypeVar());
-  const enumParamMap = new Map<string, Type>();
-  info.typeParams.forEach((name, idx) => enumParamMap.set(name, paramTypes[idx]));
-  const variantParams = info.variants.get(expr.callee.name);
-  if (!variantParams) {
+  const variantInfo = info.variants.get(expr.callee.name);
+  if (!variantInfo) {
     diagnostics.push({
       severity: 'error',
       code: 'HM_ENUM_VARIANT',
@@ -3257,15 +3290,15 @@ function inferEnumConstructor(
       inAsync
     ) ?? freshTypeVar()
   );
-  for (let i = 0; i < argTypes.length && i < variantParams.length; i++) {
-    const expected = parseTypeNameWithEnv(variantParams[i], enumParamMap);
+  const instantiated = instantiateEnumVariantTypes(expr.enumName, info, variantInfo);
+  for (let i = 0; i < argTypes.length && i < instantiated.variantParamTypes.length; i++) {
+    const expected = instantiated.variantParamTypes[i];
     tryUnify(argTypes[i], expected, subst, diagnostics);
   }
-  const enumType: Type = { kind: 'adt', name: expr.enumName, params: paramTypes };
   if (expectedType) {
-    tryUnify(enumType, expectedType, subst, diagnostics);
+    tryUnify(instantiated.resultType, expectedType, subst, diagnostics);
   }
-  return prune(enumType, subst);
+  return prune(instantiated.resultType, subst);
 }
 
 function applyMatchPattern(
@@ -3343,13 +3376,8 @@ function applyMatchPattern(
     });
     return;
   }
-  const paramTypes = info.typeParams.map(() => freshTypeVar());
-  const enumParamMap = new Map<string, Type>();
-  info.typeParams.forEach((name, idx) => enumParamMap.set(name, paramTypes[idx]));
-  const expectedEnumType: Type = { kind: 'adt', name: enumName, params: paramTypes };
-  tryUnify(scrutineeType, expectedEnumType, subst, diagnostics);
-  const variantParams = info.variants.get(pattern.variant);
-  if (!variantParams) {
+  const variantInfo = info.variants.get(pattern.variant);
+  if (!variantInfo) {
     diagnostics.push({
       severity: 'error',
       code: 'HM_ENUM_VARIANT',
@@ -3359,18 +3387,23 @@ function applyMatchPattern(
     });
     return;
   }
+  const instantiated = instantiateEnumVariantTypes(enumName, info, variantInfo);
+  tryUnify(scrutineeType, instantiated.resultType, subst, diagnostics, {
+    location: pattern.location,
+    note: `Pattern '${enumName}.${pattern.variant}' refines the scrutinee type`,
+  });
   const nestedPatterns = pattern.patterns ?? [];
   if (nestedPatterns.length > 0) {
-    for (let i = 0; i < nestedPatterns.length && i < variantParams.length; i++) {
-      const expected = parseTypeNameWithEnv(variantParams[i], enumParamMap);
+    for (let i = 0; i < nestedPatterns.length && i < instantiated.variantParamTypes.length; i++) {
+      const expected = instantiated.variantParamTypes[i];
       applyMatchPattern(nestedPatterns[i], expected, env, subst, diagnostics, enumRegistry);
     }
     return;
   }
-  for (let i = 0; i < pattern.bindings.length && i < variantParams.length; i++) {
+  for (let i = 0; i < pattern.bindings.length && i < instantiated.variantParamTypes.length; i++) {
     const binding = pattern.bindings[i];
     if (binding === '_') continue;
-    const expected = parseTypeNameWithEnv(variantParams[i], enumParamMap);
+    const expected = instantiated.variantParamTypes[i];
     env.extend(binding, { kind: 'scheme', variables: [], type: expected });
   }
 }
@@ -3644,7 +3677,17 @@ function checkMatchExhaustiveness(
   if (!enumName) return;
   const info = enumRegistry.get(enumName);
   if (!info) return;
-  const defined = new Set(info.variants.keys());
+  const defined = new Set<string>();
+  for (const [variantName, variantInfo] of info.variants.entries()) {
+    if (variantCanMatchScrutinee(enumName, info, variantInfo, scrutineeType, subst)) {
+      defined.add(variantName);
+    }
+  }
+  if (defined.size === 0) {
+    for (const variantName of info.variants.keys()) {
+      defined.add(variantName);
+    }
+  }
   const covered = new Set<string>();
   let hasWildcard = false;
   for (const arm of arms) {
@@ -3668,6 +3711,23 @@ function checkMatchExhaustiveness(
     source: 'lumina',
     location: diagLocation(location),
   });
+}
+
+function variantCanMatchScrutinee(
+  enumName: string,
+  info: EnumInfo,
+  variant: EnumVariantInfo,
+  scrutineeType: Type,
+  subst: Subst
+): boolean {
+  const instantiated = instantiateEnumVariantTypes(enumName, info, variant);
+  const trialSubst = new Map<number, Type>(subst);
+  try {
+    unify(instantiated.resultType, scrutineeType, trialSubst, activeWrapperSet);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function checkStructRecursion(
