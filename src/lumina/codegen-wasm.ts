@@ -65,6 +65,15 @@ export interface WasmCodegenResult {
   diagnostics: Diagnostic[];
 }
 
+interface WasmEnumVariantInfo {
+  tag: number;
+  arity: number;
+  hasIndexedResult: boolean;
+  params: LuminaTypeExpr[];
+}
+
+type WasmEnumLayout = Map<string, Map<string, WasmEnumVariantInfo>>;
+
 const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
@@ -77,7 +86,22 @@ export function generateWATFromAst(
   const infer = inferProgram(program);
   const diagnostics = [...infer.diagnostics];
 
-  const builder = new WasmBuilder(diagnostics, infer.subst, infer.inferredExprs, infer.inferredFnParams);
+  const enumLayout: WasmEnumLayout = new Map();
+  for (const stmt of program.body) {
+    if (stmt.type !== 'EnumDecl') continue;
+    const variants = new Map<string, WasmEnumVariantInfo>();
+    stmt.variants.forEach((variant, index) => {
+      variants.set(variant.name, {
+        tag: index,
+        arity: variant.params?.length ?? 0,
+        hasIndexedResult: !!variant.resultType,
+        params: variant.params ?? [],
+      });
+    });
+    enumLayout.set(stmt.name, variants);
+  }
+
+  const builder = new WasmBuilder(diagnostics, infer.subst, infer.inferredExprs, infer.inferredFnParams, enumLayout);
   const functions = program.body.filter((stmt): stmt is LuminaFnDecl => stmt.type === 'FnDecl');
   const structs = program.body.filter((stmt): stmt is LuminaStructDecl => stmt.type === 'StructDecl');
 
@@ -88,6 +112,16 @@ export function generateWATFromAst(
   builder.append('  (import "env" "abs_int" (func $abs_int (param i32) (result i32)))');
   builder.append('  (import "env" "abs_float" (func $abs_float (param f64) (result f64)))');
   builder.append('  (memory (export "memory") 1)');
+  builder.append('  (global $heap_ptr (mut i32) (i32.const 1024))');
+  builder.append('  (func $alloc (param $size i32) (result i32)');
+  builder.append('    (local $ptr i32)');
+  builder.append('    global.get $heap_ptr');
+  builder.append('    local.tee $ptr');
+  builder.append('    local.get $size');
+  builder.append('    i32.add');
+  builder.append('    global.set $heap_ptr');
+  builder.append('    local.get $ptr');
+  builder.append('  )');
   for (const struct of structs) {
     builder.append(builder.emitStructLayout(struct));
   }
@@ -110,17 +144,21 @@ class WasmBuilder {
   private subst: Map<number, Type>;
   private exprTypes: Map<number, Type>;
   private fnParamTypes: Map<string, Type[]>;
+  private enumLayout: WasmEnumLayout;
+  private matchCounter = 0;
 
   constructor(
     diagnostics: Diagnostic[],
     subst: Map<number, Type>,
     exprTypes: Map<number, Type>,
-    fnParamTypes: Map<string, Type[]>
+    fnParamTypes: Map<string, Type[]>,
+    enumLayout: WasmEnumLayout
   ) {
     this.diagnostics = diagnostics;
     this.subst = subst;
     this.exprTypes = exprTypes;
     this.fnParamTypes = fnParamTypes;
+    this.enumLayout = enumLayout;
   }
 
   append(line: string) {
@@ -458,20 +496,46 @@ class WasmBuilder {
   private collectLocals(fn: LuminaFnDecl): string[] {
     const locals: string[] = [];
     const seen = new Set<string>();
+    const addLocal = (name: string, wasmType: WasmValType | 'i32' | 'f64' = 'i32') => {
+      if (seen.has(name)) return;
+      locals.push(`(local $${name} ${wasmType})`);
+      seen.add(name);
+    };
+    addLocal('__enum_tmp', 'i32');
     const walk = (stmt: LuminaStatement) => {
       if (stmt.type === 'Let') {
         const name = stmt.name;
-        if (!seen.has(name)) {
-          const type = typeof stmt.value?.id === 'number' ? this.exprTypes.get(stmt.value.id) : undefined;
-          const wasmType = this.typeToWasm(type, stmt.location) ?? 'i32';
-          locals.push(`(local $${name} ${wasmType})`);
-          seen.add(name);
-        }
+        const type = typeof stmt.value?.id === 'number' ? this.exprTypes.get(stmt.value.id) : undefined;
+        const wasmType = this.typeToWasm(type, stmt.location) ?? 'i32';
+        addLocal(name, wasmType);
       } else if (stmt.type === 'If') {
         stmt.thenBlock?.body?.forEach(walk);
         stmt.elseBlock?.body?.forEach(walk);
       } else if (stmt.type === 'While') {
         stmt.body?.body?.forEach(walk);
+      } else if (stmt.type === 'MatchStmt') {
+        const matchTemp = this.getMatchTempName(stmt);
+        addLocal(matchTemp, 'i32');
+        for (const arm of stmt.arms ?? []) {
+          if (arm.pattern.type === 'EnumPattern') {
+            const enumName = arm.pattern.enumName;
+            if (enumName) {
+              const variant = this.resolveEnumVariantInfo(enumName, arm.pattern.variant);
+              if (variant) {
+                const bindings = this.extractSimpleEnumPatternBindings(arm.pattern, variant.arity);
+                if (bindings) {
+                  for (let i = 0; i < bindings.length; i += 1) {
+                    const binding = bindings[i];
+                    if (binding === '_') continue;
+                    const payloadWasm = this.typeExprToWasm(variant.params[i], arm.pattern.location) ?? 'i32';
+                    addLocal(binding, payloadWasm);
+                  }
+                }
+              }
+            }
+          }
+          arm.body?.body?.forEach(walk);
+        }
       } else if (stmt.type === 'Block') {
         stmt.body?.forEach(walk);
       }
@@ -519,15 +583,32 @@ class WasmBuilder {
           lines.push(...this.emitIf(stmt));
           break;
         case 'While':
-        case 'MatchStmt':
+          this.reportUnsupported(stmt.type, stmt.location);
+          lines.push('unreachable');
+          break;
+        case 'MatchStmt': {
+          const lowered = this.emitSimpleEnumMatchStmt(stmt);
+          if (lowered) {
+            lines.push(...lowered);
+          } else {
+            this.reportUnsupported(stmt.type, stmt.location);
+            lines.push('unreachable');
+          }
+          break;
+        }
         case 'TraitDecl':
         case 'ImplDecl':
         case 'StructDecl':
         case 'EnumDecl':
         case 'TypeDecl':
         case 'Import':
-          this.reportUnsupported(stmt.type, stmt.location);
-          lines.push('unreachable');
+          if (stmt.type === 'EnumDecl') {
+            // Top-level enums are type-level metadata in this backend.
+            lines.push('nop');
+          } else {
+            this.reportUnsupported(stmt.type, stmt.location);
+            lines.push('unreachable');
+          }
           break;
         default:
           lines.push('nop');
@@ -563,6 +644,183 @@ class WasmBuilder {
     return lines;
   }
 
+  private getMatchTempName(stmt: Extract<LuminaStatement, { type: 'MatchStmt' }>): string {
+    const base = stmt.location?.start?.offset ?? this.matchCounter++;
+    return `__match_${base}`;
+  }
+
+  private resolveEnumVariantInfo(enumName: string, variant: string): WasmEnumVariantInfo | null {
+    const variants = this.enumLayout.get(enumName);
+    if (!variants) return null;
+    return variants.get(variant) ?? null;
+  }
+
+  private enumUsesHeapRepresentation(enumName: string): boolean {
+    const variants = this.enumLayout.get(enumName);
+    if (!variants) return false;
+    for (const variant of variants.values()) {
+      if (variant.arity > 0) return true;
+    }
+    return false;
+  }
+
+  private typeExprToWasm(typeExpr: LuminaTypeExpr, location?: Location): WasmValType | null {
+    if (typeof typeExpr === 'string') {
+      const parsed = parseTypeName(typeExpr);
+      const base = normalizeTargetTypeName(parsed?.base ?? typeExpr);
+      if (
+        base === 'bool' ||
+        base === 'i8' ||
+        base === 'i16' ||
+        base === 'i32' ||
+        base === 'u8' ||
+        base === 'u16' ||
+        base === 'u32' ||
+        base === 'int' ||
+        base === 'usize'
+      ) {
+        return 'i32';
+      }
+      if (base === 'f32' || base === 'f64' || base === 'float') {
+        return 'f64';
+      }
+      this.reportUnsupported(`enum payload type '${base}' in WASM backend`, location, 'WASM-GADT-001');
+      return null;
+    }
+    this.reportUnsupported('non-string enum payload type in WASM backend', location, 'WASM-GADT-001');
+    return null;
+  }
+
+  private emitEnumAlloc(
+    enumName: string,
+    variant: WasmEnumVariantInfo,
+    payloadExprs: LuminaExpr[],
+    location?: Location
+  ): string[] {
+    const lines: string[] = [];
+    const slotSize = 8;
+    const totalSize = 8 + slotSize * variant.arity;
+    lines.push(`i32.const ${totalSize}`);
+    lines.push('call $alloc');
+    lines.push('local.tee $__enum_tmp');
+    lines.push(`i32.const ${variant.tag}`);
+    lines.push('i32.store');
+    if (variant.arity !== payloadExprs.length) {
+      this.reportUnsupported(
+        `enum constructor payload arity ${payloadExprs.length} does not match variant arity ${variant.arity} for '${enumName}'`,
+        location,
+        'WASM-GADT-001'
+      );
+      lines.push('unreachable');
+      lines.push('local.get $__enum_tmp');
+      return lines;
+    }
+    for (let i = 0; i < variant.arity; i += 1) {
+      const payloadType = this.typeExprToWasm(variant.params[i], location);
+      if (!payloadType) {
+        lines.push('unreachable');
+        continue;
+      }
+      lines.push('local.get $__enum_tmp');
+      lines.push(`i32.const ${8 + i * slotSize}`);
+      lines.push('i32.add');
+      lines.push(...this.emitExpr(payloadExprs[i]));
+      lines.push(payloadType === 'f64' ? 'f64.store' : 'i32.store');
+    }
+    lines.push('local.get $__enum_tmp');
+    return lines;
+  }
+
+  private extractSimpleEnumPatternBindings(
+    pattern: Extract<LuminaMatchPattern, { type: 'EnumPattern' }>,
+    arity: number
+  ): string[] | null {
+    if (arity === 0) return [];
+    const nested = pattern.patterns ?? [];
+    if (nested.length > 0) {
+      if (nested.length !== arity) return null;
+      const out: string[] = [];
+      for (const n of nested) {
+        if (n.type === 'BindingPattern') {
+          out.push(n.name);
+          continue;
+        }
+        if (n.type === 'WildcardPattern') {
+          out.push('_');
+          continue;
+        }
+        return null;
+      }
+      return out;
+    }
+    if (pattern.bindings.length > 0) {
+      if (pattern.bindings.length !== arity) return null;
+      return [...pattern.bindings];
+    }
+    return null;
+  }
+
+  private emitSimpleEnumMatchStmt(stmt: Extract<LuminaStatement, { type: 'MatchStmt' }>): string[] | null {
+    const matchTemp = this.getMatchTempName(stmt);
+    const matchLines = this.emitExpr(stmt.value);
+    const label = `$match_end_${this.matchCounter++}`;
+    const lines: string[] = [];
+    lines.push(...matchLines);
+    lines.push(`local.set $${matchTemp}`);
+    lines.push(`(block ${label}`);
+    let hasFallback = false;
+
+    for (const arm of stmt.arms) {
+      if (arm.guard) return null;
+      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern') {
+        if (arm.pattern.type === 'BindingPattern') {
+          lines.push(`  local.get $${matchTemp}`);
+          lines.push(`  local.set $${arm.pattern.name}`);
+        }
+        const bodyLines = this.emitBlock(arm.body.body ?? []);
+        lines.push(...bodyLines.map((line) => `  ${line}`));
+        lines.push(`  br ${label}`);
+        hasFallback = true;
+        break;
+      }
+      if (arm.pattern.type !== 'EnumPattern') return null;
+      const enumName = arm.pattern.enumName;
+      if (!enumName) return null;
+      const variantInfo = this.resolveEnumVariantInfo(enumName, arm.pattern.variant);
+      if (!variantInfo) return null;
+      const heapEnum = this.enumUsesHeapRepresentation(enumName);
+      const payloadBindings = this.extractSimpleEnumPatternBindings(arm.pattern, variantInfo.arity);
+      if (!payloadBindings) return null;
+
+      lines.push(`  local.get $${matchTemp}`);
+      if (heapEnum) lines.push('  i32.load');
+      lines.push(`  i32.const ${variantInfo.tag}`);
+      lines.push('  i32.eq');
+      lines.push('  if');
+      for (let i = 0; i < payloadBindings.length; i += 1) {
+        const payloadBinding = payloadBindings[i];
+        if (payloadBinding === '_') continue;
+        const payloadType = this.typeExprToWasm(variantInfo.params[i], arm.pattern.location);
+        if (!payloadType) return null;
+        lines.push(`    local.get $${matchTemp}`);
+        lines.push(`    i32.const ${8 + i * 8}`);
+        lines.push('    i32.add');
+        lines.push(`    ${payloadType === 'f64' ? 'f64.load' : 'i32.load'}`);
+        lines.push(`    local.set $${payloadBinding}`);
+      }
+      const bodyLines = this.emitBlock(arm.body.body ?? []);
+      lines.push(...bodyLines.map((line) => `    ${line}`));
+      lines.push(`    br ${label}`);
+      lines.push('  end');
+    }
+
+    if (!hasFallback) {
+      lines.push('  unreachable');
+    }
+    lines.push(')');
+    return lines;
+  }
+
   private exprReturnsValue(expr: LuminaExpr): boolean {
     if (typeof expr.id !== 'number') return true;
     const type = this.exprTypes.get(expr.id);
@@ -577,11 +835,52 @@ class WasmBuilder {
         return [this.emitNumber(expr)];
       case 'Boolean':
         return [`i32.const ${expr.value ? 1 : 0}`];
+      case 'Member': {
+        if (expr.object.type !== 'Identifier') {
+          this.reportUnsupported('member expression', expr.location);
+          return ['unreachable'];
+        }
+        const enumName = expr.object.name;
+        const variantInfo = this.resolveEnumVariantInfo(enumName, expr.property);
+        if (!variantInfo) {
+          this.reportUnsupported(`member '${expr.object.name}.${expr.property}'`, expr.location);
+          return ['unreachable'];
+        }
+        if (variantInfo.arity !== 0) {
+          this.reportUnsupported(
+            `enum variant '${expr.object.name}.${expr.property}' payload in WASM backend`,
+            expr.location,
+            'WASM-GADT-001'
+          );
+          return ['unreachable'];
+        }
+        if (this.enumUsesHeapRepresentation(enumName)) {
+          return this.emitEnumAlloc(enumName, variantInfo, [], expr.location);
+        }
+        return [`i32.const ${variantInfo.tag}`];
+      }
       case 'Try':
         this.reportUnsupported('try operator', expr.location);
         return ['unreachable'];
       case 'Identifier':
         return [`local.get $${expr.name}`];
+      case 'IsExpr': {
+        const enumName = expr.enumName;
+        if (!enumName) {
+          this.reportUnsupported('is expression without enum name in WASM backend', expr.location, 'WASM-GADT-001');
+          return ['unreachable'];
+        }
+        const variantInfo = this.resolveEnumVariantInfo(enumName, expr.variant);
+        if (!variantInfo) {
+          this.reportUnsupported(`unknown enum variant '${enumName}.${expr.variant}'`, expr.location, 'WASM-GADT-001');
+          return ['unreachable'];
+        }
+        const valueLines = this.emitExpr(expr.value);
+        if (this.enumUsesHeapRepresentation(enumName)) {
+          return [...valueLines, 'i32.load', `i32.const ${variantInfo.tag}`, 'i32.eq'];
+        }
+        return [...valueLines, `i32.const ${variantInfo.tag}`, 'i32.eq'];
+      }
       case 'Cast': {
         const valueLines = this.emitExpr(expr.expr);
         const targetTypeName = typeof expr.targetType === 'string' ? expr.targetType : 'any';
@@ -660,7 +959,30 @@ class WasmBuilder {
     return [...this.emitExpr(expr.left), ...this.emitExpr(expr.right), op];
   }
 
-  private emitCall(expr: { callee: { name: string }; args: LuminaExpr[]; location?: Location }): string[] {
+  private emitCall(expr: Extract<LuminaExpr, { type: 'Call' }>): string[] {
+    if (expr.enumName) {
+      const variantInfo = this.resolveEnumVariantInfo(expr.enumName, expr.callee.name);
+      if (!variantInfo) {
+        this.reportUnsupported(`unknown enum variant '${expr.enumName}.${expr.callee.name}'`, expr.location, 'WASM-GADT-001');
+        return ['unreachable'];
+      }
+      const argCount = expr.args?.length ?? 0;
+      if (variantInfo.arity !== argCount) {
+        this.reportUnsupported(
+          `enum constructor '${expr.enumName}.${expr.callee.name}' arity mismatch in WASM backend`,
+          expr.location,
+          'WASM-GADT-001'
+        );
+        return ['unreachable'];
+      }
+      if (variantInfo.arity === 0) {
+        if (this.enumUsesHeapRepresentation(expr.enumName)) {
+          return this.emitEnumAlloc(expr.enumName, variantInfo, [], expr.location);
+        }
+        return [`i32.const ${variantInfo.tag}`];
+      }
+      return this.emitEnumAlloc(expr.enumName, variantInfo, expr.args ?? [], expr.location);
+    }
     const args: string[] = [];
     for (const arg of expr.args ?? []) {
       args.push(...this.emitExpr(arg));
@@ -718,6 +1040,12 @@ class WasmBuilder {
     if (pruned.kind === 'adt' && pruned.name === 'Array') {
       return 'i32';
     }
+    if (pruned.kind === 'adt') {
+      const variants = this.enumLayout.get(pruned.name);
+      if (variants) {
+        return 'i32';
+      }
+    }
     this.reportUnsupported(`type '${this.formatType(pruned)}'`, location);
     return null;
   }
@@ -750,11 +1078,11 @@ class WasmBuilder {
     return type.kind;
   }
 
-  private reportUnsupported(feature: string, location?: Location) {
+  private reportUnsupported(feature: string, location?: Location, code: string = 'WASM-001') {
     this.diagnostics.push({
       severity: 'error',
       message: `WASM backend: unsupported ${feature}`,
-      code: 'WASM-001',
+      code,
       location: location ?? defaultLocation,
       source: 'lumina',
     });

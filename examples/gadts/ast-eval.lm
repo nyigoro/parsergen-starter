@@ -1,0 +1,16 @@
+enum Expr<T> {
+  Lit(i32): Expr<i32>,
+  Add(Expr<i32>, Expr<i32>): Expr<i32>
+}
+
+fn eval(e: Expr<i32>) -> i32 {
+  match e {
+    Expr.Lit(n) => n,
+    Expr.Add(a, b) => eval(a) + eval(b)
+  }
+}
+
+fn main() {
+  let value = Expr.Add(Expr.Lit(40), Expr.Lit(2));
+  io.println(str.from_int(eval(value)));
+}

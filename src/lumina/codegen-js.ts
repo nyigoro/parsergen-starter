@@ -834,8 +834,11 @@ class JSGenerator {
 
   private emitMatchStatement(stmt: Extract<LuminaStatement, { type: 'MatchStmt' }>): void {
     const matchId = `__match_val_${this.matchCounter++}`;
-    const matchDone = `__match_done_${this.matchCounter++}`;
     const pad = this.pad();
+    if (this.emitEnumTagSwitchMatchStatement(stmt, matchId, pad)) {
+      return;
+    }
+    const matchDone = `__match_done_${this.matchCounter++}`;
     this.builder.append(
       `${pad}const ${matchId} = `,
       stmt.type,
@@ -878,6 +881,84 @@ class JSGenerator {
     this.builder.append(`${pad}}\n`);
   }
 
+  private canUseEnumTagSwitchArms(
+    arms: Array<{ pattern: LuminaMatchPattern; guard?: LuminaExpr | null }>
+  ): boolean {
+    const isSimpleNestedPayloadPattern = (pattern: LuminaMatchPattern): boolean => {
+      if (pattern.type === 'BindingPattern' || pattern.type === 'WildcardPattern') return true;
+      return false;
+    };
+    let hasEnumPattern = false;
+    let catchAllCount = 0;
+    for (const arm of arms) {
+      if (arm.guard) return false;
+      if (arm.pattern.type === 'EnumPattern') {
+        hasEnumPattern = true;
+        if (arm.pattern.patterns && arm.pattern.patterns.length > 0) {
+          for (const nested of arm.pattern.patterns) {
+            if (!isSimpleNestedPayloadPattern(nested)) return false;
+          }
+        }
+        continue;
+      }
+      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern') {
+        catchAllCount += 1;
+        if (catchAllCount > 1) return false;
+        continue;
+      }
+      return false;
+    }
+    return hasEnumPattern;
+  }
+
+  private emitEnumTagSwitchMatchStatement(
+    stmt: Extract<LuminaStatement, { type: 'MatchStmt' }>,
+    matchId: string,
+    pad: string
+  ): boolean {
+    if (!this.canUseEnumTagSwitchArms(stmt.arms)) return false;
+    const tagId = `__match_tag_${this.matchCounter++}`;
+    this.builder.append(
+      `${pad}const ${matchId} = `,
+      stmt.type,
+      stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+    );
+    this.builder.appendExpr(this.emitExpr(stmt.value));
+    this.builder.append(';\n');
+    this.builder.append(`${pad}const ${tagId} = (${matchId} && (${matchId}.$tag ?? ${matchId}.tag));\n`);
+    this.builder.append(`${pad}switch (${tagId}) {\n`);
+    this.indentLevel++;
+    let hasDefault = false;
+    for (const arm of stmt.arms) {
+      if (arm.pattern.type === 'EnumPattern') {
+        this.builder.append(`${this.pad()}case ${JSON.stringify(arm.pattern.variant)}: {\n`);
+      } else {
+        hasDefault = true;
+        this.builder.append(`${this.pad()}default: {\n`);
+      }
+      this.indentLevel++;
+      for (const line of this.emitPatternBindingLines(arm.pattern, matchId, 'const')) {
+        this.builder.append(`${this.pad()}${line}\n`);
+      }
+      for (const s of arm.body.body) {
+        this.emitStatement(s);
+      }
+      this.builder.append(`${this.pad()}break;\n`);
+      this.indentLevel--;
+      this.builder.append(`${this.pad()}}\n`);
+    }
+    if (!hasDefault) {
+      this.builder.append(`${this.pad()}default: {\n`);
+      this.indentLevel++;
+      this.builder.append(`${this.pad()}throw new Error("Exhaustiveness failure");\n`);
+      this.indentLevel--;
+      this.builder.append(`${this.pad()}}\n`);
+    }
+    this.indentLevel--;
+    this.builder.append(`${pad}}\n`);
+    return true;
+  }
+
   private emitPatternCondition(pattern: LuminaMatchPattern, valueExpr: string): string {
     switch (pattern.type) {
       case 'WildcardPattern':
@@ -900,13 +981,13 @@ class JSGenerator {
         return clauses.join(' && ');
       }
       case 'EnumPattern': {
-        const clauses = [`((${valueExpr}?.$tag ?? ${valueExpr}?.tag) === ${JSON.stringify(pattern.variant)})`];
+        const clauses = [`${valueExpr} != null`, `((${valueExpr}.$tag ?? ${valueExpr}.tag) === ${JSON.stringify(pattern.variant)})`];
         if (pattern.patterns && pattern.patterns.length > 0) {
           pattern.patterns.forEach((nested, idx) => {
             const payloadExpr =
               pattern.patterns && pattern.patterns.length === 1
-                ? `${valueExpr}?.$payload`
-                : `${valueExpr}?.$payload?.[${idx}]`;
+                ? `${valueExpr}.$payload`
+                : `${valueExpr}.$payload[${idx}]`;
             clauses.push(this.emitPatternCondition(nested, payloadExpr));
           });
         }
@@ -1378,6 +1459,8 @@ class JSGenerator {
     value: LuminaExpr,
     arms: Array<{ pattern: LuminaMatchPattern; guard?: LuminaExpr | null; body: LuminaExpr }>
   ): EmitResult {
+    const switched = this.emitEnumTagSwitchMatchExpr(value, arms);
+    if (switched) return switched;
     const matchId = `__match_val_${this.matchCounter++}`;
     const doneId = `__match_done_${this.matchCounter++}`;
     const resultId = `__match_result_${this.matchCounter++}`;
@@ -1437,6 +1520,68 @@ class JSGenerator {
     }
     add(`if (!${doneId}) throw new Error("Exhaustiveness failure");\n`);
     add(`return ${resultId};\n`);
+    add('})()');
+    return result;
+  }
+
+  private emitEnumTagSwitchMatchExpr(
+    value: LuminaExpr,
+    arms: Array<{ pattern: LuminaMatchPattern; guard?: LuminaExpr | null; body: LuminaExpr }>
+  ): EmitResult | null {
+    if (!this.canUseEnumTagSwitchArms(arms)) return null;
+    const matchId = `__match_val_${this.matchCounter++}`;
+    const tagId = `__match_tag_${this.matchCounter++}`;
+    const result: EmitResult = { code: '', mappings: [] };
+    const concat = (...parts: Array<string | EmitResult>): EmitResult => {
+      let code = '';
+      const mappings: EmitMapping[] = [];
+      for (const part of parts) {
+        if (typeof part === 'string') {
+          code += part;
+          continue;
+        }
+        for (const mapping of part.mappings) {
+          mappings.push({ offset: mapping.offset + code.length, source: mapping.source });
+        }
+        code += part.code;
+      }
+      return { code, mappings };
+    };
+    const add = (piece: string | EmitResult) => {
+      const combined = concat(result, piece);
+      result.code = combined.code;
+      result.mappings = combined.mappings;
+    };
+
+    add('(() => {\n');
+    add(`const ${matchId} = `);
+    add(this.emitExpr(value));
+    add(';\n');
+    add(`const ${tagId} = (${matchId} && (${matchId}.$tag ?? ${matchId}.tag));\n`);
+    add(`switch (${tagId}) {\n`);
+    let hasDefault = false;
+    for (const arm of arms) {
+      if (arm.pattern.type === 'EnumPattern') {
+        add(`case ${JSON.stringify(arm.pattern.variant)}: {\n`);
+      } else {
+        hasDefault = true;
+        add('default: {\n');
+      }
+      for (const line of this.emitPatternBindingLines(arm.pattern, matchId, 'const')) {
+        add(`  ${line}\n`);
+      }
+      add('  return ');
+      add(this.emitExpr(arm.body));
+      add(';\n');
+      add('}\n');
+    }
+    if (!hasDefault) {
+      add('default: {\n');
+      add('  throw new Error("Exhaustiveness failure");\n');
+      add('}\n');
+    }
+    add('}\n');
+    add('throw new Error("Exhaustiveness failure");\n');
     add('})()');
     return result;
   }

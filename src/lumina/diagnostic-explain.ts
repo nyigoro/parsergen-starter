@@ -38,6 +38,17 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
       'Add a wildcard arm `_ => ...` when a catch-all branch is acceptable.',
     ],
   },
+  'LUM-004': {
+    code: 'LUM-004',
+    title: 'Unreachable match arm',
+    summary: 'A pattern can never match because earlier arms or type indices already exclude it.',
+    why: 'GADT index refinement and match ordering can make later patterns impossible to reach.',
+    howToFix: [
+      'Remove the unreachable arm.',
+      'Reorder match arms if the current ordering is accidental.',
+      'Check index constraints in enum variant result types.',
+    ],
+  },
   'TYPE-CAST': {
     code: 'TYPE-CAST',
     title: 'Invalid cast',
@@ -86,6 +97,28 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
     howToFix: [
       'Align array literal length with the declared const size.',
       'Verify computed const expressions (for example `R * C`).',
+    ],
+  },
+  'GADT-006': {
+    code: 'GADT-006',
+    title: 'Escaped existential type',
+    summary: 'A value bound from an existential GADT pattern escapes the scope where it is valid.',
+    why: 'Existential type parameters are local witnesses introduced by a specific pattern arm.',
+    howToFix: [
+      'Consume the existential value inside the same arm.',
+      'Return a concrete erased value instead of the existential itself.',
+      'Move logic into a trait method constrained by the existential bound.',
+    ],
+  },
+  'WASM-GADT-001': {
+    code: 'WASM-GADT-001',
+    title: 'WASM GADT lowering limit',
+    summary: 'The current WASM backend cannot lower this GADT/enum payload form.',
+    why: 'WASM codegen currently supports only discriminant-only enum lowering in this path.',
+    howToFix: [
+      'Use the JavaScript backend for payload-carrying GADTs.',
+      'Restrict this WASM-targeted enum use to zero-payload variants.',
+      'Refactor complex pattern logic into numeric/tag-only representations.',
     ],
   },
   'ARRAY-SIZE-MISMATCH': {
@@ -144,4 +177,3 @@ export function formatDiagnosticExplanation(code?: string | number): string {
   ];
   return lines.join('\n');
 }
-

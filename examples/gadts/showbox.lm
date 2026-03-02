@@ -1,0 +1,28 @@
+trait Show {
+  fn show(self: Self) -> string;
+}
+
+struct User {
+  name: string
+}
+
+impl Show for User {
+  fn show(self: Self) -> string {
+    str.concat("User(", str.concat(self.name, ")"))
+  }
+}
+
+enum ShowBox {
+  Box exists <T>(T): ShowBox where T: Show
+}
+
+fn describe(box: ShowBox) -> string {
+  match box {
+    ShowBox.Box(_) => "hidden showable value"
+  }
+}
+
+fn main() {
+  let b = ShowBox.Box(User { name: "alice" });
+  io.println(describe(b));
+}

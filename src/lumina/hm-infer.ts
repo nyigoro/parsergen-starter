@@ -55,9 +55,23 @@ interface EnumInfo {
 }
 
 interface EnumVariantInfo {
+  name: string;
   params: LuminaTypeExpr[];
   resultType?: LuminaTypeExpr | null;
   existentialTypeParams?: string[];
+  location?: Location;
+}
+
+interface ExistentialWitness {
+  id: number;
+  name: string;
+  enumName: string;
+  variantName: string;
+  location?: Location;
+}
+
+interface PatternRefinementContext {
+  existentialWitnesses: ExistentialWitness[];
 }
 
 interface StructInfo {
@@ -1263,16 +1277,18 @@ function inferStatement(
         undefined,
         inAsync
       );
+      const matchEntrySubst = new Map<number, Type>(subst);
       for (const arm of stmt.arms) {
         const armEnv = env.child();
+        const armSubst = new Map<number, Type>(matchEntrySubst);
         if (scrutineeType) {
-          applyMatchPattern(arm.pattern, scrutineeType, armEnv, subst, diagnostics, enumRegistry);
+          applyMatchPattern(arm.pattern, scrutineeType, armEnv, armSubst, diagnostics, enumRegistry);
         }
         if (arm.guard) {
           const guardType = inferExpr(
             arm.guard,
             armEnv,
-            subst,
+            armSubst,
             diagnostics,
             enumRegistry,
             structRegistry,
@@ -1282,7 +1298,7 @@ function inferStatement(
             inAsync
           );
           if (guardType) {
-            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, armSubst, diagnostics, {
               location: arm.guard.location,
               note: 'Match guard must be a bool',
             });
@@ -1292,7 +1308,7 @@ function inferStatement(
           inferStatement(
             bodyStmt,
             armEnv,
-            subst,
+            armSubst,
             diagnostics,
             currentReturn,
             inferredLets,
@@ -2892,14 +2908,25 @@ function inferExpr(
       const scrutineeType = inferChild(expr.value);
       if (!scrutineeType) return null;
       let resultType: Type | null = null;
+      const matchEntrySubst = new Map<number, Type>(subst);
       for (const arm of expr.arms) {
         const armEnv = env.child();
-        applyMatchPattern(arm.pattern, scrutineeType, armEnv, subst, diagnostics, enumRegistry);
+        const armSubst = new Map<number, Type>(matchEntrySubst);
+        const armPatternContext: PatternRefinementContext = { existentialWitnesses: [] };
+        applyMatchPattern(
+          arm.pattern,
+          scrutineeType,
+          armEnv,
+          armSubst,
+          diagnostics,
+          enumRegistry,
+          armPatternContext
+        );
         if (arm.guard) {
           const guardType = inferExpr(
             arm.guard,
             armEnv,
-            subst,
+            armSubst,
             diagnostics,
             enumRegistry,
             structRegistry,
@@ -2909,7 +2936,7 @@ function inferExpr(
             inAsync
           );
           if (guardType) {
-            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, armSubst, diagnostics, {
               location: arm.guard.location,
               note: 'Match guard must be a bool',
             });
@@ -2918,7 +2945,7 @@ function inferExpr(
         const armType = inferExpr(
           arm.body,
           armEnv,
-          subst,
+          armSubst,
           diagnostics,
           enumRegistry,
           structRegistry,
@@ -2928,10 +2955,25 @@ function inferExpr(
           inAsync
         );
         if (!armType) continue;
-        if (!resultType) {
-          resultType = armType;
+        reportEscapedExistentials(
+          armType,
+          armPatternContext.existentialWitnesses,
+          armSubst,
+          diagnostics,
+          arm.body.location ?? arm.location ?? expr.location
+        );
+        const resolvedArmType = normalizeType(armType, armSubst);
+        if (expectedType) {
+          // Under branch-local GADT refinements, each arm must satisfy the expected type.
+          tryUnify(resolvedArmType, expectedType, armSubst, diagnostics, {
+            location: arm.location,
+            note: 'Match arm must satisfy expected type under pattern refinement',
+          });
+          resultType = expectedType;
+        } else if (!resultType) {
+          resultType = resolvedArmType;
         } else {
-          tryUnify(resultType, armType, subst, diagnostics, {
+          tryUnify(resultType, resolvedArmType, subst, diagnostics, {
             location: arm.location,
             note: 'Match arms must return the same type',
           });
@@ -3450,9 +3492,11 @@ function buildEnumRegistry(program: LuminaProgram): Map<string, EnumInfo> {
     const variants = new Map<string, EnumVariantInfo>();
     for (const variant of stmt.variants) {
       variants.set(variant.name, {
+        name: variant.name,
         params: variant.params ?? [],
         resultType: variant.resultType ?? null,
         existentialTypeParams: (variant.existentialTypeParams ?? []).map((param) => param.name),
+        location: variant.location,
       });
     }
     registry.set(stmt.name, { typeParams, variants });
@@ -3483,13 +3527,25 @@ function instantiateEnumVariantTypes(
   resultType: Type;
   paramTypes: Type[];
   variantParamTypes: Type[];
+  existentialWitnesses: ExistentialWitness[];
 } {
   const paramTypes = info.typeParams.map(() => freshTypeVar());
   const typeParamMap = new Map<string, Type>();
   info.typeParams.forEach((name, idx) => typeParamMap.set(name, paramTypes[idx]));
+  const existentialWitnesses: ExistentialWitness[] = [];
 
   for (const name of variant.existentialTypeParams ?? []) {
-    typeParamMap.set(name, freshTypeVar());
+    const variable = freshTypeVar();
+    typeParamMap.set(name, variable);
+    if (variable.kind === 'variable') {
+      existentialWitnesses.push({
+        id: variable.id,
+        name,
+        enumName,
+        variantName: variant.name,
+        location: variant.location,
+      });
+    }
   }
 
   const enumType: Type = { kind: 'adt', name: enumName, params: paramTypes };
@@ -3498,7 +3554,7 @@ function instantiateEnumVariantTypes(
     : enumType;
   const variantParamTypes = (variant.params ?? []).map((param) => parseTypeNameWithEnv(param, typeParamMap));
 
-  return { enumType, resultType, paramTypes, variantParamTypes };
+  return { enumType, resultType, paramTypes, variantParamTypes, existentialWitnesses };
 }
 
 function inferEnumConstructor(
@@ -3567,7 +3623,8 @@ function applyMatchPattern(
   env: TypeEnv,
   subst: Subst,
   diagnostics: Diagnostic[],
-  enumRegistry?: Map<string, EnumInfo>
+  enumRegistry?: Map<string, EnumInfo>,
+  context?: PatternRefinementContext
 ) {
   if (pattern.type === 'WildcardPattern') return;
   if (pattern.type === 'BindingPattern') {
@@ -3589,7 +3646,7 @@ function applyMatchPattern(
     const tupleType: Type = { kind: 'adt', name: 'Tuple', params: elementTypes };
     tryUnify(scrutineeType, tupleType, subst, diagnostics, { location: pattern.location, note: 'Tuple pattern type' });
     pattern.elements.forEach((element, idx) => {
-      applyMatchPattern(element, elementTypes[idx], env, subst, diagnostics, enumRegistry);
+      applyMatchPattern(element, elementTypes[idx], env, subst, diagnostics, enumRegistry, context);
     });
     return;
   }
@@ -3615,7 +3672,7 @@ function applyMatchPattern(
         const fieldTypeName = info.fields.get(field.name);
         if (!fieldTypeName) continue;
         const fieldType = parseTypeNameWithEnv(fieldTypeName, mapping);
-        applyMatchPattern(field.pattern, fieldType, env, subst, diagnostics, enumRegistry);
+        applyMatchPattern(field.pattern, fieldType, env, subst, diagnostics, enumRegistry, context);
       }
       return;
     }
@@ -3647,7 +3704,28 @@ function applyMatchPattern(
     });
     return;
   }
+  if (!variantCanMatchScrutinee(enumName, info, variantInfo, scrutineeType, subst)) {
+    diagnostics.push({
+      severity: 'warning',
+      code: 'LUM-004',
+      message: `Unreachable pattern '${enumName}.${pattern.variant}' for scrutinee type '${formatType(scrutineeType, subst)}'`,
+      source: 'lumina',
+      location: diagLocation(pattern.location),
+      relatedInformation: variantInfo.resultType
+        ? [
+            {
+              location: diagLocation(variantInfo.location ?? pattern.location),
+              message: `Variant '${enumName}.${pattern.variant}' constructs '${formatTypeAnnotation(variantInfo.resultType)}'`,
+            },
+          ]
+        : undefined,
+    });
+    return;
+  }
   const instantiated = instantiateEnumVariantTypes(enumName, info, variantInfo);
+  if (context) {
+    context.existentialWitnesses.push(...instantiated.existentialWitnesses);
+  }
   tryUnify(scrutineeType, instantiated.resultType, subst, diagnostics, {
     location: pattern.location,
     note: `Pattern '${enumName}.${pattern.variant}' refines the scrutinee type`,
@@ -3656,7 +3734,7 @@ function applyMatchPattern(
   if (nestedPatterns.length > 0) {
     for (let i = 0; i < nestedPatterns.length && i < instantiated.variantParamTypes.length; i++) {
       const expected = instantiated.variantParamTypes[i];
-      applyMatchPattern(nestedPatterns[i], expected, env, subst, diagnostics, enumRegistry);
+      applyMatchPattern(nestedPatterns[i], expected, env, subst, diagnostics, enumRegistry, context);
     }
     return;
   }
@@ -3665,6 +3743,35 @@ function applyMatchPattern(
     if (binding === '_') continue;
     const expected = instantiated.variantParamTypes[i];
     env.extend(binding, { kind: 'scheme', variables: [], type: expected });
+  }
+}
+
+function reportEscapedExistentials(
+  type: Type,
+  witnesses: ExistentialWitness[],
+  subst: Subst,
+  diagnostics: Diagnostic[],
+  location?: Location
+): void {
+  if (witnesses.length === 0) return;
+  const free = freeTypeVars(type, subst);
+  for (const witness of witnesses) {
+    if (!free.has(witness.id)) continue;
+    diagnostics.push({
+      severity: 'error',
+      code: 'GADT-006',
+      message: `Existential type '${witness.name}' from pattern '${witness.enumName}.${witness.variantName}' escapes its match arm`,
+      source: 'lumina',
+      location: diagLocation(location ?? witness.location),
+      relatedInformation: witness.location
+        ? [
+            {
+              location: diagLocation(witness.location),
+              message: `Existential '${witness.name}' is introduced here`,
+            },
+          ]
+        : undefined,
+    });
   }
 }
 
@@ -3927,7 +4034,7 @@ function formatType(type: Type, subst: Subst): string {
 }
 
 function checkMatchExhaustiveness(
-  arms: Array<{ pattern: LuminaMatchPattern }>,
+  arms: Array<{ pattern: LuminaMatchPattern; guard?: LuminaExpr | null }>,
   scrutineeType: Type,
   subst: Subst,
   enumRegistry: Map<string, EnumInfo>,
@@ -3959,19 +4066,48 @@ function checkMatchExhaustiveness(
     }
   }
   const covered = new Set<string>();
-  let hasWildcard = false;
+  let fullyCovered = false;
   for (const arm of arms) {
     const pattern = arm.pattern;
-    if (pattern.type === 'WildcardPattern') {
-      hasWildcard = true;
-      break;
+    const armLoc = pattern.location ?? location;
+    const guardless = !arm.guard;
+    if (fullyCovered) {
+      diagnostics.push({
+        severity: 'warning',
+        code: 'LUM-004',
+        message: 'Unreachable match arm: previous patterns already cover all remaining cases',
+        source: 'lumina',
+        location: diagLocation(armLoc),
+      });
+      continue;
+    }
+    if (pattern.type === 'WildcardPattern' || pattern.type === 'BindingPattern') {
+      if (guardless) {
+        fullyCovered = true;
+      }
+      continue;
     }
     if (pattern.type === 'EnumPattern') {
       if (pattern.enumName && pattern.enumName !== enumName) continue;
-      covered.add(pattern.variant);
+      if (!defined.has(pattern.variant)) {
+        continue;
+      }
+      if (guardless && covered.has(pattern.variant)) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'LUM-004',
+          message: `Unreachable pattern '${enumName}.${pattern.variant}': this variant is already fully matched by an earlier arm`,
+          source: 'lumina',
+          location: diagLocation(armLoc),
+        });
+        continue;
+      }
+      if (guardless) {
+        covered.add(pattern.variant);
+      }
     }
   }
-  if (hasWildcard) return;
+  if (fullyCovered) return;
   const missing = Array.from(defined).filter(name => !covered.has(name));
   if (missing.length === 0) return;
   diagnostics.push({

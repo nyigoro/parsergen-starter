@@ -41,7 +41,27 @@ describe('Lumina AST JS codegen', () => {
     expect(code).toContain('(() =>');
     expect(code).toContain('$tag');
     expect(code).toContain('const v =');
-    expect(code).toContain('__match_result_');
+    expect(code.includes('__match_result_') || code.includes('switch (__match_tag_')).toBe(true);
+  });
+
+  test('optimizes simple enum match expressions to switch-on-tag', () => {
+    const program = `
+      enum Option<T> { Some(T), None }
+      fn main() {
+        let x = Option.Some(1);
+        let y = match x {
+          Option.Some(v) => v,
+          Option.None => 0,
+        };
+        return y;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast);
+    expect(code).toContain('switch (__match_tag_');
+    expect(code).toContain('case "Some"');
+    expect(code).toContain('case "None"');
   });
 
   test('registers Hash/Eq trait impls and tags struct literals', () => {

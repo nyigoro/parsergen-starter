@@ -28,4 +28,74 @@ describe('WASM codegen (WAT)', () => {
     expect(result.wat).toContain('i32.add');
     expect(result.wat).toContain('(export "main" (func $main))');
   });
+
+  it('lowers zero-payload enum matches to tag comparisons', () => {
+    const source = `
+      enum Flag {
+        On,
+        Off
+      }
+
+      fn main() -> int {
+        let f = Flag.On;
+        match f {
+          Flag.On => { return 1; },
+          Flag.Off => { return 0; }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const hardErrors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(hardErrors).toHaveLength(0);
+    expect(result.wat).toContain('i32.eq');
+    expect(result.wat).toContain('$match_end_');
+  });
+
+  it('lowers single-payload enum constructors and payload matches', () => {
+    const source = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>
+      }
+
+      fn main() -> int {
+        let e = Expr.Lit(1);
+        match e {
+          Expr.Lit(v) => { return v; }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.some((d) => d.code === 'WASM-GADT-001')).toBe(false);
+    expect(result.wat).toContain('call $alloc');
+    expect(result.wat).toContain('i32.store');
+    expect(result.wat).toContain('i32.load');
+  });
+
+  it('lowers multi-payload enum constructors and payload matches', () => {
+    const source = `
+      enum Pair {
+        Pair(i32, i32)
+      }
+
+      fn main() -> int {
+        let p = Pair.Pair(1, 2);
+        match p {
+          Pair.Pair(a, b) => { return a + b; }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.some((d) => d.code === 'WASM-GADT-001')).toBe(false);
+    expect(result.wat).toContain('i32.const 24');
+    expect(result.wat).toContain('i32.const 8');
+    expect(result.wat).toContain('i32.const 16');
+    expect(result.wat).toContain('i32.add');
+    expect(result.wat).toContain('i32.load');
+  });
 });

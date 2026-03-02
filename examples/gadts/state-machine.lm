@@ -1,0 +1,19 @@
+struct OpenState {}
+struct ClosedState {}
+
+enum Session<S> {
+  Open(i32): Session<OpenState>,
+  Closed: Session<ClosedState>
+}
+
+fn close(s: Session<OpenState>) -> Session<ClosedState> {
+  match s {
+    Session.Open(_) => Session.Closed
+  }
+}
+
+fn main() {
+  let s = Session.Open(1);
+  let _done = close(s);
+  io.println("closed");
+}
