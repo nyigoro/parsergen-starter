@@ -12,12 +12,18 @@ const buildPrimitive = (name: string): Type => ({
 
 const splitTypeArgs = (input: string): string[] => {
   const result: string[] = [];
-  let depth = 0;
+  let angleDepth = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
   let current = '';
   for (const ch of input) {
-    if (ch === '<') depth++;
-    if (ch === '>') depth--;
-    if (ch === ',' && depth === 0) {
+    if (ch === '<') angleDepth++;
+    if (ch === '>') angleDepth--;
+    if (ch === '(') parenDepth++;
+    if (ch === ')') parenDepth--;
+    if (ch === '{') braceDepth++;
+    if (ch === '}') braceDepth--;
+    if (ch === ',' && angleDepth === 0 && parenDepth === 0 && braceDepth === 0) {
       result.push(current.trim());
       current = '';
       continue;

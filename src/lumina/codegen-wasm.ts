@@ -24,12 +24,18 @@ import { type Location } from '../utils/index.js';
 
 const splitTypeArgs = (input: string): string[] => {
   const result: string[] = [];
-  let depth = 0;
+  let angleDepth = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
   let current = '';
   for (const ch of input) {
-    if (ch === '<') depth += 1;
-    if (ch === '>') depth -= 1;
-    if (ch === ',' && depth === 0) {
+    if (ch === '<') angleDepth += 1;
+    if (ch === '>') angleDepth -= 1;
+    if (ch === '(') parenDepth += 1;
+    if (ch === ')') parenDepth -= 1;
+    if (ch === '{') braceDepth += 1;
+    if (ch === '}') braceDepth -= 1;
+    if (ch === ',' && angleDepth === 0 && parenDepth === 0 && braceDepth === 0) {
       result.push(current.trim());
       current = '';
       continue;
@@ -189,63 +195,134 @@ class WasmBuilder {
     return sizes[normalized] ?? 4;
   }
 
-  private evaluateConstSize(expr: LuminaConstExpr, location?: Location): number | null {
-    switch (expr.type) {
-      case 'ConstLiteral':
-        return expr.value;
-      case 'ConstParam':
-        return null;
-      case 'ConstBinary': {
-        const left = this.evaluateConstSize(expr.left, location ?? expr.location);
-        const right = this.evaluateConstSize(expr.right, location ?? expr.location);
-        if (left === null || right === null) return null;
-        switch (expr.op) {
-          case '+':
-            return left + right;
-          case '-':
-            return left - right;
-          case '*':
-            return left * right;
-          case '/':
-            if (right === 0) return null;
-            return Math.floor(left / right);
-          default:
-            return null;
+  private evaluateConstSize(expr: LuminaConstExpr, _location?: Location): number | null {
+    const evalValue = (node: LuminaConstExpr): number | boolean | null => {
+      switch (node.type) {
+        case 'ConstLiteral':
+          return node.value;
+        case 'ConstParam':
+          return null;
+        case 'ConstUnary': {
+          const value = evalValue(node.expr);
+          if (value == null) return null;
+          if (node.op === '-') return typeof value === 'number' ? -value : null;
+          return typeof value === 'boolean' ? !value : null;
         }
+        case 'ConstBinary': {
+          const left = evalValue(node.left);
+          const right = evalValue(node.right);
+          if (left == null || right == null) return null;
+          switch (node.op) {
+            case '+':
+            case '-':
+            case '*':
+            case '/':
+              if (typeof left !== 'number' || typeof right !== 'number') return null;
+              if (node.op === '+') return left + right;
+              if (node.op === '-') return left - right;
+              if (node.op === '*') return left * right;
+              return right === 0 ? null : Math.floor(left / right);
+            case '<':
+            case '<=':
+            case '>':
+            case '>=':
+              if (typeof left !== 'number' || typeof right !== 'number') return null;
+              if (node.op === '<') return left < right;
+              if (node.op === '<=') return left <= right;
+              if (node.op === '>') return left > right;
+              return left >= right;
+            case '==':
+              return left === right;
+            case '!=':
+              return left !== right;
+            case '&&':
+            case '||':
+              if (typeof left !== 'boolean' || typeof right !== 'boolean') return null;
+              return node.op === '&&' ? left && right : left || right;
+            default:
+              return null;
+          }
+        }
+        case 'ConstCall': {
+          if (node.args.length !== 2) return null;
+          const left = evalValue(node.args[0]);
+          const right = evalValue(node.args[1]);
+          if (typeof left !== 'number' || typeof right !== 'number') return null;
+          if (node.name === 'min') return Math.min(left, right);
+          if (node.name === 'max') return Math.max(left, right);
+          return null;
+        }
+        case 'ConstIf': {
+          const condition = evalValue(node.condition);
+          if (typeof condition !== 'boolean') return null;
+          return evalValue(condition ? node.thenExpr : node.elseExpr);
+        }
+        default:
+          return null;
       }
-      default:
-        return null;
-    }
+    };
+    const value = evalValue(expr);
+    return typeof value === 'number' ? Math.trunc(value) : null;
   }
 
   private evaluateConstSizeText(text: string, location?: Location): number | null {
-    const tokens = text.trim().match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+    const tokens = text.trim().match(/<=|>=|==|!=|\|\||&&|[(){}!,+\-*/<>]|[A-Za-z_][A-Za-z0-9_]*|\d+/g);
     if (!tokens || tokens.length === 0) return null;
-    if (tokens.some((token) => /^[A-Za-z_]/.test(token))) return null;
     let index = 0;
     const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
     const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
-    const parsePrimary = (): number | null => {
+    const match = (token: string): boolean => {
+      if (peek() !== token) return false;
+      consume();
+      return true;
+    };
+    const parsePrimary = (): number | boolean | null => {
       const token = consume();
       if (!token) return null;
       if (/^\d+$/.test(token)) return Number(token);
+      if (token === 'true') return true;
+      if (token === 'false') return false;
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
+        if (peek() === '(' && (token === 'min' || token === 'max')) {
+          consume();
+          const left = parseExpr();
+          if (!match(',')) return null;
+          const right = parseExpr();
+          if (!match(')')) return null;
+          if (typeof left !== 'number' || typeof right !== 'number') return null;
+          return token === 'min' ? Math.min(left, right) : Math.max(left, right);
+        }
+        return null;
+      }
       if (token === '(') {
-        const inner = parseAddSub();
+        const inner = parseExpr();
         if (peek() !== ')') return null;
         consume();
         return inner;
       }
       return null;
     };
-    const parseMulDiv = (): number | null => {
-      let left = parsePrimary();
+    const parseUnary = (): number | boolean | null => {
+      const token = peek();
+      if (token === '-' || token === '!') {
+        consume();
+        const value = parseUnary();
+        if (value == null) return null;
+        if (token === '-') return typeof value === 'number' ? -value : null;
+        return typeof value === 'boolean' ? !value : null;
+      }
+      return parsePrimary();
+    };
+    const parseMulDiv = (): number | boolean | null => {
+      let left = parseUnary();
       if (left === null) return null;
       while (true) {
         const op = peek();
         if (op !== '*' && op !== '/') break;
         consume();
-        const right = parsePrimary();
+        const right = parseUnary();
         if (right === null) return null;
+        if (typeof left !== 'number' || typeof right !== 'number') return null;
         if (op === '*') left *= right;
         else {
           if (right === 0) {
@@ -257,7 +334,7 @@ class WasmBuilder {
       }
       return left;
     };
-    const parseAddSub = (): number | null => {
+    const parseAddSub = (): number | boolean | null => {
       let left = parseMulDiv();
       if (left === null) return null;
       while (true) {
@@ -266,14 +343,81 @@ class WasmBuilder {
         consume();
         const right = parseMulDiv();
         if (right === null) return null;
-        if (op === '+') left += right;
-        else left -= right;
+        if (typeof left !== 'number' || typeof right !== 'number') return null;
+        left = op === '+' ? left + right : left - right;
       }
       return left;
     };
-    const value = parseAddSub();
-    if (value === null || index !== tokens.length) return null;
-    return value;
+    const parseCompare = (): number | boolean | null => {
+      let left = parseAddSub();
+      if (left === null) return null;
+      while (true) {
+        const op = peek();
+        if (op !== '<' && op !== '<=' && op !== '>' && op !== '>=') break;
+        consume();
+        const right = parseAddSub();
+        if (right === null) return null;
+        if (typeof left !== 'number' || typeof right !== 'number') return null;
+        if (op === '<') left = left < right;
+        else if (op === '<=') left = left <= right;
+        else if (op === '>') left = left > right;
+        else left = left >= right;
+      }
+      return left;
+    };
+    const parseEquality = (): number | boolean | null => {
+      let left = parseCompare();
+      if (left === null) return null;
+      while (true) {
+        const op = peek();
+        if (op !== '==' && op !== '!=') break;
+        consume();
+        const right = parseCompare();
+        if (right === null) return null;
+        left = op === '==' ? left === right : left !== right;
+      }
+      return left;
+    };
+    const parseAnd = (): number | boolean | null => {
+      let left = parseEquality();
+      if (left === null) return null;
+      while (match('&&')) {
+        const right = parseEquality();
+        if (right === null) return null;
+        if (typeof left !== 'boolean' || typeof right !== 'boolean') return null;
+        left = left && right;
+      }
+      return left;
+    };
+    const parseOr = (): number | boolean | null => {
+      let left = parseAnd();
+      if (left === null) return null;
+      while (match('||')) {
+        const right = parseAnd();
+        if (right === null) return null;
+        if (typeof left !== 'boolean' || typeof right !== 'boolean') return null;
+        left = left || right;
+      }
+      return left;
+    };
+    const parseIf = (): number | boolean | null => {
+      if (peek() !== 'if') return parseOr();
+      consume();
+      const condition = parseExpr();
+      if (typeof condition !== 'boolean') return null;
+      if (!match('{')) return null;
+      const thenExpr = parseExpr();
+      if (!match('}')) return null;
+      if (!match('else')) return null;
+      if (!match('{')) return null;
+      const elseExpr = parseExpr();
+      if (!match('}')) return null;
+      return condition ? thenExpr : elseExpr;
+    };
+    const parseExpr = (): number | boolean | null => parseIf();
+    const value = parseExpr();
+    if (value === null || index !== tokens.length || typeof value !== 'number') return null;
+    return Math.trunc(value);
   }
 
   emitFunction(fn: LuminaFnDecl): string {

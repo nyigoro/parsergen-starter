@@ -20,9 +20,29 @@ export type PrimitiveName =
   | 'f64';
 
 export type ConstExpr =
-  | { kind: 'const-literal'; value: number }
+  | { kind: 'const-literal'; value: number | boolean }
   | { kind: 'const-param'; name: string }
-  | { kind: 'const-binary'; op: '+' | '-' | '*' | '/'; left: ConstExpr; right: ConstExpr };
+  | {
+      kind: 'const-binary';
+      op:
+        | '+'
+        | '-'
+        | '*'
+        | '/'
+        | '<'
+        | '<='
+        | '>'
+        | '>='
+        | '=='
+        | '!='
+        | '&&'
+        | '||';
+      left: ConstExpr;
+      right: ConstExpr;
+    }
+  | { kind: 'const-unary'; op: '-' | '!'; expr: ConstExpr }
+  | { kind: 'const-call'; name: string; args: ConstExpr[] }
+  | { kind: 'const-if'; condition: ConstExpr; thenExpr: ConstExpr; elseExpr: ConstExpr };
 
 export const HKT_APPLY_TYPE_NAME = '__HKT_APPLY';
 

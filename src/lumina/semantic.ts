@@ -54,6 +54,7 @@ export interface SymbolInfo {
     constType?: string;
     higherKindArity?: number;
   }>;
+  constWhereClauses?: TypeConstExpr[];
   paramTypes?: LuminaType[];
   paramNames?: string[];
   paramRefs?: boolean[];
@@ -97,7 +98,7 @@ export interface TraitMethodSig {
   name: string;
   params: LuminaType[];
   returnType: LuminaType;
-  typeParams: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams: Array<{ name: string; bound?: LuminaType[]; isConst?: boolean; constType?: string }>;
   defaultBody?: LuminaBlock | null;
   location?: Location;
 }
@@ -110,7 +111,7 @@ export interface TraitAssocTypeInfo {
 
 export interface TraitInfo {
   name: string;
-  typeParams: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams: Array<{ name: string; bound?: LuminaType[]; isConst?: boolean; constType?: string }>;
   superTraits: LuminaType[];
   methods: Map<string, TraitMethodSig>;
   associatedTypes: Map<string, TraitAssocTypeInfo>;
@@ -123,7 +124,7 @@ export interface ImplInfo {
   traitName: string;
   traitType: LuminaType;
   forType: LuminaType;
-  typeParams: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams: Array<{ name: string; bound?: LuminaType[]; isConst?: boolean; constType?: string }>;
   methods: Map<string, LuminaFnDecl>;
   associatedTypes: Map<string, LuminaType>;
   visibility?: 'public' | 'private';
@@ -237,11 +238,25 @@ const renderConstExpr = (expr: import('./ast.js').LuminaConstExpr | undefined): 
       return String(expr.value);
     case 'ConstParam':
       return expr.name;
+    case 'ConstUnary':
+      return `${expr.op}${renderConstExpr(expr.expr)}`;
     case 'ConstBinary':
       return `${renderConstExpr(expr.left)}${expr.op}${renderConstExpr(expr.right)}`;
+    case 'ConstCall':
+      return `${expr.name}(${(expr.args ?? []).map((arg) => renderConstExpr(arg)).join(',')})`;
+    case 'ConstIf':
+      return `if ${renderConstExpr(expr.condition)} { ${renderConstExpr(expr.thenExpr)} } else { ${renderConstExpr(expr.elseExpr)} }`;
     default:
       return '_';
   }
+};
+
+const typeArgToText = (
+  arg: string | import('./ast.js').LuminaConstExpr | undefined
+): string => {
+  if (typeof arg === 'string') return arg;
+  if (!arg) return '_';
+  return renderConstExpr(arg);
 };
 
 const resolveTypeExpr = (typeName: LuminaTypeExpr | null | undefined): LuminaType | null => {
@@ -508,6 +523,9 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       const typeParams = stmt.typeParams?.map((param) => ({
         name: param.name,
         bound: (param.bound ?? []).map((bound) => resolveTypeExpr(bound) ?? 'any'),
+        isConst: !!param.isConst,
+        constType: param.constType,
+        higherKindArity: param.higherKindArity,
       }));
       symbols.define({
         name: stmt.name,
@@ -528,6 +546,9 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       const typeParams = stmt.typeParams?.map((param) => ({
         name: param.name,
         bound: (param.bound ?? []).map((bound) => resolveTypeExpr(bound) ?? 'any'),
+        isConst: !!param.isConst,
+        constType: param.constType,
+        higherKindArity: param.higherKindArity,
       }));
       symbols.define({
         name: stmt.name,
@@ -544,6 +565,9 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       const typeParams = stmt.typeParams?.map((param) => ({
         name: param.name,
         bound: (param.bound ?? []).map((bound) => resolveTypeExpr(bound) ?? 'any'),
+        isConst: !!param.isConst,
+        constType: param.constType,
+        higherKindArity: param.higherKindArity,
       }));
       symbols.define({
         name: stmt.name,
@@ -565,7 +589,13 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       const typeParams = stmt.typeParams?.map((param) => ({
         name: param.name,
         bound: (param.bound ?? []).map((bound) => resolveTypeExpr(bound) ?? 'any'),
+        isConst: !!param.isConst,
+        constType: param.constType,
+        higherKindArity: param.higherKindArity,
       }));
+      const constWhereClauses = (stmt.whereClauses ?? [])
+        .map((clause) => parseConstExprText(renderConstExpr(clause)))
+        .filter((clause): clause is TypeConstExpr => clause != null);
       let resolvedReturn = resolveTypeExpr(stmt.returnType) ?? cachedReturn ?? hmReturn ?? undefined;
       if (resolvedReturn && stmt.async) {
         const parsed = parseTypeName(resolvedReturn);
@@ -584,6 +614,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         extern: stmt.extern ?? false,
         uri: options?.currentUri,
         typeParams: typeParams ?? [],
+        constWhereClauses,
         paramTypes: stmt.params.map((p, idx) => resolveTypeExpr(p.typeName) ?? hmParamTypes?.[idx] ?? 'any'),
         paramNames: stmt.params.map((p) => p.name),
         paramRefs: stmt.params.map((p) => !!p.ref),
@@ -860,26 +891,47 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
   const validateConstExpr = (
     expr: import('./ast.js').LuminaConstExpr,
     availableParams: Set<string>,
-    location?: Location
+    location?: Location,
+    availableParamLocations?: Map<string, Location | undefined>
   ): void => {
     switch (expr.type) {
       case 'ConstLiteral':
         return;
       case 'ConstParam':
         if (!availableParams.has(expr.name)) {
+          const related = Array.from((availableParamLocations ?? new Map()).entries())
+            .slice(0, 3)
+            .map(([name, paramLocation]) => ({
+              location: paramLocation ?? location ?? defaultLocation,
+              message: `Declared const parameter '${name}'`,
+            }));
           diagnostics.push(
             diagAt(
               `Const parameter '${expr.name}' is not declared in type parameters`,
               expr.location ?? location,
               'error',
-              'CONST-UNBOUND-PARAM'
+              'CONST-UNBOUND-PARAM',
+              related.length > 0 ? related : undefined
             )
           );
         }
         return;
+      case 'ConstUnary':
+        validateConstExpr(expr.expr, availableParams, location, availableParamLocations);
+        return;
       case 'ConstBinary':
-        validateConstExpr(expr.left, availableParams, location);
-        validateConstExpr(expr.right, availableParams, location);
+        validateConstExpr(expr.left, availableParams, location, availableParamLocations);
+        validateConstExpr(expr.right, availableParams, location, availableParamLocations);
+        return;
+      case 'ConstCall':
+        for (const arg of expr.args ?? []) {
+          validateConstExpr(arg, availableParams, location, availableParamLocations);
+        }
+        return;
+      case 'ConstIf':
+        validateConstExpr(expr.condition, availableParams, location, availableParamLocations);
+        validateConstExpr(expr.thenExpr, availableParams, location, availableParamLocations);
+        validateConstExpr(expr.elseExpr, availableParams, location, availableParamLocations);
         return;
       default:
         return;
@@ -889,15 +941,27 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
   const validateConstExprInType = (
     typeExpr: LuminaTypeExpr | null | undefined,
     availableConstParams: Set<string>,
-    location?: Location
+    location?: Location,
+    availableParamLocations?: Map<string, Location | undefined>
   ): void => {
     if (!typeExpr || typeof typeExpr === 'string' || isTypeHoleExpr(typeExpr)) return;
     if ((typeExpr as { kind?: string }).kind === 'array') {
       const arrayType = typeExpr as import('./ast.js').LuminaArrayType;
       if (arrayType.size) {
-        validateConstExpr(arrayType.size, availableConstParams, location ?? arrayType.location);
+        validateConstExpr(arrayType.size, availableConstParams, location ?? arrayType.location, availableParamLocations);
       }
-      validateConstExprInType(arrayType.element, availableConstParams, location ?? arrayType.location);
+      validateConstExprInType(arrayType.element, availableConstParams, location ?? arrayType.location, availableParamLocations);
+    }
+  };
+
+  const validateConstWhereClauses = (
+    whereClauses: ReadonlyArray<import('./ast.js').LuminaConstExpr> | undefined,
+    availableConstParams: Set<string>,
+    location?: Location,
+    availableParamLocations?: Map<string, Location | undefined>
+  ): void => {
+    for (const clause of whereClauses ?? []) {
+      validateConstExpr(clause, availableConstParams, clause.location ?? location, availableParamLocations);
     }
   };
 
@@ -1157,7 +1221,7 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
         break;
     }
 
-    if (stmt.type === 'StructDecl' || stmt.type === 'EnumDecl') {
+    if (stmt.type === 'StructDecl' || stmt.type === 'EnumDecl' || stmt.type === 'FnDecl' || stmt.type === 'ImplDecl') {
       const declTypeParams = stmt.typeParams as Array<{
         name: string;
         bound?: LuminaType[];
@@ -1165,28 +1229,68 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
         constType?: string;
       }> | undefined;
       validateConstGenericDecl(declTypeParams, stmt.location);
+      const availableConstParamLocations = new Map<string, Location | undefined>(
+        (declTypeParams ?? [])
+          .filter((param) => param.isConst)
+          .map((param) => [param.name, stmt.location] as [string, Location | undefined])
+      );
       const availableConstParams = new Set(
         (declTypeParams ?? []).filter((param) => param.isConst).map((param) => param.name)
       );
       if (stmt.type === 'StructDecl') {
         for (const field of stmt.body ?? []) {
-          validateConstExprInType(field.typeName, availableConstParams, field.location ?? stmt.location);
+          validateConstExprInType(
+            field.typeName,
+            availableConstParams,
+            field.location ?? stmt.location,
+            availableConstParamLocations
+          );
         }
-      } else {
+      } else if (stmt.type === 'EnumDecl') {
         for (const variant of stmt.variants ?? []) {
           for (const paramType of variant.params ?? []) {
-            validateConstExprInType(paramType, availableConstParams, variant.location ?? stmt.location);
+            validateConstExprInType(
+              paramType,
+              availableConstParams,
+              variant.location ?? stmt.location,
+              availableConstParamLocations
+            );
           }
           if (variant.resultType) {
-            validateConstExprInType(variant.resultType, availableConstParams, variant.location ?? stmt.location);
+            validateConstExprInType(
+              variant.resultType,
+              availableConstParams,
+              variant.location ?? stmt.location,
+              availableConstParamLocations
+            );
             validateGadtVariant(stmt, variant);
           }
           for (const constraint of variant.constraints ?? []) {
             for (const boundType of constraint.bounds ?? []) {
-              validateConstExprInType(boundType, availableConstParams, constraint.location ?? variant.location ?? stmt.location);
+              validateConstExprInType(
+                boundType,
+                availableConstParams,
+                constraint.location ?? variant.location ?? stmt.location,
+                availableConstParamLocations
+              );
             }
           }
         }
+      } else if (stmt.type === 'FnDecl') {
+        for (const param of stmt.params ?? []) {
+          validateConstExprInType(
+            param.typeName,
+            availableConstParams,
+            param.location ?? stmt.location,
+            availableConstParamLocations
+          );
+        }
+        validateConstExprInType(stmt.returnType, availableConstParams, stmt.location, availableConstParamLocations);
+        validateConstWhereClauses(stmt.whereClauses, availableConstParams, stmt.location, availableConstParamLocations);
+      } else if (stmt.type === 'ImplDecl') {
+        validateConstExprInType(stmt.traitType, availableConstParams, stmt.location, availableConstParamLocations);
+        validateConstExprInType(stmt.forType, availableConstParams, stmt.location, availableConstParamLocations);
+        validateConstWhereClauses(stmt.whereClauses, availableConstParams, stmt.location, availableConstParamLocations);
       }
       continue;
     }
@@ -3741,10 +3845,16 @@ function typeCheckExpr(
         if (expectedSize !== null && expectedSize !== 0) {
           diagnostics.push(
             diagAt(
-              `Array literal has wrong size. Expected ${expectedSize} elements, got 0`,
+              `Array size mismatch: expected ${expectedSize} element${expectedSize === 1 ? '' : 's'} (from '${expectedSizeExpr}'), found 0`,
               expr.location,
               'error',
-              'ARRAY-SIZE-MISMATCH'
+              'ARRAY-SIZE-MISMATCH',
+              [
+                {
+                  location: expr.location ?? defaultLocation,
+                  message: `Help: array literal must contain exactly ${expectedSize} element${expectedSize === 1 ? '' : 's'} to satisfy [T; ${expectedSizeExpr}]`,
+                },
+              ]
             )
           );
         }
@@ -3817,10 +3927,16 @@ function typeCheckExpr(
       if (expectedSize !== null && expectedSize !== actualSize) {
         diagnostics.push(
           diagAt(
-            `Array literal has wrong size. Expected ${expectedSize} elements, got ${actualSize}`,
+            `Array size mismatch: expected ${expectedSize} element${expectedSize === 1 ? '' : 's'} (from '${expectedSizeExpr}'), found ${actualSize}`,
             expr.location,
             'error',
-            'ARRAY-SIZE-MISMATCH'
+            'ARRAY-SIZE-MISMATCH',
+            [
+              {
+                location: expr.location ?? defaultLocation,
+                message: `Help: array literal must contain exactly ${expectedSize} element${expectedSize === 1 ? '' : 's'} to satisfy [T; ${expectedSizeExpr}]`,
+              },
+            ]
           )
         );
       }
@@ -5201,7 +5317,7 @@ function typeCheckExpr(
         return sym.type ?? null;
       }
       typeParamDefs.forEach((tp, idx) => {
-        mapping.set(tp.name, expr.typeArgs![idx]);
+        mapping.set(tp.name, typeArgToText(expr.typeArgs?.[idx] as string | import('./ast.js').LuminaConstExpr));
       });
     }
 
@@ -5300,6 +5416,20 @@ function typeCheckExpr(
       diagnostics.push(diagAt(`Could not infer type parameters for '${callee}'`, expr.location));
     }
 
+    const constParamDefs = typeParamDefs.filter((param) => !!param.isConst);
+    const constBindings = new Map<string, number>();
+    for (const constParam of constParamDefs) {
+      const mapped = mapping.get(constParam.name);
+      if (!mapped) continue;
+      const evaluated = evaluateConstExprText(String(mapped), constBindings);
+      if (evaluated !== null) {
+        constBindings.set(constParam.name, evaluated);
+      }
+    }
+    const missingConstBindings = constParamDefs
+      .map((param) => param.name)
+      .filter((name) => !constBindings.has(name));
+
     for (const param of typeParamDefs) {
       if (param.bound && mapping.has(param.name)) {
         const value = mapping.get(param.name) as LuminaType;
@@ -5349,6 +5479,58 @@ function typeCheckExpr(
       }
     }
 
+    if (missingConstBindings.length > 0 && (sym.constWhereClauses?.length ?? 0) > 0) {
+      diagnostics.push(
+        diagAt(
+          `Cannot evaluate const where clauses for '${callee}' because const arguments are unresolved: ${missingConstBindings.join(', ')}`,
+          expr.location,
+          'error',
+          'CONST-WHERE-UNRESOLVED'
+        )
+      );
+    }
+
+    for (const clause of missingConstBindings.length === 0 ? (sym.constWhereClauses ?? []) : []) {
+      const evaluator = new ConstEvaluator();
+      for (const [name, value] of constBindings.entries()) evaluator.bind(name, value);
+      const outcome = evaluator.evaluateAny(clause, expr.location);
+      for (const diag of evaluator.getDiagnostics()) {
+        diagnostics.push(diagAt(diag.message, expr.location, diag.severity, diag.code));
+      }
+      if (outcome === null) {
+        diagnostics.push(
+          diagAt(
+            `Could not evaluate const where clause '${renderTypeConstExpr(clause)}' for '${callee}'`,
+            expr.location,
+            'error',
+            'CONST-WHERE-EVAL'
+          )
+        );
+        continue;
+      }
+      if (typeof outcome !== 'boolean') {
+        diagnostics.push(
+          diagAt(
+            `Const where clause '${renderTypeConstExpr(clause)}' must evaluate to bool`,
+            expr.location,
+            'error',
+            'CONST-WHERE-TYPE'
+          )
+        );
+        continue;
+      }
+      if (!outcome) {
+        diagnostics.push(
+          diagAt(
+            `Const where clause '${renderTypeConstExpr(clause)}' is not satisfied for '${callee}'`,
+            expr.location,
+            'error',
+            'CONST-WHERE-FAILED'
+          )
+        );
+      }
+    }
+
     const returnType = substituteTypeParams(sym.type ?? 'any', mapping);
     return returnType;
   }
@@ -5367,7 +5549,7 @@ function typeCheckExpr(
         diagnostics.push(diagAt(`Type argument count mismatch for '${expr.name}'`, expr.location));
       } else {
         typeParamDefs.forEach((tp, idx) => {
-          mapping.set(tp.name, expr.typeArgs![idx]);
+          mapping.set(tp.name, typeArgToText(expr.typeArgs?.[idx] as string | import('./ast.js').LuminaConstExpr));
         });
       }
     }
@@ -6194,7 +6376,22 @@ function collectTraitRegistry(
       );
     }
 
-    for (const arg of traitParsed.args) {
+    for (let i = 0; i < traitParsed.args.length; i += 1) {
+      const arg = traitParsed.args[i];
+      const paramDef = traitInfo.typeParams[i];
+      if (paramDef?.isConst) {
+        if (!isKnownConstTypeArg(arg, implTypeParamSet)) {
+          diagnostics.push(
+            diagAt(
+              `Trait '${traitName}' const parameter '${paramDef.name}' expects a const argument, found '${arg}'`,
+              stmt.location,
+              'error',
+              'TRAIT-016'
+            )
+          );
+        }
+        continue;
+      }
       const known = ensureKnownType(arg, symbols, implTypeParamSet, diagnostics, stmt.location);
       if (known === 'unknown') {
         diagnostics.push(diagAt(`Unknown type '${arg}' in impl for '${traitName}'`, stmt.location));
@@ -6389,14 +6586,21 @@ function collectTraitRegistry(
 }
 
 function normalizeTypeParamsForRegistry(
-  params: Array<{ name: string; bound?: LuminaTypeExpr[] }> | undefined,
+  params:
+    | Array<{
+        name: string;
+        bound?: LuminaTypeExpr[];
+        isConst?: boolean;
+        constType?: string;
+      }>
+    | undefined,
   symbols: SymbolTable,
   diagnostics: Diagnostic[],
   location?: Location,
   parentTypeParams?: Set<string>,
   traitNames?: Set<string>
-): Array<{ name: string; bound?: LuminaType[] }> {
-  const normalized: Array<{ name: string; bound?: LuminaType[] }> = [];
+): Array<{ name: string; bound?: LuminaType[]; isConst?: boolean; constType?: string }> {
+  const normalized: Array<{ name: string; bound?: LuminaType[]; isConst?: boolean; constType?: string }> = [];
   if (!params || params.length === 0) return normalized;
   const seen = new Set<string>(parentTypeParams);
   for (const param of params) {
@@ -6410,6 +6614,17 @@ function normalizeTypeParamsForRegistry(
     }
     seen.add(param.name);
     const bounds: LuminaType[] = [];
+    const constType = param.constType;
+    if (param.isConst && constType && !['usize', 'i32', 'i64'].includes(constType)) {
+      diagnostics.push(
+        diagAt(
+          `Const parameter type must be usize, i32, or i64. Got: ${constType}`,
+          location,
+          'error',
+          'CONST-INVALID-TYPE'
+        )
+      );
+    }
     for (const bound of param.bound ?? []) {
       const known = ensureKnownType(bound, symbols, seen, diagnostics, location, traitNames, true);
       if (known === 'unknown') {
@@ -6419,7 +6634,12 @@ function normalizeTypeParamsForRegistry(
       }
       bounds.push(resolveTypeExpr(bound) ?? 'any');
     }
-    normalized.push({ name: param.name, bound: bounds.length > 0 ? bounds : undefined });
+    normalized.push({
+      name: param.name,
+      bound: bounds.length > 0 ? bounds : undefined,
+      isConst: !!param.isConst,
+      constType,
+    });
   }
   return normalized;
 }
@@ -6492,6 +6712,59 @@ function buildTraitTypeMapping(trait: TraitInfo, traitArgs: LuminaType[]): Map<s
   return mapping;
 }
 
+function matchImplForType(
+  implForType: LuminaType,
+  receiverType: LuminaType,
+  implTypeParams: ReadonlyArray<{ name: string; isConst?: boolean }>
+): Map<string, LuminaType> | null {
+  const paramNames = new Set(implTypeParams.map((param) => param.name));
+  const bindings = new Map<string, LuminaType>();
+
+  const match = (patternType: LuminaType, actualType: LuminaType): boolean => {
+    const pattern = normalizeTypeForComparison(patternType);
+    const actual = normalizeTypeForComparison(actualType);
+    const patternParsed = parseTypeName(pattern);
+    const actualParsed = parseTypeName(actual);
+
+    if (patternParsed && patternParsed.args.length === 0 && paramNames.has(patternParsed.base)) {
+      const existing = bindings.get(patternParsed.base);
+      if (!existing) {
+        bindings.set(patternParsed.base, actual);
+        return true;
+      }
+      return normalizeTypeForComparison(existing) === actual;
+    }
+
+    if (!patternParsed || !actualParsed) {
+      return pattern === actual;
+    }
+    if (patternParsed.base !== actualParsed.base) return false;
+    if (patternParsed.args.length !== actualParsed.args.length) return false;
+    for (let i = 0; i < patternParsed.args.length; i += 1) {
+      if (!match(patternParsed.args[i], actualParsed.args[i])) return false;
+    }
+    return true;
+  };
+
+  if (!match(implForType, receiverType)) return null;
+  return bindings;
+}
+
+function resolveTraitArgsForImpl(
+  implTraitType: LuminaType,
+  trait: TraitInfo,
+  implParamBindings: ReadonlyMap<string, LuminaType>
+): LuminaType[] {
+  const parsed = parseTypeName(implTraitType);
+  const args = parsed?.args ?? [];
+  if (args.length === 0) return [];
+  return trait.typeParams.map((_, idx) => {
+    const arg = args[idx];
+    if (!arg) return 'any';
+    return substituteTypeParams(arg, new Map(implParamBindings));
+  });
+}
+
 type TraitMethodCandidate = {
   impl: ImplInfo;
   trait: TraitInfo;
@@ -6505,16 +6778,19 @@ function findTraitMethodCandidates(
   methodName: string
 ): TraitMethodCandidate[] {
   const candidates: TraitMethodCandidate[] = [];
-  const normalizedReceiver = normalizeTypeForComparison(receiverType);
   for (const impl of registry.implsByKey.values()) {
-    if (normalizeTypeForComparison(impl.forType) !== normalizedReceiver) continue;
+    const implParamBindings = matchImplForType(impl.forType, receiverType, impl.typeParams ?? []);
+    if (!implParamBindings) continue;
     const trait = registry.traits.get(impl.traitName);
     if (!trait) continue;
     const method = trait.methods.get(methodName);
     if (!method) continue;
     if (!impl.methods.has(methodName) && !method.defaultBody) continue;
-    const parsedTrait = parseTypeName(impl.traitType);
-    const mapping = buildTraitTypeMapping(trait, parsedTrait?.args ?? []);
+    const resolvedTraitArgs = resolveTraitArgsForImpl(impl.traitType, trait, implParamBindings);
+    const mapping = buildTraitTypeMapping(trait, resolvedTraitArgs);
+    for (const [name, value] of implParamBindings.entries()) {
+      mapping.set(name, value);
+    }
     mapping.set(SELF_TYPE_NAME, receiverType);
     for (const [name, value] of impl.associatedTypes.entries()) {
       mapping.set(`${SELF_TYPE_NAME}::${name}`, value);
@@ -6753,8 +7029,14 @@ function isKnownConstTypeArg(arg: string, typeParams: Set<string>): boolean {
         return true;
       case 'const-param':
         return typeParams.has(node.name);
+      case 'const-unary':
+        return visit(node.expr);
       case 'const-binary':
         return visit(node.left) && visit(node.right);
+      case 'const-call':
+        return (node.args ?? []).every((argNode) => visit(argNode));
+      case 'const-if':
+        return visit(node.condition) && visit(node.thenExpr) && visit(node.elseExpr);
       default:
         return false;
     }
@@ -6845,12 +7127,18 @@ function hmTypeToDisplay(type: import('./types.js').Type): string {
 
 function splitTypeArgs(input: string): string[] {
   const result: string[] = [];
-  let depth = 0;
+  let angleDepth = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
   let current = '';
   for (const ch of input) {
-    if (ch === '<') depth++;
-    if (ch === '>') depth--;
-    if (ch === ',' && depth === 0) {
+    if (ch === '<') angleDepth++;
+    if (ch === '>') angleDepth--;
+    if (ch === '(') parenDepth++;
+    if (ch === ')') parenDepth--;
+    if (ch === '{') braceDepth++;
+    if (ch === '}') braceDepth--;
+    if (ch === ',' && angleDepth === 0 && parenDepth === 0 && braceDepth === 0) {
       result.push(current.trim());
       current = '';
       continue;
@@ -6879,13 +7167,18 @@ function satisfiesTraitBound(actual: LuminaType, bound: LuminaType, registry?: T
   const parsedBound = parseTypeName(boundNorm);
   if (!parsedBound) return false;
   const traitName = parsedBound.base;
-  if (!registry.traits.has(traitName)) return false;
-  if (parsedBound.args.length === 0) {
-    const impls = registry.implsByTrait.get(traitName) ?? [];
-    return impls.some((impl) => normalizeTypeForComparison(impl.forType) === actualNorm);
+  const traitInfo = registry.traits.get(traitName);
+  if (!traitInfo) return false;
+  const impls = registry.implsByTrait.get(traitName) ?? [];
+  for (const impl of impls) {
+    const implParamBindings = matchImplForType(impl.forType, actualNorm, impl.typeParams ?? []);
+    if (!implParamBindings) continue;
+    if (parsedBound.args.length === 0) return true;
+    const resolvedArgs = resolveTraitArgsForImpl(impl.traitType, traitInfo, implParamBindings);
+    const resolvedBound = `${traitName}<${resolvedArgs.map((arg) => normalizeTypeForComparison(arg)).join(',')}>`;
+    if (normalizeTypeForComparison(resolvedBound) === boundNorm) return true;
   }
-  const implKey = `${boundNorm}::${actualNorm}`;
-  return registry.implsByKey.has(implKey);
+  return false;
 }
 
 function isImplicitlySendType(typeName: LuminaType, symbols: SymbolTable, seen: Set<string> = new Set()): boolean {
@@ -6997,21 +7290,63 @@ function isTypeAssignable(
   return true;
 }
 
+function renderTypeConstExpr(expr: TypeConstExpr): string {
+  switch (expr.kind) {
+    case 'const-literal':
+      return String(expr.value);
+    case 'const-param':
+      return expr.name;
+    case 'const-unary':
+      return `${expr.op}${renderTypeConstExpr(expr.expr)}`;
+    case 'const-binary':
+      return `${renderTypeConstExpr(expr.left)}${expr.op}${renderTypeConstExpr(expr.right)}`;
+    case 'const-call':
+      return `${expr.name}(${(expr.args ?? []).map((arg) => renderTypeConstExpr(arg)).join(',')})`;
+    case 'const-if':
+      return `if ${renderTypeConstExpr(expr.condition)} { ${renderTypeConstExpr(expr.thenExpr)} } else { ${renderTypeConstExpr(expr.elseExpr)} }`;
+    default:
+      return '_';
+  }
+}
+
 function parseConstExprText(text: string): TypeConstExpr | null {
-  const tokens = text.match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+  const tokens = text.match(/<=|>=|==|!=|\|\||&&|[(){}!,+\-*/<>]|[A-Za-z_][A-Za-z0-9_]*|\d+/g);
   if (!tokens || tokens.length === 0) return null;
   let index = 0;
 
   const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
   const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
+  const match = (token: string): boolean => {
+    if (peek() !== token) return false;
+    consume();
+    return true;
+  };
 
   const parsePrimary = (): TypeConstExpr | null => {
     const token = consume();
     if (!token) return null;
     if (/^\d+$/.test(token)) return { kind: 'const-literal', value: Number(token) };
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return { kind: 'const-param', name: token };
+    if (token === 'true') return { kind: 'const-literal', value: true };
+    if (token === 'false') return { kind: 'const-literal', value: false };
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
+      if (peek() === '(') {
+        consume();
+        const args: TypeConstExpr[] = [];
+        if (peek() !== ')') {
+          while (true) {
+            const arg = parseConstExpr();
+            if (!arg) return null;
+            args.push(arg);
+            if (!match(',')) break;
+          }
+        }
+        if (!match(')')) return null;
+        return { kind: 'const-call', name: token, args };
+      }
+      return { kind: 'const-param', name: token };
+    }
     if (token === '(') {
-      const expr = parseAddSub();
+      const expr = parseConstExpr();
       if (peek() !== ')') return null;
       consume();
       return expr;
@@ -7019,14 +7354,25 @@ function parseConstExprText(text: string): TypeConstExpr | null {
     return null;
   };
 
+  const parseUnary = (): TypeConstExpr | null => {
+    const token = peek();
+    if (token === '-' || token === '!') {
+      consume();
+      const expr = parseUnary();
+      if (!expr) return null;
+      return { kind: 'const-unary', op: token, expr };
+    }
+    return parsePrimary();
+  };
+
   const parseMulDiv = (): TypeConstExpr | null => {
-    let left = parsePrimary();
+    let left = parseUnary();
     if (!left) return null;
     while (true) {
       const op = peek();
       if (op !== '*' && op !== '/') break;
       consume();
-      const right = parsePrimary();
+      const right = parseUnary();
       if (!right) return null;
       left = { kind: 'const-binary', op, left, right };
     }
@@ -7047,7 +7393,74 @@ function parseConstExprText(text: string): TypeConstExpr | null {
     return left;
   };
 
-  const parsed = parseAddSub();
+  const parseCompare = (): TypeConstExpr | null => {
+    let left = parseAddSub();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '<' && op !== '<=' && op !== '>' && op !== '>=') break;
+      consume();
+      const right = parseAddSub();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseEquality = (): TypeConstExpr | null => {
+    let left = parseCompare();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '==' && op !== '!=') break;
+      consume();
+      const right = parseCompare();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseAnd = (): TypeConstExpr | null => {
+    let left = parseEquality();
+    if (!left) return null;
+    while (match('&&')) {
+      const right = parseEquality();
+      if (!right) return null;
+      left = { kind: 'const-binary', op: '&&', left, right };
+    }
+    return left;
+  };
+
+  const parseOr = (): TypeConstExpr | null => {
+    let left = parseAnd();
+    if (!left) return null;
+    while (match('||')) {
+      const right = parseAnd();
+      if (!right) return null;
+      left = { kind: 'const-binary', op: '||', left, right };
+    }
+    return left;
+  };
+
+  const parseIf = (): TypeConstExpr | null => {
+    if (peek() !== 'if') return parseOr();
+    consume();
+    const condition = parseConstExpr();
+    if (!condition) return null;
+    if (!match('{')) return null;
+    const thenExpr = parseConstExpr();
+    if (!thenExpr || !match('}')) return null;
+    if (!match('else')) return null;
+    if (!match('{')) return null;
+    const elseExpr = parseConstExpr();
+    if (!elseExpr || !match('}')) return null;
+    return { kind: 'const-if', condition, thenExpr, elseExpr };
+  };
+
+  const parseConstExpr = (): TypeConstExpr | null => parseIf();
+
+  const parsed = parseConstExpr();
   if (!parsed) return null;
   if (index !== tokens.length) return null;
   return parsed;

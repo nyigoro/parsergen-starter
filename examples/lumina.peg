@@ -148,8 +148,8 @@ TraitAssocType
     }
 
 TraitMethod
-  = "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:TraitMethodBody {
-      return createNode("TraitMethod", { name: node.name, params: params || [], returnType: ret || null, typeParams: tparams || [], body, location: node.location }, location);
+  = "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ body:TraitMethodBody {
+      return createNode("TraitMethod", { name: node.name, params: params || [], returnType: ret || null, typeParams: tparams || [], whereClauses: whereClauses || [], body, location: node.location }, location);
     }
 
 TraitMethodBody
@@ -157,14 +157,14 @@ TraitMethodBody
   / _ ";"? { return null; }
 
 ImplDecl
-  = visibility:Visibility? _ "impl" _ tparams:TypeParams? _ traitType:TypeName _ _ "for" _ forType:TypeName _ "{" _ items:ImplItemList? _ "}" _ ";"? {
+  = visibility:Visibility? _ "impl" _ tparams:TypeParams? _ traitType:TypeName _ _ "for" _ forType:TypeName _ whereClauses:WhereClause? _ "{" _ items:ImplItemList? _ "}" _ ";"? {
       const methods = [];
       const associatedTypes = [];
       for (const item of items || []) {
         if (item && item.type === "FnDecl") methods.push(item);
         if (item && item.type === "ImplAssocType") associatedTypes.push(item);
       }
-      return createNode("ImplDecl", { traitType, forType, typeParams: tparams || [], methods, associatedTypes, visibility: visibility ?? "private", location: location() }, location);
+      return createNode("ImplDecl", { traitType, forType, typeParams: tparams || [], whereClauses: whereClauses || [], methods, associatedTypes, visibility: visibility ?? "private", location: location() }, location);
     }
 
 ImplItemList
@@ -180,8 +180,8 @@ ImplAssocType
     }
 
 ImplMethod
-  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
-      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
+  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ body:Block {
+      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, whereClauses: whereClauses || [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 AdtTypeDecl
@@ -237,7 +237,10 @@ TypeName
             if (!node || typeof node !== "object") return "_";
             if (node.type === "ConstLiteral") return String(node.value);
             if (node.type === "ConstParam") return node.name;
+            if (node.type === "ConstUnary") return `${node.op}${toText(node.expr)}`;
             if (node.type === "ConstBinary") return `${toText(node.left)}${node.op}${toText(node.right)}`;
+            if (node.type === "ConstCall") return `${node.name}(${(node.args || []).map(toText).join(",")})`;
+            if (node.type === "ConstIf") return `if ${toText(node.condition)} { ${toText(node.thenExpr)} } else { ${toText(node.elseExpr)} }`;
             return "_";
           };
           return toText(arg);
@@ -266,13 +269,13 @@ TypePath
   = head:IdName tail:(_ "::" _ IdName)* { return [head.name].concat(tail.map(t => t[3].name)); }
 
 FnDecl
-  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ body:Block {
-      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
+  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ body:Block {
+      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, whereClauses: whereClauses || [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 ExternFnDecl
-  = visibility:Visibility? _ "extern" _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ source:FromClause? _ ";"? {
-      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || "any", body: createNode("Block", { body: [] }, location), typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location }, location);
+  = visibility:Visibility? _ "extern" _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ source:FromClause? _ ";"? {
+      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || "any", whereClauses: whereClauses || [], body: createNode("Block", { body: [] }, location), typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location }, location);
     }
 
 FromClause
@@ -281,8 +284,16 @@ FromClause
 ReturnType
   = "->" _ type:TypeName { return type; }
 
+WhereClause
+  = "where" __ head:ConstTypeExpr tail:(_ "," _ ConstTypeExpr)* {
+      return [head].concat(tail.map(t => t[3]));
+    }
+
 TypeArgs
   = "<" _ head:TypeArg tail:(_ "," _ TypeArg)* _ ">" { return [head].concat(tail.map(t => t[3])); }
+
+TypeArgsWithTurbofish
+  = ("::" _)? args:TypeArgs { return args; }
 
 TypeArg
   = TypeName
@@ -302,19 +313,66 @@ TypeParam
   / name:IdName { return { name: name.name, isConst: false }; }
 
 ConstTypeExpr
-  = head:ConstTypeTerm tail:(_ ("+" / "-") _ ConstTypeTerm)* {
+  = ConstIfExpr
+
+ConstIfExpr
+  = "if" __ cond:ConstTypeExpr _ "{" _ thenExpr:ConstTypeExpr _ "}" _ "else" _ "{" _ elseExpr:ConstTypeExpr _ "}" {
+      return createNode("ConstIf", { condition: cond, thenExpr, elseExpr }, location);
+    }
+  / ConstOrExpr
+
+ConstOrExpr
+  = head:ConstAndExpr tail:(_ "||" _ ConstAndExpr)* {
+      return tail.reduce((acc, t) => createNode("ConstBinary", { op: "||", left: acc, right: t[3] }, location), head);
+    }
+
+ConstAndExpr
+  = head:ConstEqExpr tail:(_ "&&" _ ConstEqExpr)* {
+      return tail.reduce((acc, t) => createNode("ConstBinary", { op: "&&", left: acc, right: t[3] }, location), head);
+    }
+
+ConstEqExpr
+  = head:ConstCmpExpr tail:(_ op:("==" / "!=") _ ConstCmpExpr)* {
       return tail.reduce((acc, t) => createNode("ConstBinary", { op: t[1], left: acc, right: t[3] }, location), head);
     }
 
-ConstTypeTerm
-  = head:ConstTypePrimary tail:(_ ("*" / "/") _ ConstTypePrimary)* {
+ConstCmpExpr
+  = head:ConstAddExpr tail:(_ op:("<=" / ">=" / "<" / ">") __ ConstAddExpr)* {
       return tail.reduce((acc, t) => createNode("ConstBinary", { op: t[1], left: acc, right: t[3] }, location), head);
+    }
+
+ConstAddExpr
+  = head:ConstMulExpr tail:(_ op:("+" / "-") _ ConstMulExpr)* {
+      return tail.reduce((acc, t) => createNode("ConstBinary", { op: t[1], left: acc, right: t[3] }, location), head);
+    }
+
+ConstMulExpr
+  = head:ConstUnaryExpr tail:(_ op:("*" / "/") _ ConstUnaryExpr)* {
+      return tail.reduce((acc, t) => createNode("ConstBinary", { op: t[1], left: acc, right: t[3] }, location), head);
+    }
+
+ConstUnaryExpr
+  = op:("-" / "!") _ expr:ConstUnaryExpr {
+      return createNode("ConstUnary", { op, expr }, location);
+    }
+  / ConstTypePrimary
+
+ConstCallExpr
+  = name:("min" / "max") _ "(" _ first:ConstTypeExpr _ "," _ second:ConstTypeExpr _ ")" {
+      return createNode("ConstCall", { name, args: [first, second] }, location);
     }
 
 ConstTypePrimary
   = value:IntConstLiteral {
       return createNode("ConstLiteral", { value }, location);
     }
+  / "true" ![A-Za-z0-9_] {
+      return createNode("ConstLiteral", { value: true }, location);
+    }
+  / "false" ![A-Za-z0-9_] {
+      return createNode("ConstLiteral", { value: false }, location);
+    }
+  / call:ConstCallExpr { return call; }
   / node:IdName {
       return createNode("ConstParam", { name: node.name, location: node.location }, location);
     }
@@ -556,7 +614,7 @@ Postfix
 PostfixPart
   = _ "." _ name:IdName { return { kind: "member", name: name.name }; }
   / _ "[" _ index:Expr _ "]" { return { kind: "index", index }; }
-  / _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" { return { kind: "call", args: args || [], typeArgs: targs || [] }; }
+  / _ targs:TypeArgsWithTurbofish? _ "(" _ args:ArgList? _ ")" { return { kind: "call", args: args || [], typeArgs: targs || [] }; }
 
 PrimaryAtom
   = SelectExpr
@@ -915,12 +973,12 @@ Member
       return tail.reduce((acc, t) => createNode("Member", { object: acc, property: t[3].name }, location), base);
     }
 Call
-  = callee:IdName _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" {
+  = callee:IdName _ targs:TypeArgsWithTurbofish? _ "(" _ args:ArgList? _ ")" {
       return createNode("Call", { callee: createNode("Identifier", { name: callee.name, location: callee.location }, location), args: args || [], typeArgs: targs || [] }, location);
     }
 
 QualifiedCall
-  = enumName:IdName _ "." _ variant:IdName _ targs:TypeArgs? _ "(" _ args:ArgList? _ ")" {
+  = enumName:IdName _ "." _ variant:IdName _ targs:TypeArgsWithTurbofish? _ "(" _ args:ArgList? _ ")" {
       return createNode("Call", {
         callee: createNode("Identifier", { name: variant.name, location: variant.location }, location),
         args: args || [],

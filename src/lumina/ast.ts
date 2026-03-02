@@ -9,15 +9,34 @@ export interface LuminaTypeHole {
 
 export interface LuminaConstLiteral extends LuminaNode {
   type: 'ConstLiteral';
-  value: number;
+  value: number | boolean;
   location?: Location;
 }
 
 export interface LuminaConstBinary extends LuminaNode {
   type: 'ConstBinary';
-  op: '+' | '-' | '*' | '/';
+  op:
+    | '+'
+    | '-'
+    | '*'
+    | '/'
+    | '<'
+    | '<='
+    | '>'
+    | '>='
+    | '=='
+    | '!='
+    | '&&'
+    | '||';
   left: LuminaConstExpr;
   right: LuminaConstExpr;
+  location?: Location;
+}
+
+export interface LuminaConstUnary extends LuminaNode {
+  type: 'ConstUnary';
+  op: '-' | '!';
+  expr: LuminaConstExpr;
   location?: Location;
 }
 
@@ -27,7 +46,28 @@ export interface LuminaConstParam extends LuminaNode {
   location?: Location;
 }
 
-export type LuminaConstExpr = LuminaConstLiteral | LuminaConstBinary | LuminaConstParam;
+export interface LuminaConstCall extends LuminaNode {
+  type: 'ConstCall';
+  name: string;
+  args: LuminaConstExpr[];
+  location?: Location;
+}
+
+export interface LuminaConstIf extends LuminaNode {
+  type: 'ConstIf';
+  condition: LuminaConstExpr;
+  thenExpr: LuminaConstExpr;
+  elseExpr: LuminaConstExpr;
+  location?: Location;
+}
+
+export type LuminaConstExpr =
+  | LuminaConstLiteral
+  | LuminaConstBinary
+  | LuminaConstUnary
+  | LuminaConstParam
+  | LuminaConstCall
+  | LuminaConstIf;
 
 export interface LuminaArrayType {
   kind: 'array';
@@ -130,6 +170,7 @@ export interface LuminaTraitMethod {
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
   typeParams?: LuminaTypeParam[];
+  whereClauses?: LuminaConstExpr[];
   body?: LuminaBlock | null;
   location?: Location;
 }
@@ -146,6 +187,7 @@ export interface LuminaImplDecl {
   traitType: LuminaTypeExpr;
   forType: LuminaTypeExpr;
   typeParams?: LuminaTypeParam[];
+  whereClauses?: LuminaConstExpr[];
   methods: LuminaFnDecl[];
   associatedTypes?: LuminaImplAssocType[];
   visibility?: 'public' | 'private';
@@ -205,6 +247,7 @@ export interface LuminaFnDecl {
   async?: boolean;
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
+  whereClauses?: LuminaConstExpr[];
   body: LuminaBlock;
   visibility?: 'public' | 'private';
   extern?: boolean;

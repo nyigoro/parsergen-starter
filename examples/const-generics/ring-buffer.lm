@@ -1,0 +1,16 @@
+struct RingBuffer<const CAP: usize> {
+  data: [i32; CAP],
+  len: i32
+}
+
+fn new_buffer<const CAP: usize>() -> RingBuffer<CAP> where CAP > 0 {
+  RingBuffer {
+    data: [0; CAP],
+    len: 0
+  }
+}
+
+fn main() -> i32 {
+  let buf = new_buffer::<8>();
+  buf.len
+}

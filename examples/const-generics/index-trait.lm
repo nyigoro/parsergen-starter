@@ -1,0 +1,21 @@
+trait Index<const N: usize> {
+  fn get(self: Self, index: i32) -> i32;
+}
+
+impl<const N: usize> Index<N> for [i32; N] where N > 0 {
+  fn get(self: Self, index: i32) -> i32 {
+    match self[index] {
+      Some(v) => v,
+      None => 0
+    }
+  }
+}
+
+fn first<T: Index<3>>(value: T) -> i32 {
+  value.get(0)
+}
+
+fn main() -> i32 {
+  let data: [i32; 3] = [42, 7, 9];
+  first(data)
+}

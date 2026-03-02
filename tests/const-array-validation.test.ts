@@ -41,7 +41,12 @@ describe('Array Literal Validation', () => {
     expect(diagnostics).toContainEqual(
       expect.objectContaining({
         code: 'ARRAY-SIZE-MISMATCH',
-        message: expect.stringContaining('Expected 3 elements, got 2'),
+        message: expect.stringContaining("expected 3"),
+        relatedInformation: expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.stringContaining('Help:'),
+          }),
+        ]),
       })
     );
   });
@@ -64,5 +69,19 @@ describe('Array Literal Validation', () => {
       })
     );
   });
-});
 
+  it('evaluates extended const expressions for array sizes', () => {
+    const source = `
+      struct VecX<T> {
+        data: [T; if 2 > 1 && 3 > 0 { max(2, 3) } else { min(1, 2) }]
+      }
+
+      fn test() -> VecX<i32> {
+        VecX { data: [1, 2, 3] }
+      }
+    `.trim() + '\n';
+
+    const { diagnostics } = analyzeLumina(parseProgram(source));
+    expect(diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+  });
+});

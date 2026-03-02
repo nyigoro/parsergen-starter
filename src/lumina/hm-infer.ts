@@ -1,4 +1,11 @@
-import { type LuminaProgram, type LuminaStatement, type LuminaExpr, type LuminaMatchPattern } from './ast.js';
+import {
+  type LuminaProgram,
+  type LuminaStatement,
+  type LuminaExpr,
+  type LuminaMatchPattern,
+  type LuminaTypeParam,
+  type LuminaConstExpr,
+} from './ast.js';
 import {
   type Type,
   type TypeScheme,
@@ -57,6 +64,11 @@ interface StructInfo {
   typeParams: string[];
   fields: Map<string, LuminaTypeExpr>;
   derives: string[];
+}
+
+interface ConstFnConstraintInfo {
+  typeParams: LuminaTypeParam[];
+  whereClauses: TypeConstExpr[];
 }
 
 type HoleOwnerKind = 'let' | 'fn-param' | 'fn-return';
@@ -148,19 +160,42 @@ function isLossyNumericCast(from: PrimitiveName, to: PrimitiveName): boolean {
 }
 
 function parseConstExprText(text: string): TypeConstExpr | null {
-  const tokens = text.match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+  const tokens = text.match(/<=|>=|==|!=|\|\||&&|[(){}!,+\-*/<>]|[A-Za-z_][A-Za-z0-9_]*|\d+/g);
   if (!tokens || tokens.length === 0) return null;
   let index = 0;
   const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
   const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
+  const match = (token: string): boolean => {
+    if (peek() !== token) return false;
+    consume();
+    return true;
+  };
 
   const parsePrimary = (): TypeConstExpr | null => {
     const token = consume();
     if (!token) return null;
     if (/^\d+$/.test(token)) return { kind: 'const-literal', value: Number(token) };
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return { kind: 'const-param', name: token };
+    if (token === 'true') return { kind: 'const-literal', value: true };
+    if (token === 'false') return { kind: 'const-literal', value: false };
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
+      if (peek() === '(') {
+        consume();
+        const args: TypeConstExpr[] = [];
+        if (peek() !== ')') {
+          while (true) {
+            const arg = parseConstExpr();
+            if (!arg) return null;
+            args.push(arg);
+            if (!match(',')) break;
+          }
+        }
+        if (!match(')')) return null;
+        return { kind: 'const-call', name: token, args };
+      }
+      return { kind: 'const-param', name: token };
+    }
     if (token === '(') {
-      const inner = parseAddSub();
+      const inner = parseConstExpr();
       if (peek() !== ')') return null;
       consume();
       return inner;
@@ -168,14 +203,25 @@ function parseConstExprText(text: string): TypeConstExpr | null {
     return null;
   };
 
+  const parseUnary = (): TypeConstExpr | null => {
+    const token = peek();
+    if (token === '-' || token === '!') {
+      consume();
+      const expr = parseUnary();
+      if (!expr) return null;
+      return { kind: 'const-unary', op: token, expr };
+    }
+    return parsePrimary();
+  };
+
   const parseMulDiv = (): TypeConstExpr | null => {
-    let left = parsePrimary();
+    let left = parseUnary();
     if (!left) return null;
     while (true) {
       const op = peek();
       if (op !== '*' && op !== '/') break;
       consume();
-      const right = parsePrimary();
+      const right = parseUnary();
       if (!right) return null;
       left = { kind: 'const-binary', op, left, right };
     }
@@ -196,7 +242,74 @@ function parseConstExprText(text: string): TypeConstExpr | null {
     return left;
   };
 
-  const parsed = parseAddSub();
+  const parseCompare = (): TypeConstExpr | null => {
+    let left = parseAddSub();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '<' && op !== '<=' && op !== '>' && op !== '>=') break;
+      consume();
+      const right = parseAddSub();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseEquality = (): TypeConstExpr | null => {
+    let left = parseCompare();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '==' && op !== '!=') break;
+      consume();
+      const right = parseCompare();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseAnd = (): TypeConstExpr | null => {
+    let left = parseEquality();
+    if (!left) return null;
+    while (match('&&')) {
+      const right = parseEquality();
+      if (!right) return null;
+      left = { kind: 'const-binary', op: '&&', left, right };
+    }
+    return left;
+  };
+
+  const parseOr = (): TypeConstExpr | null => {
+    let left = parseAnd();
+    if (!left) return null;
+    while (match('||')) {
+      const right = parseAnd();
+      if (!right) return null;
+      left = { kind: 'const-binary', op: '||', left, right };
+    }
+    return left;
+  };
+
+  const parseIf = (): TypeConstExpr | null => {
+    if (peek() !== 'if') return parseOr();
+    consume();
+    const condition = parseConstExpr();
+    if (!condition) return null;
+    if (!match('{')) return null;
+    const thenExpr = parseConstExpr();
+    if (!thenExpr || !match('}')) return null;
+    if (!match('else')) return null;
+    if (!match('{')) return null;
+    const elseExpr = parseConstExpr();
+    if (!elseExpr || !match('}')) return null;
+    return { kind: 'const-if', condition, thenExpr, elseExpr };
+  };
+
+  const parseConstExpr = (): TypeConstExpr | null => parseIf();
+
+  const parsed = parseConstExpr();
   if (!parsed || index !== tokens.length) return null;
   return parsed;
 }
@@ -206,6 +319,118 @@ function evaluateConstExprText(text: string): number | null {
   if (!expr) return null;
   const evaluator = new ConstEvaluator();
   return evaluator.evaluate(expr);
+}
+
+function constExprToText(expr: TypeConstExpr): string {
+  switch (expr.kind) {
+    case 'const-literal':
+      return String(expr.value);
+    case 'const-param':
+      return expr.name;
+    case 'const-unary':
+      return `${expr.op}${constExprToText(expr.expr)}`;
+    case 'const-binary':
+      return `${constExprToText(expr.left)}${expr.op}${constExprToText(expr.right)}`;
+    case 'const-call':
+      return `${expr.name}(${(expr.args ?? []).map((arg) => constExprToText(arg)).join(',')})`;
+    case 'const-if':
+      return `if ${constExprToText(expr.condition)} { ${constExprToText(expr.thenExpr)} } else { ${constExprToText(expr.elseExpr)} }`;
+    default:
+      return '_';
+  }
+}
+
+function evaluateConstExprAnyText(text: string): number | boolean | null {
+  const expr = parseConstExprText(text);
+  if (!expr) return null;
+  const evaluator = new ConstEvaluator();
+  return evaluator.evaluateAny(expr);
+}
+
+function callTypeArgToText(arg: unknown): string {
+  if (typeof arg === 'string') return arg;
+  if (!arg || typeof arg !== 'object') return '_';
+  if ('type' in (arg as Record<string, unknown>)) {
+    return renderConstExpr(arg as LuminaConstExpr);
+  }
+  return '_';
+}
+
+function buildConstFnConstraintRegistry(program: LuminaProgram): Map<string, ConstFnConstraintInfo> {
+  const registry = new Map<string, ConstFnConstraintInfo>();
+  for (const stmt of program.body) {
+    if (stmt.type !== 'FnDecl') continue;
+    const typeParams = (stmt.typeParams ?? []).filter((param) => !!param.isConst);
+    if (typeParams.length === 0) continue;
+    const whereClauses = (stmt.whereClauses ?? [])
+      .map((clause) => parseConstExprText(renderConstExpr(clause)))
+      .filter((clause): clause is TypeConstExpr => clause != null);
+    if (whereClauses.length === 0) continue;
+    registry.set(stmt.name, {
+      typeParams: stmt.typeParams ?? [],
+      whereClauses,
+    });
+  }
+  return registry;
+}
+
+function validateConstFnWhereClausesAtCall(
+  expr: Extract<LuminaExpr, { type: 'Call' }>,
+  diagnostics: Diagnostic[]
+): void {
+  if (!activeConstFnConstraints) return;
+  const meta = activeConstFnConstraints.get(expr.callee.name);
+  if (!meta) return;
+  const constParams = meta.typeParams.filter((param) => !!param.isConst);
+  if (constParams.length === 0) return;
+  if (!expr.typeArgs || expr.typeArgs.length !== meta.typeParams.length) return;
+
+  const bindings = new Map<string, number>();
+  for (let idx = 0; idx < meta.typeParams.length; idx += 1) {
+    const param = meta.typeParams[idx];
+    if (!param.isConst) continue;
+    const text = callTypeArgToText(expr.typeArgs[idx] as unknown);
+    const value = evaluateConstExprText(text);
+    if (value !== null) bindings.set(param.name, value);
+  }
+  const missing = constParams.map((param) => param.name).filter((name) => !bindings.has(name));
+  if (missing.length > 0) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'HM_CONST_WHERE',
+      message: `Cannot evaluate const where clause for '${expr.callee.name}' because const arguments are unresolved: ${missing.join(', ')}`,
+      source: 'lumina',
+      location: diagLocation(expr.location),
+    });
+    return;
+  }
+
+  for (const clause of meta.whereClauses) {
+    const clauseText = constExprToText(clause);
+    const substituted = clauseText.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name) =>
+      bindings.has(name) ? String(bindings.get(name)) : name
+    );
+    const result = evaluateConstExprAnyText(substituted);
+    if (typeof result !== 'boolean') {
+      diagnostics.push({
+        severity: 'error',
+        code: 'HM_CONST_WHERE',
+        message: `Const where clause '${clauseText}' for '${expr.callee.name}' must evaluate to bool`,
+        source: 'lumina',
+        location: diagLocation(expr.location),
+      });
+      continue;
+    }
+    if (!result) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'HM_CONST_WHERE',
+        message: `Const where clause '${clauseText}' is not satisfied for '${expr.callee.name}'`,
+        source: 'lumina',
+        location: diagLocation(expr.location),
+      });
+    }
+  }
 }
 
 function extractExpectedArrayInfo(expectedType: Type | undefined, subst: Subst): { elem: Type; sizeText: string } | null {
@@ -249,6 +474,7 @@ const defaultWrapperList = ['Option', 'Box', 'Ref'];
 let activeWrapperSet = new Set(defaultWrapperList);
 let activeInferredExprs: Map<number, Type> | null = null;
 let activeStructRegistry: Map<string, StructInfo> | null = null;
+let activeConstFnConstraints: Map<string, ConstFnConstraintInfo> | null = null;
 let activeRowPolymorphism = false;
 let activeReturnType: Type | null = null;
 
@@ -277,6 +503,7 @@ export function inferProgram(
   const hoistedFns = new Map<string, { paramTypes: Type[]; returnType: Type; typeParamIds: number[] }>();
   const enumRegistry = buildEnumRegistry(program);
   const structRegistry = buildStructRegistry(program);
+  activeConstFnConstraints = buildConstFnConstraintRegistry(program);
   activeStructRegistry = structRegistry;
   activeRowPolymorphism = options?.useRowPolymorphism ?? false;
   const moduleRegistry = options?.moduleRegistry ?? createStdModuleRegistry();
@@ -374,6 +601,7 @@ export function inferProgram(
   };
   activeInferredExprs = null;
   activeStructRegistry = null;
+  activeConstFnConstraints = null;
   activeRowPolymorphism = false;
   return result;
 }
@@ -1175,9 +1403,15 @@ function inferExpr(
           diagnostics.push({
             severity: 'error',
             code: 'CONST-SIZE-MISMATCH',
-            message: `Array size mismatch: expected ${expectedSize}, got ${actualSize}`,
+            message: `Array size mismatch: expected ${expectedSize} (from '${expectedArrayInfo.sizeText}'), got ${actualSize}`,
             source: 'lumina',
             location: diagLocation(expr.location),
+            relatedInformation: [
+              {
+                location: diagLocation(expr.location),
+                message: `Help: literal must have ${expectedSize} elements to satisfy [T; ${expectedArrayInfo.sizeText}]`,
+              },
+            ],
           });
         }
         const sizeName = expectedArrayInfo.sizeText;
@@ -1225,9 +1459,15 @@ function inferExpr(
           diagnostics.push({
             severity: 'error',
             code: 'CONST-SIZE-MISMATCH',
-            message: `Array size mismatch: expected ${expectedSize}, got ${actualSize}`,
+            message: `Array size mismatch: expected ${expectedSize} (from '${expectedArrayInfo.sizeText}'), got ${actualSize}`,
             source: 'lumina',
             location: diagLocation(expr.location),
+            relatedInformation: [
+              {
+                location: diagLocation(expr.location),
+                message: `Help: repeat count must evaluate to ${expectedSize} to satisfy [T; ${expectedArrayInfo.sizeText}]`,
+              },
+            ],
           });
         }
       }
@@ -2529,6 +2769,7 @@ function inferExpr(
         location: expr.location,
         note: `In call to '${expr.callee.name}'`,
       });
+      validateConstFnWhereClausesAtCall(expr, diagnostics);
       if (expectedType) {
         tryUnify(resultType, expectedType, subst, diagnostics, {
           location: expr.location,
@@ -2869,8 +3110,14 @@ function renderConstExpr(expr: import('./ast.js').LuminaConstExpr | undefined): 
       return String(expr.value);
     case 'ConstParam':
       return expr.name;
+    case 'ConstUnary':
+      return `${expr.op}${renderConstExpr(expr.expr)}`;
     case 'ConstBinary':
       return `${renderConstExpr(expr.left)}${expr.op}${renderConstExpr(expr.right)}`;
+    case 'ConstCall':
+      return `${expr.name}(${(expr.args ?? []).map((arg) => renderConstExpr(arg)).join(',')})`;
+    case 'ConstIf':
+      return `if ${renderConstExpr(expr.condition)} { ${renderConstExpr(expr.thenExpr)} } else { ${renderConstExpr(expr.elseExpr)} }`;
     default:
       return '_';
   }
@@ -2897,8 +3144,14 @@ function renderConstExprWithTypeParams(
       const text = constTypeToText(bound);
       return text ?? expr.name;
     }
+    case 'ConstUnary':
+      return `${expr.op}${renderConstExprWithTypeParams(expr.expr, typeParams)}`;
     case 'ConstBinary':
       return `${renderConstExprWithTypeParams(expr.left, typeParams)}${expr.op}${renderConstExprWithTypeParams(expr.right, typeParams)}`;
+    case 'ConstCall':
+      return `${expr.name}(${(expr.args ?? []).map((arg) => renderConstExprWithTypeParams(arg, typeParams)).join(',')})`;
+    case 'ConstIf':
+      return `if ${renderConstExprWithTypeParams(expr.condition, typeParams)} { ${renderConstExprWithTypeParams(expr.thenExpr, typeParams)} } else { ${renderConstExprWithTypeParams(expr.elseExpr, typeParams)} }`;
     default:
       return '_';
   }
@@ -3047,12 +3300,18 @@ function validateTypeHoles(
 
 function splitTypeArgs(input: string): string[] {
   const result: string[] = [];
-  let depth = 0;
+  let angleDepth = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
   let current = '';
   for (const ch of input) {
-    if (ch === '<') depth++;
-    if (ch === '>') depth--;
-    if (ch === ',' && depth === 0) {
+    if (ch === '<') angleDepth++;
+    if (ch === '>') angleDepth--;
+    if (ch === '(') parenDepth++;
+    if (ch === ')') parenDepth--;
+    if (ch === '{') braceDepth++;
+    if (ch === '}') braceDepth--;
+    if (ch === ',' && angleDepth === 0 && parenDepth === 0 && braceDepth === 0) {
       result.push(current.trim());
       current = '';
       continue;

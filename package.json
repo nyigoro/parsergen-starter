@@ -50,6 +50,7 @@
     "bench:lsp": "tsx scripts/benchmark/lsp-bench.ts",
     "bench:memory": "node --expose-gc --import tsx scripts/benchmark/memory-bench.ts",
     "bench:runtime": "tsx scripts/benchmark/runtime-bench.ts",
+    "bench:const-generics": "tsx scripts/benchmark/const-generics-bench.ts",
     "bench": "npm run bench:compile && npm run bench:incremental && npm run bench:lsp && npm run bench:runtime && npm run bench:memory",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",

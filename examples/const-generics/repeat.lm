@@ -1,0 +1,11 @@
+fn repeat<const N: usize>(value: i32) -> [i32; N] where N > 0 {
+  [value; N]
+}
+
+fn main() -> i32 {
+  let arr = repeat::<3>(7);
+  match arr[0] {
+    Some(v) => v,
+    None => 0
+  }
+}

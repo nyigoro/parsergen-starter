@@ -45,6 +45,11 @@ describe('Const Generic Semantic Analysis', () => {
       expect.objectContaining({
         code: 'CONST-UNBOUND-PARAM',
         message: expect.stringContaining("Const parameter 'N'"),
+        relatedInformation: expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.stringContaining("Declared const parameter 'M'"),
+          }),
+        ]),
       })
     );
   });
@@ -72,5 +77,56 @@ describe('Const Generic Semantic Analysis', () => {
     const errors = diagnostics.filter((d) => d.severity === 'error');
     expect(errors).toHaveLength(0);
   });
-});
 
+  it('validates const where clauses reference declared const params', () => {
+    const source = `
+      fn repeat<const N: usize>(s: string) -> string where M > 0 {
+        s
+      }
+    `.trim() + '\n';
+
+    const { diagnostics } = analyzeLumina(parseProgram(source));
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'CONST-UNBOUND-PARAM',
+      })
+    );
+  });
+
+  it('rejects const generic call when where clause is not satisfied', () => {
+    const source = `
+      fn fill<const N: usize>(value: i32) -> i32 where N > 0 {
+        value
+      }
+
+      fn main() -> i32 {
+        fill::<0>(42)
+      }
+    `.trim() + '\n';
+
+    const { diagnostics } = analyzeLumina(parseProgram(source));
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'CONST-WHERE-FAILED',
+      })
+    );
+  });
+
+  it('accepts const where clauses on impl declarations', () => {
+    const source = `
+      trait Marker {
+        fn mark(self: Self) -> i32;
+      }
+
+      impl<T, const N: usize> Marker for [T; N] where N > 0 {
+        fn mark(self: Self) -> i32 {
+          1
+        }
+      }
+    `.trim() + '\n';
+
+    const { diagnostics } = analyzeLumina(parseProgram(source));
+    const errors = diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
+});

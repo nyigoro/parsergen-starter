@@ -56,12 +56,18 @@ const parseTypeName = (typeName: string): { base: string; args: string[] } | nul
 
 const splitTypeArgs = (input: string): string[] => {
   const result: string[] = [];
-  let depth = 0;
+  let angleDepth = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
   let current = '';
   for (const ch of input) {
-    if (ch === '<') depth++;
-    if (ch === '>') depth--;
-    if (ch === ',' && depth === 0) {
+    if (ch === '<') angleDepth++;
+    if (ch === '>') angleDepth--;
+    if (ch === '(') parenDepth++;
+    if (ch === ')') parenDepth--;
+    if (ch === '{') braceDepth++;
+    if (ch === '}') braceDepth--;
+    if (ch === ',' && angleDepth === 0 && parenDepth === 0 && braceDepth === 0) {
       result.push(current.trim());
       current = '';
       continue;
@@ -103,19 +109,42 @@ const primitiveNames = new Set<PrimitiveName>([
 ]);
 
 const parseConstExprText = (text: string): TypeConstExpr | null => {
-  const tokens = text.match(/[A-Za-z_][A-Za-z0-9_]*|\d+|[()+\-*/]/g);
+  const tokens = text.match(/<=|>=|==|!=|\|\||&&|[(){}!,+\-*/<>]|[A-Za-z_][A-Za-z0-9_]*|\d+/g);
   if (!tokens || tokens.length === 0) return null;
   let index = 0;
   const peek = (): string | null => (index < tokens.length ? tokens[index] : null);
   const consume = (): string | null => (index < tokens.length ? tokens[index++] : null);
+  const match = (token: string): boolean => {
+    if (peek() !== token) return false;
+    consume();
+    return true;
+  };
 
   const parsePrimary = (): TypeConstExpr | null => {
     const token = consume();
     if (!token) return null;
     if (/^\d+$/.test(token)) return { kind: 'const-literal', value: Number(token) };
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return { kind: 'const-param', name: token };
+    if (token === 'true') return { kind: 'const-literal', value: true };
+    if (token === 'false') return { kind: 'const-literal', value: false };
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
+      if (peek() === '(') {
+        consume();
+        const args: TypeConstExpr[] = [];
+        if (peek() !== ')') {
+          while (true) {
+            const arg = parseConstExpr();
+            if (!arg) return null;
+            args.push(arg);
+            if (!match(',')) break;
+          }
+        }
+        if (!match(')')) return null;
+        return { kind: 'const-call', name: token, args };
+      }
+      return { kind: 'const-param', name: token };
+    }
     if (token === '(') {
-      const inner = parseAddSub();
+      const inner = parseConstExpr();
       if (peek() !== ')') return null;
       consume();
       return inner;
@@ -123,14 +152,25 @@ const parseConstExprText = (text: string): TypeConstExpr | null => {
     return null;
   };
 
+  const parseUnary = (): TypeConstExpr | null => {
+    const token = peek();
+    if (token === '-' || token === '!') {
+      consume();
+      const expr = parseUnary();
+      if (!expr) return null;
+      return { kind: 'const-unary', op: token, expr };
+    }
+    return parsePrimary();
+  };
+
   const parseMulDiv = (): TypeConstExpr | null => {
-    let left = parsePrimary();
+    let left = parseUnary();
     if (!left) return null;
     while (true) {
       const op = peek();
       if (op !== '*' && op !== '/') break;
       consume();
-      const right = parsePrimary();
+      const right = parseUnary();
       if (!right) return null;
       left = { kind: 'const-binary', op, left, right };
     }
@@ -151,7 +191,74 @@ const parseConstExprText = (text: string): TypeConstExpr | null => {
     return left;
   };
 
-  const parsed = parseAddSub();
+  const parseCompare = (): TypeConstExpr | null => {
+    let left = parseAddSub();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '<' && op !== '<=' && op !== '>' && op !== '>=') break;
+      consume();
+      const right = parseAddSub();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseEquality = (): TypeConstExpr | null => {
+    let left = parseCompare();
+    if (!left) return null;
+    while (true) {
+      const op = peek();
+      if (op !== '==' && op !== '!=') break;
+      consume();
+      const right = parseCompare();
+      if (!right) return null;
+      left = { kind: 'const-binary', op, left, right };
+    }
+    return left;
+  };
+
+  const parseAnd = (): TypeConstExpr | null => {
+    let left = parseEquality();
+    if (!left) return null;
+    while (match('&&')) {
+      const right = parseEquality();
+      if (!right) return null;
+      left = { kind: 'const-binary', op: '&&', left, right };
+    }
+    return left;
+  };
+
+  const parseOr = (): TypeConstExpr | null => {
+    let left = parseAnd();
+    if (!left) return null;
+    while (match('||')) {
+      const right = parseAnd();
+      if (!right) return null;
+      left = { kind: 'const-binary', op: '||', left, right };
+    }
+    return left;
+  };
+
+  const parseIf = (): TypeConstExpr | null => {
+    if (peek() !== 'if') return parseOr();
+    consume();
+    const condition = parseConstExpr();
+    if (!condition) return null;
+    if (!match('{')) return null;
+    const thenExpr = parseConstExpr();
+    if (!thenExpr || !match('}')) return null;
+    if (!match('else')) return null;
+    if (!match('{')) return null;
+    const elseExpr = parseConstExpr();
+    if (!elseExpr || !match('}')) return null;
+    return { kind: 'const-if', condition, thenExpr, elseExpr };
+  };
+
+  const parseConstExpr = (): TypeConstExpr | null => parseIf();
+
+  const parsed = parseConstExpr();
   if (!parsed || index !== tokens.length) return null;
   return parsed;
 };
@@ -162,8 +269,14 @@ const constExprToText = (expr: TypeConstExpr): string => {
       return String(expr.value);
     case 'const-param':
       return expr.name;
+    case 'const-unary':
+      return `${expr.op}${constExprToText(expr.expr)}`;
     case 'const-binary':
       return `${constExprToText(expr.left)}${expr.op}${constExprToText(expr.right)}`;
+    case 'const-call':
+      return `${expr.name}(${(expr.args ?? []).map((arg) => constExprToText(arg)).join(',')})`;
+    case 'const-if':
+      return `if ${constExprToText(expr.condition)} { ${constExprToText(expr.thenExpr)} } else { ${constExprToText(expr.elseExpr)} }`;
     default:
       return 'unknown';
   }
@@ -175,8 +288,14 @@ const astConstExprToText = (expr: LuminaConstExpr): string => {
       return String(expr.value);
     case 'ConstParam':
       return expr.name;
+    case 'ConstUnary':
+      return `${expr.op}${astConstExprToText(expr.expr)}`;
     case 'ConstBinary':
       return `${astConstExprToText(expr.left)}${expr.op}${astConstExprToText(expr.right)}`;
+    case 'ConstCall':
+      return `${expr.name}(${(expr.args ?? []).map((arg) => astConstExprToText(arg)).join(',')})`;
+    case 'ConstIf':
+      return `if ${astConstExprToText(expr.condition)} { ${astConstExprToText(expr.thenExpr)} } else { ${astConstExprToText(expr.elseExpr)} }`;
     default:
       return 'unknown';
   }
@@ -191,12 +310,23 @@ const astConstToTypeConst = (expr: LuminaConstExpr): TypeConstExpr => {
       return { kind: 'const-literal', value: expr.value };
     case 'ConstParam':
       return { kind: 'const-param', name: expr.name };
+    case 'ConstUnary':
+      return { kind: 'const-unary', op: expr.op, expr: astConstToTypeConst(expr.expr) };
     case 'ConstBinary':
       return {
         kind: 'const-binary',
         op: expr.op,
         left: astConstToTypeConst(expr.left),
         right: astConstToTypeConst(expr.right),
+      };
+    case 'ConstCall':
+      return { kind: 'const-call', name: expr.name, args: (expr.args ?? []).map((arg) => astConstToTypeConst(arg)) };
+    case 'ConstIf':
+      return {
+        kind: 'const-if',
+        condition: astConstToTypeConst(expr.condition),
+        thenExpr: astConstToTypeConst(expr.thenExpr),
+        elseExpr: astConstToTypeConst(expr.elseExpr),
       };
     default:
       return { kind: 'const-literal', value: 0 };
@@ -209,12 +339,23 @@ const typeConstToAstConst = (expr: TypeConstExpr): LuminaConstExpr => {
       return { type: 'ConstLiteral', value: expr.value };
     case 'const-param':
       return { type: 'ConstParam', name: expr.name };
+    case 'const-unary':
+      return { type: 'ConstUnary', op: expr.op, expr: typeConstToAstConst(expr.expr) };
     case 'const-binary':
       return {
         type: 'ConstBinary',
         op: expr.op,
         left: typeConstToAstConst(expr.left),
         right: typeConstToAstConst(expr.right),
+      };
+    case 'const-call':
+      return { type: 'ConstCall', name: expr.name, args: (expr.args ?? []).map((arg) => typeConstToAstConst(arg)) };
+    case 'const-if':
+      return {
+        type: 'ConstIf',
+        condition: typeConstToAstConst(expr.condition),
+        thenExpr: typeConstToAstConst(expr.thenExpr),
+        elseExpr: typeConstToAstConst(expr.elseExpr),
       };
     default:
       return { type: 'ConstLiteral', value: 0 };

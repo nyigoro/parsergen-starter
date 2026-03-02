@@ -59,5 +59,23 @@ describe('Const Generic Type Inference', () => {
     const { diagnostics } = inferProgram(parseProgram(source));
     expect(diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
   });
-});
 
+  it('validates const where clauses at explicit generic call sites', () => {
+    const source = `
+      fn fill<const N: usize>(value: i32) -> i32 where N > 0 {
+        value
+      }
+
+      fn main() -> i32 {
+        fill::<0>(1)
+      }
+    `.trim() + '\n';
+
+    const { diagnostics } = inferProgram(parseProgram(source));
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'HM_CONST_WHERE',
+      })
+    );
+  });
+});

@@ -42,5 +42,21 @@ describe('Const Generic AST', () => {
     const arrayType = fieldType as { size?: { type?: string } };
     expect(arrayType.size?.type).toBe('ConstParam');
   });
-});
 
+  it('captures extended const expression nodes in array size', () => {
+    const ast = parseProgram(
+      `
+      struct Vec<const N: usize, const M: usize> {
+        data: [i32; if N < M { max(N, 1) } else { min(M, 2) }]
+      }
+      `.trim() + '\n'
+    );
+    const decl = ast.body[0];
+    expect(decl?.type).toBe('StructDecl');
+    if (!decl || decl.type !== 'StructDecl') return;
+    const fieldType = decl.body[0]?.typeName as { kind?: string; size?: { type?: string; thenExpr?: { type?: string } } } | undefined;
+    expect(fieldType?.kind).toBe('array');
+    expect(fieldType?.size?.type).toBe('ConstIf');
+    expect(fieldType?.size?.thenExpr?.type).toBe('ConstCall');
+  });
+});
