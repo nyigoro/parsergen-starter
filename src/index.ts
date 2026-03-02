@@ -114,4 +114,18 @@ export {
   generalize
 } from './lumina/types';
 export { inferProgram } from './lumina/hm-infer';
+export { inferTypeParamKinds } from './lumina/kind-infer';
+export {
+  starKind,
+  arrowKind,
+  kindFromArity,
+  formatKind,
+  freshKindVar,
+  resetKindVarCounter,
+  pruneKind,
+  unifyKinds,
+  KindUnificationError,
+  type Kind,
+  type KindSubst,
+} from './lumina/kinds';
 export { monomorphize, collectInstantiations, specializeFunction, rewriteCallSites } from './lumina/monomorphize';

@@ -18,7 +18,10 @@ import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
 import { normalizeTypeForComparison, normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
 import { ConstEvaluator } from './const-eval.js';
+import { HKT_APPLY_TYPE_NAME } from './types.js';
 import type { ConstExpr as TypeConstExpr } from './types.js';
+import { inferTypeParamKinds } from './kind-infer.js';
+import { formatKind } from './kinds.js';
 import {
   createStdModuleRegistry,
   getPreludeExports,
@@ -44,7 +47,13 @@ export interface SymbolInfo {
   visibility?: 'public' | 'private';
   extern?: boolean;
   uri?: string;
-  typeParams?: Array<{ name: string; bound?: LuminaType[] }>;
+  typeParams?: Array<{
+    name: string;
+    bound?: LuminaType[];
+    isConst?: boolean;
+    constType?: string;
+    higherKindArity?: number;
+  }>;
   paramTypes?: LuminaType[];
   paramNames?: string[];
   paramRefs?: boolean[];
@@ -762,21 +771,88 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     }
   }
 
-  const reportUnsupportedHkt = (
-    typeParams: Array<{ name: string; bound?: LuminaType[] }> | undefined,
-    location?: Location
-  ) => {
+  type TypeParamLike = {
+    name: string;
+    bound?: LuminaTypeExpr[];
+    higherKindArity?: number;
+  };
+
+  const collectTypeParamArities = (
+    typeParams: ReadonlyArray<TypeParamLike> | undefined
+  ): Map<string, number> => {
+    const arities = new Map<string, number>();
     for (const param of typeParams ?? []) {
-      const arity = Number((param as unknown as { higherKindArity?: number }).higherKindArity ?? 0);
-      if (arity > 0) {
-        diagnostics.push(
-          diagAt(
-            `Higher-kinded type parameter '${param.name}<...>' is parsed but not type-checked yet`,
-            location,
-            'error',
-            'UNSUPPORTED_HKT'
-          )
-        );
+      const inferred = inferTypeParamKinds([param]).get(param.name);
+      const fromArity = Number(param.higherKindArity ?? 0);
+      if (!inferred) {
+        arities.set(param.name, Math.max(0, Math.trunc(fromArity)));
+        continue;
+      }
+      const asText = formatKind(inferred);
+      const arrowCount = (asText.match(/->/g) ?? []).length;
+      arities.set(param.name, arrowCount);
+    }
+    return arities;
+  };
+
+  const mergeTypeParamArities = (
+    ...maps: Array<Map<string, number>>
+  ): Map<string, number> => {
+    const merged = new Map<string, number>();
+    for (const map of maps) {
+      for (const [name, arity] of map.entries()) {
+        merged.set(name, arity);
+      }
+    }
+    return merged;
+  };
+
+  const formatKindFromArity = (arity: number): string => {
+    if (arity <= 0) return '*';
+    return `${Array.from({ length: arity }, () => '*').join(' -> ')} -> *`;
+  };
+
+  const validateHktTypeExpr = (
+    typeExpr: LuminaTypeExpr | null | undefined,
+    typeParamArities: Map<string, number>,
+    location?: Location
+  ): void => {
+    if (!typeExpr || isTypeHoleExpr(typeExpr)) return;
+    if (typeof typeExpr === 'object' && (typeExpr as { kind?: string }).kind === 'array') {
+      const arr = typeExpr as import('./ast.js').LuminaArrayType;
+      validateHktTypeExpr(arr.element, typeParamArities, arr.location ?? location);
+      return;
+    }
+    if (typeof typeExpr !== 'string') return;
+
+    const parsed = parseTypeName(typeExpr);
+    if (!parsed) return;
+
+    const expectedArity = typeParamArities.get(parsed.base);
+    if (typeof expectedArity === 'number' && parsed.args.length !== expectedArity) {
+      diagnostics.push(
+        diagAt(
+          `Kind mismatch for '${parsed.base}'. Expected kind '${formatKindFromArity(expectedArity)}' (arity ${expectedArity}) but found ${parsed.args.length} type argument${parsed.args.length === 1 ? '' : 's'}`,
+          location,
+          'error',
+          'HKT-001'
+        )
+      );
+    }
+
+    for (const arg of parsed.args) {
+      validateHktTypeExpr(arg, typeParamArities, location);
+    }
+  };
+
+  const validateTypeParamBounds = (
+    typeParams: ReadonlyArray<TypeParamLike> | undefined,
+    typeParamArities: Map<string, number>,
+    location?: Location
+  ): void => {
+    for (const param of typeParams ?? []) {
+      for (const bound of param.bound ?? []) {
+        validateHktTypeExpr(bound, typeParamArities, location);
       }
     }
   };
@@ -995,15 +1071,88 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
   };
 
   for (const stmt of program.body) {
+    const stmtTypeParams = (stmt.type === 'FnDecl' || stmt.type === 'StructDecl' || stmt.type === 'EnumDecl' || stmt.type === 'TypeDecl' || stmt.type === 'TraitDecl' || stmt.type === 'ImplDecl')
+      ? ((stmt.typeParams as TypeParamLike[] | undefined) ?? [])
+      : [];
+    const stmtTypeParamArities = collectTypeParamArities(stmtTypeParams);
+    validateTypeParamBounds(stmtTypeParams, stmtTypeParamArities, stmt.location);
+
     switch (stmt.type) {
-      case 'FnDecl':
-      case 'StructDecl':
-      case 'EnumDecl':
-      case 'TypeDecl':
-      case 'TraitDecl':
-      case 'ImplDecl':
-        reportUnsupportedHkt(stmt.typeParams as Array<{ name: string; bound?: LuminaType[] }> | undefined, stmt.location);
+      case 'FnDecl': {
+        for (const param of stmt.params ?? []) {
+          validateHktTypeExpr(param.typeName, stmtTypeParamArities, param.location ?? stmt.location);
+        }
+        validateHktTypeExpr(stmt.returnType, stmtTypeParamArities, stmt.location);
         break;
+      }
+      case 'TypeDecl': {
+        for (const field of stmt.body ?? []) {
+          validateHktTypeExpr(field.typeName, stmtTypeParamArities, field.location ?? stmt.location);
+        }
+        break;
+      }
+      case 'StructDecl': {
+        for (const field of stmt.body ?? []) {
+          validateHktTypeExpr(field.typeName, stmtTypeParamArities, field.location ?? stmt.location);
+        }
+        break;
+      }
+      case 'EnumDecl': {
+        for (const variant of stmt.variants ?? []) {
+          const existentialArities = collectTypeParamArities((variant.existentialTypeParams as TypeParamLike[] | undefined) ?? []);
+          const variantArities = mergeTypeParamArities(stmtTypeParamArities, existentialArities);
+          for (const paramType of variant.params ?? []) {
+            validateHktTypeExpr(paramType, variantArities, variant.location ?? stmt.location);
+          }
+          validateHktTypeExpr(variant.resultType ?? null, variantArities, variant.location ?? stmt.location);
+          for (const constraint of variant.constraints ?? []) {
+            for (const boundType of constraint.bounds ?? []) {
+              validateHktTypeExpr(boundType, variantArities, constraint.location ?? variant.location ?? stmt.location);
+            }
+          }
+        }
+        break;
+      }
+      case 'TraitDecl': {
+        for (const superTrait of stmt.superTraits ?? []) {
+          validateHktTypeExpr(superTrait, stmtTypeParamArities, stmt.location);
+        }
+        for (const assoc of stmt.associatedTypes ?? []) {
+          validateHktTypeExpr(assoc.typeName ?? null, stmtTypeParamArities, assoc.location ?? stmt.location);
+        }
+        for (const method of stmt.methods ?? []) {
+          const methodArities = mergeTypeParamArities(
+            stmtTypeParamArities,
+            collectTypeParamArities((method.typeParams as TypeParamLike[] | undefined) ?? [])
+          );
+          validateTypeParamBounds(method.typeParams as TypeParamLike[] | undefined, methodArities, method.location ?? stmt.location);
+          for (const param of method.params ?? []) {
+            validateHktTypeExpr(param.typeName, methodArities, param.location ?? method.location ?? stmt.location);
+          }
+          validateHktTypeExpr(method.returnType, methodArities, method.location ?? stmt.location);
+        }
+        break;
+      }
+      case 'ImplDecl': {
+        const implArities = stmtTypeParamArities;
+        validateHktTypeExpr(stmt.traitType, implArities, stmt.location);
+        validateHktTypeExpr(stmt.forType, implArities, stmt.location);
+        for (const assoc of stmt.associatedTypes ?? []) {
+          validateHktTypeExpr(assoc.typeName, implArities, assoc.location ?? stmt.location);
+        }
+        for (const method of stmt.methods ?? []) {
+          const methodArities = mergeTypeParamArities(
+            implArities,
+            collectTypeParamArities((method.typeParams as TypeParamLike[] | undefined) ?? [])
+          );
+          validateTypeParamBounds(method.typeParams as TypeParamLike[] | undefined, methodArities, method.location ?? stmt.location);
+          for (const param of method.params ?? []) {
+            validateHktTypeExpr(param.typeName, methodArities, param.location ?? method.location ?? stmt.location);
+          }
+          validateHktTypeExpr(method.returnType, methodArities, method.location ?? stmt.location);
+        }
+        break;
+      }
       default:
         break;
     }
@@ -6642,6 +6791,11 @@ function hmTypeToLuminaType(type: import('./types.js').Type): LuminaType | null 
     return `Promise<${inner}>`;
   }
   if (type.kind === 'adt') {
+    if (type.name === HKT_APPLY_TYPE_NAME && type.params.length >= 2) {
+      const ctor = hmTypeToLuminaType(type.params[0]) ?? 'any';
+      const args = type.params.slice(1).map((param) => hmTypeToLuminaType(param) ?? 'any');
+      return `${ctor}<${args.join(',')}>`;
+    }
     if (!type.params.length) return type.name;
     const args = type.params.map((param) => hmTypeToLuminaType(param) ?? 'any');
     return `${type.name}<${args.join(',')}>`;
@@ -6662,6 +6816,11 @@ function hmTypeToDisplay(type: import('./types.js').Type): string {
     return `Promise<${hmTypeToDisplay(type.inner)}>`;
   }
   if (type.kind === 'adt') {
+    if (type.name === HKT_APPLY_TYPE_NAME && type.params.length >= 2) {
+      const ctor = hmTypeToDisplay(type.params[0]);
+      const args = type.params.slice(1).map((param) => hmTypeToDisplay(param)).join(', ');
+      return `${ctor}<${args}>`;
+    }
     if (!type.params.length) return type.name;
     const args = type.params.map((param) => hmTypeToDisplay(param)).join(', ');
     return `${type.name}<${args}>`;

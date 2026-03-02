@@ -14,6 +14,7 @@ import {
   type UnificationTraceEntry,
   isNumericPrimitiveName,
   normalizePrimitiveName,
+  HKT_APPLY_TYPE_NAME,
 } from './types.js';
 import { normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
 import { type Diagnostic } from '../parser/index.js';
@@ -3572,7 +3573,12 @@ function parseTypeNameWithEnv(
   const baseIdx = typeName.indexOf('<');
   const base = baseIdx === -1 ? typeName : typeName.slice(0, baseIdx);
   const direct = typeParams.get(base);
-  if (direct) return direct;
+  if (direct && baseIdx === -1) return direct;
+  if (direct && baseIdx !== -1) {
+    const inner = typeName.slice(baseIdx + 1, -1);
+    const args = splitTypeArgs(inner).map(arg => parseTypeNameWithEnv(arg, typeParams, holeInfoByVar, holeInfo, defaultLocation));
+    return { kind: 'adt', name: HKT_APPLY_TYPE_NAME, params: [direct, ...args] };
+  }
   if (baseIdx === -1) {
     return parseTypeName(typeName, holeInfoByVar, holeInfo, defaultLocation);
   }
@@ -3637,6 +3643,11 @@ function formatType(type: Type, subst: Subst): string {
       return `(${args}) -> ${formatType(pruned.returnType, subst)}`;
     }
     case 'adt':
+      if (pruned.name === HKT_APPLY_TYPE_NAME && pruned.params.length >= 2) {
+        const [ctor, ...args] = pruned.params;
+        const ctorText = formatType(ctor, subst);
+        return `${ctorText}<${args.map((arg) => formatType(arg, subst)).join(', ')}>`;
+      }
       if (pruned.params.length === 0) return pruned.name;
       return `${pruned.name}<${pruned.params.map((param) => formatType(param, subst)).join(', ')}>`;
     case 'promise':

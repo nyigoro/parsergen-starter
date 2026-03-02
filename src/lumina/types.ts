@@ -24,6 +24,8 @@ export type ConstExpr =
   | { kind: 'const-param'; name: string }
   | { kind: 'const-binary'; op: '+' | '-' | '*' | '/'; left: ConstExpr; right: ConstExpr };
 
+export const HKT_APPLY_TYPE_NAME = '__HKT_APPLY';
+
 const integerPrimList: PrimitiveName[] = [
   'int',
   'i8',
@@ -180,11 +182,19 @@ export function occursIn(target: Type, type: Type, subst: Subst): boolean {
 const sanitizeTypeSegment = (value: string): string =>
   value.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
 
+const isHktApplyType = (type: Type): type is { kind: 'adt'; name: string; params: Type[] } =>
+  type.kind === 'adt' && type.name === HKT_APPLY_TYPE_NAME;
+
 export function normalizeTypeName(type: Type): string {
   switch (type.kind) {
     case 'primitive':
       return sanitizeTypeSegment(normalizePrimitiveName(type.name));
     case 'adt': {
+      if (isHktApplyType(type) && type.params.length >= 2) {
+        const ctor = normalizeTypeName(type.params[0]);
+        const args = type.params.slice(1).map(normalizeTypeName).join('_');
+        return `Apply_${ctor}_${args}`;
+      }
       const base = sanitizeTypeSegment(type.name);
       if (type.params.length === 0) return base;
       const params = type.params.map(normalizeTypeName).join('_');
@@ -324,6 +334,30 @@ export function unify(
   }
 
   if (left.kind === 'adt' && right.kind === 'adt') {
+    if (isHktApplyType(left) && isHktApplyType(right)) {
+      if (left.params.length !== right.params.length) {
+        throw new UnificationError('arity', left, right, trace);
+      }
+      for (let i = 0; i < left.params.length; i++) {
+        unify(left.params[i], right.params[i], subst, wrappers, trace, rowResolver);
+      }
+      return;
+    }
+    if (isHktApplyType(left) && !isHktApplyType(right)) {
+      const [ctor, ...args] = left.params;
+      if (!ctor || args.length !== right.params.length) {
+        throw new UnificationError('mismatch', left, right, trace);
+      }
+      unify(ctor, { kind: 'adt', name: right.name, params: [] }, subst, wrappers, trace, rowResolver);
+      for (let i = 0; i < args.length; i++) {
+        unify(args[i], right.params[i], subst, wrappers, trace, rowResolver);
+      }
+      return;
+    }
+    if (!isHktApplyType(left) && isHktApplyType(right)) {
+      unify(right, left, subst, wrappers, trace, rowResolver);
+      return;
+    }
     if (left.name !== right.name || left.params.length !== right.params.length) {
       throw new UnificationError('mismatch', left, right, trace);
     }

@@ -85,7 +85,7 @@ describe('advanced type system syntax (mvp)', () => {
     expect(sem.diagnostics.some((diag) => String(diag.code).startsWith('GADT-'))).toBe(false);
   });
 
-  it('reports higher-kinded type params as unsupported in semantic analysis', () => {
+  it('accepts higher-kinded type params with arity-correct usage', () => {
     const source = `
       trait Functor<F<_>> {
         fn map(fa: F<i32>) -> F<i32>;
@@ -94,6 +94,7 @@ describe('advanced type system syntax (mvp)', () => {
 
     const ast = parseProgram(source);
     const sem = analyzeLumina(ast);
-    expect(sem.diagnostics.some((diag) => diag.code === 'UNSUPPORTED_HKT')).toBe(true);
+    expect(sem.diagnostics.some((diag) => diag.code === 'UNSUPPORTED_HKT')).toBe(false);
+    expect(sem.diagnostics.some((diag) => diag.code === 'HKT-001')).toBe(false);
   });
 });
