@@ -19,6 +19,7 @@ import { normalizeDiagnostic } from './diagnostics-util.js';
 import { normalizeTypeForComparison, normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
 import { ConstEvaluator } from './const-eval.js';
 import { expandMacrosInProgram } from './macro-expand.js';
+import { expandDerivesInProgram } from './derive-expand.js';
 import { HKT_APPLY_TYPE_NAME } from './types.js';
 import type { ConstExpr as TypeConstExpr } from './types.js';
 import { inferTypeParamKinds } from './kind-infer.js';
@@ -517,6 +518,8 @@ class StopOnUnresolvedMemberError extends Error {}
 
 export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) {
   const diagnostics: Diagnostic[] = [];
+  const deriveExpansion = expandDerivesInProgram(program);
+  diagnostics.push(...deriveExpansion.diagnostics);
   const macroExpansion = expandMacrosInProgram(program);
   diagnostics.push(...macroExpansion.diagnostics);
   const symbols = new SymbolTable();
@@ -610,6 +613,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         visibility: stmt.visibility ?? 'private',
         uri: options?.currentUri,
         typeParams: typeParams ?? [],
+        derivedTraits: stmt.derives ?? [],
         enumVariants: stmt.variants.map((v) => ({
           name: v.name,
           params: (v.params ?? []).map((param) => resolveTypeExpr(param) ?? 'any'),
@@ -686,6 +690,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       recursiveWrappers: options?.recursiveWrappers,
       useRowPolymorphism: options?.useRowPolymorphism,
       skipMacroExpansion: true,
+      skipDeriveExpansion: true,
     });
     const sourceText = options.hmSourceText ?? '';
     const sourceFile = options.currentUri ?? 'inline';
@@ -3847,24 +3852,6 @@ function typeCheckExpr(
       diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, callLocation, 'error', 'LUM-002'));
       return false;
     };
-
-    const receiverStruct = symbols.get(parsed.base);
-    const derivedTraits = new Set(receiverStruct?.derivedTraits ?? []);
-    if (derivedTraits.has('Clone') && callee === 'clone') {
-      ensureArity(0);
-      return receiverType;
-    }
-    if (derivedTraits.has('Debug') && callee === 'debug') {
-      ensureArity(0);
-      return 'string';
-    }
-    if (derivedTraits.has('Eq') && callee === 'eq') {
-      if (!ensureArity(1)) return 'bool';
-      if (!isTypeAssignable(actualArgs[0], receiverType, symbols, options?.typeParams)) {
-        reportCallArgMismatch(callee, 0, receiverType, actualArgs[0], args[0]?.location ?? callLocation, null);
-      }
-      return 'bool';
-    }
 
     if (isIntTypeName(parsed.base) || isFloatTypeName(parsed.base)) {
       if (callee === 'millis' || callee === 'milliseconds') {

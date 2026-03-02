@@ -28,7 +28,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Lambda expressions | Stable | `|x| x + 1` |
 | Collection method syntax | Stable | `v.push(1)` style lowering to stdlib calls |
 | Macros | Beta | Expansion phase with matcher/transcriber subset, lexical scoping, `![]`/`!()`/`!{}` calls, recursion/cycle diagnostics |
-| `#[derive(...)]` (MVP) | Beta | Supports `Clone`, `Debug`, `Eq` via generated method lowering/runtime helpers |
+| `#[derive(...)]` | Stable | Trait-based derived impl synthesis (`Clone`, `Debug`, `Eq`) for structs/enums, generic bound synthesis, collision diagnostics |
 | Const generics | Stable | Const params across structs/enums/functions/traits, where-clauses, explicit const args (`::<...>`), semantic + HM checks, monomorphization, JS/WASM fixed-array codegen |
 | GADTs (baseline) | Beta | Indexed variants + existential constraints, branch refinement, unreachable/index-aware diagnostics, existential escape checks |
 | Higher-kinded types (MVP+) | Beta | Arity/kind validation (`HKT-001`), partial constructors (`Result<_, E>`), user-defined constructors in HKT positions |
@@ -45,8 +45,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Trait bounds | Stable | Single and multiple bounds (`T: A + B`) |
 | Associated types | Stable | `type Item` in traits/impls |
 | Default trait methods | Stable | Trait methods with default bodies |
-| Row polymorphism (structural) | Beta | Readâ€‘only / constraintâ€‘based MVP |
-| Flowâ€‘sensitive narrowing (`is`) | Beta | Narrowing in HM + semantic |
+
 
 ## Diagnostics & LSP
 | Feature | Status | Notes |

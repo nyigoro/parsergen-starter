@@ -190,13 +190,33 @@ AdtTypeDecl
     }
 
 StructDecl
-  = derives:DeriveAttr* visibility:Visibility? _ "struct" _ node:IdName _ tparams:TypeParams? _ "{" _ fields:TypeFieldList? _ "}" _ ";"? {
+  = derives:DeriveAttr* visibility:Visibility? _ "struct" _ node:IdName _ tparams:TypeParams? _ body:StructBody {
       const deriveList = [];
       for (const item of derives || []) {
         if (Array.isArray(item)) deriveList.push(...item);
       }
-      return createNode("StructDecl", { name: node.name, body: fields || [], derives: deriveList, typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
+      return createNode("StructDecl", { name: node.name, body: body.fields || [], derives: deriveList, typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
     }
+
+StructBody
+  = "{" _ fields:TypeFieldList? _ "}" _ ";"? {
+      return { fields: fields || [] };
+    }
+  / "(" _ types:TupleStructTypeList? _ ")" _ ";"? {
+      return {
+        fields: (types || []).map((typeName, idx) => ({
+          name: `_${idx}`,
+          typeName,
+          location: location()
+        }))
+      };
+    }
+  / ";" {
+      return { fields: [] };
+    }
+
+TupleStructTypeList
+  = head:TypeName tail:(_ "," _ TypeName)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 DeriveAttr
   = "#[" _ "derive" _ "(" _ names:DeriveList? _ ")" _ "]" _ { return names || []; }
@@ -205,8 +225,12 @@ DeriveList
   = head:IdName tail:(_ "," _ IdName)* _ ","? { return [head.name].concat(tail.map(t => t[3].name)); }
 
 EnumDecl
-  = visibility:Visibility? _ "enum" _ node:IdName _ tparams:TypeParams? _ "{" _ variants:EnumVariantList? _ "}" _ ";"? {
-      return createNode("EnumDecl", { name: node.name, variants: variants || [], typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
+  = derives:DeriveAttr* visibility:Visibility? _ "enum" _ node:IdName _ tparams:TypeParams? _ "{" _ variants:EnumVariantList? _ "}" _ ";"? {
+      const deriveList = [];
+      for (const item of derives || []) {
+        if (Array.isArray(item)) deriveList.push(...item);
+      }
+      return createNode("EnumDecl", { name: node.name, variants: variants || [], derives: deriveList, typeParams: tparams || [], visibility: visibility ?? "private", location: node.location }, location);
     }
 
 ExternTypeDecl

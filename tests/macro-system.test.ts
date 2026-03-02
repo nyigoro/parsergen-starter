@@ -95,10 +95,17 @@ describe('macro system MVP', () => {
     `.trim() + '\n';
 
     const ast = parseProgram(source);
-    const js = generateJSFromAst(ast, { includeRuntime: false }).code;
-    expect(js).toContain('__lumina_clone(p)');
-    expect(js).toContain('__lumina_debug(q)');
-    expect(js).toContain('__lumina_eq(q, p)');
+    const sem = analyzeLumina(ast);
+    const js = generateJSFromAst(ast, {
+      includeRuntime: false,
+      traitMethodResolutions: sem.traitMethodResolutions,
+    }).code;
+    expect(js).toContain('function Clone$Point$clone');
+    expect(js).toContain('function Debug$Point$debug');
+    expect(js).toContain('function Eq$Point$eq');
+    expect(js).toContain('Clone$Point$clone(p)');
+    expect(js).toContain('Debug$Point$debug(q)');
+    expect(js).toContain('Eq$Point$eq(q, p)');
   });
 
   it('reports unresolved non-builtin macro invocations', () => {

@@ -191,6 +191,7 @@ export interface LuminaImplDecl {
   methods: LuminaFnDecl[];
   associatedTypes?: LuminaImplAssocType[];
   visibility?: 'public' | 'private';
+  syntheticDerive?: string | null;
   location?: Location;
 }
 
@@ -215,6 +216,7 @@ export interface LuminaEnumDecl {
   type: 'EnumDecl';
   name: string;
   variants: LuminaEnumVariant[];
+  derives?: string[];
   visibility?: 'public' | 'private';
   typeParams?: LuminaTypeParam[];
   location?: Location;

@@ -16,6 +16,7 @@ import {
 import { SourceMapGenerator, type RawSourceMap } from 'source-map';
 import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
 import { expandMacrosInProgram } from './macro-expand.js';
+import { expandDerivesInProgram } from './derive-expand.js';
 
 const normalizeNumericTypeName = (typeName: string): string => {
   if (typeName === 'int') return 'i32';
@@ -77,6 +78,7 @@ export interface CodegenJsResult {
 }
 
 export function generateJSFromAst(program: LuminaProgram, options: CodegenJsOptions = {}): CodegenJsResult {
+  expandDerivesInProgram(program);
   expandMacrosInProgram(program);
   const builder = new CodeBuilder(options.sourceMap === true);
   const generator = new JSGenerator(builder, options);
@@ -1331,10 +1333,6 @@ class JSGenerator {
         if (helperReceiverExpr && expr.args.length === 0) {
           const receiverExpr = this.emitExpr(helperReceiverExpr);
           switch (expr.callee.name) {
-            case 'clone':
-              return withBase(concat('__lumina_clone(', receiverExpr, ')'));
-            case 'debug':
-              return withBase(concat('__lumina_debug(', receiverExpr, ')'));
             case 'millis':
             case 'milliseconds':
               return withBase(concat('Math.trunc(', receiverExpr, ')'));
@@ -1347,11 +1345,6 @@ class JSGenerator {
             default:
               break;
           }
-        }
-        if (helperReceiverExpr && expr.callee.name === 'eq' && expr.args.length === 1) {
-          return withBase(
-            concat('__lumina_eq(', this.emitExpr(helperReceiverExpr), ', ', this.emitExpr(expr.args[0]), ')')
-          );
         }
         if (expr.receiver) {
           const parts: Array<string | EmitResult> = [this.emitExpr(expr.receiver), '.', expr.callee.name, '('];

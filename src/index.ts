@@ -115,6 +115,7 @@ export {
 } from './lumina/types';
 export { inferProgram } from './lumina/hm-infer';
 export { expandMacrosInProgram } from './lumina/macro-expand';
+export { expandDerivesInProgram } from './lumina/derive-expand';
 export { inferTypeParamKinds } from './lumina/kind-infer';
 export {
   starKind,

@@ -34,6 +34,7 @@ import {
   type ModuleRegistry,
 } from './module-registry.js';
 import { expandMacrosInProgram } from './macro-expand.js';
+import { expandDerivesInProgram } from './derive-expand.js';
 import { type LuminaTypeExpr, type LuminaTypeHole } from './ast.js';
 import { ConstEvaluator } from './const-eval.js';
 import type { ConstExpr as TypeConstExpr } from './types.js';
@@ -502,6 +503,7 @@ export function inferProgram(
     recursiveWrappers?: string[];
     useRowPolymorphism?: boolean;
     skipMacroExpansion?: boolean;
+    skipDeriveExpansion?: boolean;
   }
 ): InferResult {
   activeWrapperSet = new Set(options?.recursiveWrappers ?? defaultWrapperList);
@@ -509,6 +511,10 @@ export function inferProgram(
   const env = new TypeEnv();
   const subst: Subst = new Map();
   const diagnostics: Diagnostic[] = [];
+  if (!options?.skipDeriveExpansion) {
+    const deriveExpansion = expandDerivesInProgram(program);
+    diagnostics.push(...deriveExpansion.diagnostics);
+  }
   if (!options?.skipMacroExpansion) {
     const macroExpansion = expandMacrosInProgram(program);
     diagnostics.push(...macroExpansion.diagnostics);
@@ -1864,34 +1870,6 @@ function inferExpr(
           }
         }
         if (receiverResolved && receiverResolved.kind === 'adt') {
-          const structInfo = structRegistry?.get(receiverResolved.name);
-          const derivedTraits = new Set(structInfo?.derives ?? []);
-          if (derivedTraits.has('Clone') && expr.callee.name === 'clone') {
-            resolvedReceiverMethod = true;
-            tryUnify(resultType, receiverResolved, subst, diagnostics, {
-              location: expr.location,
-              note: `Clone::clone returns Self`,
-            });
-          } else if (derivedTraits.has('Debug') && expr.callee.name === 'debug') {
-            resolvedReceiverMethod = true;
-            tryUnify(resultType, { kind: 'primitive', name: 'string' }, subst, diagnostics, {
-              location: expr.location,
-              note: `Debug::debug returns string`,
-            });
-          } else if (derivedTraits.has('Eq') && expr.callee.name === 'eq') {
-            resolvedReceiverMethod = true;
-            if (argTypes[0]) {
-              tryUnify(argTypes[0], receiverResolved, subst, diagnostics, {
-                location: expr.location,
-                note: `Eq::eq expects other: Self`,
-              });
-            }
-            tryUnify(resultType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
-              location: expr.location,
-              note: `Eq::eq returns bool`,
-            });
-          }
-
           if (receiverResolved.name === 'Vec' && receiverResolved.params.length === 1) {
             const elemType = receiverResolved.params[0];
             switch (expr.callee.name) {
