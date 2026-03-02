@@ -27,7 +27,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Array literals + indexing | Stable | `[1,2,3]`, `v[0]` |
 | Lambda expressions | Stable | `|x| x + 1` |
 | Collection method syntax | Stable | `v.push(1)` style lowering to stdlib calls |
-| Macros (MVP) | Beta | `macro_rules!` parsed; `vec![...]` lowers to array literal; unknown macros report diagnostics |
+| Macros | Beta | Expansion phase with matcher/transcriber subset, lexical scoping, `![]`/`!()`/`!{}` calls, recursion/cycle diagnostics |
 | `#[derive(...)]` (MVP) | Beta | Supports `Clone`, `Debug`, `Eq` via generated method lowering/runtime helpers |
 | Const generics | Stable | Const params across structs/enums/functions/traits, where-clauses, explicit const args (`::<...>`), semantic + HM checks, monomorphization, JS/WASM fixed-array codegen |
 | GADTs (baseline) | Beta | Indexed variants + existential constraints, branch refinement, unreachable/index-aware diagnostics, existential escape checks |

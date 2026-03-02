@@ -626,7 +626,7 @@ PostfixPart
 PrimaryAtom
   = SelectExpr
   / MatchExpr
-  / MacroVecLiteral
+  / MacroInvokeExpr
   / ArrayRepeatLiteral
   / ArrayLiteral
   / TupleLiteral
@@ -663,12 +663,15 @@ SelectBinding
   = "_" { return null; }
   / node:IdName { return node.name; }
 
-MacroVecLiteral
+MacroInvokeExpr
   = macro:IdName _ "!" _ "[" _ elements:ArrayElements? _ "]" {
-      if (macro.name === "vec") {
-        return createNode("ArrayLiteral", { elements: elements || [] }, location);
-      }
       return createNode("MacroInvoke", { name: macro.name, args: elements || [], delimiter: "[]", location: macro.location }, location);
+    }
+  / macro:IdName _ "!" _ "(" _ args:ArgList? _ ")" {
+      return createNode("MacroInvoke", { name: macro.name, args: args || [], delimiter: "()", location: macro.location }, location);
+    }
+  / macro:IdName _ "!" _ "{" _ args:ArgList? _ "}" {
+      return createNode("MacroInvoke", { name: macro.name, args: args || [], delimiter: "{}", location: macro.location }, location);
     }
 
 StructLiteral

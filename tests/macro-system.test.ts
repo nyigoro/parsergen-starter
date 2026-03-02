@@ -4,6 +4,7 @@ import { compileGrammar } from '../src/grammar/index.js';
 import { analyzeLumina } from '../src/lumina/semantic.js';
 import { inferProgram } from '../src/lumina/hm-infer.js';
 import { generateJSFromAst } from '../src/lumina/codegen-js.js';
+import { expandMacrosInProgram } from '../src/lumina/macro-expand.js';
 import type { LuminaProgram } from '../src/lumina/ast.js';
 
 const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
@@ -13,14 +14,10 @@ const parser = compileGrammar(luminaGrammar);
 const parseProgram = (source: string): LuminaProgram => parser.parse(source) as LuminaProgram;
 
 describe('macro system MVP', () => {
-  it('parses macro_rules declarations and lowers vec! to ArrayLiteral', () => {
+  it('parses macro_rules declarations and expands vec! in macro phase', () => {
     const source = `
       macro_rules! vec {
-        [$($x:expr),*] => {{
-          let v = Vec.new();
-          $(v.push($x);)*
-          v
-        }}
+        [$($x:expr),*] => [$($x),*]
       }
 
       fn main() -> i32 {
@@ -42,7 +39,17 @@ describe('macro system MVP', () => {
     const letStmt = mainFn.body.body[0];
     expect(letStmt?.type).toBe('Let');
     if (!letStmt || letStmt.type !== 'Let') return;
-    expect(letStmt.value.type).toBe('ArrayLiteral');
+    expect(letStmt.value.type).toBe('MacroInvoke');
+
+    const expanded = expandMacrosInProgram(ast);
+    expect(expanded.diagnostics).toHaveLength(0);
+    const expandedMain = ast.body.find((stmt) => stmt.type === 'FnDecl');
+    expect(expandedMain?.type).toBe('FnDecl');
+    if (!expandedMain || expandedMain.type !== 'FnDecl') return;
+    const expandedLet = expandedMain.body.body[0];
+    expect(expandedLet?.type).toBe('Let');
+    if (!expandedLet || expandedLet.type !== 'Let') return;
+    expect(expandedLet.value.type).toBe('ArrayLiteral');
   });
 
   it('type checks derived Clone/Debug/Eq methods', () => {
@@ -104,10 +111,10 @@ describe('macro system MVP', () => {
 
     const ast = parseProgram(source);
     const sem = analyzeLumina(ast);
-    expect(sem.diagnostics.some((diag) => diag.code === 'UNRESOLVED_MACRO')).toBe(true);
+    expect(sem.diagnostics.some((diag) => diag.code === 'MACRO_UNKNOWN')).toBe(true);
 
     const hm = inferProgram(ast);
-    expect(hm.diagnostics.some((diag) => diag.code === 'HM_MACRO')).toBe(true);
+    expect(hm.diagnostics.some((diag) => diag.code === 'MACRO_UNKNOWN')).toBe(true);
 
     const js = generateJSFromAst(ast, { includeRuntime: false }).code;
     expect(js).toContain("Unsupported macro invocation 'foo!'");

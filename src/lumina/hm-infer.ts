@@ -33,6 +33,7 @@ import {
   type ModuleExport,
   type ModuleRegistry,
 } from './module-registry.js';
+import { expandMacrosInProgram } from './macro-expand.js';
 import { type LuminaTypeExpr, type LuminaTypeHole } from './ast.js';
 import { ConstEvaluator } from './const-eval.js';
 import type { ConstExpr as TypeConstExpr } from './types.js';
@@ -500,6 +501,7 @@ export function inferProgram(
     preludeExports?: ModuleExport[];
     recursiveWrappers?: string[];
     useRowPolymorphism?: boolean;
+    skipMacroExpansion?: boolean;
   }
 ): InferResult {
   activeWrapperSet = new Set(options?.recursiveWrappers ?? defaultWrapperList);
@@ -507,6 +509,10 @@ export function inferProgram(
   const env = new TypeEnv();
   const subst: Subst = new Map();
   const diagnostics: Diagnostic[] = [];
+  if (!options?.skipMacroExpansion) {
+    const macroExpansion = expandMacrosInProgram(program);
+    diagnostics.push(...macroExpansion.diagnostics);
+  }
   const inferredLets = new Map<string, Type>();
   const inferredFnReturns = new Map<string, Type>();
   const inferredFnByName = new Map<string, Type>();
@@ -1512,6 +1518,12 @@ function inferExpr(
       return recordExprType(expr, vecType, subst);
     }
     case 'MacroInvoke': {
+      if (expr.expansionError) {
+        for (const arg of expr.args) {
+          inferChild(arg);
+        }
+        return recordExprType(expr, freshTypeVar(), subst);
+      }
       for (const arg of expr.args) {
         inferChild(arg);
       }

@@ -18,6 +18,7 @@ import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
 import { normalizeTypeForComparison, normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
 import { ConstEvaluator } from './const-eval.js';
+import { expandMacrosInProgram } from './macro-expand.js';
 import { HKT_APPLY_TYPE_NAME } from './types.js';
 import type { ConstExpr as TypeConstExpr } from './types.js';
 import { inferTypeParamKinds } from './kind-infer.js';
@@ -516,6 +517,8 @@ class StopOnUnresolvedMemberError extends Error {}
 
 export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) {
   const diagnostics: Diagnostic[] = [];
+  const macroExpansion = expandMacrosInProgram(program);
+  diagnostics.push(...macroExpansion.diagnostics);
   const symbols = new SymbolTable();
   const pendingDeps = new Map<string, Set<string>>();
   const diGraphs = new Map<string, string>();
@@ -682,6 +685,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       moduleBindings,
       recursiveWrappers: options?.recursiveWrappers,
       useRowPolymorphism: options?.useRowPolymorphism,
+      skipMacroExpansion: true,
     });
     const sourceText = options.hmSourceText ?? '';
     const sourceFile = options.currentUri ?? 'inline';
@@ -1870,7 +1874,8 @@ function getEnumPayloadTypeQualified(
 function variantCanMatchScrutineeType(
   variant:
     | {
-        name: string;
+        name?: string;
+        enumName?: string;
         params: LuminaType[];
         resultType?: LuminaType | null;
       }
@@ -3030,6 +3035,7 @@ function typeCheckStatement(
             ? findEnumVariantQualified(symbols, pattern.enumName, pattern.variant, options)
             : localVariant
               ? {
+                  name: pattern.variant,
                   enumName: matchBase ?? '',
                   params: localVariant.params,
                   resultType: localVariant.resultType,
@@ -5178,6 +5184,12 @@ function typeCheckExpr(
     return leftNorm;
   }
     if (expr.type === 'MacroInvoke') {
+      if (expr.expansionError) {
+        for (const arg of expr.args) {
+          typeCheckExpr(arg, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
+        }
+        return ERROR_TYPE;
+      }
       for (const arg of expr.args) {
         typeCheckExpr(arg, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       }
@@ -6221,6 +6233,7 @@ function typeCheckExpr(
           ? findEnumVariantQualified(symbols, pattern.enumName, pattern.variant, options)
           : localVariant
             ? {
+                name: pattern.variant,
                 enumName: matchBase ?? '',
                 params: localVariant.params,
                 resultType: localVariant.resultType,

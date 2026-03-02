@@ -15,6 +15,7 @@ import {
 } from './ast.js';
 import { SourceMapGenerator, type RawSourceMap } from 'source-map';
 import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
+import { expandMacrosInProgram } from './macro-expand.js';
 
 const normalizeNumericTypeName = (typeName: string): string => {
   if (typeName === 'int') return 'i32';
@@ -76,6 +77,7 @@ export interface CodegenJsResult {
 }
 
 export function generateJSFromAst(program: LuminaProgram, options: CodegenJsOptions = {}): CodegenJsResult {
+  expandMacrosInProgram(program);
   const builder = new CodeBuilder(options.sourceMap === true);
   const generator = new JSGenerator(builder, options);
   generator.emitProgram(program);
