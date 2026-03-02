@@ -70,7 +70,7 @@ describe('advanced type system syntax (mvp)', () => {
     expect(js).toContain('Array.from({ length: Math.max(0, Math.trunc(5)) }, () => 0)');
   });
 
-  it('reports GADT declarations as unsupported in semantic analysis', () => {
+  it('accepts GADT declarations in semantic analysis baseline', () => {
     const source = `
       enum Expr<T> {
         Lit(i32): Expr<i32>,
@@ -81,7 +81,8 @@ describe('advanced type system syntax (mvp)', () => {
 
     const ast = parseProgram(source);
     const sem = analyzeLumina(ast);
-    expect(sem.diagnostics.some((diag) => diag.code === 'UNSUPPORTED_GADT')).toBe(true);
+    expect(sem.diagnostics.some((diag) => diag.code === 'UNSUPPORTED_GADT')).toBe(false);
+    expect(sem.diagnostics.some((diag) => String(diag.code).startsWith('GADT-'))).toBe(false);
   });
 
   it('reports higher-kinded type params as unsupported in semantic analysis', () => {

@@ -5,6 +5,7 @@ import {
   TextEdit,
   WorkspaceEdit,
 } from 'vscode-languageserver/node';
+import { formatDiagnosticExplanation } from '../lumina/diagnostic-explain.js';
 
 function extractHoleType(diagnostic: { relatedInformation?: Array<{ message: string }> }): string | null {
   const info = diagnostic.relatedInformation?.find((rel) => rel.message.startsWith('Hole type:'));
@@ -35,6 +36,25 @@ export function getCodeActionsForDiagnostics(
   const actions: CodeAction[] = [];
 
   for (const diag of diagnostics) {
+    const diagCode = diag.code !== undefined ? String(diag.code) : undefined;
+    if (diagCode) {
+      const explanation = formatDiagnosticExplanation(diagCode)
+        .split('\n')
+        .map((line) => `// ${line}`)
+        .join('\n');
+      const insertPos = { line: diag.range.start.line, character: 0 };
+      actions.push({
+        title: `Explain diagnostic ${diagCode}`,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        edit: {
+          changes: {
+            [uri]: [TextEdit.insert(insertPos, `${explanation}\n`)],
+          },
+        },
+      });
+    }
+
     const unknownIdMatch = /Unknown identifier '([^']+)'/.exec(diag.message);
     if (unknownIdMatch) {
       const name = unknownIdMatch[1];
@@ -201,6 +221,7 @@ export function getCodeActionsForDiagnostics(
         });
       }
     }
+
   }
 
   actions.push(...getRefactorActions(text, uri, options?.range));

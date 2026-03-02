@@ -97,6 +97,11 @@ export { irToDot } from './lumina/ir-dot';
 export { parseLumina, parseLuminaTyped, LuminaSyntaxError, type LuminaParseOptions } from './lumina/parser';
 export { normalizeDiagnostic, type DiagnosticNormalized } from './lumina/diagnostics-util';
 export {
+  getDiagnosticExplanation,
+  formatDiagnosticExplanation,
+  type DiagnosticExplanation,
+} from './lumina/diagnostic-explain';
+export {
   type Type,
   type TypeScheme,
   type PrimitiveName,

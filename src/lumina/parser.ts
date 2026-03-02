@@ -107,6 +107,11 @@ function normalizeStatement(stmt: LuminaStatement) {
       normalizeTypeParams(stmt.typeParams, stmt.location);
       for (const variant of stmt.variants) {
         normalizeTypeArray(variant.params, variant.location);
+        variant.resultType = normalizeTypeExpr(variant.resultType ?? null, variant.location) as LuminaTypeExpr | null;
+        normalizeTypeParams(variant.existentialTypeParams, variant.location);
+        for (const constraint of variant.constraints ?? []) {
+          normalizeTypeArray(constraint.bounds, constraint.location);
+        }
       }
       return;
     }

@@ -19,6 +19,8 @@ import {
   irToDot,
   inferProgram,
   monomorphize,
+  formatDiagnosticExplanation,
+  getDiagnosticExplanation,
 } from '../index.js';
 import { loadWASM, callWASMFunction } from '../wasm-runtime.js';
 import { ensureRuntimeForOutput } from './runtime.js';
@@ -550,6 +552,10 @@ function formatDiagnosticsWithSnippet(source: string, diagnostics: ReturnType<ty
   for (const diag of diagnostics) {
     const code = diag.code ?? 'DIAG';
     console.error(`[${code}] ${diag.message}`);
+    const explanation = getDiagnosticExplanation(code);
+    if (explanation.summary && explanation.code === code) {
+      console.error(`help: ${explanation.summary}`);
+    }
     if (diag.location) {
       try {
         console.error(highlightSnippet(source, diag.location, true));
@@ -558,6 +564,31 @@ function formatDiagnosticsWithSnippet(source: string, diagnostics: ReturnType<ty
       }
     }
   }
+}
+
+function reportDiagnosticsAndFail(
+  source: string,
+  diagnostics: Array<{
+    severity?: 'error' | 'warning' | 'info' | 'hint';
+    message: string;
+    code?: string;
+    location?: {
+      start: { line: number; column: number; offset?: number };
+      end: { line: number; column: number; offset?: number };
+    };
+    relatedInformation?: Array<{
+      location: {
+        start: { line: number; column: number; offset?: number };
+        end: { line: number; column: number; offset?: number };
+      };
+      message: string;
+    }>;
+  }>
+): false {
+  if (diagnostics.length > 0) {
+    formatDiagnosticsWithSnippet(source, diagnostics as never);
+  }
+  return false;
 }
 
 function parseSource(
@@ -1172,14 +1203,11 @@ async function compileLumina(
 
     const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
     if (parseError) return { ok: false };
-    if (parseDiagnostics.length > 0) {
-      formatDiagnosticsWithSnippet(source, parseDiagnostics);
-      return { ok: false };
-    }
     if (!ast) return { ok: false };
     const analysis = analyzeLumina(ast as never, analysisOptions);
-    if (analysis.diagnostics.length > 0) {
-      formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+    const combinedDiagnostics = [...parseDiagnostics, ...analysis.diagnostics];
+    if (combinedDiagnostics.length > 0) {
+      reportDiagnosticsAndFail(source, combinedDiagnostics);
       return { ok: false };
     }
     const monoAst = monomorphizeAst(ast as never);
@@ -1402,16 +1430,13 @@ async function compileLumina(
   if (parseError) {
     return { ok: false };
   }
-  if (parseDiagnostics.length > 0) {
-    formatDiagnosticsWithSnippet(source, parseDiagnostics);
-    return { ok: false };
-  }
   if (!ast) {
     return { ok: false };
   }
   const analysis = analyzeLumina(ast as never, analysisOptions);
-  if (analysis.diagnostics.length > 0) {
-    formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+  const combinedDiagnostics = [...parseDiagnostics, ...analysis.diagnostics];
+  if (combinedDiagnostics.length > 0) {
+    reportDiagnosticsAndFail(source, combinedDiagnostics);
     return { ok: false };
   }
   let out = '';
@@ -1514,16 +1539,13 @@ async function checkLumina(
   if (parseError) {
     return { ok: false };
   }
-  if (parseDiagnostics.length > 0) {
-    formatDiagnosticsWithSnippet(source, parseDiagnostics);
-    return { ok: false };
-  }
   if (!ast) {
     return { ok: false };
   }
   const analysis = analyzeLumina(ast as never, { diDebug: diCfg, stopOnUnresolvedMemberError });
-  if (analysis.diagnostics.length > 0) {
-    formatDiagnosticsWithSnippet(source, analysis.diagnostics);
+  const combinedDiagnostics = [...parseDiagnostics, ...analysis.diagnostics];
+  if (combinedDiagnostics.length > 0) {
+    reportDiagnosticsAndFail(source, combinedDiagnostics);
     return { ok: false };
   }
   if (diCfg && analysis.diGraphs) {
@@ -1539,7 +1561,7 @@ async function checkLumina(
   const entry: FileCacheEntry = {
     hash: fileHash,
     ast,
-    diagnostics: analysis.diagnostics,
+    diagnostics: combinedDiagnostics as never,
     ir: null,
     grammarHash: buildCache.grammarHash ?? '',
   };
@@ -1774,6 +1796,7 @@ lumina <command> [file] [options]
 Commands:
   compile <file>   Compile Lumina source to JS
   check <file>     Parse + analyze only (no emit)
+  explain <code>   Show explanation for a diagnostic code
   fmt [paths...]   Normalize Lumina source whitespace
   lint [paths...]  Run semantic diagnostics + style lints
   doc [paths...]   Generate Markdown API docs
@@ -2064,6 +2087,15 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     const runtime = await loadWASM(wasmPath);
     const result = callWASMFunction(runtime, funcName, ...funcArgs);
     console.log(`Result: ${result}`);
+    return;
+  }
+
+  if (command === 'explain') {
+    const code = file || positionalArgs[0];
+    if (!code) {
+      throw new Error('Missing <code> for explain');
+    }
+    console.log(formatDiagnosticExplanation(code));
     return;
   }
 

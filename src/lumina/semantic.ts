@@ -743,6 +743,25 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
 }
 
 function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostics: Diagnostic[]): void {
+  const declaredTypeNames = new Set<string>([
+    ...Array.from(builtinTypes.values()).map((name) => String(name)),
+    'Option',
+    'Result',
+    'List',
+    'Box',
+    'Self',
+  ]);
+  for (const stmt of program.body) {
+    if (
+      stmt.type === 'TypeDecl' ||
+      stmt.type === 'StructDecl' ||
+      stmt.type === 'EnumDecl' ||
+      stmt.type === 'TraitDecl'
+    ) {
+      declaredTypeNames.add(stmt.name);
+    }
+  }
+
   const reportUnsupportedHkt = (
     typeParams: Array<{ name: string; bound?: LuminaType[] }> | undefined,
     location?: Location
@@ -860,6 +879,121 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     }
   };
 
+  const collectTypeAtoms = (typeExpr: LuminaTypeExpr | null | undefined, out: Set<string>): void => {
+    if (!typeExpr || isTypeHoleExpr(typeExpr)) return;
+    if (typeof typeExpr === 'object' && (typeExpr as { kind?: string }).kind === 'array') {
+      const arrayType = typeExpr as import('./ast.js').LuminaArrayType;
+      collectTypeAtoms(arrayType.element, out);
+      return;
+    }
+    if (typeof typeExpr !== 'string') return;
+    const parsed = parseTypeName(typeExpr);
+    if (!parsed) {
+      out.add(typeExpr.trim());
+      return;
+    }
+    out.add(parsed.base.trim());
+    for (const arg of parsed.args) {
+      collectTypeAtoms(arg, out);
+    }
+  };
+
+  const isKnownTypeName = (name: string): boolean => {
+    const candidate = name.trim();
+    if (!candidate) return true;
+    if (declaredTypeNames.has(candidate)) return true;
+    if (candidate.includes('::')) {
+      const base = candidate.split('::')[0];
+      return declaredTypeNames.has(base);
+    }
+    return false;
+  };
+
+  const validateGadtVariant = (
+    enumStmt: Extract<LuminaStatement, { type: 'EnumDecl' }>,
+    variant: {
+      name: string;
+      params?: LuminaTypeExpr[];
+      resultType?: LuminaTypeExpr | null;
+      existentialTypeParams?: Array<{ name: string; isConst?: boolean; higherKindArity?: number }>;
+      constraints?: Array<{ name: string; bounds: LuminaTypeExpr[] }>;
+      location?: Location;
+    }
+  ) => {
+    if (!variant.resultType) return;
+
+    const enumTypeParams = new Set(
+      (enumStmt.typeParams ?? []).filter((param) => !param.isConst).map((param) => param.name)
+    );
+    const existentialTypeParams = variant.existentialTypeParams ?? [];
+    const allowedTypeVars = new Set([...Array.from(enumTypeParams), ...existentialTypeParams.map((param) => param.name)]);
+
+    for (const exParam of existentialTypeParams) {
+      if (exParam.isConst) {
+        diagnostics.push(
+          diagAt(
+            `Existential parameter '${exParam.name}' in '${enumStmt.name}.${variant.name}' cannot be const`,
+            variant.location ?? enumStmt.location,
+            'error',
+            'GADT-004'
+          )
+        );
+      }
+      if ((exParam.higherKindArity ?? 0) > 0) {
+        diagnostics.push(
+          diagAt(
+            `Existential higher-kinded parameter '${exParam.name}<...>' in '${enumStmt.name}.${variant.name}' is not supported`,
+            variant.location ?? enumStmt.location,
+            'error',
+            'GADT-005'
+          )
+        );
+      }
+    }
+
+    if (typeof variant.resultType === 'string') {
+      const parsed = parseTypeName(variant.resultType);
+      if (!parsed || normalizeTypeForComparison(parsed.base) !== normalizeTypeForComparison(enumStmt.name)) {
+        diagnostics.push(
+          diagAt(
+            `Variant '${enumStmt.name}.${variant.name}' must return '${enumStmt.name}<...>' but found '${formatTypeForDiagnostic(resolveTypeExpr(variant.resultType) ?? 'any')}'`,
+            variant.location ?? enumStmt.location,
+            'error',
+            'GADT-001'
+          )
+        );
+      }
+    }
+
+    const referenced = new Set<string>();
+    for (const paramType of variant.params ?? []) collectTypeAtoms(paramType, referenced);
+    collectTypeAtoms(variant.resultType, referenced);
+    for (const constraint of variant.constraints ?? []) {
+      for (const bound of constraint.bounds) {
+        collectTypeAtoms(bound, referenced);
+      }
+    }
+
+    const unknowns = new Set<string>();
+    for (const candidate of referenced) {
+      if (isKnownTypeName(candidate)) continue;
+      if (allowedTypeVars.has(candidate)) continue;
+      if (/^\d+([+\-*/]\d+)*$/.test(candidate)) continue;
+      if (candidate === 'Tuple') continue;
+      unknowns.add(candidate);
+    }
+    for (const unknown of unknowns) {
+      diagnostics.push(
+        diagAt(
+          `Type variable '${unknown}' used in '${enumStmt.name}.${variant.name}' is not declared in enum type parameters or existential parameters`,
+          variant.location ?? enumStmt.location,
+          'error',
+          'GADT-002'
+        )
+      );
+    }
+  };
+
   for (const stmt of program.body) {
     switch (stmt.type) {
       case 'FnDecl':
@@ -895,15 +1029,13 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
             validateConstExprInType(paramType, availableConstParams, variant.location ?? stmt.location);
           }
           if (variant.resultType) {
-            diagnostics.push(
-              diagAt(
-                `GADT variant result type on '${stmt.name}.${variant.name}' is parsed but not type-checked yet`,
-                variant.location ?? stmt.location,
-                'error',
-                'UNSUPPORTED_GADT'
-              )
-            );
             validateConstExprInType(variant.resultType, availableConstParams, variant.location ?? stmt.location);
+            validateGadtVariant(stmt, variant);
+          }
+          for (const constraint of variant.constraints ?? []) {
+            for (const boundType of constraint.bounds ?? []) {
+              validateConstExprInType(boundType, availableConstParams, constraint.location ?? variant.location ?? stmt.location);
+            }
           }
         }
       }

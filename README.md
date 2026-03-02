@@ -94,6 +94,8 @@ npm test
 - `docs/CAPABILITIES.md` — feature/status matrix
 - `docs/STDLIB.md` — standard library reference
 - `docs/RENDER.md` — reactivity + renderer core primitives
+- `docs/GADTS.md` — baseline GADT syntax and semantic checks
+- `docs/STABILITY.md` — reliability test strategy and benchmark baselines
 - `docs/DOCS_MAINTENANCE.md` — how to keep docs current as features land
 - `examples/dom-render/` — DOM renderer demo + benchmark harness
 
@@ -111,6 +113,7 @@ lumina compile examples/hello.lm --out dist/hello.js --target esm
 lumina compile examples/hello.lm --sourcemap
 lumina compile examples/hello.lm --debug-ir
 lumina compile examples/hello.lm --profile-cache
+lumina explain LUM-001
 lumina check examples/hello.lm
 lumina watch examples
 lumina compile examples/hello.lm --dry-run

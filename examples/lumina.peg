@@ -330,12 +330,32 @@ EnumVariantList
   = head:EnumVariant tail:(_ "," _ EnumVariant)* _ ","? { return [head].concat(tail.map(t => t[3])); }
 
 EnumVariant
-  = node:IdName _ params:EnumVariantParams? _ resultType:(_ ":" _ TypeName)? {
-      return { name: node.name, params: params || [], resultType: resultType ? resultType[3] : null, location: node.location };
+  = node:IdName _ exists:EnumVariantExistential? _ params:EnumVariantParams? _ resultType:(_ ":" _ TypeName)? _ constraints:EnumVariantWhere? {
+      return {
+        name: node.name,
+        params: params || [],
+        resultType: resultType ? resultType[3] : null,
+        existentialTypeParams: exists || [],
+        constraints: constraints || [],
+        location: node.location
+      };
     }
 
 EnumVariantParams
   = "(" _ head:TypeName tail:(_ "," _ TypeName)* _ ")" { return [head].concat(tail.map(t => t[3])); }
+
+EnumVariantExistential
+  = "exists" __ "<" _ head:TypeParam tail:(_ "," _ TypeParam)* _ ">" {
+      return [head].concat(tail.map(t => t[3]));
+    }
+
+EnumVariantWhere
+  = "where" __ head:EnumVariantConstraint tail:(_ "," _ EnumVariantConstraint)* {
+      return [head].concat(tail.map(t => t[3]));
+    }
+
+EnumVariantConstraint
+  = node:IdName _ ":" _ bounds:TypeBounds { return { name: node.name, bounds, location: node.location }; }
 
 AdtVariantList
   = head:AdtVariant tail:(_ "|" _ AdtVariant)* { return [head].concat(tail.map(t => t[3])); }
@@ -679,7 +699,8 @@ StructLiteralField
 
 Keyword
   = ("fn" / "async" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "let" / "mut" / "ref" / "move"
-    / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is" / "select" / "macro_rules") ![a-zA-Z0-9_]
+    / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is" / "select" / "macro_rules"
+    / "exists" / "where") ![a-zA-Z0-9_]
 
 IdName
   = !Keyword name:$([a-zA-Z_][a-zA-Z0-9_]*) { return { name, location: location() }; }

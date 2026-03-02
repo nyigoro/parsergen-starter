@@ -182,6 +182,14 @@ export interface LuminaEnumVariant {
   name: string;
   params: LuminaTypeExpr[];
   resultType?: LuminaTypeExpr | null;
+  existentialTypeParams?: LuminaTypeParam[];
+  constraints?: LuminaVariantConstraint[];
+  location?: Location;
+}
+
+export interface LuminaVariantConstraint {
+  name: string;
+  bounds: LuminaTypeExpr[];
   location?: Location;
 }
 

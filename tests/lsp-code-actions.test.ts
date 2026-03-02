@@ -107,4 +107,22 @@ describe('LSP Code Actions (type holes)', () => {
     const action = actions.find((a) => a.title.startsWith("Replace '_'"));
     expect(action).toBeFalsy();
   });
+
+  test('offers explain action for diagnostics with a code', () => {
+    const source = `
+      fn main() {
+        let x = missing_name;
+        x
+      }
+    `.trim() + '\n';
+    const uri = pathToFileURL(path.join(__dirname, 'fixtures', 'lsp-hm', 'explain-action.lm')).toString();
+    const project = new ProjectContext(parser);
+    project.setHmDiagnostics(true);
+    project.addOrUpdateDocument(uri, source, 1);
+    const diags = project.getDiagnostics(uri);
+    const lsp = toLspDiagnostics(uri, diags);
+    const actions = getCodeActionsForDiagnostics(source, uri, lsp);
+    const action = actions.find((a) => a.title.includes('Explain diagnostic'));
+    expect(action).toBeTruthy();
+  });
 });

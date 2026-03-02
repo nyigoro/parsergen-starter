@@ -28,14 +28,16 @@
     "src/**/*",
     "cli/**/*",
     "demo/**/*",
+    "scripts/**/*.ts",
     "tests/**/*",
     "types/**/*",
     "*.config.js",
     "*.config.ts",
     "jest.config.ts",
     "prettier.config.cjs",
-    "eslint.config.js"
-, "postcss.config.cjs"  ],
+    "eslint.config.js",
+    "postcss.config.cjs"
+  ],
   "exclude": [
     "node_modules",
     "dist",
