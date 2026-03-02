@@ -46,5 +46,65 @@ describe('GADT semantic validation', () => {
     const sem = analyzeLumina(ast);
     expect(sem.diagnostics.some((diag) => diag.code === 'GADT-002')).toBe(true);
   });
-});
 
+  test('allows existential payloads to use trait-bounded methods in match arms', () => {
+    const source = `
+      trait Show {
+        fn show(self: Self) -> string;
+      }
+
+      enum ShowBox {
+        Box exists <T>(T): ShowBox where T: Show
+      }
+
+      fn render(box: ShowBox) -> string {
+        match box {
+          ShowBox.Box(value) => value.show()
+        }
+      }
+    `;
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    const errors = sem.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
+
+  test('does not require impossible variants for indexed exhaustiveness', () => {
+    const source = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>,
+        Bool(bool): Expr<bool>
+      }
+
+      fn eval(e: Expr<i32>) -> i32 {
+        match e {
+          Expr.Lit(n) => n
+        }
+      }
+    `;
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    expect(sem.diagnostics.some((diag) => diag.code === 'MATCH_NOT_EXHAUSTIVE')).toBe(false);
+  });
+
+  test('reports unreachable indexed variant arms', () => {
+    const source = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>,
+        Bool(bool): Expr<bool>
+      }
+
+      fn eval(e: Expr<i32>) -> i32 {
+        match e {
+          Expr.Bool(b) => 0,
+          Expr.Lit(n) => n
+        }
+      }
+    `;
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    const unreachable = sem.diagnostics.find((diag) => diag.code === 'LUM-004');
+    expect(unreachable).toBeDefined();
+    expect(unreachable?.message).toContain('type index mismatch');
+  });
+});

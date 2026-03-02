@@ -24,7 +24,7 @@ import {
   HKT_APPLY_TYPE_NAME,
 } from './types.js';
 import { normalizeTypeForDisplay, normalizeTypeNameForDisplay } from './type-utils.js';
-import { type Diagnostic } from '../parser/index.js';
+import { type Diagnostic, type DiagnosticRelatedInformation } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
 import {
   createStdModuleRegistry,
@@ -3705,20 +3705,30 @@ function applyMatchPattern(
     return;
   }
   if (!variantCanMatchScrutinee(enumName, info, variantInfo, scrutineeType, subst)) {
+    const variantConstructs = variantInfo.resultType ? formatTypeAnnotation(variantInfo.resultType) : null;
+    const scrutineeText = formatType(scrutineeType, subst);
+    const related: DiagnosticRelatedInformation[] = [];
+    related.push({
+      location: diagLocation(pattern.location),
+      message: `Scrutinee is constrained to '${scrutineeText}' in this branch`,
+    });
+    if (variantConstructs) {
+      related.push({
+        location: diagLocation(variantInfo.location ?? pattern.location),
+        message: `Pattern '${enumName}.${pattern.variant}' constructs '${variantConstructs}'`,
+      });
+      related.push({
+        location: diagLocation(pattern.location),
+        message: `Type index mismatch: '${scrutineeText}' cannot match '${variantConstructs}'`,
+      });
+    }
     diagnostics.push({
       severity: 'warning',
       code: 'LUM-004',
-      message: `Unreachable pattern '${enumName}.${pattern.variant}' for scrutinee type '${formatType(scrutineeType, subst)}'`,
+      message: `Unreachable pattern '${enumName}.${pattern.variant}': type index mismatch with scrutinee '${scrutineeText}'`,
       source: 'lumina',
       location: diagLocation(pattern.location),
-      relatedInformation: variantInfo.resultType
-        ? [
-            {
-              location: diagLocation(variantInfo.location ?? pattern.location),
-              message: `Variant '${enumName}.${pattern.variant}' constructs '${formatTypeAnnotation(variantInfo.resultType)}'`,
-            },
-          ]
-        : undefined,
+      relatedInformation: related,
     });
     return;
   }

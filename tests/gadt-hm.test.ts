@@ -90,7 +90,11 @@ describe('GADT HM inference', () => {
 
     const ast = parser.parse(program) as { type: string };
     const result = inferProgram(ast as never);
-    expect(result.diagnostics.some((diag) => diag.code === 'LUM-004')).toBe(true);
+    const unreachable = result.diagnostics.find((diag) => diag.code === 'LUM-004');
+    expect(unreachable).toBeDefined();
+    expect(unreachable?.message).toContain('type index mismatch');
+    const related = (unreachable?.relatedInformation ?? []).map((item) => item.message).join(' ');
+    expect(related).toContain('Scrutinee is constrained');
   });
 
   test('reports escaped existential values from a match arm', () => {

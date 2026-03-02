@@ -42,8 +42,8 @@ When constructor kinds do not match, Lumina reports `HKT-001` with:
   - arity-based kind checking for type constructors.
   - placeholder-based partial application (`_`).
   - kind validation in traits, impls, function signatures, and bounds.
+  - user-defined generic constructors in HKT positions (for example `impl Monad<MyType> ...` when `MyType<T>` is declared).
 - Not yet complete:
   - full higher-order kind polymorphism (`forall k` style).
   - advanced kind-constraint solving beyond arity checks.
   - complete HKT stdlib hierarchy (`Functor`, `Applicative`, `Monad`, etc.) in `@std`.
-

@@ -82,4 +82,25 @@ describe('HKT kind checking', () => {
     const relatedMessages = (mismatch?.relatedInformation ?? []).map((item) => item.message).join(' ');
     expect(relatedMessages).toContain('Help:');
   });
+
+  it('accepts user-defined constructors in HKT positions', () => {
+    const source = `
+      trait Monad<M<_>> {}
+
+      enum IntResult<T> {
+        Ok(T),
+        Err(i32)
+      }
+
+      struct Demo {}
+
+      impl Monad<IntResult> for Demo {}
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    expect(sem.diagnostics.some((diag) => diag.code === 'HKT-001')).toBe(false);
+    const errors = sem.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

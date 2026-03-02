@@ -53,6 +53,7 @@ Existential types are scoped to the arm that introduces them.
 - `LUM-003`: non-exhaustive matches are reported with index-aware filtering.
 - `LUM-004`: unreachable match arms are reported when index constraints rule them out.
 - `GADT-006`: existential values escaping an arm are rejected.
+- Existential parameters can carry trait bounds and those bounds are available inside the match arm.
 - JS codegen uses optimized tag-switch lowering for simple enum/GADT matches.
 - WASM backend supports:
   - discriminant-only enum/GADT matching (zero-payload variants)
