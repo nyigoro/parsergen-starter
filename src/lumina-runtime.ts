@@ -4143,7 +4143,7 @@ const flatMapHashMapValues = <K, A, B>(
 
 export const functor = {
   map_option: <A, B>(value: unknown, mapper: (input: A) => B): unknown => Option.map(mapper as (x: unknown) => unknown, value),
-  map_result: <A, E, B>(value: unknown, mapper: (input: A) => B): unknown =>
+  map_result: <A, B>(value: unknown, mapper: (input: A) => B): unknown =>
     Result.map(mapper as (x: unknown) => unknown, value),
   map_vec: <A, B>(values: Vec<A>, mapper: (input: A) => B): Vec<B> => vec.map(values, mapper),
   map_hashmap_values: <K, V, U>(values: HashMap<K, V>, mapper: (input: V) => U): HashMap<K, U> =>
@@ -4163,7 +4163,7 @@ export const applicative = {
     if (typeof fn !== 'function') return Option.None;
     return Option.Some((fn as (arg: A) => B)(getEnumPayload(value) as A));
   },
-  ap_result: <A, E, B>(fns: unknown, value: unknown): unknown => {
+  ap_result: <A, B>(fns: unknown, value: unknown): unknown => {
     const fnTag = fns && typeof fns === 'object' && isEnumLike(fns) ? getEnumTag(fns) : '';
     if (fnTag !== 'Ok') return fns;
     const valueTag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
@@ -4186,9 +4186,9 @@ export const applicative = {
 };
 
 export const monad = {
-  flat_map_option: <A, B>(value: unknown, mapper: (input: A) => unknown): unknown =>
+  flat_map_option: <A>(value: unknown, mapper: (input: A) => unknown): unknown =>
     Option.and_then(mapper as (x: unknown) => unknown, value),
-  flat_map_result: <A, E, B>(value: unknown, mapper: (input: A) => unknown): unknown =>
+  flat_map_result: <A>(value: unknown, mapper: (input: A) => unknown): unknown =>
     Result.and_then(mapper as (x: unknown) => unknown, value),
   flat_map_vec: <A, B>(values: Vec<A>, mapper: (input: A) => Vec<B>): Vec<B> => {
     const out = Vec.new<B>();
@@ -4201,8 +4201,8 @@ export const monad = {
   },
   flat_map_hashmap_values: <K, A, B>(values: HashMap<K, A>, mapper: (input: A) => HashMap<K, B>): HashMap<K, B> =>
     flatMapHashMapValues(values, mapper),
-  join_option: <A>(value: unknown): unknown => Option.and_then((v) => v, value),
-  join_result: <A, E>(value: unknown): unknown => Result.and_then((v) => v, value),
+  join_option: (value: unknown): unknown => Option.and_then((v) => v, value),
+  join_result: (value: unknown): unknown => Result.and_then((v) => v, value),
   join_vec: <A>(values: Vec<Vec<A>>): Vec<A> => {
     const out = Vec.new<A>();
     for (const inner of values) {
@@ -4221,7 +4221,7 @@ export const foldable = {
     if (tag !== 'Some') return init;
     return folder(init, getEnumPayload(value) as A);
   },
-  fold_result: <A, E, B>(value: unknown, init: B, folder: (acc: B, input: A) => B): B => {
+  fold_result: <A, B>(value: unknown, init: B, folder: (acc: B, input: A) => B): B => {
     const tag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
     if (tag !== 'Ok') return init;
     return folder(init, getEnumPayload(value) as A);
@@ -4261,9 +4261,9 @@ export const traversable = {
     }
     return Result.Ok(out);
   },
-  sequence_vec_option: <A>(values: Vec<unknown>): unknown =>
+  sequence_vec_option: (values: Vec<unknown>): unknown =>
     traversable.traverse_vec_option(values, (item: unknown) => item as unknown),
-  sequence_vec_result: <A, E>(values: Vec<unknown>): unknown =>
+  sequence_vec_result: (values: Vec<unknown>): unknown =>
     traversable.traverse_vec_result(values, (item: unknown) => item as unknown),
 };
 
