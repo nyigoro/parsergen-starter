@@ -51,6 +51,7 @@ export interface SymbolInfo {
   type?: LuminaType;
   pendingReturn?: boolean;
   async?: boolean;
+  comptime?: boolean;
   location?: Location;
   mutable?: boolean;
   ref?: boolean;
@@ -728,6 +729,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         name: stmt.name,
         kind: 'function',
         async: !!stmt.async,
+        comptime: !!stmt.comptime,
         type: resolvedReturn,
         pendingReturn: resolveTypeExpr(stmt.returnType) == null && cachedReturn == null && hmReturn == null,
         location: stmt.location,
@@ -890,6 +892,9 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
     for (const stmt of program.body) {
       if (stmt.type === 'ErrorNode') continue;
       if (stmt.type === 'FnDecl') {
+        if (stmt.comptime) {
+          validateComptimeFunctionBindings(stmt, symbols, diagnostics, activeOptions);
+        }
         if (options?.skipFunctionBodies?.has(stmt.name)) continue;
         resolveFunctionBody(stmt, symbols, diagnostics, activeOptions, resolving, pendingDeps, rootScope, diGraphs);
       }
@@ -1730,6 +1735,43 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
         break;
     }
 
+    if (stmt.type === 'FnDecl' && stmt.comptime) {
+      if (stmt.async) {
+        diagnostics.push(
+          diagAt(
+            `comptime fn '${stmt.name}' cannot also be async`,
+            stmt.location,
+            'error',
+            'COMPTIME-ASYNC-MODIFIER'
+          )
+        );
+      }
+      if (stmt.extern) {
+        diagnostics.push(
+          diagAt(
+            `comptime fn '${stmt.name}' cannot be extern`,
+            stmt.location,
+            'error',
+            'COMPTIME-EXTERN-MODIFIER'
+          )
+        );
+      }
+    }
+
+    if (stmt.type === 'ImplDecl') {
+      for (const method of stmt.methods ?? []) {
+        if (!method.comptime) continue;
+        diagnostics.push(
+          diagAt(
+            `comptime fn '${method.name}' is not allowed as an impl method`,
+            method.location ?? stmt.location,
+            'error',
+            'COMPTIME-IMPL-METHOD'
+          )
+        );
+      }
+    }
+
     if (stmt.type === 'StructDecl' || stmt.type === 'EnumDecl' || stmt.type === 'FnDecl' || stmt.type === 'ImplDecl') {
       const declTypeParams = stmt.typeParams as Array<{
         name: string;
@@ -1824,6 +1866,276 @@ function warnOnImportedShadow(
       'SHADOWED_IMPORT'
     )
   );
+}
+
+function collectComptimePatternBindingNames(pattern: { type?: string; [key: string]: unknown } | null | undefined, out: Set<string>): void {
+  if (!pattern || typeof pattern !== 'object') return;
+  const kind = pattern.type;
+  if (kind === 'BindingPattern' && typeof pattern.name === 'string') {
+    out.add(pattern.name);
+    return;
+  }
+  if (kind === 'EnumPattern' && Array.isArray(pattern.bindings)) {
+    for (const binding of pattern.bindings) {
+      if (typeof binding === 'string' && binding !== '_') out.add(binding);
+    }
+    if (Array.isArray(pattern.patterns)) {
+      for (const inner of pattern.patterns) {
+        collectComptimePatternBindingNames(inner as { type?: string; [key: string]: unknown }, out);
+      }
+    }
+    return;
+  }
+  if (kind === 'TuplePattern' && Array.isArray(pattern.elements)) {
+    for (const element of pattern.elements) {
+      collectComptimePatternBindingNames(element as { type?: string; [key: string]: unknown }, out);
+    }
+    return;
+  }
+  if (kind === 'StructPattern' && Array.isArray(pattern.fields)) {
+    for (const field of pattern.fields) {
+      const innerPattern =
+        field && typeof field === 'object'
+          ? ((field as { pattern?: { type?: string; [key: string]: unknown } }).pattern ?? null)
+          : null;
+      collectComptimePatternBindingNames(innerPattern, out);
+    }
+  }
+}
+
+function validateComptimeFunctionBindings(
+  fnDecl: LuminaFnDecl,
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[],
+  options?: AnalyzeOptions
+): void {
+  if (!fnDecl.comptime) return;
+
+  const pushLocal = (scope: Set<string>, name: string) => {
+    if (name && name !== '_') scope.add(name);
+  };
+
+  const visitExpr = (expr: LuminaExpr, scope: Set<string>) => {
+    switch (expr.type) {
+      case 'Identifier': {
+        if (scope.has(expr.name)) return;
+        const sym = symbols.get(expr.name) ?? options?.externSymbols?.(expr.name);
+        if (sym?.kind === 'function') {
+          if (!sym.comptime) {
+            diagnostics.push(
+              diagAt(
+                `comptime fn '${fnDecl.name}' cannot reference non-comptime function '${expr.name}'`,
+                expr.location ?? fnDecl.location,
+                'error',
+                'COMPTIME-NON-COMPTIME-BINDING'
+              )
+            );
+          }
+          return;
+        }
+        if (sym?.kind === 'variable' || options?.importedNames?.has(expr.name)) {
+          diagnostics.push(
+            diagAt(
+              `comptime fn '${fnDecl.name}' cannot capture runtime binding '${expr.name}'`,
+              expr.location ?? fnDecl.location,
+              'error',
+              'COMPTIME-RUNTIME-BINDING'
+            )
+          );
+        }
+        return;
+      }
+      case 'Call': {
+        if (expr.receiver || expr.enumName) {
+          diagnostics.push(
+            diagAt(
+              `comptime fn '${fnDecl.name}' cannot call runtime member '${expr.enumName ? `${expr.enumName}.` : ''}${expr.callee.name}'`,
+              expr.location ?? fnDecl.location,
+              'error',
+              'COMPTIME-RUNTIME-CALL'
+            )
+          );
+        } else {
+          const calleeSym = symbols.get(expr.callee.name) ?? options?.externSymbols?.(expr.callee.name);
+          if (calleeSym?.kind === 'function' && !calleeSym.comptime) {
+            diagnostics.push(
+              diagAt(
+                `comptime fn '${fnDecl.name}' cannot call non-comptime function '${expr.callee.name}'`,
+                expr.location ?? fnDecl.location,
+                'error',
+                'COMPTIME-NON-COMPTIME-CALL'
+              )
+            );
+          }
+        }
+        if (expr.receiver) visitExpr(expr.receiver, scope);
+        for (const arg of expr.args ?? []) visitExpr(arg, scope);
+        return;
+      }
+      case 'Await':
+        diagnostics.push(
+          diagAt(
+            `comptime fn '${fnDecl.name}' cannot use 'await'`,
+            expr.location ?? fnDecl.location,
+            'error',
+            'COMPTIME-AWAIT'
+          )
+        );
+        visitExpr(expr.value, scope);
+        return;
+      case 'Binary':
+        visitExpr(expr.left, scope);
+        visitExpr(expr.right, scope);
+        return;
+      case 'Member':
+        visitExpr(expr.object, scope);
+        return;
+      case 'Index':
+        visitExpr(expr.object, scope);
+        visitExpr(expr.index, scope);
+        return;
+      case 'Range':
+        if (expr.start) visitExpr(expr.start, scope);
+        if (expr.end) visitExpr(expr.end, scope);
+        return;
+      case 'StructLiteral':
+        for (const field of expr.fields ?? []) visitExpr(field.value, scope);
+        return;
+      case 'ArrayLiteral':
+      case 'TupleLiteral':
+        for (const item of expr.elements) visitExpr(item, scope);
+        return;
+      case 'ArrayRepeatLiteral':
+        visitExpr(expr.value, scope);
+        visitExpr(expr.count, scope);
+        return;
+      case 'MatchExpr':
+        visitExpr(expr.value, scope);
+        for (const arm of expr.arms ?? []) {
+          if (arm.guard) visitExpr(arm.guard, scope);
+          const nested = new Set(scope);
+          collectComptimePatternBindingNames(arm.pattern as { type?: string; [key: string]: unknown }, nested);
+          visitExpr(arm.body, nested);
+        }
+        return;
+      case 'SelectExpr':
+        for (const arm of expr.arms ?? []) {
+          visitExpr(arm.value, scope);
+          const nested = new Set(scope);
+          if (arm.binding && arm.binding !== '_') nested.add(arm.binding);
+          visitExpr(arm.body, nested);
+        }
+        return;
+      case 'InterpolatedString':
+        for (const part of expr.parts ?? []) {
+          if (typeof part !== 'string') visitExpr(part, scope);
+        }
+        return;
+      case 'Try':
+        visitExpr(expr.value, scope);
+        return;
+      case 'Cast':
+        visitExpr(expr.expr, scope);
+        return;
+      case 'Move':
+        if (expr.target.type !== 'Identifier') visitExpr(expr.target.object, scope);
+        return;
+      case 'Lambda': {
+        const lambdaScope = new Set(scope);
+        for (const param of expr.params ?? []) pushLocal(lambdaScope, param.name);
+        for (const stmt of expr.body.body ?? []) visitStmt(stmt, lambdaScope);
+        return;
+      }
+      default:
+        return;
+    }
+  };
+
+  const visitStmt = (stmt: LuminaStatement, scope: Set<string>) => {
+    switch (stmt.type) {
+      case 'Let':
+        visitExpr(stmt.value, scope);
+        pushLocal(scope, stmt.name);
+        return;
+      case 'LetTuple':
+        visitExpr(stmt.value, scope);
+        for (const name of stmt.names) pushLocal(scope, name);
+        return;
+      case 'LetElse': {
+        visitExpr(stmt.value, scope);
+        const thenScope = new Set(scope);
+        collectComptimePatternBindingNames(stmt.pattern as { type?: string; [key: string]: unknown }, thenScope);
+        for (const binding of thenScope) scope.add(binding);
+        const elseScope = new Set(scope);
+        for (const inner of stmt.elseBlock.body ?? []) visitStmt(inner, elseScope);
+        return;
+      }
+      case 'Assign':
+        if (stmt.target.type !== 'Identifier') visitExpr(stmt.target.object, scope);
+        visitExpr(stmt.value, scope);
+        return;
+      case 'ExprStmt':
+        visitExpr(stmt.expr, scope);
+        return;
+      case 'Return':
+        visitExpr(stmt.value, scope);
+        return;
+      case 'If':
+        visitExpr(stmt.condition, scope);
+        for (const inner of stmt.thenBlock.body ?? []) visitStmt(inner, new Set(scope));
+        if (stmt.elseBlock) {
+          for (const inner of stmt.elseBlock.body ?? []) visitStmt(inner, new Set(scope));
+        }
+        return;
+      case 'IfLet': {
+        visitExpr(stmt.value, scope);
+        const thenScope = new Set(scope);
+        collectComptimePatternBindingNames(stmt.pattern as { type?: string; [key: string]: unknown }, thenScope);
+        for (const inner of stmt.thenBlock.body ?? []) visitStmt(inner, thenScope);
+        if (stmt.elseBlock) {
+          for (const inner of stmt.elseBlock.body ?? []) visitStmt(inner, new Set(scope));
+        }
+        return;
+      }
+      case 'While':
+        visitExpr(stmt.condition, scope);
+        for (const inner of stmt.body.body ?? []) visitStmt(inner, new Set(scope));
+        return;
+      case 'WhileLet': {
+        visitExpr(stmt.value, scope);
+        const loopScope = new Set(scope);
+        collectComptimePatternBindingNames(stmt.pattern as { type?: string; [key: string]: unknown }, loopScope);
+        for (const inner of stmt.body.body ?? []) visitStmt(inner, loopScope);
+        return;
+      }
+      case 'For':
+        visitExpr(stmt.iterable, scope);
+        {
+          const loopScope = new Set(scope);
+          pushLocal(loopScope, stmt.iterator);
+          for (const inner of stmt.body.body ?? []) visitStmt(inner, loopScope);
+        }
+        return;
+      case 'MatchStmt':
+        visitExpr(stmt.value, scope);
+        for (const arm of stmt.arms ?? []) {
+          const armScope = new Set(scope);
+          collectComptimePatternBindingNames(arm.pattern as { type?: string; [key: string]: unknown }, armScope);
+          if (arm.guard) visitExpr(arm.guard, armScope);
+          for (const inner of arm.body.body ?? []) visitStmt(inner, armScope);
+        }
+        return;
+      case 'Block':
+        for (const inner of stmt.body ?? []) visitStmt(inner, new Set(scope));
+        return;
+      default:
+        return;
+    }
+  };
+
+  const scope = new Set<string>();
+  for (const param of fnDecl.params ?? []) pushLocal(scope, param.name);
+  for (const stmt of fnDecl.body.body ?? []) visitStmt(stmt, scope);
 }
 
 function resolveFunctionBody(

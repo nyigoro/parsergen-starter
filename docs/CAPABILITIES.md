@@ -2,6 +2,12 @@
 
 This document tracks the current state of the Lumina language/tooling and near‑term priorities.
 
+## Strategic Focus
+- **Primary identity**: Web-native systems language (WASM + browser runtime first).
+- **Primary backend target**: WASM in browser environments; JS remains stable fallback/debug path.
+- **Platform model**: Browser-first APIs and performance constraints drive runtime/codegen priorities.
+- **Scope policy**: Existing vision areas (types, traits, macros, tooling, concurrency) remain in scope.
+
 ## Legend
 - **Stable**: Implemented + covered by tests
 - **Beta**: Implemented but still evolving / limited tests
@@ -101,11 +107,13 @@ This document tracks the current state of the Lumina language/tooling and near�
 - Real‑world utility: working JSON parser
 
 ## Near‑Term Roadmap (Next 3–5)
-1. **WASM backend completeness** (**P0 release gate**: broader AST/IR coverage + parity with JS path; all items below must be completed before WASM is marked Stable)
-2. **Package registry** (publish/discovery workflow for Lumina packages)
-3. **Borrow safety polish** (branch-merge borrow checks + stronger diagnostics)
-4. **Advanced IDE refactors** (rename-safe transforms, extraction across modules)
-5. **Function overloading / numeric API cleanup** (abs/absf → unified surface)
+1. **Web-native P0 runtime parity** (browser + WASM host-call surface, deterministic behavior, no unsupported production paths)
+2. **WASM backend stabilization** (remaining edge-case lowering, diagnostics hardening, perf and memory validation)
+3. **Browser-native stdlib expansion** (`dom`, `web_worker`, `web_storage`, `url`, `web_streams` modules)
+4. **Package registry + web distribution** (publish/discovery + browser/WASM package consumption workflow)
+5. **Borrow safety polish + advanced IDE refactors** (same goals, sequenced after web-native P0)
+
+Reference: `docs/WEB_NATIVE_ROADMAP.md`
 
 ### P0 Release Gate: Core Language Features in WASM (Must Complete Entirely)
 - [x] String operations (beyond numerics)

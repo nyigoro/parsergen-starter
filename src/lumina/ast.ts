@@ -261,6 +261,7 @@ export interface LuminaFnDecl {
   type: 'FnDecl';
   name: string;
   async?: boolean;
+  comptime?: boolean;
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
   whereClauses?: LuminaConstExpr[];

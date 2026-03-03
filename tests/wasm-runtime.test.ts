@@ -117,6 +117,35 @@ describe('WASM runtime', () => {
     expect(callWASMFunction(runtime, 'main')).toBe(3);
   });
 
+  it('round-trips packed struct literals and field reads correctly', async () => {
+    if (!hasWabt()) return;
+    const source = `
+      struct Packed {
+        tiny: u8,
+        wide: f64,
+        mid: i32
+      }
+
+      fn main() -> i32 {
+        let p = Packed { tiny: 2u8, wide: 9.0, mid: 30 };
+        let mut score = p.mid;
+        if (p.tiny == 2u8) {
+          score = score + 1;
+        }
+        return score;
+      }
+
+      fn wide() -> f64 {
+        let p = Packed { tiny: 2u8, wide: 9.0, mid: 30 };
+        return p.wide;
+      }
+    `.trim() + '\n';
+
+    const runtime = await compileAndLoad(source);
+    expect(callWASMFunction(runtime, 'main')).toBe(31);
+    expect(callWASMFunction(runtime, 'wide')).toBeCloseTo(9.0);
+  });
+
   it('runs Vec iterator helpers with lambda callbacks in WASM', async () => {
     if (!hasWabt()) return;
     const source = `

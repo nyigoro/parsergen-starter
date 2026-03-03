@@ -1,0 +1,4 @@
+fn test(c: string) -> bool {
+  if (str.eq(c, "\{")) { return true }
+  return false
+}

@@ -22,6 +22,8 @@ type CompileMessage = {
     diCfg?: boolean;
     useAstJs?: boolean;
     noOptimize?: boolean;
+    noInline?: boolean;
+    noComptime?: boolean;
     sourceMap?: boolean;
     inlineSourceMap?: boolean;
   };

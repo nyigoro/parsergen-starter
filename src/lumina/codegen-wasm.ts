@@ -57,6 +57,12 @@ const parseTypeName = (typeName: string): { base: string; args: string[] } | nul
   return { base: trimmed.slice(0, idx), args: splitTypeArgs(trimmed.slice(idx + 1, -1)) };
 };
 
+const alignTo = (value: number, alignment: number): number => {
+  if (alignment <= 1) return value;
+  const remainder = value % alignment;
+  return remainder === 0 ? value : value + (alignment - remainder);
+};
+
 type WasmValType = 'i32' | 'i64' | 'f64';
 
 export interface WasmCodegenOptions {
@@ -81,6 +87,7 @@ interface WasmStructFieldLayout {
   name: string;
   offset: number;
   size: number;
+  align: number;
   wasmType: WasmValType;
   typeName: LuminaTypeExpr;
 }
@@ -525,14 +532,28 @@ class WasmBuilder {
     for (const struct of this.structDecls.values()) {
       const orderedFields: WasmStructFieldLayout[] = [];
       const fieldMap = new Map<string, WasmStructFieldLayout>();
-      let offset = 0;
-      for (const field of struct.body) {
+      const fieldsWithMeta = struct.body.map((field, index) => {
         const wasmType = this.typeExprToWasm(field.typeName, field.location) ?? 'i32';
         const size = this.calculateTypeSize(field.typeName, field.location ?? struct.location);
+        const align = this.wasmTypeAlignment(wasmType);
+        return { field, index, wasmType, size, align };
+      });
+      fieldsWithMeta.sort((a, b) => {
+        if (b.size !== a.size) return b.size - a.size;
+        return a.index - b.index;
+      });
+
+      let offset = 0;
+      let structAlign = 1;
+      for (const meta of fieldsWithMeta) {
+        const { field, wasmType, size, align } = meta;
+        offset = alignTo(offset, align);
+        structAlign = Math.max(structAlign, align);
         const info: WasmStructFieldLayout = {
           name: field.name,
           offset,
           size,
+          align,
           wasmType,
           typeName: field.typeName,
         };
@@ -540,12 +561,17 @@ class WasmBuilder {
         fieldMap.set(field.name, info);
         offset += size;
       }
+      const totalSize = alignTo(offset, structAlign);
       this.structLayout.set(struct.name, {
-        totalSize: offset,
+        totalSize,
         fields: fieldMap,
         orderedFields,
       });
     }
+  }
+
+  private wasmTypeAlignment(type: WasmValType): number {
+    return type === 'i64' || type === 'f64' ? 8 : 4;
   }
 
   private lookupStructFieldInfo(expr: Extract<LuminaExpr, { type: 'Member' }>): WasmStructFieldLayout | null {
@@ -822,7 +848,7 @@ class WasmBuilder {
     lines.push('    local.get $__struct_ptr');
     lines.push('  )');
     for (const field of layout.orderedFields) {
-      lines.push(`  ;;   field ${field.name}: offset ${field.offset}, size ${field.size}`);
+      lines.push(`  ;;   field ${field.name}: offset ${field.offset}, size ${field.size}, align ${field.align}`);
     }
     return lines.join('\n');
   }

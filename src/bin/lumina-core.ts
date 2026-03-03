@@ -22,6 +22,9 @@ import {
   formatDiagnosticExplanation,
   getDiagnosticExplanation,
 } from '../index.js';
+import { inlinePass } from '../lumina/inline.js';
+import { comptimePass } from '../lumina/comptime.js';
+import { fuseVecPipelines } from '../lumina/stream-fusion.js';
 import { loadWASM, callWASMFunction } from '../wasm-runtime.js';
 import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
@@ -1014,10 +1017,21 @@ async function bundleProgram(
   return { program: { type: 'Program', body: mergedBody }, sources };
 }
 
-function monomorphizeAst(program: unknown): unknown {
+function monomorphizeAst(
+  program: unknown,
+  options: { noInline?: boolean; noComptime?: boolean } = {}
+): { ast: unknown; diagnostics: Diagnostic[] } {
   const hm = inferProgram(program as never, { useRowPolymorphism: true });
   const cloned = JSON.parse(JSON.stringify(program)) as never;
-  return monomorphize(cloned, { inferredCalls: hm.inferredCalls });
+  const monomorphized = monomorphize(cloned, { inferredCalls: hm.inferredCalls });
+  const comptimeResult = options.noComptime
+    ? { ast: monomorphized, diagnostics: [] as Diagnostic[] }
+    : comptimePass(monomorphized as never);
+  const inlined = options.noInline ? comptimeResult.ast : inlinePass(comptimeResult.ast as never).ast;
+  return {
+    ast: fuseVecPipelines(inlined as never),
+    diagnostics: comptimeResult.diagnostics ?? [],
+  };
 }
 
 function programUsesAstOnlySyntax(program: unknown): boolean {
@@ -1149,6 +1163,8 @@ async function compileLumina(
   diCfg: boolean,
   useAstJs: boolean,
   noOptimize: boolean,
+  noInline: boolean,
+  noComptime: boolean,
   sourceMap: boolean,
   inlineSourceMap: boolean,
   stopOnUnresolvedMemberError: boolean
@@ -1167,6 +1183,14 @@ async function compileLumina(
   };
   const analysisOptions = { diDebug: diCfg, stopOnUnresolvedMemberError };
   const lockfileRoot = findLockfileRoot(sourcePath);
+  const applyMonomorphize = (program: unknown): unknown | null => {
+    const mono = monomorphizeAst(program, { noInline, noComptime });
+    if (mono.diagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(source, mono.diagnostics);
+      return null;
+    }
+    return mono.ast;
+  };
   await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath, lockfileRoot);
   const hasProjectImports = extractImports(source).some((imp) => !imp.startsWith('@std/'));
   if (target === 'wasm') {
@@ -1185,7 +1209,8 @@ async function compileLumina(
         formatDiagnosticsWithSnippet(source, analysis.diagnostics);
         return { ok: false };
       }
-    const monoAst = monomorphizeAst(bundle.program as never);
+    const monoAst = applyMonomorphize(bundle.program as never);
+    if (!monoAst) return { ok: false };
     const wasm = generateWATFromAst(monoAst as never, { exportMain: true });
     if (wasm.diagnostics.length > 0) {
       formatDiagnosticsWithSnippet(source, wasm.diagnostics);
@@ -1212,7 +1237,8 @@ async function compileLumina(
       reportDiagnosticsAndFail(source, combinedDiagnostics);
       return { ok: false };
     }
-    const monoAst = monomorphizeAst(ast as never);
+    const monoAst = applyMonomorphize(ast as never);
+    if (!monoAst) return { ok: false };
     const wasm = generateWATFromAst(monoAst as never, { exportMain: true });
     if (wasm.diagnostics.length > 0) {
       formatDiagnosticsWithSnippet(source, wasm.diagnostics);
@@ -1251,7 +1277,8 @@ async function compileLumina(
     let optimized = null as ReturnType<typeof optimizeIR>;
     let result: { code: string; map?: RawSourceMap } | null = null;
     if (shouldUseAstJs(bundle.program)) {
-      const monoAst = monomorphizeAst(bundle.program as never);
+      const monoAst = applyMonomorphize(bundle.program as never);
+      if (!monoAst) return { ok: false };
       const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
       if (monoAnalysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
@@ -1266,7 +1293,8 @@ async function compileLumina(
       });
       out = result.code;
     } else {
-      const monoAst = monomorphizeAst(bundle.program as never);
+      const monoAst = applyMonomorphize(bundle.program as never);
+      if (!monoAst) return { ok: false };
       const lowered = lowerLumina(monoAst as never);
       optimized = noOptimize ? lowered : optimizeIR(lowered) ?? lowered;
       const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
@@ -1300,7 +1328,8 @@ async function compileLumina(
         formatDiagnosticsWithSnippet(source, analysis.diagnostics);
         return { ok: false };
       }
-      const monoAst = monomorphizeAst(cached.ast as never);
+      const monoAst = applyMonomorphize(cached.ast as never);
+      if (!monoAst) return { ok: false };
       const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
       if (monoAnalysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
@@ -1331,7 +1360,8 @@ async function compileLumina(
       console.log(`Lumina compiled (cached): ${outPath}`);
       return { ok: true, map: undefined, ir: cached.ir ?? lowerLumina(monoAst as never) };
     }
-    const monoAst = monomorphizeAst(cached.ast as never);
+    const monoAst = applyMonomorphize(cached.ast as never);
+    if (!monoAst) return { ok: false };
     const lowered = lowerLumina(monoAst as never);
     const ir = noOptimize ? lowered : (cached.ir ?? optimizeIR(lowered) ?? lowered);
     const result = generateJS(ir, {
@@ -1368,7 +1398,8 @@ async function compileLumina(
         formatDiagnosticsWithSnippet(source, analysis.diagnostics);
         return { ok: false };
       }
-      const monoAst = monomorphizeAst(diskCache.ast as never);
+      const monoAst = applyMonomorphize(diskCache.ast as never);
+      if (!monoAst) return { ok: false };
       const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
       if (monoAnalysis.diagnostics.length > 0) {
         formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
@@ -1399,7 +1430,8 @@ async function compileLumina(
       console.log(`Lumina compiled (cached): ${outPath}`);
       return { ok: true, map: undefined, ir: diskCache.ir ?? lowerLumina(monoAst as never) };
     }
-    const monoAst = monomorphizeAst(diskCache.ast as never);
+    const monoAst = applyMonomorphize(diskCache.ast as never);
+    if (!monoAst) return { ok: false };
     const lowered = lowerLumina(monoAst as never);
     const ir = noOptimize ? lowered : (diskCache.ir ?? optimizeIR(lowered) ?? lowered);
     const result = generateJS(ir, {
@@ -1445,7 +1477,8 @@ async function compileLumina(
   let optimized = null as ReturnType<typeof optimizeIR>;
   let result: { code: string; map?: RawSourceMap } | null = null;
   if (shouldUseAstJs(ast)) {
-    const monoAst = monomorphizeAst(ast as never);
+    const monoAst = applyMonomorphize(ast as never);
+    if (!monoAst) return { ok: false };
     const monoAnalysis = analyzeLumina(monoAst as never, analysisOptions);
     if (monoAnalysis.diagnostics.length > 0) {
       formatDiagnosticsWithSnippet(source, monoAnalysis.diagnostics);
@@ -1460,7 +1493,8 @@ async function compileLumina(
     });
     out = result.code;
   } else {
-    const monoAst = monomorphizeAst(ast as never);
+    const monoAst = applyMonomorphize(ast as never);
+    if (!monoAst) return { ok: false };
     const lowered = lowerLumina(monoAst as never);
     optimized = noOptimize ? lowered : optimizeIR(lowered) ?? lowered;
     const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
@@ -1581,6 +1615,8 @@ export async function compileLuminaTask(payload: {
   diCfg?: boolean;
   useAstJs?: boolean;
   noOptimize?: boolean;
+  noInline?: boolean;
+  noComptime?: boolean;
   sourceMap?: boolean;
   inlineSourceMap?: boolean;
   stopOnUnresolvedMemberError?: boolean;
@@ -1594,6 +1630,8 @@ export async function compileLuminaTask(payload: {
     payload.diCfg ?? false,
     payload.useAstJs ?? false,
     payload.noOptimize ?? false,
+    payload.noInline ?? false,
+    payload.noComptime ?? false,
     payload.sourceMap ?? false,
     payload.inlineSourceMap ?? false,
     payload.stopOnUnresolvedMemberError ?? false
@@ -1631,6 +1669,10 @@ async function watchLumina(
   useRecovery: boolean = false,
   diCfg: boolean = false,
   noOptimize: boolean = false,
+  noInline: boolean = false,
+  noComptime: boolean = false,
+  useAstJs: boolean = false,
+  sourceMap: boolean = false,
   inlineSourceMap: boolean = false,
   stopOnUnresolvedMemberError: boolean = false
 ) {
@@ -1654,6 +1696,8 @@ async function watchLumina(
         diCfg,
         useAstJs,
         noOptimize,
+        noInline,
+        noComptime,
         sourceMap,
         inlineSourceMap,
         stopOnUnresolvedMemberError
@@ -1669,6 +1713,8 @@ async function watchLumina(
       diCfg,
       useAstJs,
       noOptimize,
+      noInline,
+      noComptime,
       sourceMap,
       inlineSourceMap,
       stopOnUnresolvedMemberError,
@@ -1737,6 +1783,8 @@ type WorkerRequest =
         diCfg: boolean;
         useAstJs?: boolean;
         noOptimize?: boolean;
+        noInline?: boolean;
+        noComptime?: boolean;
         sourceMap?: boolean;
         inlineSourceMap?: boolean;
         stopOnUnresolvedMemberError?: boolean;
@@ -1772,7 +1820,7 @@ function createWorkerRunner(config: BuildConfig) {
   worker.postMessage({ type: 'init', payload: config } satisfies WorkerRequest);
 
   return {
-    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean; stopOnUnresolvedMemberError?: boolean }) {
+    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; noInline?: boolean; noComptime?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean; stopOnUnresolvedMemberError?: boolean }) {
       const id = requestId++;
       return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         pending.set(id, { resolve });
@@ -1823,6 +1871,8 @@ Options:
   --profile-cache      Print cache hit/miss stats
   --ast-js             Emit JS directly from AST (no IR)
   --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
+  --no-inline          Disable AST inlining pass after monomorphization
+  --no-comptime        Disable comptime function evaluation pass
   --stop-on-unresolved Halt analysis on first unresolved namespace/member error
   --check              Verify formatting only, do not write files (fmt)
   --public-only        Include only public declarations in docs (doc)
@@ -2118,6 +2168,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const diCfg = parseBooleanFlag(args, '--di-cfg');
   const useAstJs = parseBooleanFlag(args, '--ast-js');
   const noOptimize = parseBooleanFlag(args, '--no-optimize');
+  const noInline = parseBooleanFlag(args, '--no-inline');
+  const noComptime = parseBooleanFlag(args, '--no-comptime');
   const stopOnUnresolvedMemberError = parseBooleanFlag(args, '--stop-on-unresolved');
   const listConfig = parseBooleanFlag(args, '--list-config');
   const sourceMapMode = args.get('--source-map') as string | undefined;
@@ -2227,6 +2279,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
           diCfg,
           useAstJs,
           noOptimize,
+          noInline,
+          noComptime,
           sourceMap,
           inlineSourceMap,
           stopOnUnresolvedMemberError
@@ -2292,6 +2346,10 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       useRecovery,
       diCfg,
       noOptimize,
+      noInline,
+      noComptime,
+      useAstJs,
+      sourceMap,
       inlineSourceMap,
       stopOnUnresolvedMemberError
     );

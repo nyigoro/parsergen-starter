@@ -99,4 +99,26 @@ describe('Lumina parse wrapper', () => {
     const ast = parseLumina(parser, program);
     expect(ast.type).toBe('Program');
   });
+
+  test('parses literal braces in strings without breaking scope analysis', () => {
+    const program = `
+      import { str } from "@std";
+
+      fn main(c: string) -> bool {
+        if (str.eq(c, "{")) {
+          return true;
+        }
+        if (str.eq(c, "{}")) {
+          return true;
+        }
+        return false;
+      }
+    `.trim() + '\n';
+
+    const ast = parseLumina(parser, program);
+    expect(ast.type).toBe('Program');
+    const fnDecl = ast.body.find((stmt) => stmt.type === 'FnDecl');
+    expect(fnDecl?.type).toBe('FnDecl');
+  });
+
 });

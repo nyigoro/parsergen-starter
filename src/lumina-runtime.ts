@@ -1641,6 +1641,73 @@ export const vec = {
   skip: <T>(v: Vec<T>, n: number) => v.skip(n),
   zip: <T, U>(v: Vec<T>, other: Vec<U>) => v.zip(other),
   enumerate: <T>(v: Vec<T>) => v.enumerate(),
+  fused_filter_map_fold: <T, U, A>(
+    v: Vec<T>,
+    pred: (value: T) => boolean,
+    mapper: (value: T) => U,
+    init: A,
+    folder: (acc: A, value: U) => A
+  ): A => {
+    let acc = init;
+    for (const item of v) {
+      if (!pred(item)) continue;
+      acc = folder(acc, mapper(item));
+    }
+    return acc;
+  },
+  fused_map_fold: <T, U, A>(
+    v: Vec<T>,
+    mapper: (value: T) => U,
+    init: A,
+    folder: (acc: A, value: U) => A
+  ): A => {
+    let acc = init;
+    for (const item of v) {
+      acc = folder(acc, mapper(item));
+    }
+    return acc;
+  },
+  fused_filter_fold: <T, A>(
+    v: Vec<T>,
+    pred: (value: T) => boolean,
+    init: A,
+    folder: (acc: A, value: T) => A
+  ): A => {
+    let acc = init;
+    for (const item of v) {
+      if (!pred(item)) continue;
+      acc = folder(acc, item);
+    }
+    return acc;
+  },
+  fused_pipeline: <T, A>(
+    v: Vec<T>,
+    stages: Array<{ kind: 'map' | 'filter'; f: (value: unknown) => unknown }>,
+    init: A,
+    folder: (acc: A, value: unknown) => A
+  ): A => {
+    let acc = init;
+    for (const item of v) {
+      let current: unknown = item;
+      let keep = true;
+      for (const stage of stages) {
+        if (stage.kind === 'map') {
+          current = stage.f(current);
+          continue;
+        }
+        if (stage.kind === 'filter') {
+          if (!stage.f(current)) {
+            keep = false;
+            break;
+          }
+          continue;
+        }
+      }
+      if (!keep) continue;
+      acc = folder(acc, current);
+    }
+    return acc;
+  },
 };
 
 export class HashMap<K, V> {

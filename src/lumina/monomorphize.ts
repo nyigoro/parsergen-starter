@@ -44,6 +44,16 @@ const cloneAst = <T>(node: T): T => JSON.parse(JSON.stringify(node)) as T;
 const sanitizeTypeSegment = (value: string): string =>
   value.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || 'Type';
 
+export const MANGLED_SENTINEL_CHARS = ['$', '#'] as const;
+
+export const hasMangledSentinel = (
+  name: string,
+  sentinels: readonly string[] = MANGLED_SENTINEL_CHARS
+): boolean => sentinels.some((sentinel) => name.includes(sentinel));
+
+export const hasUnresolvedMangledName = (name: string): boolean =>
+  /\bT\d+\b/.test(name) || name.includes('Unknown') || name.includes('Hole') || name.includes('$rec');
+
 const parseTypeName = (typeName: string): { base: string; args: string[] } | null => {
   const idx = typeName.indexOf('<');
   if (idx === -1) return { base: typeName, args: [] };

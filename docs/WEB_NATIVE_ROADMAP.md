@@ -1,0 +1,49 @@
+# Web-Native Roadmap
+
+This roadmap sets Lumina's execution priority as a **web-native systems language** while keeping the broader language vision intact.
+
+## Direction
+- Primary execution target: **WASM in browser environments**.
+- Primary runtime constraints: startup cost, memory discipline, predictable host interop, safe async boundaries.
+- JS backend role: stable fallback/debug target, not primary product identity.
+- Existing tracks retained: advanced type system, traits/macros, tooling/LSP, concurrency, stdlib breadth.
+
+## Target Platforms
+- Tier 1: Browser + WASM
+- Tier 2: Node/Deno as compatibility hosts
+- Tier 3: Non-web hosts (kept functional, lower short-term priority)
+
+## Release Gates
+
+### P0: Web Runtime Parity
+- No unsupported diagnostics on production web flows (`await`, `select`, match guards/patterns, core std calls).
+- WASM runtime host imports cover required web-native modules and fallback routing.
+- Deterministic behavior parity between JS and WASM for core language features.
+- Full browser smoke suite for compile -> load -> execute paths.
+
+### P1: Performance + Memory Discipline
+- Benchmarks: Lumina JS vs Lumina WASM across parse/runtime workloads.
+- Memory validation for allocations, retain/release hooks, and long-running reactive apps.
+- Hot-path optimization for host calls, collection operations, and pattern-matching branches.
+
+### P2: Browser-Native Stdlib Surface
+- `@std/dom` (query, node creation, event bindings).
+- `@std/web_worker` (spawn, postMessage, lifecycle).
+- `@std/web_storage` (localStorage/sessionStorage wrappers).
+- `@std/url` + fetch/request helpers aligned with browser APIs.
+- `@std/web_streams` integration.
+
+## Active Workstreams
+- WASM codegen hardening for remaining edge cases.
+- WASM runtime import surface + module-call dispatcher maturity.
+- Web-native docs/examples and capability matrix sync.
+- Packaging workflow for browser/WASM consumption.
+
+## Compatibility Policy
+- Keep Node/Deno support operational for CLI/tooling and test infrastructure.
+- Prefer web-standard APIs as canonical abstractions.
+- Add host-specific shims only when web-standard behavior is preserved.
+
+## Relationship to Existing Vision
+- GADTs/HKTs/const generics, trait/macro systems, and IDE features remain first-class.
+- Prioritization changes only in sequencing: web-native runtime quality gates come first.

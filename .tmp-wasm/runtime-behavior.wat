@@ -219,7 +219,7 @@
     i32.store
     local.get $__struct_ptr
   )
-  ;;   field name: offset 0, size 4
+  ;;   field name: offset 0, size 4, align 4
   (func $main  (result i32)
   (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $u i32)
     i32.const 32

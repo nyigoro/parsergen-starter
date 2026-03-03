@@ -7,6 +7,7 @@
 - `MIGRATION_FROM_TS_JS.md` — practical migration strategy from TS/JS
 - `ECOSYSTEM.md` — ecosystem status, package guidance, and contribution model
 - `CAPABILITIES.md` — feature matrix and status
+- `WEB_NATIVE_ROADMAP.md` — web-native execution strategy and release gates
 - `STDLIB.md` — standard library APIs
 - `RENDER.md` — reactivity, VNode model, and renderer contract
 - `NUMERIC_TYPES.md` — numeric type system

@@ -125,6 +125,34 @@ describe('WASM codegen (WAT)', () => {
     expect(result.wat).toContain('i32.load');
   });
 
+  it('packs mixed-size struct fields using alignment-aware layout order', () => {
+    const source = `
+      struct Packed {
+        tiny: u8,
+        wide: f64,
+        mid: i32
+      }
+
+      fn main() -> i32 {
+        let p = Packed { tiny: 1u8, wide: 3.5, mid: 7 };
+        if (p.tiny == 1u8) {
+          return p.mid + 1;
+        } else {
+          return p.mid;
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('field wide: offset 0, size 8, align 8');
+    expect(result.wat).toContain('field mid: offset 8, size 4, align 4');
+    expect(result.wat).toContain('field tiny: offset 12, size 1, align 4');
+    expect(result.wat).toContain(';; Total size: 16 bytes');
+  });
+
   it('supports string interpolation and slicing helpers', () => {
     const source = `
       fn main() -> string {
