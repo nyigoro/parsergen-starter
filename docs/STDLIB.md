@@ -507,6 +507,15 @@ Container mapping helpers aligned with `Functor<F<_>>` patterns.
 ### map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> B) -> Vec<B>
 ### map_hashmap_values<K, V, U>(values: HashMap<K, V>, mapper: fn(V) -> U) -> HashMap<K, U>
 
+Example pattern:
+
+```lumina
+let scores = hashmap.new();
+hashmap.insert(scores, "alice", 10);
+hashmap.insert(scores, "bob", 12);
+let boosted = functor.map_hashmap_values(scores, |v| v + 1);
+```
+
 ## @std/applicative
 
 Applicative-style lifting and function application helpers.
@@ -514,9 +523,21 @@ Applicative-style lifting and function application helpers.
 ### pure_option<A>(value: A) -> Option<A>
 ### pure_result<A, E>(value: A) -> Result<A, E>
 ### pure_vec<A>(value: A) -> Vec<A>
+### pure_hashmap<K, V>(key: K, value: V) -> HashMap<K, V>
 ### ap_option<A, B>(fns: Option<fn(A) -> B>, value: Option<A>) -> Option<B>
 ### ap_result<A, E, B>(fns: Result<fn(A) -> B, E>, value: Result<A, E>) -> Result<B, E>
 ### ap_vec<A, B>(fns: Vec<fn(A) -> B>, values: Vec<A>) -> Vec<B>
+### ap_hashmap_values<K, A, B>(fns: HashMap<K, fn(A) -> B>, values: HashMap<K, A>) -> HashMap<K, B>
+
+Example pattern:
+
+```lumina
+let fns = hashmap.new();
+hashmap.insert(fns, "x", |n| n * 2);
+let values = hashmap.new();
+hashmap.insert(values, "x", 21);
+let out = applicative.ap_hashmap_values(fns, values); // key-aligned apply
+```
 
 ## @std/monad
 
@@ -525,9 +546,23 @@ Flat-mapping and join helpers for common monadic containers.
 ### flat_map_option<A, B>(value: Option<A>, mapper: fn(A) -> Option<B>) -> Option<B>
 ### flat_map_result<A, E, B>(value: Result<A, E>, mapper: fn(A) -> Result<B, E>) -> Result<B, E>
 ### flat_map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> Vec<B>) -> Vec<B>
+### flat_map_hashmap_values<K, A, B>(values: HashMap<K, A>, mapper: fn(A) -> HashMap<K, B>) -> HashMap<K, B>
 ### join_option<A>(value: Option<Option<A>>) -> Option<A>
 ### join_result<A, E>(value: Result<Result<A, E>, E>) -> Result<A, E>
 ### join_vec<A>(values: Vec<Vec<A>>) -> Vec<A>
+### join_hashmap_values<K, A>(values: HashMap<K, HashMap<K, A>>) -> HashMap<K, A>
+
+Example pattern:
+
+```lumina
+let base = hashmap.new();
+hashmap.insert(base, "root", 2);
+let expanded = monad.flat_map_hashmap_values(base, |value| {
+  let out = hashmap.new();
+  hashmap.insert(out, "double", value * 2);
+  out
+});
+```
 
 ## @std/foldable
 

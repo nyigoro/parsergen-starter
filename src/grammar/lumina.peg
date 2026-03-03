@@ -8,7 +8,7 @@
   function expectedStatementTokens() {
     return [
       "fn", "async", "struct", "enum", "type", "extern", "import", "pub", "trait", "impl", "macro_rules",
-      "let", "if", "while", "match", "return",
+      "let", "if", "while", "match", "return", "break", "continue",
       "identifier", "number", "string", "true", "false",
       "{", "}"
     ];
@@ -57,8 +57,8 @@ Statement
   / ImplDecl
   / StructDecl
   / EnumDecl
-  / AdtTypeDecl
   / TypeDecl
+  / AdtTypeDecl
   / ExternTypeDecl
   / FnDecl
   / ExternFnDecl
@@ -71,6 +71,8 @@ Statement
   / ForStmt
   / WhileLetStmt
   / WhileStmt
+  / BreakStmt
+  / ContinueStmt
   / ReturnStmt
   / MatchStmt
   / ExprStmt
@@ -120,7 +122,10 @@ NamespaceImport
   = "*" _ "as" _ alias:IdName { return { name: alias.name, namespace: true, location: alias.location }; }
 
 TypeDecl
-  = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {
+  = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ aliasType:TypeName _ ";" {
+      return createNode("TypeDecl", { name: node.name, body: [], aliasType, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
+    }
+  / visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {
       return createNode("TypeDecl", { name: node.name, body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
@@ -143,13 +148,16 @@ TraitItem
   = TraitAssocType / TraitMethod
 
 TraitAssocType
-  = "type" _ node:IdName _ defaultType:(_ "=" _ TypeName)? _ ";"? {
-      return createNode("TraitAssocType", { name: node.name, typeName: defaultType ? defaultType[3] : null, location: node.location }, location);
+  = "type" _ node:IdName _ arity:TraitAssocTypeArity? _ defaultType:(_ "=" _ TypeName)? _ ";"? {
+      return createNode("TraitAssocType", { name: node.name, typeName: defaultType ? defaultType[3] : null, higherKindArity: arity || 0, location: node.location }, location);
     }
 
+TraitAssocTypeArity
+  = "<" _ head:"_" tail:(_ "," _ "_")* _ ">" { return 1 + tail.length; }
+
 TraitMethod
-  = "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ body:TraitMethodBody {
-      return createNode("TraitMethod", { name: node.name, params: params || [], returnType: ret || null, typeParams: tparams || [], whereClauses: whereClauses || [], body, location: node.location }, location);
+  = "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ body:TraitMethodBody {
+      return createNode("TraitMethod", { name: node.name, params: params || [], returnType: ret || null, typeParams: tparams || [], whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body, location: node.location }, location);
     }
 
 TraitMethodBody
@@ -157,14 +165,14 @@ TraitMethodBody
   / _ ";"? { return null; }
 
 ImplDecl
-  = visibility:Visibility? _ "impl" _ tparams:TypeParams? _ traitType:TypeName _ _ "for" _ forType:TypeName _ whereClauses:WhereClause? _ "{" _ items:ImplItemList? _ "}" _ ";"? {
+  = visibility:Visibility? _ "impl" _ tparams:TypeParams? _ traitType:TypeName _ _ "for" _ forType:TypeName _ whereInfo:WhereClause? _ "{" _ items:ImplItemList? _ "}" _ ";"? {
       const methods = [];
       const associatedTypes = [];
       for (const item of items || []) {
         if (item && item.type === "FnDecl") methods.push(item);
         if (item && item.type === "ImplAssocType") associatedTypes.push(item);
       }
-      return createNode("ImplDecl", { traitType, forType, typeParams: tparams || [], whereClauses: whereClauses || [], methods, associatedTypes, visibility: visibility ?? "private", location: location() }, location);
+      return createNode("ImplDecl", { traitType, forType, typeParams: tparams || [], whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], methods, associatedTypes, visibility: visibility ?? "private", location: location() }, location);
     }
 
 ImplItemList
@@ -175,13 +183,13 @@ ImplItem
   = ImplAssocType / ImplMethod
 
 ImplAssocType
-  = "type" _ node:IdName _ "=" _ typeName:TypeName _ ";"? {
-      return createNode("ImplAssocType", { name: node.name, typeName, location: node.location }, location);
+  = "type" _ node:IdName _ arity:TraitAssocTypeArity? _ "=" _ typeName:TypeName _ ";"? {
+      return createNode("ImplAssocType", { name: node.name, typeName, higherKindArity: arity || 0, location: node.location }, location);
     }
 
 ImplMethod
-  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ body:Block {
-      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, whereClauses: whereClauses || [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
+  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ body:Block {
+      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 AdtTypeDecl
@@ -300,13 +308,13 @@ TypePath
   = head:IdName tail:(_ "::" _ IdName)* { return [head.name].concat(tail.map(t => t[3].name)); }
 
 FnDecl
-  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ body:Block {
-      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, whereClauses: whereClauses || [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
+  = visibility:Visibility? _ async:("async" __)? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ body:Block {
+      return createNode("FnDecl", { name: node.name, async: !!async, params: params || [], returnType: ret || null, whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
 
 ExternFnDecl
-  = visibility:Visibility? _ "extern" _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereClauses:WhereClause? _ source:FromClause? _ ";"? {
-      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || "any", whereClauses: whereClauses || [], body: createNode("Block", { body: [] }, location), typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location }, location);
+  = visibility:Visibility? _ "extern" _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ source:FromClause? _ ";"? {
+      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || "any", whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body: createNode("Block", { body: [] }, location), typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, location: node.location }, location);
     }
 
 FromClause
@@ -316,8 +324,27 @@ ReturnType
   = "->" _ type:TypeName { return type; }
 
 WhereClause
-  = "where" __ head:ConstTypeExpr tail:(_ "," _ ConstTypeExpr)* {
-      return [head].concat(tail.map(t => t[3]));
+  = "where" __ head:WherePredicate tail:(_ "," _ WherePredicate)* {
+      const items = [head].concat(tail.map(t => t[3]));
+      const constClauses = [];
+      const typeBounds = [];
+      for (const item of items) {
+        if (item && item.type === "WhereTypeBound") {
+          typeBounds.push(item);
+        } else {
+          constClauses.push(item);
+        }
+      }
+      return { constClauses, typeBounds };
+    }
+
+WherePredicate
+  = WhereTypeBound
+  / ConstTypeExpr
+
+WhereTypeBound
+  = node:IdName _ ":" _ bounds:TypeBounds {
+      return createNode("WhereTypeBound", { name: node.name, bounds, location: node.location }, location);
     }
 
 TypeArgs
@@ -337,8 +364,8 @@ TypeParam
   = "const" __ name:IdName _ ":" _ typeName:("usize" / "i32" / "i64") {
       return { name: name.name, isConst: true, constType: typeName };
     }
-  / name:IdName _ "<" _ head:"_" tail:(_ "," _ "_")* _ ">" {
-      return { name: name.name, isConst: false, higherKindArity: 1 + tail.length };
+  / name:IdName _ "<" _ head:"_" tail:(_ "," _ "_")* _ ">" _ bound:(_ ":" _ TypeBounds)? {
+      return { name: name.name, isConst: false, higherKindArity: 1 + tail.length, bound: bound ? bound[3] : undefined };
     }
   / name:IdName _ ":" _ bound:TypeBounds { return { name: name.name, bound, isConst: false }; }
   / name:IdName { return { name: name.name, isConst: false }; }
@@ -488,6 +515,12 @@ LetElseStmt
 
 ReturnStmt
   = "return" _ value:Expr _ ";"? { return createNode("Return", { value }, location); }
+
+BreakStmt
+  = "break" _ ";"? { return createNode("Break", {}, location); }
+
+ContinueStmt
+  = "continue" _ ";"? { return createNode("Continue", {}, location); }
 
 MatchStmt
   = "match" _ value:Expr _ "{" _ arms:MatchArmList? _ "}" {
@@ -791,7 +824,7 @@ StructLiteralField
 
 Keyword
   = ("fn" / "async" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "let" / "mut" / "ref" / "move"
-    / "if" / "else" / "while" / "match" / "return" / "for" / "in" / "true" / "false" / "from" / "as" / "is" / "select" / "macro_rules"
+    / "if" / "else" / "while" / "match" / "return" / "break" / "continue" / "for" / "in" / "true" / "false" / "from" / "as" / "is" / "select" / "macro_rules"
     / "exists" / "where") ![a-zA-Z0-9_]
 
 IdName

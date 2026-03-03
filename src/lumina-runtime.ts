@@ -4086,6 +4086,61 @@ const mapHashMapValues = <K, V, U>(map: HashMap<K, V>, mapper: (value: V) => U):
   return out;
 };
 
+const pureHashMap = <K, V>(key: K, value: V): HashMap<K, V> => {
+  const out = HashMap.new<K, V>();
+  out.insert(key, value);
+  return out;
+};
+
+const apHashMapValues = <K, A, B>(
+  fns: HashMap<K, (input: A) => B>,
+  values: HashMap<K, A>
+): HashMap<K, B> => {
+  const out = HashMap.new<K, B>();
+  for (const key of fns.keys()) {
+    const fnEntry = fns.get(key);
+    const valueEntry = values.get(key);
+    if (
+      !fnEntry ||
+      typeof fnEntry !== 'object' ||
+      (fnEntry as { $tag?: string }).$tag !== 'Some' ||
+      !valueEntry ||
+      typeof valueEntry !== 'object' ||
+      (valueEntry as { $tag?: string }).$tag !== 'Some'
+    ) {
+      continue;
+    }
+    const fn = (fnEntry as { $payload: unknown }).$payload;
+    if (typeof fn !== 'function') continue;
+    out.insert(key, (fn as (input: A) => B)((valueEntry as { $payload: A }).$payload));
+  }
+  return out;
+};
+
+const flatMapHashMapValues = <K, A, B>(
+  values: HashMap<K, A>,
+  mapper: (input: A) => HashMap<K, B>
+): HashMap<K, B> => {
+  const out = HashMap.new<K, B>();
+  for (const key of values.keys()) {
+    const current = values.get(key);
+    if (!current || typeof current !== 'object' || (current as { $tag?: string }).$tag !== 'Some') continue;
+    const mapped = mapper((current as { $payload: A }).$payload);
+    if (!(mapped instanceof HashMap)) continue;
+    for (const mappedKey of mapped.keys()) {
+      const mappedValue = mapped.get(mappedKey);
+      if (
+        mappedValue &&
+        typeof mappedValue === 'object' &&
+        (mappedValue as { $tag?: string }).$tag === 'Some'
+      ) {
+        out.insert(mappedKey, (mappedValue as { $payload: B }).$payload);
+      }
+    }
+  }
+  return out;
+};
+
 export const functor = {
   map_option: <A, B>(value: unknown, mapper: (input: A) => B): unknown => Option.map(mapper as (x: unknown) => unknown, value),
   map_result: <A, E, B>(value: unknown, mapper: (input: A) => B): unknown =>
@@ -4099,6 +4154,7 @@ export const applicative = {
   pure_option: <A>(value: A): unknown => Option.Some(value),
   pure_result: <A>(value: A): unknown => Result.Ok(value),
   pure_vec: <A>(value: A): Vec<A> => Vec.from([value]),
+  pure_hashmap: <K, V>(key: K, value: V): HashMap<K, V> => pureHashMap(key, value),
   ap_option: <A, B>(fns: unknown, value: unknown): unknown => {
     const fnTag = fns && typeof fns === 'object' && isEnumLike(fns) ? getEnumTag(fns) : '';
     const valueTag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
@@ -4125,6 +4181,8 @@ export const applicative = {
     }
     return out;
   },
+  ap_hashmap_values: <K, A, B>(fns: HashMap<K, (input: A) => B>, values: HashMap<K, A>): HashMap<K, B> =>
+    apHashMapValues(fns, values),
 };
 
 export const monad = {
@@ -4141,6 +4199,8 @@ export const monad = {
     }
     return out;
   },
+  flat_map_hashmap_values: <K, A, B>(values: HashMap<K, A>, mapper: (input: A) => HashMap<K, B>): HashMap<K, B> =>
+    flatMapHashMapValues(values, mapper),
   join_option: <A>(value: unknown): unknown => Option.and_then((v) => v, value),
   join_result: <A, E>(value: unknown): unknown => Result.and_then((v) => v, value),
   join_vec: <A>(values: Vec<Vec<A>>): Vec<A> => {
@@ -4151,6 +4211,8 @@ export const monad = {
     }
     return out;
   },
+  join_hashmap_values: <K, A>(values: HashMap<K, HashMap<K, A>>): HashMap<K, A> =>
+    flatMapHashMapValues(values, (inner) => inner),
 };
 
 export const foldable = {

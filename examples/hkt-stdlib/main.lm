@@ -1,0 +1,30 @@
+import { Option, Result, vec, hashmap, functor, applicative, monad } from "@std";
+
+fn main() -> void {
+  let maybe = Option.Some(41);
+  let bumped = functor.map_option(maybe, |n| n + 1);
+
+  let ok = Result.Ok(10);
+  let doubled = functor.map_result(ok, |n| n * 2);
+
+  let values = vec.new();
+  vec.push(values, 1);
+  vec.push(values, 2);
+  let expanded = monad.flat_map_vec(values, |n| {
+    let out = vec.new();
+    vec.push(out, n);
+    vec.push(out, n * 10);
+    out
+  });
+
+  let fn_map = hashmap.new();
+  hashmap.insert(fn_map, "x", |n| n + 100);
+  let value_map = hashmap.new();
+  hashmap.insert(value_map, "x", 5);
+  let applied = applicative.ap_hashmap_values(fn_map, value_map);
+
+  let _ = bumped;
+  let _ = doubled;
+  let _ = expanded;
+  let _ = applied;
+}

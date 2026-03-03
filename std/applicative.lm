@@ -17,6 +17,10 @@ pub fn pure_vec<A>(value: A) -> Vec<A> {
   applicative.pure_vec(value)
 }
 
+pub fn pure_hashmap<K, V>(key: K, value: V) -> HashMap<K, V> {
+  applicative.pure_hashmap(key, value)
+}
+
 pub fn ap_option<A, B>(fns: Option<fn(A) -> B>, value: Option<A>) -> Option<B> {
   applicative.ap_option(fns, value)
 }
@@ -27,4 +31,11 @@ pub fn ap_result<A, E, B>(fns: Result<fn(A) -> B, E>, value: Result<A, E>) -> Re
 
 pub fn ap_vec<A, B>(fns: Vec<fn(A) -> B>, values: Vec<A>) -> Vec<B> {
   applicative.ap_vec(fns, values)
+}
+
+pub fn ap_hashmap_values<K, A, B>(
+  fns: HashMap<K, fn(A) -> B>,
+  values: HashMap<K, A>
+) -> HashMap<K, B> {
+  applicative.ap_hashmap_values(fns, values)
 }

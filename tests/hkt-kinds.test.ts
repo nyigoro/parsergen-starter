@@ -103,4 +103,57 @@ describe('HKT kind checking', () => {
     const errors = sem.diagnostics.filter((diag) => diag.severity === 'error');
     expect(errors).toHaveLength(0);
   });
+
+  it('infers constructor kind for unconstrained type parameters', () => {
+    const source = `
+      trait Wrap<F> {
+        fn wrap(x: F<i32>) -> F<i32>;
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    expect(sem.diagnostics.some((diag) => diag.code === 'HKT-001')).toBe(false);
+  });
+
+  it('supports higher-order kinds inferred from usage', () => {
+    const source = `
+      trait Lift<G<_>, F<_>> {
+        fn lift(x: G<F>) -> G<F>;
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    expect(sem.diagnostics.some((diag) => diag.code === 'HKT-001')).toBe(false);
+  });
+
+  it('infers kinds in function signatures without explicit arity annotations', () => {
+    const source = `
+      fn wrap<F>(x: F<i32>) -> F<i32> {
+        x
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    expect(sem.diagnostics.some((diag) => diag.code === 'HKT-001')).toBe(false);
+  });
+
+  it('solves kind constraints across signatures and reports concrete examples', () => {
+    const source = `
+      trait Lift<G<_>> {
+        fn first(x: G<i32>) -> G<i32>;
+        fn second(x: G<Vec>) -> G<Vec>;
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    const mismatch = sem.diagnostics.find((diag) => diag.code === 'HKT-001');
+    expect(mismatch).toBeDefined();
+    const relatedMessages = (mismatch?.relatedInformation ?? []).map((item) => item.message).join(' ');
+    expect(relatedMessages).toContain('Help:');
+    expect(relatedMessages).toContain('Example:');
+  });
 });

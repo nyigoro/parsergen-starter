@@ -301,6 +301,24 @@ class JSGenerator {
         this.builder.append(';\n');
         return;
       }
+      case 'Break': {
+        this.builder.append(
+          `${pad}break;`,
+          stmt.type,
+          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+        );
+        this.builder.append('\n');
+        return;
+      }
+      case 'Continue': {
+        this.builder.append(
+          `${pad}continue;`,
+          stmt.type,
+          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+        );
+        this.builder.append('\n');
+        return;
+      }
       case 'Assign': {
         this.builder.append(
           `${pad}`,

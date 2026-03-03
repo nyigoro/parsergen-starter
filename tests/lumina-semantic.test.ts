@@ -365,7 +365,7 @@ describe('Lumina semantic analysis', () => {
     const result = parser.parse(program) as { type: string };
     const analysis = analyzeLumina(result as never);
     const messages = analysis.diagnostics.map(d => d.message).join('\n');
-    expect(messages).toMatch(/Missing case/);
+    expect(messages).toMatch(/Non-exhaustive match/);
   });
 
   test('flags missing Err after Result.map when matching', () => {
@@ -385,7 +385,7 @@ describe('Lumina semantic analysis', () => {
     const result = parser.parse(program) as { type: string };
     const analysis = analyzeLumina(result as never);
     const messages = analysis.diagnostics.map(d => d.message).join('\n');
-    expect(messages).toMatch(/Missing case/);
+    expect(messages).toMatch(/Non-exhaustive match/);
   });
 
   test('reports use-after-move with related move location', () => {

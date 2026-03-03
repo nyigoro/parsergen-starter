@@ -208,45 +208,58 @@ const isHktApplyType = (
   type.kind === 'adt' && type.name === HKT_APPLY_TYPE_NAME;
 
 export function normalizeTypeName(type: Type): string {
-  switch (type.kind) {
-    case 'primitive':
-      return sanitizeTypeSegment(normalizePrimitiveName(type.name));
-    case 'adt': {
-      if (isHktApplyType(type) && type.params.length >= 2) {
-        const ctor = normalizeTypeName(type.params[0]);
-        const args = type.params.slice(1).map(normalizeTypeName).join('_');
-        return `Apply_${ctor}_${args}`;
+  const seenRows = new WeakMap<object, number>();
+  let nextRowId = 0;
+
+  const visit = (value: Type): string => {
+    switch (value.kind) {
+      case 'primitive':
+        return sanitizeTypeSegment(normalizePrimitiveName(value.name));
+      case 'adt': {
+        if (isHktApplyType(value) && value.params.length >= 2) {
+          const ctor = visit(value.params[0]);
+          const args = value.params.slice(1).map(visit).join('_');
+          return `Apply_${ctor}_${args}`;
+        }
+        const base = sanitizeTypeSegment(value.name);
+        if (value.params.length === 0) return base;
+        const params = value.params.map(visit).join('_');
+        return `${base}_${params}`;
       }
-      const base = sanitizeTypeSegment(type.name);
-      if (type.params.length === 0) return base;
-      const params = type.params.map(normalizeTypeName).join('_');
-      return `${base}_${params}`;
+      case 'array': {
+        const inner = visit(value.element);
+        return `Array_${inner}`;
+      }
+      case 'function': {
+        const args = value.args.map(visit).join('_') || 'Unit';
+        const ret = visit(value.returnType);
+        return `Fn_${args}_${ret}`;
+      }
+      case 'promise':
+        return `Promise_${visit(value.inner)}`;
+      case 'variable':
+        return `T${value.id}`;
+      case 'row': {
+        const rowObj = value as unknown as object;
+        const existing = seenRows.get(rowObj);
+        if (existing !== undefined) return `Row$Ref$${existing}`;
+        const rowId = nextRowId++;
+        seenRows.set(rowObj, rowId);
+        const fields = Array.from(value.fields.entries())
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([name, field]) => `${sanitizeTypeSegment(name)}_${visit(field)}`)
+          .join('_');
+        const tail = value.tail ? visit(value.tail) : 'Closed';
+        return `Row_${fields}_${tail}`;
+      }
+      case 'hole':
+        return 'Hole';
+      default:
+        return 'Unknown';
     }
-    case 'array': {
-      const inner = normalizeTypeName(type.element);
-      return `Array_${inner}`;
-    }
-    case 'function': {
-      const args = type.args.map(normalizeTypeName).join('_') || 'Unit';
-      const ret = normalizeTypeName(type.returnType);
-      return `Fn_${args}_${ret}`;
-    }
-    case 'promise':
-      return `Promise_${normalizeTypeName(type.inner)}`;
-    case 'variable':
-      return `T${type.id}`;
-    case 'row': {
-      const fields = Array.from(type.fields.entries())
-        .map(([name, value]) => `${sanitizeTypeSegment(name)}_${normalizeTypeName(value)}`)
-        .join('_');
-      const tail = type.tail ? normalizeTypeName(type.tail) : 'Closed';
-      return `Row_${fields}_${tail}`;
-    }
-    case 'hole':
-      return 'Hole';
-    default:
-      return 'Unknown';
-  }
+  };
+
+  return visit(type);
 }
 
 function occursInWithBarrier(

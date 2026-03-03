@@ -16,6 +16,13 @@ pub fn flat_map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> Vec<B>) -> Vec<B> {
   monad.flat_map_vec(values, mapper)
 }
 
+pub fn flat_map_hashmap_values<K, A, B>(
+  values: HashMap<K, A>,
+  mapper: fn(A) -> HashMap<K, B>
+) -> HashMap<K, B> {
+  monad.flat_map_hashmap_values(values, mapper)
+}
+
 pub fn join_option<A>(value: Option<Option<A>>) -> Option<A> {
   monad.join_option(value)
 }
@@ -26,4 +33,8 @@ pub fn join_result<A, E>(value: Result<Result<A, E>, E>) -> Result<A, E> {
 
 pub fn join_vec<A>(values: Vec<Vec<A>>) -> Vec<A> {
   monad.join_vec(values)
+}
+
+pub fn join_hashmap_values<K, A>(values: HashMap<K, HashMap<K, A>>) -> HashMap<K, A> {
+  monad.join_hashmap_values(values)
 }

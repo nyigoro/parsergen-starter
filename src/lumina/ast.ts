@@ -109,6 +109,8 @@ export type LuminaStatement = (
   | LuminaLetTuple
   | LuminaLetElse
   | LuminaReturn
+  | LuminaBreak
+  | LuminaContinue
   | LuminaIf
   | LuminaIfLet
   | LuminaWhile
@@ -146,6 +148,7 @@ export interface LuminaTypeDecl {
   type: 'TypeDecl';
   name: string;
   body: LuminaTypeField[];
+  aliasType?: LuminaTypeExpr | null;
   visibility?: 'public' | 'private';
   typeParams?: LuminaTypeParam[];
   extern?: boolean;
@@ -171,6 +174,7 @@ export interface LuminaTraitMethod {
   returnType: LuminaTypeExpr | null;
   typeParams?: LuminaTypeParam[];
   whereClauses?: LuminaConstExpr[];
+  whereTypeBounds?: LuminaWhereTypeBound[];
   body?: LuminaBlock | null;
   location?: Location;
 }
@@ -179,6 +183,7 @@ export interface LuminaTraitAssocType {
   type: 'TraitAssocType';
   name: string;
   typeName?: LuminaTypeExpr | null;
+  higherKindArity?: number;
   location?: Location;
 }
 
@@ -188,6 +193,7 @@ export interface LuminaImplDecl {
   forType: LuminaTypeExpr;
   typeParams?: LuminaTypeParam[];
   whereClauses?: LuminaConstExpr[];
+  whereTypeBounds?: LuminaWhereTypeBound[];
   methods: LuminaFnDecl[];
   associatedTypes?: LuminaImplAssocType[];
   visibility?: 'public' | 'private';
@@ -199,6 +205,14 @@ export interface LuminaImplAssocType {
   type: 'ImplAssocType';
   name: string;
   typeName: LuminaTypeExpr;
+  higherKindArity?: number;
+  location?: Location;
+}
+
+export interface LuminaWhereTypeBound extends LuminaNode {
+  type: 'WhereTypeBound';
+  name: string;
+  bounds: LuminaTypeExpr[];
   location?: Location;
 }
 
@@ -250,6 +264,7 @@ export interface LuminaFnDecl {
   params: LuminaParam[];
   returnType: LuminaTypeExpr | null;
   whereClauses?: LuminaConstExpr[];
+  whereTypeBounds?: LuminaWhereTypeBound[];
   body: LuminaBlock;
   visibility?: 'public' | 'private';
   extern?: boolean;
@@ -308,6 +323,16 @@ export interface LuminaLetElse {
 export interface LuminaReturn {
   type: 'Return';
   value: LuminaExpr;
+  location?: Location;
+}
+
+export interface LuminaBreak {
+  type: 'Break';
+  location?: Location;
+}
+
+export interface LuminaContinue {
+  type: 'Continue';
   location?: Location;
 }
 

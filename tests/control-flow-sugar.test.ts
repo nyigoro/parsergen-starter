@@ -162,4 +162,58 @@ describe('control flow + destructuring sugar', () => {
     expect(js).toContain('const tx =');
     expect(js).toContain('const rx =');
   });
+
+  it('type-checks break/continue inside loops and reports outside-loop usage', () => {
+    const validSource = `
+      fn main() -> i32 {
+        let mut i = 0;
+        while (i < 10) {
+          i = i + 1;
+          if (i == 3) { continue; }
+          if (i == 8) { break; }
+        }
+        i
+      }
+    `.trim() + '\n';
+    const validAst = parseProgram(validSource);
+    const validAnalysis = analyzeLumina(validAst);
+    const validErrors = validAnalysis.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(validErrors).toHaveLength(0);
+
+    const invalidSource = `
+      fn main() -> i32 {
+        break;
+        continue;
+        0
+      }
+    `.trim() + '\n';
+    const invalidAst = parseProgram(invalidSource);
+    const invalidAnalysis = analyzeLumina(invalidAst);
+    const codes = invalidAnalysis.diagnostics.map((diag) => diag.code);
+    expect(codes).toContain('BREAK_OUTSIDE_LOOP');
+    expect(codes).toContain('CONTINUE_OUTSIDE_LOOP');
+  });
+
+  it('infers break/continue loop usage and lowers to JS break/continue', () => {
+    const source = `
+      fn main() -> i32 {
+        let mut i = 0;
+        while (i < 10) {
+          i = i + 1;
+          if (i == 3) { continue; }
+          if (i == 7) { break; }
+        }
+        i
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const inferred = inferProgram(ast);
+    const inferErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
+    expect(inferErrors).toHaveLength(0);
+
+    const js = generateJSFromAst(ast, { target: 'esm', includeRuntime: false }).code;
+    expect(js).toContain('continue;');
+    expect(js).toContain('break;');
+  });
 });

@@ -81,6 +81,16 @@ function normalizeTypeParams(params: Array<{ name: string; bound?: LuminaTypeExp
   }
 }
 
+function normalizeWhereTypeBounds(
+  bounds: Array<{ name: string; bounds: LuminaTypeExpr[] }> | undefined,
+  location?: Location
+) {
+  if (!bounds) return;
+  for (const bound of bounds) {
+    normalizeTypeArray(bound.bounds, location);
+  }
+}
+
 function normalizeTypeHoles(program: LuminaProgram) {
   for (const stmt of program.body) {
     normalizeStatement(stmt);
@@ -91,6 +101,7 @@ function normalizeStatement(stmt: LuminaStatement) {
   switch (stmt.type) {
     case 'TypeDecl': {
       normalizeTypeParams(stmt.typeParams, stmt.location);
+      stmt.aliasType = normalizeTypeExpr(stmt.aliasType ?? null, stmt.location) as LuminaTypeExpr | null;
       for (const field of stmt.body) {
         field.typeName = normalizeTypeExpr(field.typeName, field.location) as LuminaTypeExpr;
       }
@@ -124,6 +135,7 @@ function normalizeStatement(stmt: LuminaStatement) {
       }
       for (const method of stmt.methods) {
         normalizeTypeParams(method.typeParams, method.location);
+        normalizeWhereTypeBounds(method.whereTypeBounds, method.location);
         for (const param of method.params) {
           param.typeName = normalizeTypeExpr(param.typeName, param.location) as LuminaTypeExpr | null;
         }
@@ -136,6 +148,7 @@ function normalizeStatement(stmt: LuminaStatement) {
     }
     case 'ImplDecl': {
       normalizeTypeParams(stmt.typeParams, stmt.location);
+      normalizeWhereTypeBounds(stmt.whereTypeBounds, stmt.location);
       stmt.traitType = normalizeTypeExpr(stmt.traitType, stmt.location) as LuminaTypeExpr;
       stmt.forType = normalizeTypeExpr(stmt.forType, stmt.location) as LuminaTypeExpr;
       if (stmt.associatedTypes) {
@@ -150,6 +163,7 @@ function normalizeStatement(stmt: LuminaStatement) {
     }
     case 'FnDecl': {
       normalizeTypeParams(stmt.typeParams, stmt.location);
+      normalizeWhereTypeBounds(stmt.whereTypeBounds, stmt.location);
       for (const param of stmt.params) {
         param.typeName = normalizeTypeExpr(param.typeName, param.location) as LuminaTypeExpr | null;
       }

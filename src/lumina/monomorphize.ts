@@ -481,28 +481,55 @@ const typeExprToString = (expr: LuminaTypeExpr | null | undefined): LuminaType |
 };
 
 const hmTypeToString = (type: Type): string => {
-  switch (type.kind) {
-    case 'primitive':
-      return type.name;
-    case 'adt': {
-      if (!type.params.length) return type.name;
-      const args = type.params.map(hmTypeToString).join(',');
-      return `${type.name}<${args}>`;
+  const vars = new Map<number, string>();
+  const seenRows = new WeakMap<object, number>();
+  let nextVar = 0;
+  let nextRow = 0;
+  const getVarName = (id: number): string => {
+    const existing = vars.get(id);
+    if (existing) return existing;
+    const created = `T${nextVar++}`;
+    vars.set(id, created);
+    return created;
+  };
+
+  const visit = (value: Type): string => {
+    switch (value.kind) {
+      case 'primitive':
+        return value.name;
+      case 'adt': {
+        if (!value.params.length) return value.name;
+        const args = value.params.map(visit).join(',');
+        return `${value.name}<${args}>`;
+      }
+      case 'function': {
+        const args = value.args.map(visit).join(', ');
+        const ret = visit(value.returnType);
+        return `fn(${args}) -> ${ret}`;
+      }
+      case 'variable':
+        return getVarName(value.id);
+      case 'row': {
+        const rowObj = value as unknown as object;
+        const seen = seenRows.get(rowObj);
+        if (seen !== undefined) return `$rec${seen}`;
+        const rowId = nextRow++;
+        seenRows.set(rowObj, rowId);
+        const fields = Array.from(value.fields.entries())
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([name, fieldType]) => `${name}:${visit(fieldType)}`)
+          .join(',');
+        const tail = value.tail ? `|${visit(value.tail)}` : '';
+        return `{#${rowId}:${fields}${tail}}`;
+      }
+      case 'hole':
+        return '_';
+      default:
+        return 'any';
     }
-    case 'function': {
-      const args = type.args.map(hmTypeToString).join(', ');
-      const ret = hmTypeToString(type.returnType);
-      return `fn(${args}) -> ${ret}`;
-    }
-    case 'variable':
-      return `T${type.id}`;
-    case 'row':
-      return 'any';
-    case 'hole':
-      return '_';
-    default:
-      return 'any';
-  }
+  };
+
+  return visit(type);
 };
 
 const collectGenericFunctions = (program: LuminaProgram): Set<string> => {
@@ -1077,7 +1104,9 @@ const generateSpecializations = (
       }
       if (!perFn.has(key)) {
         perFn.set(key, mangledName);
-        specialized.push(specializeFunction(original, signature, mangledName, ctx.constEvaluator));
+        if (!specialized.some((fn) => fn.name === mangledName)) {
+          specialized.push(specializeFunction(original, signature, mangledName, ctx.constEvaluator));
+        }
       }
     }
   }
@@ -1227,6 +1256,7 @@ const collectConstStructTypeRefs = (
         }
         return;
       case 'TypeDecl':
+        visitTypeExpr(stmt.aliasType ?? null);
         for (const field of stmt.body) visitTypeExpr(field.typeName);
         return;
       case 'Let':

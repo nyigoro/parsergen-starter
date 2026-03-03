@@ -22,8 +22,17 @@ import { expandMacrosInProgram } from './macro-expand.js';
 import { expandDerivesInProgram } from './derive-expand.js';
 import { HKT_APPLY_TYPE_NAME } from './types.js';
 import type { ConstExpr as TypeConstExpr } from './types.js';
-import { inferTypeParamKinds } from './kind-infer.js';
-import { formatKind } from './kinds.js';
+import {
+  arrowKind,
+  formatKind,
+  freshKindVar,
+  pruneKind,
+  resetKindVarCounter,
+  starKind,
+  type Kind,
+  type KindSubst,
+  unifyKinds,
+} from './kinds.js';
 import {
   createStdModuleRegistry,
   getPreludeExports,
@@ -77,6 +86,7 @@ export interface SymbolInfo {
   }>;
   enumName?: string;
   structFields?: Map<string, LuminaType>;
+  typeAlias?: LuminaType | null;
   derivedTraits?: string[];
 }
 
@@ -126,6 +136,7 @@ export interface TraitMethodSig {
 export interface TraitAssocTypeInfo {
   name: string;
   defaultType?: LuminaType | null;
+  higherKindArity?: number;
   location?: Location;
 }
 
@@ -159,6 +170,7 @@ export interface ImplInfo {
   }>;
   methods: Map<string, LuminaFnDecl>;
   associatedTypes: Map<string, LuminaType>;
+  associatedTypeArities?: Map<string, number>;
   visibility?: 'public' | 'private';
   location?: Location;
   uri?: string;
@@ -305,6 +317,56 @@ const resolveTypeExpr = (typeName: LuminaTypeExpr | null | undefined): LuminaTyp
     return typeName;
   }
   return 'any';
+};
+
+const mergeWhereTypeBoundsIntoTypeParams = <T extends { name: string; bound?: LuminaTypeExpr[]; isConst?: boolean }>(
+  typeParams: T[] | undefined,
+  whereTypeBounds: Array<{ name: string; bounds: LuminaTypeExpr[]; location?: Location }> | undefined,
+  diagnostics: Diagnostic[],
+  ownerLocation?: Location,
+  allowExternalTypeParams?: Set<string>
+): T[] => {
+  const next = (typeParams ?? []).map((param) => ({
+    ...param,
+    bound: [...(param.bound ?? [])],
+  }));
+  if (!whereTypeBounds || whereTypeBounds.length === 0) return next;
+  const byName = new Map<string, T & { bound: LuminaTypeExpr[] }>();
+  for (const param of next as Array<T & { bound: LuminaTypeExpr[] }>) {
+    byName.set(param.name, param);
+  }
+  for (const constraint of whereTypeBounds) {
+    const target = byName.get(constraint.name);
+    if (!target) {
+      if (allowExternalTypeParams?.has(constraint.name)) {
+        continue;
+      }
+      diagnostics.push(
+        diagAt(
+          `Unknown type parameter '${constraint.name}' in where clause`,
+          constraint.location ?? ownerLocation,
+          'error',
+          'HKT-WHERE-001'
+        )
+      );
+      continue;
+    }
+    if (target.isConst) {
+      diagnostics.push(
+        diagAt(
+          `Const parameter '${constraint.name}' cannot use trait/type bounds in where clause`,
+          constraint.location ?? ownerLocation,
+          'error',
+          'HKT-WHERE-002'
+        )
+      );
+      continue;
+    }
+    for (const bound of constraint.bounds ?? []) {
+      target.bound.push(bound);
+    }
+  }
+  return next;
 };
 
 const defaultLocation: Location = {
@@ -516,7 +578,10 @@ export interface AnalyzeOptions {
 
 class StopOnUnresolvedMemberError extends Error {}
 
+let activeLoopDepth = 0;
+
 export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) {
+  activeLoopDepth = 0;
   const diagnostics: Diagnostic[] = [];
   const deriveExpansion = expandDerivesInProgram(program);
   diagnostics.push(...deriveExpansion.diagnostics);
@@ -571,6 +636,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         visibility: stmt.visibility ?? 'private',
         uri: options?.currentUri,
         typeParams: typeParams ?? [],
+        typeAlias: stmt.aliasType ? (resolveTypeExpr(stmt.aliasType) ?? 'any') : null,
         extern: stmt.extern ?? false,
         externModule: stmt.externModule ?? null,
       });
@@ -635,7 +701,13 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
       const cachedReturn = options?.cachedFunctionReturns?.get(stmt.name);
       const hmReturn = options?.hmInferred?.fnByName.get(stmt.name);
       const hmParamTypes = options?.hmInferred?.fnParams.get(stmt.name);
-      const typeParams = stmt.typeParams?.map((param) => ({
+      const mergedTypeParams = mergeWhereTypeBoundsIntoTypeParams(
+        stmt.typeParams,
+        stmt.whereTypeBounds,
+        diagnostics,
+        stmt.location
+      );
+      const typeParams = mergedTypeParams.map((param) => ({
         name: param.name,
         bound: (param.bound ?? []).map((bound) => resolveTypeExpr(bound) ?? 'any'),
         isConst: !!param.isConst,
@@ -858,6 +930,7 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     bound?: LuminaTypeExpr[];
     higherKindArity?: number;
     isConst?: boolean;
+    location?: Location;
   };
 
   type TypeCtorParamSpec =
@@ -869,41 +942,67 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     location?: Location;
   }
 
+  interface LocalTypeParamKindInfo {
+    name: string;
+    kind: Kind;
+    slots: Kind[] | null;
+    explicitArity: number | null;
+    location?: Location;
+  }
+
+  interface KindValidationScope {
+    subst: KindSubst;
+    localKinds: Map<string, Kind>;
+    localParams: Map<string, LocalTypeParamKindInfo>;
+  }
+
   const normalizeArity = (arity: number | undefined): number => Math.max(0, Math.trunc(Number(arity ?? 0)));
 
-  const collectTypeParamArities = (
-    typeParams: ReadonlyArray<TypeParamLike> | undefined
-  ): Map<string, number> => {
-    const arities = new Map<string, number>();
+  const buildKindFromSlots = (slots: ReadonlyArray<Kind>): Kind => {
+    let out: Kind = starKind();
+    for (let i = slots.length - 1; i >= 0; i -= 1) {
+      out = arrowKind(slots[i], out);
+    }
+    return out;
+  };
+
+  const polyKindFromArity = (arity: number): Kind => {
+    const safeArity = normalizeArity(arity);
+    if (safeArity <= 0) return starKind();
+    const slots = Array.from({ length: safeArity }, () => freshKindVar());
+    return buildKindFromSlots(slots);
+  };
+
+  const createKindScope = (
+    typeParams: ReadonlyArray<TypeParamLike> | undefined,
+    parent?: KindValidationScope
+  ): KindValidationScope => {
+    const scope: KindValidationScope = {
+      subst: parent?.subst ?? new Map<number, Kind>(),
+      localKinds: new Map(parent?.localKinds ?? []),
+      localParams: new Map(parent?.localParams ?? []),
+    };
     for (const param of typeParams ?? []) {
-      const inferred = inferTypeParamKinds([param]).get(param.name);
-      const fromArity = normalizeArity(param.higherKindArity);
-      if (!inferred) {
-        arities.set(param.name, fromArity);
-        continue;
-      }
-      const asText = formatKind(inferred);
-      const arrowCount = (asText.match(/->/g) ?? []).length;
-      arities.set(param.name, arrowCount);
+      if (param.isConst) continue;
+      const explicitArity =
+        typeof param.higherKindArity === 'number' && Number.isFinite(param.higherKindArity)
+          ? normalizeArity(param.higherKindArity)
+          : null;
+      const slots = explicitArity && explicitArity > 0
+        ? Array.from({ length: explicitArity }, () => freshKindVar())
+        : null;
+      const kind = slots ? buildKindFromSlots(slots) : freshKindVar();
+      const info: LocalTypeParamKindInfo = {
+        name: param.name,
+        kind,
+        slots,
+        explicitArity,
+        location: param.location,
+      };
+      scope.localParams.set(param.name, info);
+      scope.localKinds.set(param.name, info.kind);
     }
-    return arities;
-  };
-
-  const mergeTypeParamArities = (
-    ...maps: Array<Map<string, number>>
-  ): Map<string, number> => {
-    const merged = new Map<string, number>();
-    for (const map of maps) {
-      for (const [name, arity] of map.entries()) {
-        merged.set(name, arity);
-      }
-    }
-    return merged;
-  };
-
-  const formatKindFromArity = (arity: number): string => {
-    if (arity <= 0) return '*';
-    return `${Array.from({ length: arity }, () => '*').join(' -> ')} -> *`;
+    return scope;
   };
 
   const builtinCtorSpecs = new Map<string, TypeCtorSpec>([
@@ -955,33 +1054,67 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     }
   }
 
+  resetKindVarCounter();
   const kindDiagKeys = new Set<string>();
-  const kindHelp = (expectedArity: number, actualArity: number): string | null => {
-    if (expectedArity === 1 && actualArity === 0) {
+
+  const kindHelp = (expectedKindText: string, actualKindText: string): string | null => {
+    if (expectedKindText === '* -> *' && actualKindText === '*') {
       return 'Use a unary type constructor such as `Option`, `Vec`, or a partial application like `Result<_, E>`.';
     }
-    if (expectedArity > actualArity) {
+    if (expectedKindText.includes('->') && !actualKindText.includes('->')) {
+      return 'This position expects a type constructor. Try passing a constructor (for example `Option`) instead of a concrete type.';
+    }
+    if (expectedKindText.includes('->') && actualKindText.includes('->')) {
       return 'Apply fewer concrete type arguments or use `_` placeholders to keep constructor positions open.';
     }
-    if (expectedArity < actualArity) {
+    if (!expectedKindText.includes('->') && actualKindText.includes('->')) {
       return 'Provide enough type arguments so the expression resolves to a concrete type (`*`) in this position.';
     }
     return null;
   };
 
+  const kindExample = (expectedKindText: string): string | null => {
+    if (expectedKindText === '* -> *') {
+      return 'Example: `trait Functor<F<_>> { fn map(fa: F<i32>) -> F<i32>; }`';
+    }
+    if (expectedKindText === '(* -> *) -> *') {
+      return 'Example: `trait Lift<G<_>, F<_>> { fn lift(x: G<F>) -> G<F>; }`';
+    }
+    if (!expectedKindText.includes('->')) {
+      return 'Example: use a concrete type like `i32`, `bool`, or `Option<i32>` in this position.';
+    }
+    return null;
+  };
+
+  const simplifyKindForDiagnostic = (kind: Kind, subst: KindSubst): Kind => {
+    const pruned = pruneKind(kind, subst);
+    if (pruned.kind === 'var') return starKind();
+    if (pruned.kind === 'arrow') {
+      return {
+        kind: 'arrow',
+        from: simplifyKindForDiagnostic(pruned.from, subst),
+        to: simplifyKindForDiagnostic(pruned.to, subst),
+      };
+    }
+    return pruned;
+  };
+
   const reportKindMismatch = (
     subject: string,
-    expectedArity: number,
-    actualArity: number,
+    expectedKind: Kind,
+    actualKind: Kind,
+    subst: KindSubst,
     location?: Location,
     ctorDeclLocation?: Location
   ) => {
-    const key = `${location?.start?.offset ?? -1}|${subject}|${expectedArity}|${actualArity}`;
+    const resolvedExpected = simplifyKindForDiagnostic(expectedKind, subst);
+    const resolvedActual = simplifyKindForDiagnostic(actualKind, subst);
+    const expectedKindText = formatKind(resolvedExpected);
+    const actualKindText = formatKind(resolvedActual);
+    const key = `${location?.start?.offset ?? -1}|${subject}|${expectedKindText}|${actualKindText}`;
     if (kindDiagKeys.has(key)) return;
     kindDiagKeys.add(key);
 
-    const expectedKind = formatKindFromArity(expectedArity);
-    const actualKind = formatKindFromArity(actualArity);
     const related: DiagnosticRelatedInformation[] = [];
     if (ctorDeclLocation) {
       related.push({
@@ -989,16 +1122,23 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
         message: `Constructor '${subject}' is declared here`,
       });
     }
-    const help = kindHelp(expectedArity, actualArity);
+    const help = kindHelp(expectedKindText, actualKindText);
     if (help) {
       related.push({
         location: location ?? defaultLocation,
         message: `Help: ${help}`,
       });
     }
+    const example = kindExample(expectedKindText);
+    if (example) {
+      related.push({
+        location: location ?? defaultLocation,
+        message: example,
+      });
+    }
     diagnostics.push(
       diagAt(
-        `Kind mismatch for '${subject}'. Expected kind '${expectedKind}' but found '${actualKind}'`,
+        `Kind mismatch for '${subject}'. Expected kind '${expectedKindText}' but found kind '${actualKindText}'`,
         location,
         'error',
         'HKT-001',
@@ -1007,16 +1147,7 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     );
   };
 
-  const resolveCtorSpec = (
-    baseName: string,
-    typeParamArities: Map<string, number>
-  ): TypeCtorSpec | null => {
-    const localArity = typeParamArities.get(baseName);
-    if (typeof localArity === 'number') {
-      return {
-        params: Array.from({ length: localArity }, () => ({ kind: 'type', arity: 0 } as TypeCtorParamSpec)),
-      };
-    }
+  const resolveDeclaredCtorSpec = (baseName: string): TypeCtorSpec | null => {
     const direct = declaredCtorSpecs.get(baseName);
     if (direct) return direct;
     if (baseName.includes('::')) {
@@ -1027,114 +1158,175 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     return null;
   };
 
-  const inferTypeExprArity = (
+  const tryUnifyKinds = (
+    subject: string,
+    expectedKind: Kind,
+    actualKind: Kind,
+    scope: KindValidationScope,
+    location?: Location,
+    ctorDeclLocation?: Location
+  ): void => {
+    try {
+      unifyKinds(expectedKind, actualKind, scope.subst);
+    } catch {
+      reportKindMismatch(subject, expectedKind, actualKind, scope.subst, location, ctorDeclLocation);
+    }
+  };
+
+  const inferTypeExprKind = (
     typeExpr: LuminaTypeExpr | null | undefined,
-    typeParamArities: Map<string, number>,
-    expectedArity: number,
+    scope: KindValidationScope,
+    expectedKind: Kind,
     location?: Location
-  ): number => {
+  ): Kind => {
     if (!typeExpr || isTypeHoleExpr(typeExpr)) {
-      if (expectedArity !== 0) {
-        reportKindMismatch('_', expectedArity, 0, location);
-      }
-      return 0;
+      return expectedKind;
     }
     if (typeof typeExpr === 'object' && (typeExpr as { kind?: string }).kind === 'array') {
       const arr = typeExpr as import('./ast.js').LuminaArrayType;
-      inferTypeExprArity(arr.element, typeParamArities, 0, arr.location ?? location);
-      if (expectedArity !== 0) {
-        reportKindMismatch('array', expectedArity, 0, arr.location ?? location);
-      }
-      return 0;
+      inferTypeExprKind(arr.element, scope, starKind(), arr.location ?? location);
+      tryUnifyKinds('array', expectedKind, starKind(), scope, arr.location ?? location);
+      return starKind();
     }
     if (typeof typeExpr !== 'string') {
-      if (expectedArity !== 0) {
-        reportKindMismatch('type', expectedArity, 0, location);
-      }
-      return 0;
+      tryUnifyKinds('type', expectedKind, starKind(), scope, location);
+      return starKind();
     }
 
     const parsed = parseTypeName(typeExpr);
     if (!parsed) {
-      if (expectedArity !== 0) {
-        reportKindMismatch(typeExpr, expectedArity, 0, location);
-      }
-      return 0;
+      tryUnifyKinds(typeExpr, expectedKind, starKind(), scope, location);
+      return starKind();
     }
 
-    const ctor = resolveCtorSpec(parsed.base, typeParamArities);
-    if (!ctor) {
-      for (const arg of parsed.args) {
-        if (arg.trim() === '_') continue;
-        inferTypeExprArity(arg, typeParamArities, 0, location);
-      }
-      if (expectedArity !== 0) {
-        reportKindMismatch(parsed.base, expectedArity, 0, location);
-      }
-      return 0;
-    }
+    const baseName = parsed.base.trim();
+    const shortBaseName = baseName.includes('::') ? (baseName.split('::').pop() ?? baseName) : baseName;
+    const localInfo = scope.localParams.get(baseName) ?? scope.localParams.get(shortBaseName);
 
-    let unresolvedTypeParams = 0;
-    if (parsed.args.length > ctor.params.length) {
-      const totalTypeSlots = ctor.params.filter((slot) => slot.kind === 'type').length;
-      diagnostics.push(
-        diagAt(
-          `Kind mismatch for '${parsed.base}'. Expected at most ${ctor.params.length} argument slot${ctor.params.length === 1 ? '' : 's'} (${totalTypeSlots} type parameter${totalTypeSlots === 1 ? '' : 's'}) but found ${parsed.args.length}`,
-          location,
-          'error',
-          'HKT-001'
-        )
-      );
-    }
+    const inferCtorFromSpec = (subject: string, ctor: TypeCtorSpec): Kind => {
+      const slotKinds: Kind[] = [];
+      for (const slot of ctor.params) {
+        if (slot.kind !== 'type') continue;
+        slotKinds.push(polyKindFromArity(slot.arity));
+      }
 
-    for (let i = 0; i < parsed.args.length; i++) {
-      const argText = parsed.args[i];
-      const slot = ctor.params[i];
-      if (!slot) {
-        if (argText.trim() !== '_') {
-          inferTypeExprArity(argText, typeParamArities, 0, location);
+      if (parsed.args.length > ctor.params.length) {
+        const totalTypeSlots = ctor.params.filter((slot) => slot.kind === 'type').length;
+        diagnostics.push(
+          diagAt(
+            `Kind mismatch for '${subject}'. Expected at most ${ctor.params.length} argument slot${ctor.params.length === 1 ? '' : 's'} (${totalTypeSlots} type parameter${totalTypeSlots === 1 ? '' : 's'}) but found ${parsed.args.length}`,
+            location,
+            'error',
+            'HKT-001'
+          )
+        );
+      }
+
+      const unresolved: Kind[] = [];
+      let slotIndex = 0;
+
+      for (let i = 0; i < ctor.params.length; i += 1) {
+        const slot = ctor.params[i];
+        const argText = parsed.args[i];
+        if (slot.kind === 'const') continue;
+        const slotKind = slotKinds[slotIndex] ?? starKind();
+        slotIndex += 1;
+        if (typeof argText !== 'string' || argText.trim() === '_') {
+          unresolved.push(slotKind);
+          continue;
         }
-        continue;
+        inferTypeExprKind(argText, scope, slotKind, location);
       }
-      if (slot.kind === 'const') {
-        continue;
+
+      for (let i = ctor.params.length; i < parsed.args.length; i += 1) {
+        const extra = parsed.args[i];
+        if (extra.trim() === '_') continue;
+        inferTypeExprKind(extra, scope, starKind(), location);
       }
-      if (argText.trim() === '_') {
-        unresolvedTypeParams += 1;
-        continue;
+
+      return buildKindFromSlots(unresolved);
+    };
+
+    const inferLocalParamKind = (info: LocalTypeParamKindInfo): Kind => {
+      const requiredArgs = parsed.args.length;
+      if (info.explicitArity !== null && requiredArgs > info.explicitArity) {
+        const expected = buildKindFromSlots(info.slots ?? []);
+        const actual = buildKindFromSlots(Array.from({ length: requiredArgs }, () => starKind()));
+        reportKindMismatch(baseName, expected, actual, scope.subst, location, info.location);
+      } else if (info.explicitArity === null) {
+        if (!info.slots) info.slots = [];
+        while (info.slots.length < requiredArgs) {
+          info.slots.push(freshKindVar());
+        }
       }
-      inferTypeExprArity(argText, typeParamArities, slot.arity, location);
+
+      const slots = info.slots ?? [];
+      const fullKind = buildKindFromSlots(slots);
+      tryUnifyKinds(baseName, info.kind, fullKind, scope, location, info.location);
+      info.kind = pruneKind(info.kind, scope.subst);
+      scope.localKinds.set(info.name, info.kind);
+
+      if (requiredArgs === 0) {
+        return pruneKind(info.kind, scope.subst);
+      }
+
+      const unresolved: Kind[] = [];
+      for (let i = 0; i < requiredArgs; i += 1) {
+        const argText = parsed.args[i];
+        const slotKind = slots[i];
+        if (!slotKind) {
+          if (argText.trim() !== '_') inferTypeExprKind(argText, scope, starKind(), location);
+          continue;
+        }
+        if (argText.trim() === '_') {
+          unresolved.push(slotKind);
+        } else {
+          inferTypeExprKind(argText, scope, slotKind, location);
+        }
+      }
+      for (let i = requiredArgs; i < slots.length; i += 1) {
+        unresolved.push(slots[i]);
+      }
+
+      return buildKindFromSlots(unresolved);
+    };
+
+    let actualKind: Kind;
+    if (localInfo) {
+      actualKind = inferLocalParamKind(localInfo);
+    } else {
+      const ctor = resolveDeclaredCtorSpec(baseName);
+      if (ctor) {
+        actualKind = inferCtorFromSpec(baseName, ctor);
+      } else {
+        for (const arg of parsed.args) {
+          if (arg.trim() === '_') continue;
+          inferTypeExprKind(arg, scope, starKind(), location);
+        }
+        actualKind = starKind();
+      }
     }
 
-    for (let i = parsed.args.length; i < ctor.params.length; i++) {
-      if (ctor.params[i]?.kind === 'type') {
-        unresolvedTypeParams += 1;
-      }
-    }
-
-    if (expectedArity !== unresolvedTypeParams) {
-      reportKindMismatch(parsed.base, expectedArity, unresolvedTypeParams, location, ctor.location);
-    }
-
-    return unresolvedTypeParams;
+    tryUnifyKinds(baseName, expectedKind, actualKind, scope, location, resolveDeclaredCtorSpec(baseName)?.location);
+    return pruneKind(actualKind, scope.subst);
   };
 
   const validateHktTypeExpr = (
     typeExpr: LuminaTypeExpr | null | undefined,
-    typeParamArities: Map<string, number>,
+    scope: KindValidationScope,
     location?: Location
   ): void => {
-    inferTypeExprArity(typeExpr, typeParamArities, 0, location);
+    inferTypeExprKind(typeExpr, scope, starKind(), location);
   };
 
   const validateTypeParamBounds = (
     typeParams: ReadonlyArray<TypeParamLike> | undefined,
-    typeParamArities: Map<string, number>,
+    scope: KindValidationScope,
     location?: Location
   ): void => {
     for (const param of typeParams ?? []) {
       for (const bound of param.bound ?? []) {
-        inferTypeExprArity(bound, typeParamArities, 0, location);
+        inferTypeExprKind(bound, scope, starKind(), location);
       }
     }
   };
@@ -1213,6 +1405,48 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
   ): void => {
     for (const clause of whereClauses ?? []) {
       validateConstExpr(clause, availableConstParams, clause.location ?? location, availableParamLocations);
+    }
+  };
+
+  const validateWhereTypeBounds = (
+    whereTypeBounds:
+      | ReadonlyArray<{
+          name: string;
+          bounds: LuminaTypeExpr[];
+          location?: Location;
+        }>
+      | undefined,
+    availableTypeParams: Map<string, { isConst: boolean }>,
+    scope: KindValidationScope,
+    location?: Location
+  ): void => {
+    for (const constraint of whereTypeBounds ?? []) {
+      const target = availableTypeParams.get(constraint.name);
+      if (!target) {
+        diagnostics.push(
+          diagAt(
+            `Unknown type parameter '${constraint.name}' in where clause`,
+            constraint.location ?? location,
+            'error',
+            'HKT-WHERE-001'
+          )
+        );
+        continue;
+      }
+      if (target.isConst) {
+        diagnostics.push(
+          diagAt(
+            `Const parameter '${constraint.name}' cannot use trait/type bounds in where clause`,
+            constraint.location ?? location,
+            'error',
+            'HKT-WHERE-002'
+          )
+        );
+        continue;
+      }
+      for (const bound of constraint.bounds ?? []) {
+        validateHktTypeExpr(bound, scope, constraint.location ?? location);
+      }
     }
   };
 
@@ -1389,40 +1623,50 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
     const stmtTypeParams = (stmt.type === 'FnDecl' || stmt.type === 'StructDecl' || stmt.type === 'EnumDecl' || stmt.type === 'TypeDecl' || stmt.type === 'TraitDecl' || stmt.type === 'ImplDecl')
       ? ((stmt.typeParams as TypeParamLike[] | undefined) ?? [])
       : [];
-    const stmtTypeParamArities = collectTypeParamArities(stmtTypeParams);
-    validateTypeParamBounds(stmtTypeParams, stmtTypeParamArities, stmt.location);
+    const stmtKindScope = createKindScope(stmtTypeParams);
+    const stmtTypeParamLookup = new Map<string, { isConst: boolean }>();
+    for (const param of stmtTypeParams) {
+      stmtTypeParamLookup.set(param.name, { isConst: !!param.isConst });
+    }
+    validateTypeParamBounds(stmtTypeParams, stmtKindScope, stmt.location);
 
     switch (stmt.type) {
       case 'FnDecl': {
+        validateWhereTypeBounds(stmt.whereTypeBounds, stmtTypeParamLookup, stmtKindScope, stmt.location);
         for (const param of stmt.params ?? []) {
-          validateHktTypeExpr(param.typeName, stmtTypeParamArities, param.location ?? stmt.location);
+          validateHktTypeExpr(param.typeName, stmtKindScope, param.location ?? stmt.location);
         }
-        validateHktTypeExpr(stmt.returnType, stmtTypeParamArities, stmt.location);
+        validateHktTypeExpr(stmt.returnType, stmtKindScope, stmt.location);
         break;
       }
       case 'TypeDecl': {
+        if (stmt.aliasType) {
+          validateHktTypeExpr(stmt.aliasType, stmtKindScope, stmt.location);
+        }
         for (const field of stmt.body ?? []) {
-          validateHktTypeExpr(field.typeName, stmtTypeParamArities, field.location ?? stmt.location);
+          validateHktTypeExpr(field.typeName, stmtKindScope, field.location ?? stmt.location);
         }
         break;
       }
       case 'StructDecl': {
         for (const field of stmt.body ?? []) {
-          validateHktTypeExpr(field.typeName, stmtTypeParamArities, field.location ?? stmt.location);
+          validateHktTypeExpr(field.typeName, stmtKindScope, field.location ?? stmt.location);
         }
         break;
       }
       case 'EnumDecl': {
         for (const variant of stmt.variants ?? []) {
-          const existentialArities = collectTypeParamArities((variant.existentialTypeParams as TypeParamLike[] | undefined) ?? []);
-          const variantArities = mergeTypeParamArities(stmtTypeParamArities, existentialArities);
+          const variantKindScope = createKindScope(
+            (variant.existentialTypeParams as TypeParamLike[] | undefined) ?? [],
+            stmtKindScope
+          );
           for (const paramType of variant.params ?? []) {
-            validateHktTypeExpr(paramType, variantArities, variant.location ?? stmt.location);
+            validateHktTypeExpr(paramType, variantKindScope, variant.location ?? stmt.location);
           }
-          validateHktTypeExpr(variant.resultType ?? null, variantArities, variant.location ?? stmt.location);
+          validateHktTypeExpr(variant.resultType ?? null, variantKindScope, variant.location ?? stmt.location);
           for (const constraint of variant.constraints ?? []) {
             for (const boundType of constraint.bounds ?? []) {
-              validateHktTypeExpr(boundType, variantArities, constraint.location ?? variant.location ?? stmt.location);
+              validateHktTypeExpr(boundType, variantKindScope, constraint.location ?? variant.location ?? stmt.location);
             }
           }
         }
@@ -1430,41 +1674,55 @@ function reportAdvancedTypeFeatureDiagnostics(program: LuminaProgram, diagnostic
       }
       case 'TraitDecl': {
         for (const superTrait of stmt.superTraits ?? []) {
-          validateHktTypeExpr(superTrait, stmtTypeParamArities, stmt.location);
+          validateHktTypeExpr(superTrait, stmtKindScope, stmt.location);
         }
         for (const assoc of stmt.associatedTypes ?? []) {
-          validateHktTypeExpr(assoc.typeName ?? null, stmtTypeParamArities, assoc.location ?? stmt.location);
+          validateHktTypeExpr(assoc.typeName ?? null, stmtKindScope, assoc.location ?? stmt.location);
         }
         for (const method of stmt.methods ?? []) {
-          const methodArities = mergeTypeParamArities(
-            stmtTypeParamArities,
-            collectTypeParamArities((method.typeParams as TypeParamLike[] | undefined) ?? [])
+          const methodKindScope = createKindScope(
+            (method.typeParams as TypeParamLike[] | undefined) ?? [],
+            stmtKindScope
           );
-          validateTypeParamBounds(method.typeParams as TypeParamLike[] | undefined, methodArities, method.location ?? stmt.location);
-          for (const param of method.params ?? []) {
-            validateHktTypeExpr(param.typeName, methodArities, param.location ?? method.location ?? stmt.location);
+          const methodTypeParamLookup = new Map<string, { isConst: boolean }>(stmtTypeParamLookup);
+          for (const param of (method.typeParams as TypeParamLike[] | undefined) ?? []) {
+            methodTypeParamLookup.set(param.name, { isConst: !!param.isConst });
           }
-          validateHktTypeExpr(method.returnType, methodArities, method.location ?? stmt.location);
+          validateTypeParamBounds(
+            method.typeParams as TypeParamLike[] | undefined,
+            methodKindScope,
+            method.location ?? stmt.location
+          );
+          validateWhereTypeBounds(method.whereTypeBounds, methodTypeParamLookup, methodKindScope, method.location ?? stmt.location);
+          for (const param of method.params ?? []) {
+            validateHktTypeExpr(param.typeName, methodKindScope, param.location ?? method.location ?? stmt.location);
+          }
+          validateHktTypeExpr(method.returnType, methodKindScope, method.location ?? stmt.location);
         }
         break;
       }
       case 'ImplDecl': {
-        const implArities = stmtTypeParamArities;
-        validateHktTypeExpr(stmt.traitType, implArities, stmt.location);
-        validateHktTypeExpr(stmt.forType, implArities, stmt.location);
+        const implKindScope = stmtKindScope;
+        validateWhereTypeBounds(stmt.whereTypeBounds, stmtTypeParamLookup, implKindScope, stmt.location);
+        validateHktTypeExpr(stmt.traitType, implKindScope, stmt.location);
+        validateHktTypeExpr(stmt.forType, implKindScope, stmt.location);
         for (const assoc of stmt.associatedTypes ?? []) {
-          validateHktTypeExpr(assoc.typeName, implArities, assoc.location ?? stmt.location);
+          validateHktTypeExpr(assoc.typeName, implKindScope, assoc.location ?? stmt.location);
         }
         for (const method of stmt.methods ?? []) {
-          const methodArities = mergeTypeParamArities(
-            implArities,
-            collectTypeParamArities((method.typeParams as TypeParamLike[] | undefined) ?? [])
+          const methodKindScope = createKindScope(
+            (method.typeParams as TypeParamLike[] | undefined) ?? [],
+            implKindScope
           );
-          validateTypeParamBounds(method.typeParams as TypeParamLike[] | undefined, methodArities, method.location ?? stmt.location);
+          validateTypeParamBounds(
+            method.typeParams as TypeParamLike[] | undefined,
+            methodKindScope,
+            method.location ?? stmt.location
+          );
           for (const param of method.params ?? []) {
-            validateHktTypeExpr(param.typeName, methodArities, param.location ?? method.location ?? stmt.location);
+            validateHktTypeExpr(param.typeName, methodKindScope, param.location ?? method.location ?? stmt.location);
           }
-          validateHktTypeExpr(method.returnType, methodArities, method.location ?? stmt.location);
+          validateHktTypeExpr(method.returnType, methodKindScope, method.location ?? stmt.location);
         }
         break;
       }
@@ -1608,7 +1866,13 @@ function resolveFunctionBody(
   }
   const typeParams = new Map<string, LuminaType | undefined>();
   const typeParamBounds = new Map<string, LuminaType[]>();
-  for (const param of stmt.typeParams ?? []) {
+  const mergedStmtTypeParams = mergeWhereTypeBoundsIntoTypeParams(
+    stmt.typeParams,
+    stmt.whereTypeBounds,
+    diagnostics,
+    stmt.location
+  );
+  for (const param of mergedStmtTypeParams) {
     const bound = param.bound?.[0];
     typeParams.set(param.name, bound ? (resolveTypeExpr(bound) ?? 'any') : undefined);
     const bounds: LuminaType[] = [];
@@ -1896,6 +2160,50 @@ function variantCanMatchScrutineeType(
   return isTypeAssignable(variant.resultType, scrutineeType, symbols, typeParams);
 }
 
+function formatVariantPatternSuggestion(
+  enumName: string,
+  variantName: string,
+  params: LuminaType[]
+): string {
+  if (!params || params.length === 0) return `${enumName}.${variantName}`;
+  const placeholders = params
+    .map((param, index) => `_${index + 1}/*${formatTypeForDiagnostic(param)}*/`)
+    .join(', ');
+  return `${enumName}.${variantName}(${placeholders})`;
+}
+
+function buildReachableVariantPatterns(
+  enumName: string,
+  variants: Array<{
+    name: string;
+    params: LuminaType[];
+    resultType?: LuminaType | null;
+  }>,
+  matchType: LuminaType | null,
+  symbols: SymbolTable,
+  typeParams?: Map<string, LuminaType | undefined>
+): Array<{ name: string; suggestion: string; resultType?: LuminaType | null }> {
+  const mapping = buildEnumTypeMapping(enumName, matchType, symbols);
+  const reachable: Array<{ name: string; suggestion: string; resultType?: LuminaType | null }> = [];
+  for (const variant of variants) {
+    if (!variantCanMatchScrutineeType(variant, matchType, symbols, typeParams)) {
+      continue;
+    }
+    const mappedParams = mapping
+      ? variant.params.map((param) => substituteTypeParams(param, mapping))
+      : variant.params;
+    const mappedResult = variant.resultType
+      ? (mapping ? substituteTypeParams(variant.resultType, mapping) : variant.resultType)
+      : null;
+    reachable.push({
+      name: variant.name,
+      suggestion: formatVariantPatternSuggestion(enumName, variant.name, mappedParams),
+      resultType: mappedResult,
+    });
+  }
+  return reachable;
+}
+
 function getNarrowingFromCondition(
   expr: LuminaExpr,
   symbols: SymbolTable,
@@ -2055,6 +2363,36 @@ function typeCheckStatement(
         for (const param of stmt.typeParams ?? []) {
           const bound = param.bound?.[0];
           typeParams.set(param.name, bound ? (resolveTypeExpr(bound) ?? 'any') : undefined);
+        }
+        if (stmt.aliasType) {
+          const known = ensureKnownType(
+            stmt.aliasType,
+            symbols,
+            new Set(typeParams.keys()),
+            diagnostics,
+            stmt.location
+          );
+          if (known === 'unknown') {
+            const resolvedAlias = resolveTypeExpr(stmt.aliasType);
+            const suggestion = resolvedAlias ? suggestName(resolvedAlias, collectVisibleTypeSymbols(symbols, options)) : null;
+            const related = suggestion
+              ? [
+                  {
+                    location: stmt.location ?? defaultLocation,
+                    message: `Did you mean '${suggestion}'?`,
+                  },
+                ]
+              : undefined;
+            diagnostics.push(
+              diagAt(
+                `Unknown type '${resolvedAlias ?? 'unknown'}' in type alias '${stmt.name}'`,
+                stmt.location,
+                'error',
+                'UNKNOWN_TYPE',
+                related
+              )
+            );
+          }
         }
         for (const field of stmt.body) {
           const known = ensureKnownType(field.typeName, symbols, new Set(typeParams.keys()), diagnostics, stmt.location);
@@ -2630,36 +2968,41 @@ function typeCheckStatement(
         diagnostics.push(diagAt(`While condition must be 'bool'`, stmt.location));
       }
       const baseMoves = snapshotMoves(scope);
-      if (di) {
-        const bodyDi = di.clone();
-        const loopSymbols = cloneSymbolTable(symbols);
-        typeCheckStatement(
-          stmt.body,
-          loopSymbols,
-          diagnostics,
-          currentReturnType,
-          scope,
-          options,
-          returnCollector,
-          resolving,
-          pendingDeps,
-          currentFunction,
-          bodyDi
-        );
-      } else {
-        const loopSymbols = cloneSymbolTable(symbols);
-        typeCheckStatement(
-          stmt.body,
-          loopSymbols,
-          diagnostics,
-          currentReturnType,
-          scope,
-          options,
-          returnCollector,
-          resolving,
-          pendingDeps,
-          currentFunction
-        );
+      activeLoopDepth += 1;
+      try {
+        if (di) {
+          const bodyDi = di.clone();
+          const loopSymbols = cloneSymbolTable(symbols);
+          typeCheckStatement(
+            stmt.body,
+            loopSymbols,
+            diagnostics,
+            currentReturnType,
+            scope,
+            options,
+            returnCollector,
+            resolving,
+            pendingDeps,
+            currentFunction,
+            bodyDi
+          );
+        } else {
+          const loopSymbols = cloneSymbolTable(symbols);
+          typeCheckStatement(
+            stmt.body,
+            loopSymbols,
+            diagnostics,
+            currentReturnType,
+            scope,
+            options,
+            returnCollector,
+            resolving,
+            pendingDeps,
+            currentFunction
+          );
+        }
+      } finally {
+        activeLoopDepth -= 1;
       }
       const bodyMoves = snapshotMoves(scope);
       restoreMoves(baseMoves);
@@ -2702,35 +3045,40 @@ function typeCheckStatement(
       });
 
       const baseMoves = snapshotMoves(scope);
-      if (di) {
-        const loopDi = di.clone();
-        loopDi.define(loopScope, stmt.iterator, true);
-        typeCheckStatement(
-          stmt.body,
-          loopSymbols,
-          diagnostics,
-          currentReturnType,
-          loopScope,
-          options,
-          returnCollector,
-          resolving,
-          pendingDeps,
-          currentFunction,
-          loopDi
-        );
-      } else {
-        typeCheckStatement(
-          stmt.body,
-          loopSymbols,
-          diagnostics,
-          currentReturnType,
-          loopScope,
-          options,
-          returnCollector,
-          resolving,
-          pendingDeps,
-          currentFunction
-        );
+      activeLoopDepth += 1;
+      try {
+        if (di) {
+          const loopDi = di.clone();
+          loopDi.define(loopScope, stmt.iterator, true);
+          typeCheckStatement(
+            stmt.body,
+            loopSymbols,
+            diagnostics,
+            currentReturnType,
+            loopScope,
+            options,
+            returnCollector,
+            resolving,
+            pendingDeps,
+            currentFunction,
+            loopDi
+          );
+        } else {
+          typeCheckStatement(
+            stmt.body,
+            loopSymbols,
+            diagnostics,
+            currentReturnType,
+            loopScope,
+            options,
+            returnCollector,
+            resolving,
+            pendingDeps,
+            currentFunction
+          );
+        }
+      } finally {
+        activeLoopDepth -= 1;
       }
       collectUnusedBindings(loopScope, diagnostics, stmt.location);
       const bodyMoves = snapshotMoves(scope);
@@ -2801,19 +3149,24 @@ function typeCheckStatement(
       }
 
       const baseMoves = snapshotMoves(scope);
-      typeCheckStatement(
-        stmt.body,
-        loopSymbols,
-        diagnostics,
-        currentReturnType,
-        loopScope,
-        options,
-        returnCollector,
-        resolving,
-        pendingDeps,
-        currentFunction,
-        loopDi
-      );
+      activeLoopDepth += 1;
+      try {
+        typeCheckStatement(
+          stmt.body,
+          loopSymbols,
+          diagnostics,
+          currentReturnType,
+          loopScope,
+          options,
+          returnCollector,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          loopDi
+        );
+      } finally {
+        activeLoopDepth -= 1;
+      }
       collectUnusedBindings(loopScope, diagnostics, stmt.location);
       const bodyMoves = snapshotMoves(scope);
       restoreMoves(baseMoves);
@@ -2978,6 +3331,16 @@ function typeCheckStatement(
       }
       return;
     }
+    case 'Break':
+      if (activeLoopDepth <= 0) {
+        diagnostics.push(diagAt(`'break' is only allowed inside loops`, stmt.location, 'error', 'BREAK_OUTSIDE_LOOP'));
+      }
+      return;
+    case 'Continue':
+      if (activeLoopDepth <= 0) {
+        diagnostics.push(diagAt(`'continue' is only allowed inside loops`, stmt.location, 'error', 'CONTINUE_OUTSIDE_LOOP'));
+      }
+      return;
     case 'ExprStmt':
       typeCheckExpr(stmt.expr, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       return;
@@ -3011,6 +3374,7 @@ function typeCheckStatement(
       const variants = enumSym?.enumVariants ?? [];
       const seen = new Set<string>();
       let hasWildcard = false;
+      let fullyCovered = false;
       let hasEnumPattern = false;
       const branchStates: DefiniteAssignment[] = [];
       const baseMoves = snapshotMoves(scope);
@@ -3026,8 +3390,23 @@ function typeCheckStatement(
           armSymbols.define(sym);
         }
         const pattern = arm.pattern;
+        const guardless = !arm.guard;
+        if (fullyCovered) {
+          diagnostics.push(
+            diagAt(
+              `Unreachable match arm: previous patterns already cover all remaining cases`,
+              arm.location ?? stmt.location,
+              'warning',
+              'LUM-004'
+            )
+          );
+          continue;
+        }
         if (pattern.type === 'WildcardPattern') {
-          hasWildcard = true;
+          if (guardless) {
+            hasWildcard = true;
+            fullyCovered = true;
+          }
         } else if (pattern.type === 'EnumPattern') {
           hasEnumPattern = true;
           if (pattern.enumName && matchBase && pattern.enumName !== matchBase) {
@@ -3082,10 +3461,17 @@ function typeCheckStatement(
                 )
               );
             }
-            if (seen.has(variantName)) {
-              diagnostics.push(diagAt(`Duplicate match arm for '${variantName}'`, arm.location ?? stmt.location));
+            if (guardless && seen.has(variantName)) {
+              diagnostics.push(
+                diagAt(
+                  `Unreachable pattern '${variantName}': this variant is already fully matched by an earlier arm`,
+                  arm.location ?? stmt.location,
+                  'warning',
+                  'LUM-004'
+                )
+              );
             }
-            if (canMatchScrutinee) {
+            if (canMatchScrutinee && guardless) {
               seen.add(variantName);
             }
             const mapping = matchBase ? buildEnumTypeMapping(matchBase, matchType, symbols) : null;
@@ -3179,7 +3565,10 @@ function typeCheckStatement(
             continue;
           }
         } else if (pattern.type === 'BindingPattern') {
-          hasWildcard = true;
+          if (guardless) {
+            hasWildcard = true;
+            fullyCovered = true;
+          }
           armScope.define(pattern.name, arm.location ?? stmt.location);
           armSymbols.define({
             name: pattern.name,
@@ -3234,33 +3623,50 @@ function typeCheckStatement(
       if (hasEnumPattern && matchType && (!enumSym || !enumSym.enumVariants)) {
         diagnostics.push(diagAt(`Match expression must be an enum`, stmt.location));
       } else if (hasEnumPattern && !hasWildcard && enumSym?.enumVariants) {
-        const missing = enumSym.enumVariants
-          .filter((variant) =>
-            variantCanMatchScrutineeType(variant, matchType, symbols, options?.typeParams)
-          )
-          .map((v) => v.name)
-          .filter((name) => !seen.has(name));
-      if (missing.length > 0) {
-        const related: DiagnosticRelatedInformation[] = [
-          {
-            location: stmt.location ?? defaultLocation,
-            message: `Covered variants: ${Array.from(seen).join(', ') || 'none'}`,
-          },
-          {
-            location: stmt.location ?? defaultLocation,
-            message: `Missing variants: ${missing.join(', ')}`,
-          },
-        ];
-        diagnostics.push(
-          diagAt(
-            `Missing case${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
-            stmt.location,
-            'error',
-            'MATCH_NOT_EXHAUSTIVE',
-            related
-          )
+        const reachable = buildReachableVariantPatterns(
+          matchBase ?? '',
+          enumSym.enumVariants,
+          matchType,
+          symbols,
+          options?.typeParams
         );
-      }
+        const missing = reachable.filter((variant) => !seen.has(variant.name));
+        if (missing.length > 0) {
+          const related: DiagnosticRelatedInformation[] = [
+            {
+              location: stmt.location ?? defaultLocation,
+              message: `Scrutinee constrained type: ${formatTypeForDiagnostic(matchType ?? 'any')}`,
+            },
+            {
+              location: stmt.location ?? defaultLocation,
+              message: `Covered variants: ${Array.from(seen).join(', ') || 'none'}`,
+            },
+            {
+              location: stmt.location ?? defaultLocation,
+              message: `Suggested missing pattern${missing.length === 1 ? '' : 's'}: ${missing
+                .map((variant) => variant.suggestion)
+                .join(', ')}`,
+            },
+          ];
+          for (const variant of missing) {
+            if (!variant.resultType) continue;
+            related.push({
+              location: stmt.location ?? defaultLocation,
+              message: `${matchBase}.${variant.name} constructs '${formatTypeForDiagnostic(variant.resultType)}'`,
+            });
+          }
+          diagnostics.push(
+            diagAt(
+              `Non-exhaustive match for '${formatTypeForDiagnostic(matchType ?? 'any')}'. Missing pattern${
+                missing.length === 1 ? '' : 's'
+              }: ${missing.map((variant) => variant.suggestion).join(', ')}`,
+              stmt.location,
+              'error',
+              'MATCH_NOT_EXHAUSTIVE',
+              related
+            )
+          );
+        }
       }
       return;
     }
@@ -3665,6 +4071,17 @@ function typeCheckExpr(
         );
         return null;
       }
+      if (expectedType) {
+        const narrowed = boundCandidates.filter((candidate) =>
+          isTypeAssignable(candidate.expectedReturn, expectedType, symbols, options?.typeParams) ||
+          isTypeAssignable(expectedType, candidate.expectedReturn, symbols, options?.typeParams)
+        );
+        if (narrowed.length === 1) {
+          boundCandidates.splice(0, boundCandidates.length, narrowed[0]);
+        } else if (narrowed.length > 1) {
+          boundCandidates.splice(0, boundCandidates.length, ...narrowed);
+        }
+      }
       if (boundCandidates.length > 1) {
         diagnostics.push(
           diagAt(
@@ -3719,7 +4136,7 @@ function typeCheckExpr(
       return candidate.expectedReturn;
     }
 
-    const candidates = findTraitMethodCandidates(registry, receiverType, callee);
+    let candidates = findTraitMethodCandidates(registry, receiverType, callee);
     if (candidates.length === 0) {
       diagnostics.push(
         diagAt(
@@ -3730,6 +4147,27 @@ function typeCheckExpr(
         )
       );
       return null;
+    }
+    if (expectedType) {
+      const narrowed = candidates.filter((candidate) => {
+        const expectedReturn = substituteTypeParams(candidate.method.returnType, candidate.mapping);
+        return (
+          isTypeAssignable(expectedReturn, expectedType, symbols, options?.typeParams) ||
+          isTypeAssignable(expectedType, expectedReturn, symbols, options?.typeParams)
+        );
+      });
+      if (narrowed.length > 0) {
+        candidates = narrowed;
+      }
+    }
+    if (candidates.length > 1) {
+      const minBindings = Math.min(...candidates.map((candidate) => candidate.implParamBindings.size));
+      const mostSpecific = candidates.filter((candidate) => candidate.implParamBindings.size === minBindings);
+      if (mostSpecific.length === 1) {
+        candidates = mostSpecific;
+      } else {
+        candidates = mostSpecific;
+      }
     }
     if (candidates.length > 1) {
       diagnostics.push(
@@ -6190,6 +6628,7 @@ function typeCheckExpr(
     const variants = enumSym?.enumVariants ?? [];
     const seen = new Set<string>();
     let hasWildcard = false;
+    let fullyCovered = false;
     let hasEnumPattern = false;
     let armType: LuminaType | null = null;
     const baseMoves = snapshotMoves(scope);
@@ -6206,8 +6645,23 @@ function typeCheckExpr(
       }
 
       const pattern = arm.pattern;
+      const guardless = !arm.guard;
+      if (fullyCovered) {
+        diagnostics.push(
+          diagAt(
+            `Unreachable match arm: previous patterns already cover all remaining cases`,
+            arm.location ?? expr.location,
+            'warning',
+            'LUM-004'
+          )
+        );
+        continue;
+      }
       if (pattern.type === 'WildcardPattern') {
-        hasWildcard = true;
+        if (guardless) {
+          hasWildcard = true;
+          fullyCovered = true;
+        }
       } else if (pattern.type === 'EnumPattern') {
         hasEnumPattern = true;
         if (pattern.enumName && matchBase && pattern.enumName !== matchBase) {
@@ -6262,10 +6716,17 @@ function typeCheckExpr(
               )
             );
           }
-          if (seen.has(variantName)) {
-            diagnostics.push(diagAt(`Duplicate match arm for '${variantName}'`, arm.location ?? expr.location));
+          if (guardless && seen.has(variantName)) {
+            diagnostics.push(
+              diagAt(
+                `Unreachable pattern '${variantName}': this variant is already fully matched by an earlier arm`,
+                arm.location ?? expr.location,
+                'warning',
+                'LUM-004'
+              )
+            );
           }
-          if (canMatchScrutinee) {
+          if (canMatchScrutinee && guardless) {
             seen.add(variantName);
           }
           const mapping = matchBase ? buildEnumTypeMapping(matchBase, matchType, symbols) : null;
@@ -6365,7 +6826,10 @@ function typeCheckExpr(
           continue;
         }
       } else if (pattern.type === 'BindingPattern') {
-        hasWildcard = true;
+        if (guardless) {
+          hasWildcard = true;
+          fullyCovered = true;
+        }
         armScope.define(pattern.name, arm.location ?? expr.location);
         armSymbols.define({
           name: pattern.name,
@@ -6441,26 +6905,43 @@ function typeCheckExpr(
     if (hasEnumPattern && matchType && (!enumSym || !enumSym.enumVariants)) {
       diagnostics.push(diagAt(`Match expression must be an enum`, expr.location));
     } else if (hasEnumPattern && !hasWildcard && enumSym?.enumVariants) {
-      const missing = enumSym.enumVariants
-        .filter((variant) =>
-          variantCanMatchScrutineeType(variant, matchType, symbols, options?.typeParams)
-        )
-        .map((v) => v.name)
-        .filter((name) => !seen.has(name));
+      const reachable = buildReachableVariantPatterns(
+        matchBase ?? '',
+        enumSym.enumVariants,
+        matchType,
+        symbols,
+        options?.typeParams
+      );
+      const missing = reachable.filter((variant) => !seen.has(variant.name));
       if (missing.length > 0) {
         const related: DiagnosticRelatedInformation[] = [
+          {
+            location: expr.location ?? defaultLocation,
+            message: `Scrutinee constrained type: ${formatTypeForDiagnostic(matchType ?? 'any')}`,
+          },
           {
             location: expr.location ?? defaultLocation,
             message: `Covered variants: ${Array.from(seen).join(', ') || 'none'}`,
           },
           {
             location: expr.location ?? defaultLocation,
-            message: `Missing variants: ${missing.join(', ')}`,
+            message: `Suggested missing pattern${missing.length === 1 ? '' : 's'}: ${missing
+              .map((variant) => variant.suggestion)
+              .join(', ')}`,
           },
         ];
+        for (const variant of missing) {
+          if (!variant.resultType) continue;
+          related.push({
+            location: expr.location ?? defaultLocation,
+            message: `${matchBase}.${variant.name} constructs '${formatTypeForDiagnostic(variant.resultType)}'`,
+          });
+        }
         diagnostics.push(
           diagAt(
-            `Missing case${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
+            `Non-exhaustive match for '${formatTypeForDiagnostic(matchType ?? 'any')}'. Missing pattern${
+              missing.length === 1 ? '' : 's'
+            }: ${missing.map((variant) => variant.suggestion).join(', ')}`,
             expr.location,
             'error',
             'MATCH_NOT_EXHAUSTIVE',
@@ -6856,7 +7337,12 @@ function collectTraitRegistry(
           );
         }
       }
-      associatedTypes.set(assoc.name, { name: assoc.name, defaultType, location: assoc.location });
+      associatedTypes.set(assoc.name, {
+        name: assoc.name,
+        defaultType,
+        higherKindArity: assoc.higherKindArity ?? 0,
+        location: assoc.location,
+      });
     }
     for (const method of stmt.methods) {
       if (methods.has(method.name)) {
@@ -6903,8 +7389,14 @@ function collectTraitRegistry(
       return;
     }
 
-    const implTypeParams = normalizeTypeParamsForRegistry(
+    const mergedImplTypeParams = mergeWhereTypeBoundsIntoTypeParams(
       stmt.typeParams,
+      stmt.whereTypeBounds,
+      diagnostics,
+      stmt.location
+    );
+    const implTypeParams = normalizeTypeParamsForRegistry(
+      mergedImplTypeParams,
       symbols,
       diagnostics,
       stmt.location,
@@ -6987,6 +7479,7 @@ function collectTraitRegistry(
     }
 
     const assocTypes = new Map<string, LuminaType>();
+    const assocTypeArities = new Map<string, number>();
     for (const assoc of stmt.associatedTypes ?? []) {
       if (assocTypes.has(assoc.name)) {
         diagnostics.push(
@@ -6999,6 +7492,7 @@ function collectTraitRegistry(
         );
         continue;
       }
+      assocTypeArities.set(assoc.name, assoc.higherKindArity ?? 0);
       const known = ensureKnownType(
         assoc.typeName,
         symbols,
@@ -7023,6 +7517,7 @@ function collectTraitRegistry(
       if (!assocTypes.has(name)) {
         if (assoc.defaultType) {
           assocTypes.set(name, substituteTypeParams(assoc.defaultType, mapping));
+          assocTypeArities.set(name, assoc.higherKindArity ?? 0);
         } else {
           diagnostics.push(
             diagAt(
@@ -7030,6 +7525,19 @@ function collectTraitRegistry(
               stmt.location,
               'error',
               'TRAIT-012'
+            )
+          );
+        }
+      } else {
+        const implArity = assocTypeArities.get(name) ?? 0;
+        const traitArity = assoc.higherKindArity ?? 0;
+        if (implArity !== traitArity) {
+          diagnostics.push(
+            diagAt(
+              `Associated type '${name}' in impl for '${traitName}' has arity ${implArity}, expected ${traitArity}`,
+              stmt.location,
+              'error',
+              'TRAIT-017'
             )
           );
         }
@@ -7090,6 +7598,7 @@ function collectTraitRegistry(
       typeParams: implTypeParams,
       methods,
       associatedTypes: assocTypes,
+      associatedTypeArities: assocTypeArities,
       visibility: stmt.visibility ?? 'private',
       location: stmt.location,
       uri: options?.currentUri,
@@ -7223,8 +7732,15 @@ function buildTraitMethodSignature(
   diagnostics: Diagnostic[],
   traitNames?: Set<string>
 ): TraitMethodSig {
+  const mergedMethodTypeParams = mergeWhereTypeBoundsIntoTypeParams(
+    method.typeParams as Array<{ name: string; bound?: LuminaTypeExpr[]; isConst?: boolean }> | undefined,
+    method.whereTypeBounds as Array<{ name: string; bounds: LuminaTypeExpr[]; location?: Location }> | undefined,
+    diagnostics,
+    method.location,
+    traitTypeParamSet
+  );
   const methodTypeParams = normalizeTypeParamsForRegistry(
-    method.typeParams,
+    mergedMethodTypeParams,
     symbols,
     diagnostics,
     method.location,
@@ -7342,6 +7858,7 @@ type TraitMethodCandidate = {
   trait: TraitInfo;
   method: TraitMethodSig;
   mapping: Map<string, LuminaType>;
+  implParamBindings: Map<string, LuminaType>;
 };
 
 function findTraitMethodCandidates(
@@ -7367,7 +7884,7 @@ function findTraitMethodCandidates(
     for (const [name, value] of impl.associatedTypes.entries()) {
       mapping.set(`${SELF_TYPE_NAME}::${name}`, value);
     }
-    candidates.push({ impl, trait, method, mapping });
+    candidates.push({ impl, trait, method, mapping, implParamBindings });
   }
   return candidates;
 }
@@ -7583,13 +8100,15 @@ function isKnownType(
   if (typeParams.has(parsed.base)) return true;
   const sym = symbols.get(parsed.base);
   if (sym?.kind !== 'type') return false;
-  if (sym.typeParams && sym.typeParams.length > 0 && parsed.args.length === 0) {
+  const declaredParamCount = sym.typeParams?.length ?? 0;
+  if (declaredParamCount > 0 && parsed.args.length === 0) {
     return allowBareConstructors;
   }
-  if (sym.typeParams && parsed.args.length > 0) {
-    if (sym.typeParams.length !== parsed.args.length) return false;
-    for (let i = 0; i < sym.typeParams.length; i++) {
-      const boundList = sym.typeParams[i].bound ?? [];
+  if (declaredParamCount > 0 && parsed.args.length > 0) {
+    if (parsed.args.length > declaredParamCount) return false;
+    if (!allowBareConstructors && parsed.args.length !== declaredParamCount) return false;
+    for (let i = 0; i < parsed.args.length; i++) {
+      const boundList = sym.typeParams?.[i]?.bound ?? [];
       for (const bound of boundList) {
         if (!isTypeAssignable(parsed.args[i], bound, symbols)) return false;
       }
@@ -7758,8 +8277,15 @@ function satisfiesTraitBound(actual: LuminaType, bound: LuminaType, registry?: T
     if (!implParamBindings) continue;
     if (parsedBound.args.length === 0) return true;
     const resolvedArgs = resolveTraitArgsForImpl(impl.traitType, traitInfo, implParamBindings);
-    const resolvedBound = `${traitName}<${resolvedArgs.map((arg) => normalizeTypeForComparison(arg)).join(',')}>`;
-    if (normalizeTypeForComparison(resolvedBound) === boundNorm) return true;
+    if (resolvedArgs.length !== parsedBound.args.length) continue;
+    let allMatch = true;
+    for (let i = 0; i < resolvedArgs.length; i += 1) {
+      if (!areTypesEquivalent(resolvedArgs[i], parsedBound.args[i])) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (allMatch) return true;
   }
   return false;
 }
@@ -8080,8 +8606,33 @@ function unifyTypes(paramType: LuminaType, argType: LuminaType, mapping: Map<str
 function substituteTypeParams(typeName: LuminaType, mapping: Map<string, LuminaType>): LuminaType {
   const parsed = parseTypeName(typeName);
   if (!parsed) return typeName;
-  if (mapping.has(parsed.base) && parsed.args.length === 0) {
-    return mapping.get(parsed.base) as LuminaType;
+  if (mapping.has(parsed.base)) {
+    const mapped = mapping.get(parsed.base) as LuminaType;
+    if (parsed.args.length === 0) {
+      return mapped;
+    }
+    const mappedParsed = parseTypeName(mapped);
+    const substitutedArgs = parsed.args.map((arg) => substituteTypeParams(arg, mapping));
+    if (!mappedParsed) {
+      return substitutedArgs.length > 0 ? `${mapped}<${substitutedArgs.join(',')}>` : mapped;
+    }
+    if (mappedParsed.args.length === 0) {
+      return `${mappedParsed.base}<${substitutedArgs.join(',')}>`;
+    }
+    let nextArgIdx = 0;
+    const appliedArgs = mappedParsed.args.map((arg) => {
+      const norm = normalizeTypeForComparison(arg);
+      if ((norm === '_' || norm === 'any') && nextArgIdx < substitutedArgs.length) {
+        const replacement = substitutedArgs[nextArgIdx];
+        nextArgIdx += 1;
+        return replacement;
+      }
+      return substituteTypeParams(arg, mapping);
+    });
+    if (nextArgIdx < substitutedArgs.length) {
+      appliedArgs.push(...substitutedArgs.slice(nextArgIdx));
+    }
+    return `${mappedParsed.base}<${appliedArgs.join(',')}>`;
   }
   if (parsed.args.length === 0) return parsed.base;
   const args = parsed.args.map((arg) => substituteTypeParams(arg, mapping));

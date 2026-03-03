@@ -1015,7 +1015,7 @@ async function bundleProgram(
 }
 
 function monomorphizeAst(program: unknown): unknown {
-  const hm = inferProgram(program as never);
+  const hm = inferProgram(program as never, { useRowPolymorphism: true });
   const cloned = JSON.parse(JSON.stringify(program)) as never;
   return monomorphize(cloned, { inferredCalls: hm.inferredCalls });
 }
@@ -1098,6 +1098,8 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
       case 'LetElse':
       case 'IfLet':
       case 'WhileLet':
+      case 'Break':
+      case 'Continue':
         return true;
       case 'Let':
       case 'Return':

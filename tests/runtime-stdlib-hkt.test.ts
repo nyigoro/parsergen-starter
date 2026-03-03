@@ -52,6 +52,37 @@ describe('runtime HKT stdlib helpers', () => {
     const joinedOption = monad.join_option(Option.Some(Option.Some(7)));
     expect(asEnum(joinedOption).$tag).toBe('Some');
     expect(asEnum(joinedOption).$payload).toBe(7);
+
+    const singletonMap = applicative.pure_hashmap('root', 11);
+    expect(asEnum(singletonMap.get('root')).$tag).toBe('Some');
+    expect(asEnum(singletonMap.get('root')).$payload).toBe(11);
+
+    const fnMap = HashMap.new<string, (value: number) => number>();
+    fnMap.insert('a', (value) => value + 1);
+    fnMap.insert('c', (value) => value * 2);
+    const valueMap = HashMap.new<string, number>();
+    valueMap.insert('a', 5);
+    valueMap.insert('b', 8);
+    valueMap.insert('c', 7);
+    const apMap = applicative.ap_hashmap_values(fnMap, valueMap);
+    expect(asEnum(apMap.get('a')).$payload).toBe(6);
+    expect(asEnum(apMap.get('c')).$payload).toBe(14);
+    expect(asEnum(apMap.get('b')).$tag).toBe('None');
+
+    const flatMapped = monad.flat_map_hashmap_values(valueMap, (value: number) => {
+      const out = HashMap.new<string, number>();
+      out.insert(`k${value}`, value * 10);
+      return out;
+    });
+    expect(asEnum(flatMapped.get('k5')).$payload).toBe(50);
+    expect(asEnum(flatMapped.get('k8')).$payload).toBe(80);
+
+    const nested = HashMap.new<string, HashMap<string, number>>();
+    nested.insert('x', singletonMap);
+    nested.insert('y', apMap);
+    const joined = monad.join_hashmap_values(nested);
+    expect(asEnum(joined.get('root')).$payload).toBe(11);
+    expect(asEnum(joined.get('a')).$payload).toBe(6);
   });
 
   test('foldable and traversable helpers fold and sequence', () => {

@@ -78,4 +78,25 @@ describe('Lumina parse wrapper', () => {
     const ast = parseLumina(parser, program);
     expect(ast.type).toBe('Program');
   });
+
+  test('parses break and continue statements', () => {
+    const program = `
+      fn main() -> i32 {
+        let mut i = 0;
+        while (i < 10) {
+          i = i + 1;
+          if (i == 3) {
+            continue;
+          }
+          if (i == 8) {
+            break;
+          }
+        }
+        i
+      }
+    `.trim() + '\n';
+
+    const ast = parseLumina(parser, program);
+    expect(ast.type).toBe('Program');
+  });
 });

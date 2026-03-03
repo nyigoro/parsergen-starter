@@ -107,4 +107,48 @@ describe('GADT semantic validation', () => {
     expect(unreachable).toBeDefined();
     expect(unreachable?.message).toContain('type index mismatch');
   });
+
+  test('reports non-exhaustive indexed matches with constrained suggestions', () => {
+    const source = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>,
+        Bool(bool): Expr<bool>
+      }
+
+      fn eval(e: Expr<i32>) -> i32 {
+        match e {
+          Expr.Bool(b) => { return 0; }
+        }
+      }
+    `;
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    const missing = sem.diagnostics.find((diag) => diag.code === 'MATCH_NOT_EXHAUSTIVE');
+    expect(missing).toBeDefined();
+    expect(missing?.message).toContain('Expr.Lit');
+    expect(missing?.message).not.toContain('Expr.Bool');
+    const related = (missing?.relatedInformation ?? []).map((item) => item.message).join(' ');
+    expect(related).toContain('Scrutinee constrained type');
+    expect(related).toContain('Suggested missing pattern');
+  });
+
+  test('marks arms after wildcard as unreachable', () => {
+    const source = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>,
+        Bool(bool): Expr<bool>
+      }
+
+      fn eval(e: Expr<i32>) -> i32 {
+        match e {
+          _ => { return 0; },
+          Expr.Lit(n) => { return n; }
+        }
+      }
+    `;
+    const ast = parseProgram(source);
+    const sem = analyzeLumina(ast);
+    const unreachable = sem.diagnostics.find((diag) => diag.code === 'LUM-004');
+    expect(unreachable).toBeDefined();
+  });
 });

@@ -222,7 +222,8 @@ function renderTypeAliases(statements: LuminaStatement[], publicOnly: boolean): 
     if (stmt.type !== 'TypeDecl') continue;
     if (publicOnly && stmt.visibility !== 'public') continue;
     const typeParams = formatTypeParams(stmt.typeParams);
-    rows.push(`- \`type ${stmt.name}${typeParams}\``);
+    const alias = stmt.aliasType ? ` = ${formatTypeExpr(stmt.aliasType)}` : '';
+    rows.push(`- \`type ${stmt.name}${typeParams}${alias}\``);
     for (const field of stmt.body) {
       rows.push(`  - \`${field.name}: ${formatTypeExpr(field.typeName)}\``);
     }

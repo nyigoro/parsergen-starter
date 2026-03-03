@@ -64,22 +64,41 @@ interface EnumVariantInfo {
   location?: Location;
 }
 
+interface VariantMatchCandidate {
+  variantName: string;
+  variantInfo: EnumVariantInfo;
+  resultType: Type;
+  paramTypes: Type[];
+}
+
 interface ExistentialWitness {
   id: number;
   name: string;
   enumName: string;
   variantName: string;
+  scopeId?: number;
   location?: Location;
 }
 
 interface PatternRefinementContext {
   existentialWitnesses: ExistentialWitness[];
+  scopeId: number;
+}
+
+interface PatternConstraintSolveResult {
+  reachable: boolean;
+  diagnostics: Diagnostic[];
 }
 
 interface StructInfo {
   typeParams: string[];
   fields: Map<string, LuminaTypeExpr>;
   derives: string[];
+}
+
+interface TypeAliasInfo {
+  typeParams: string[];
+  target: LuminaTypeExpr;
 }
 
 interface ConstFnConstraintInfo {
@@ -492,7 +511,11 @@ let activeInferredExprs: Map<number, Type> | null = null;
 let activeStructRegistry: Map<string, StructInfo> | null = null;
 let activeConstFnConstraints: Map<string, ConstFnConstraintInfo> | null = null;
 let activeRowPolymorphism = false;
+let activeTypeAliasRegistry: Map<string, TypeAliasInfo> | null = null;
 let activeReturnType: Type | null = null;
+let activeInferLoopDepth = 0;
+let activeExistentialScopeSeed = 0;
+let activeRigidExistentials: Map<number, ExistentialWitness> | null = null;
 
 export function inferProgram(
   program: LuminaProgram,
@@ -508,6 +531,9 @@ export function inferProgram(
 ): InferResult {
   activeWrapperSet = new Set(options?.recursiveWrappers ?? defaultWrapperList);
   activeReturnType = null;
+  activeInferLoopDepth = 0;
+  activeExistentialScopeSeed = 0;
+  activeRigidExistentials = null;
   const env = new TypeEnv();
   const subst: Subst = new Map();
   const diagnostics: Diagnostic[] = [];
@@ -529,8 +555,10 @@ export function inferProgram(
   const hoistedFns = new Map<string, { paramTypes: Type[]; returnType: Type; typeParamIds: number[] }>();
   const enumRegistry = buildEnumRegistry(program);
   const structRegistry = buildStructRegistry(program);
+  const typeAliasRegistry = buildTypeAliasRegistry(program);
   activeConstFnConstraints = buildConstFnConstraintRegistry(program);
   activeStructRegistry = structRegistry;
+  activeTypeAliasRegistry = typeAliasRegistry;
   activeRowPolymorphism = options?.useRowPolymorphism ?? false;
   const moduleRegistry = options?.moduleRegistry ?? createStdModuleRegistry();
   const moduleBindings = options?.moduleBindings ?? resolveModuleBindings(program, moduleRegistry);
@@ -628,7 +656,10 @@ export function inferProgram(
   activeInferredExprs = null;
   activeStructRegistry = null;
   activeConstFnConstraints = null;
+  activeTypeAliasRegistry = null;
   activeRowPolymorphism = false;
+  activeExistentialScopeSeed = 0;
+  activeRigidExistentials = null;
   return result;
 }
 
@@ -984,6 +1015,30 @@ function inferStatement(
       });
       return valueType;
     }
+    case 'Break': {
+      if (activeInferLoopDepth <= 0) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'HM_BREAK_OUTSIDE_LOOP',
+          message: `'break' is only allowed inside loops`,
+          source: 'lumina',
+          location: diagLocation(stmt.location),
+        });
+      }
+      return null;
+    }
+    case 'Continue': {
+      if (activeInferLoopDepth <= 0) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'HM_CONTINUE_OUTSIDE_LOOP',
+          message: `'continue' is only allowed inside loops`,
+          source: 'lumina',
+          location: diagLocation(stmt.location),
+        });
+      }
+      return null;
+    }
     case 'ExprStmt': {
       return inferExpr(
         stmt.expr,
@@ -1172,25 +1227,30 @@ function inferStatement(
         });
       }
       const loopEnv = env.child();
-      for (const bodyStmt of stmt.body.body) {
-        inferStatement(
-          bodyStmt,
-          loopEnv,
-          subst,
-          diagnostics,
-          currentReturn,
-          inferredLets,
-          inferredFnReturns,
-          inferredFnByName,
-          inferredFnParams,
-          enumRegistry,
-          structRegistry,
-          holeInfoByVar,
-          moduleBindings,
-          inferredCalls,
-          undefined,
-          inAsync
-        );
+      activeInferLoopDepth += 1;
+      try {
+        for (const bodyStmt of stmt.body.body) {
+          inferStatement(
+            bodyStmt,
+            loopEnv,
+            subst,
+            diagnostics,
+            currentReturn,
+            inferredLets,
+            inferredFnReturns,
+            inferredFnByName,
+            inferredFnParams,
+            enumRegistry,
+            structRegistry,
+            holeInfoByVar,
+            moduleBindings,
+            inferredCalls,
+            undefined,
+            inAsync
+          );
+        }
+      } finally {
+        activeInferLoopDepth -= 1;
       }
       return null;
     }
@@ -1215,25 +1275,30 @@ function inferStatement(
       }
       const loopEnv = env.child();
       loopEnv.extend(stmt.iterator, { kind: 'scheme', variables: [], type: { kind: 'primitive', name: 'i32' } });
-      for (const bodyStmt of stmt.body.body) {
-        inferStatement(
-          bodyStmt,
-          loopEnv,
-          subst,
-          diagnostics,
-          currentReturn,
-          inferredLets,
-          inferredFnReturns,
-          inferredFnByName,
-          inferredFnParams,
-          enumRegistry,
-          structRegistry,
-          holeInfoByVar,
-          moduleBindings,
-          inferredCalls,
-          undefined,
-          inAsync
-        );
+      activeInferLoopDepth += 1;
+      try {
+        for (const bodyStmt of stmt.body.body) {
+          inferStatement(
+            bodyStmt,
+            loopEnv,
+            subst,
+            diagnostics,
+            currentReturn,
+            inferredLets,
+            inferredFnReturns,
+            inferredFnByName,
+            inferredFnParams,
+            enumRegistry,
+            structRegistry,
+            holeInfoByVar,
+            moduleBindings,
+            inferredCalls,
+            undefined,
+            inAsync
+          );
+        }
+      } finally {
+        activeInferLoopDepth -= 1;
       }
       return null;
     }
@@ -1254,25 +1319,30 @@ function inferStatement(
       if (scrutineeType) {
         applyMatchPattern(stmt.pattern, scrutineeType, loopEnv, subst, diagnostics, enumRegistry);
       }
-      for (const bodyStmt of stmt.body.body) {
-        inferStatement(
-          bodyStmt,
-          loopEnv,
-          subst,
-          diagnostics,
-          currentReturn,
-          inferredLets,
-          inferredFnReturns,
-          inferredFnByName,
-          inferredFnParams,
-          enumRegistry,
-          structRegistry,
-          holeInfoByVar,
-          moduleBindings,
-          inferredCalls,
-          undefined,
-          inAsync
-        );
+      activeInferLoopDepth += 1;
+      try {
+        for (const bodyStmt of stmt.body.body) {
+          inferStatement(
+            bodyStmt,
+            loopEnv,
+            subst,
+            diagnostics,
+            currentReturn,
+            inferredLets,
+            inferredFnReturns,
+            inferredFnByName,
+            inferredFnParams,
+            enumRegistry,
+            structRegistry,
+            holeInfoByVar,
+            moduleBindings,
+            inferredCalls,
+            undefined,
+            inAsync
+          );
+        }
+      } finally {
+        activeInferLoopDepth -= 1;
       }
       return null;
     }
@@ -1293,49 +1363,73 @@ function inferStatement(
       for (const arm of stmt.arms) {
         const armEnv = env.child();
         const armSubst = new Map<number, Type>(matchEntrySubst);
+        const armPatternContext: PatternRefinementContext = {
+          existentialWitnesses: [],
+          scopeId: ++activeExistentialScopeSeed,
+        };
+        const patternDiagnostics: Diagnostic[] = [];
         if (scrutineeType) {
-          applyMatchPattern(arm.pattern, scrutineeType, armEnv, armSubst, diagnostics, enumRegistry);
-        }
-        if (arm.guard) {
-          const guardType = inferExpr(
-            arm.guard,
+          applyMatchPattern(
+            arm.pattern,
+            scrutineeType,
             armEnv,
             armSubst,
-            diagnostics,
+            patternDiagnostics,
             enumRegistry,
-            structRegistry,
-            moduleBindings,
-            inferredCalls,
-            undefined,
-            inAsync
+            armPatternContext
           );
-          if (guardType) {
-            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, armSubst, diagnostics, {
-              location: arm.guard.location,
-              note: 'Match guard must be a bool',
-            });
+        }
+        const patternResult = solvePatternRefinementDiagnostics(
+          arm.pattern,
+          patternDiagnostics,
+          arm.location ?? stmt.location
+        );
+        diagnostics.push(...patternResult.diagnostics);
+        if (!patternResult.reachable) {
+          continue;
+        }
+        withExistentialScope(armPatternContext.existentialWitnesses, () => {
+          if (arm.guard) {
+            const guardType = inferExpr(
+              arm.guard,
+              armEnv,
+              armSubst,
+              diagnostics,
+              enumRegistry,
+              structRegistry,
+              moduleBindings,
+              inferredCalls,
+              undefined,
+              inAsync
+            );
+            if (guardType) {
+              tryUnify(guardType, { kind: 'primitive', name: 'bool' }, armSubst, diagnostics, {
+                location: arm.guard.location,
+                note: 'Match guard must be a bool',
+              });
+            }
           }
-        }
-        for (const bodyStmt of arm.body.body) {
-          inferStatement(
-            bodyStmt,
-            armEnv,
-            armSubst,
-            diagnostics,
-            currentReturn,
-            inferredLets,
-            inferredFnReturns,
-            inferredFnByName,
-            inferredFnParams,
-            enumRegistry,
-            structRegistry,
-            holeInfoByVar,
-            moduleBindings,
-            inferredCalls,
-            undefined,
-            inAsync
-          );
-        }
+          for (const bodyStmt of arm.body.body) {
+            inferStatement(
+              bodyStmt,
+              armEnv,
+              armSubst,
+              diagnostics,
+              currentReturn,
+              inferredLets,
+              inferredFnReturns,
+              inferredFnByName,
+              inferredFnParams,
+              enumRegistry,
+              structRegistry,
+              holeInfoByVar,
+              moduleBindings,
+              inferredCalls,
+              undefined,
+              inAsync
+            );
+          }
+        });
       }
       if (scrutineeType && enumRegistry) {
         checkMatchExhaustiveness(stmt.arms, scrutineeType, subst, enumRegistry, diagnostics, stmt.location);
@@ -2902,19 +2996,52 @@ function inferExpr(
       for (const arm of expr.arms) {
         const armEnv = env.child();
         const armSubst = new Map<number, Type>(matchEntrySubst);
-        const armPatternContext: PatternRefinementContext = { existentialWitnesses: [] };
+        const armPatternContext: PatternRefinementContext = {
+          existentialWitnesses: [],
+          scopeId: ++activeExistentialScopeSeed,
+        };
+        const patternDiagnostics: Diagnostic[] = [];
         applyMatchPattern(
           arm.pattern,
           scrutineeType,
           armEnv,
           armSubst,
-          diagnostics,
+          patternDiagnostics,
           enumRegistry,
           armPatternContext
         );
-        if (arm.guard) {
-          const guardType = inferExpr(
-            arm.guard,
+        const patternResult = solvePatternRefinementDiagnostics(
+          arm.pattern,
+          patternDiagnostics,
+          arm.location ?? expr.location
+        );
+        diagnostics.push(...patternResult.diagnostics);
+        if (!patternResult.reachable) {
+          continue;
+        }
+        const resolvedArmType = withExistentialScope(armPatternContext.existentialWitnesses, () => {
+          if (arm.guard) {
+            const guardType = inferExpr(
+              arm.guard,
+              armEnv,
+              armSubst,
+              diagnostics,
+              enumRegistry,
+              structRegistry,
+              moduleBindings,
+              inferredCalls,
+              undefined,
+              inAsync
+            );
+            if (guardType) {
+              tryUnify(guardType, { kind: 'primitive', name: 'bool' }, armSubst, diagnostics, {
+                location: arm.guard.location,
+                note: 'Match guard must be a bool',
+              });
+            }
+          }
+          const armType = inferExpr(
+            arm.body,
             armEnv,
             armSubst,
             diagnostics,
@@ -2922,45 +3049,30 @@ function inferExpr(
             structRegistry,
             moduleBindings,
             inferredCalls,
-            undefined,
+            expectedType ?? undefined,
             inAsync
           );
-          if (guardType) {
-            tryUnify(guardType, { kind: 'primitive', name: 'bool' }, armSubst, diagnostics, {
-              location: arm.guard.location,
-              note: 'Match guard must be a bool',
+          if (!armType) return null;
+          reportEscapedExistentials(
+            armType,
+            armPatternContext.existentialWitnesses,
+            armSubst,
+            diagnostics,
+            arm.body.location ?? arm.location ?? expr.location
+          );
+          const normalized = normalizeType(armType, armSubst);
+          if (expectedType) {
+            // Under branch-local GADT refinements, each arm must satisfy the expected type.
+            tryUnify(normalized, expectedType, armSubst, diagnostics, {
+              location: arm.location,
+              note: 'Match arm must satisfy expected type under pattern refinement',
             });
+            return expectedType;
           }
-        }
-        const armType = inferExpr(
-          arm.body,
-          armEnv,
-          armSubst,
-          diagnostics,
-          enumRegistry,
-          structRegistry,
-          moduleBindings,
-          inferredCalls,
-          expectedType ?? undefined,
-          inAsync
-        );
-        if (!armType) continue;
-        reportEscapedExistentials(
-          armType,
-          armPatternContext.existentialWitnesses,
-          armSubst,
-          diagnostics,
-          arm.body.location ?? arm.location ?? expr.location
-        );
-        const resolvedArmType = normalizeType(armType, armSubst);
-        if (expectedType) {
-          // Under branch-local GADT refinements, each arm must satisfy the expected type.
-          tryUnify(resolvedArmType, expectedType, armSubst, diagnostics, {
-            location: arm.location,
-            note: 'Match arm must satisfy expected type under pattern refinement',
-          });
-          resultType = expectedType;
-        } else if (!resultType) {
+          return normalized;
+        });
+        if (!resolvedArmType) continue;
+        if (!resultType) {
           resultType = resolvedArmType;
         } else {
           tryUnify(resultType, resolvedArmType, subst, diagnostics, {
@@ -3189,11 +3301,54 @@ function renderConstExprWithTypeParams(
   }
 }
 
+function resolveTypeAliasInfo(typeName: string): TypeAliasInfo | null {
+  if (!activeTypeAliasRegistry) return null;
+  const direct = activeTypeAliasRegistry.get(typeName);
+  if (direct) return direct;
+  if (typeName.includes('::')) {
+    const short = typeName.split('::').pop() ?? typeName;
+    return activeTypeAliasRegistry.get(short) ?? null;
+  }
+  return null;
+}
+
+function expandTypeAliasWithEnv(
+  base: string,
+  args: Type[],
+  typeParams: Map<string, Type>,
+  holeInfoByVar?: Map<number, HoleInfo>,
+  holeInfo?: HoleInfo,
+  defaultLocation?: Location,
+  aliasStack?: Set<string>
+): Type | null {
+  const alias = resolveTypeAliasInfo(base);
+  if (!alias) return null;
+  if (args.length !== alias.typeParams.length) return null;
+  const stack = aliasStack ?? new Set<string>();
+  const cycleKey = base.includes('::') ? (base.split('::').pop() ?? base) : base;
+  if (stack.has(cycleKey)) return null;
+  const nextStack = new Set(stack);
+  nextStack.add(cycleKey);
+  const aliasEnv = new Map<string, Type>(typeParams);
+  alias.typeParams.forEach((name, idx) => {
+    aliasEnv.set(name, args[idx] ?? freshTypeVar());
+  });
+  return parseTypeNameWithEnv(
+    alias.target,
+    aliasEnv,
+    holeInfoByVar,
+    holeInfo,
+    defaultLocation,
+    nextStack
+  );
+}
+
 function parseTypeName(
   typeName: LuminaTypeExpr,
   holeInfoByVar?: Map<number, HoleInfo>,
   holeInfo?: HoleInfo,
-  defaultLocation?: Location
+  defaultLocation?: Location,
+  aliasStack?: Set<string>
 ): Type {
   if (isTypeHoleExpr(typeName) || typeName === '_') {
     const variable = freshTypeVar();
@@ -3206,7 +3361,7 @@ function parseTypeName(
   if (typeof typeName !== 'string') {
     if ((typeName as { kind?: string }).kind === 'array') {
       const arr = typeName as import('./ast.js').LuminaArrayType;
-      const elemType = parseTypeName(arr.element, holeInfoByVar, holeInfo, defaultLocation);
+      const elemType = parseTypeName(arr.element, holeInfoByVar, holeInfo, defaultLocation, aliasStack);
       const sizeText = renderConstExpr(arr.size);
       return { kind: 'adt', name: 'Array', params: [elemType, { kind: 'adt', name: sizeText, params: [] }] };
     }
@@ -3240,11 +3395,31 @@ function parseTypeName(
   }
   const idx = typeName.indexOf('<');
   if (idx === -1) {
+    const aliasExpanded = expandTypeAliasWithEnv(
+      typeName,
+      [],
+      new Map<string, Type>(),
+      holeInfoByVar,
+      holeInfo,
+      defaultLocation,
+      aliasStack
+    );
+    if (aliasExpanded) return aliasExpanded;
     return { kind: 'adt', name: typeName, params: [] };
   }
   const base = typeName.slice(0, idx);
   const inner = typeName.slice(idx + 1, -1);
-  const args = splitTypeArgs(inner).map((arg) => parseTypeName(arg, holeInfoByVar, holeInfo, defaultLocation));
+  const args = splitTypeArgs(inner).map((arg) => parseTypeName(arg, holeInfoByVar, holeInfo, defaultLocation, aliasStack));
+  const aliasExpanded = expandTypeAliasWithEnv(
+    base,
+    args,
+    new Map<string, Type>(),
+    holeInfoByVar,
+    holeInfo,
+    defaultLocation,
+    aliasStack
+  );
+  if (aliasExpanded) return aliasExpanded;
   if (base === 'Fn' && args.length >= 1) {
     return {
       kind: 'function',
@@ -3361,6 +3536,32 @@ function splitTypeArgs(input: string): string[] {
   return result;
 }
 
+function withExistentialScope<T>(witnesses: ExistentialWitness[], fn: () => T): T {
+  if (witnesses.length === 0) return fn();
+  const previous = activeRigidExistentials;
+  const scoped = previous ? new Map(previous) : new Map<number, ExistentialWitness>();
+  for (const witness of witnesses) {
+    scoped.set(witness.id, witness);
+  }
+  activeRigidExistentials = scoped;
+  try {
+    return fn();
+  } finally {
+    activeRigidExistentials = previous;
+  }
+}
+
+function cloneSubst(subst: Subst): Subst {
+  return new Map<number, Type>(subst);
+}
+
+function restoreSubst(target: Subst, snapshot: Subst): void {
+  target.clear();
+  for (const [key, value] of snapshot.entries()) {
+    target.set(key, value);
+  }
+}
+
 function tryUnify(
   t1: Type,
   t2: Type,
@@ -3368,6 +3569,7 @@ function tryUnify(
   diagnostics: Diagnostic[],
   context?: { location?: Location; note?: string }
 ) {
+  const rigidSnapshot = activeRigidExistentials ? cloneSubst(subst) : null;
   try {
     let left = t1;
     let right = t2;
@@ -3395,6 +3597,32 @@ function tryUnify(
         ? (type: Type) => structTypeToRow(type, structRegistry, subst)
         : undefined;
     unify(left, right, subst, activeWrapperSet, trace, rowResolver);
+    if (activeRigidExistentials && activeRigidExistentials.size > 0) {
+      for (const [id, witness] of activeRigidExistentials.entries()) {
+        const resolved = prune({ kind: 'variable', id }, subst);
+        if (resolved.kind === 'variable' && resolved.id === id) continue;
+        const resolvedText = formatType(resolved, subst);
+        if (rigidSnapshot) {
+          restoreSubst(subst, rigidSnapshot);
+        }
+        diagnostics.push({
+          severity: 'error',
+          code: 'GADT-007',
+          message: `Existential type '${witness.name}' from '${witness.enumName}.${witness.variantName}' cannot unify with '${resolvedText}'`,
+          source: 'lumina',
+          location: diagLocation(context?.location ?? witness.location),
+          relatedInformation: witness.location
+            ? [
+                {
+                  location: diagLocation(witness.location),
+                  message: `Existential '${witness.name}' is introduced here`,
+                },
+              ]
+            : undefined,
+        });
+        return;
+      }
+    }
   } catch (err) {
     const isUnify = err instanceof UnificationError;
     const rawMessage = err instanceof Error ? err.message : 'Type mismatch';
@@ -3511,6 +3739,23 @@ function buildStructRegistry(program: LuminaProgram): Map<string, StructInfo> {
       fields.set(field.name, field.typeName);
     }
     registry.set(stmt.name, { typeParams, fields, derives: stmt.derives ?? [] });
+  }
+  return registry;
+}
+
+function buildTypeAliasRegistry(program: LuminaProgram): Map<string, TypeAliasInfo> {
+  const registry = new Map<string, TypeAliasInfo>();
+  for (const stmt of program.body) {
+    if (stmt.type !== 'TypeDecl') continue;
+    if (stmt.extern) continue;
+    if (!stmt.aliasType) continue;
+    const typeParams = (stmt.typeParams ?? [])
+      .filter((param) => !param.isConst)
+      .map((param) => param.name);
+    registry.set(stmt.name, {
+      typeParams,
+      target: stmt.aliasType,
+    });
   }
   return registry;
 }
@@ -3731,7 +3976,9 @@ function applyMatchPattern(
   }
   const instantiated = instantiateEnumVariantTypes(enumName, info, variantInfo);
   if (context) {
-    context.existentialWitnesses.push(...instantiated.existentialWitnesses);
+    context.existentialWitnesses.push(
+      ...instantiated.existentialWitnesses.map((witness) => ({ ...witness, scopeId: context.scopeId }))
+    );
   }
   tryUnify(scrutineeType, instantiated.resultType, subst, diagnostics, {
     location: pattern.location,
@@ -3751,6 +3998,77 @@ function applyMatchPattern(
     const expected = instantiated.variantParamTypes[i];
     env.extend(binding, { kind: 'scheme', variables: [], type: expected });
   }
+}
+
+function formatPatternForDiagnostic(pattern: LuminaMatchPattern): string {
+  switch (pattern.type) {
+    case 'WildcardPattern':
+      return '_';
+    case 'BindingPattern':
+      return pattern.name;
+    case 'LiteralPattern':
+      return typeof pattern.value === 'string' ? JSON.stringify(pattern.value) : String(pattern.value);
+    case 'TuplePattern':
+      return `(${pattern.elements.map((element) => formatPatternForDiagnostic(element)).join(', ')})`;
+    case 'StructPattern':
+      return `${pattern.name}{${pattern.fields
+        .map((field) => `${field.name}: ${formatPatternForDiagnostic(field.pattern)}`)
+        .join(', ')}}`;
+    case 'EnumPattern': {
+      const prefix = pattern.enumName ? `${pattern.enumName}.` : '';
+      const payload =
+        pattern.patterns && pattern.patterns.length > 0
+          ? pattern.patterns.map((nested) => formatPatternForDiagnostic(nested)).join(', ')
+          : pattern.bindings.join(', ');
+      return payload ? `${prefix}${pattern.variant}(${payload})` : `${prefix}${pattern.variant}`;
+    }
+    default:
+      return 'pattern';
+  }
+}
+
+function isPatternConstraintError(diag: Diagnostic): boolean {
+  if (diag.severity !== 'error') return false;
+  return diag.code === 'LUM-001' || diag.code === 'LUM-002';
+}
+
+function solvePatternRefinementDiagnostics(
+  pattern: LuminaMatchPattern,
+  patternDiagnostics: Diagnostic[],
+  location?: Location
+): PatternConstraintSolveResult {
+  const mismatch = patternDiagnostics.find((diag) => isPatternConstraintError(diag));
+  if (mismatch) {
+    const related: DiagnosticRelatedInformation[] = [...(mismatch.relatedInformation ?? [])];
+    related.push({
+      location: diagLocation(pattern.location ?? location),
+      message: 'Pattern constraints are unsatisfiable under branch-local type refinement',
+    });
+    const unreachable: Diagnostic = {
+      severity: 'warning',
+      code: 'LUM-004',
+      message: `Unreachable pattern '${formatPatternForDiagnostic(pattern)}': refinement constraints are unsatisfiable`,
+      source: 'lumina',
+      location: diagLocation(pattern.location ?? location),
+      relatedInformation: related,
+    };
+    const passThrough = patternDiagnostics.filter((diag) => !isPatternConstraintError(diag));
+    return {
+      reachable: false,
+      diagnostics: [unreachable, ...passThrough],
+    };
+  }
+  const hasHardError = patternDiagnostics.some((diag) => diag.severity === 'error');
+  if (hasHardError) {
+    return { reachable: false, diagnostics: patternDiagnostics };
+  }
+  const hasUnreachableWarning = patternDiagnostics.some(
+    (diag) => diag.severity === 'warning' && diag.code === 'LUM-004'
+  );
+  return {
+    reachable: !hasUnreachableWarning,
+    diagnostics: patternDiagnostics,
+  };
 }
 
 function reportEscapedExistentials(
@@ -3774,7 +4092,10 @@ function reportEscapedExistentials(
         ? [
             {
               location: diagLocation(witness.location),
-              message: `Existential '${witness.name}' is introduced here`,
+              message:
+                witness.scopeId != null
+                  ? `Existential '${witness.name}' is introduced here (arm scope #${witness.scopeId})`
+                  : `Existential '${witness.name}' is introduced here`,
             },
           ]
         : undefined,
@@ -3924,7 +4245,8 @@ function parseTypeNameWithEnv(
   typeParams: Map<string, Type>,
   holeInfoByVar?: Map<number, HoleInfo>,
   holeInfo?: HoleInfo,
-  defaultLocation?: Location
+  defaultLocation?: Location,
+  aliasStack?: Set<string>
 ): Type {
   if (isTypeHoleExpr(typeName) || typeName === '_') {
     const variable = freshTypeVar();
@@ -3937,7 +4259,7 @@ function parseTypeNameWithEnv(
   if (typeof typeName !== 'string') {
     if ((typeName as { kind?: string }).kind === 'array') {
       const arr = typeName as import('./ast.js').LuminaArrayType;
-      const elemType = parseTypeNameWithEnv(arr.element, typeParams, holeInfoByVar, holeInfo, defaultLocation);
+      const elemType = parseTypeNameWithEnv(arr.element, typeParams, holeInfoByVar, holeInfo, defaultLocation, aliasStack);
       const sizeText = renderConstExprWithTypeParams(arr.size, typeParams);
       return { kind: 'adt', name: 'Array', params: [elemType, { kind: 'adt', name: sizeText, params: [] }] };
     }
@@ -3949,14 +4271,34 @@ function parseTypeNameWithEnv(
   if (direct && baseIdx === -1) return direct;
   if (direct && baseIdx !== -1) {
     const inner = typeName.slice(baseIdx + 1, -1);
-    const args = splitTypeArgs(inner).map(arg => parseTypeNameWithEnv(arg, typeParams, holeInfoByVar, holeInfo, defaultLocation));
+    const args = splitTypeArgs(inner).map(arg => parseTypeNameWithEnv(arg, typeParams, holeInfoByVar, holeInfo, defaultLocation, aliasStack));
     return { kind: 'adt', name: HKT_APPLY_TYPE_NAME, params: [direct, ...args] };
   }
   if (baseIdx === -1) {
-    return parseTypeName(typeName, holeInfoByVar, holeInfo, defaultLocation);
+    const aliasExpanded = expandTypeAliasWithEnv(
+      typeName,
+      [],
+      typeParams,
+      holeInfoByVar,
+      holeInfo,
+      defaultLocation,
+      aliasStack
+    );
+    if (aliasExpanded) return aliasExpanded;
+    return parseTypeName(typeName, holeInfoByVar, holeInfo, defaultLocation, aliasStack);
   }
   const inner = typeName.slice(baseIdx + 1, -1);
-  const args = splitTypeArgs(inner).map(arg => parseTypeNameWithEnv(arg, typeParams, holeInfoByVar, holeInfo, defaultLocation));
+  const args = splitTypeArgs(inner).map(arg => parseTypeNameWithEnv(arg, typeParams, holeInfoByVar, holeInfo, defaultLocation, aliasStack));
+  const aliasExpanded = expandTypeAliasWithEnv(
+    base,
+    args,
+    typeParams,
+    holeInfoByVar,
+    holeInfo,
+    defaultLocation,
+    aliasStack
+  );
+  if (aliasExpanded) return aliasExpanded;
   if (base === 'Fn' && args.length >= 1) {
     return {
       kind: 'function',
@@ -4068,17 +4410,25 @@ function checkMatchExhaustiveness(
   if (!enumName) return;
   const info = enumRegistry.get(enumName);
   if (!info) return;
-  const defined = new Set<string>();
+  const reachableByVariant = new Map<string, VariantMatchCandidate>();
   for (const [variantName, variantInfo] of info.variants.entries()) {
-    if (variantCanMatchScrutinee(enumName, info, variantInfo, scrutineeType, subst)) {
-      defined.add(variantName);
+    const candidate = instantiateVariantForScrutinee(enumName, info, variantName, variantInfo, scrutineeType, subst);
+    if (candidate) {
+      reachableByVariant.set(variantName, candidate);
     }
   }
-  if (defined.size === 0) {
-    for (const variantName of info.variants.keys()) {
-      defined.add(variantName);
+  if (reachableByVariant.size === 0) {
+    for (const [variantName, variantInfo] of info.variants.entries()) {
+      const fallback = instantiateEnumVariantTypes(enumName, info, variantInfo);
+      reachableByVariant.set(variantName, {
+        variantName,
+        variantInfo,
+        resultType: fallback.resultType,
+        paramTypes: fallback.variantParamTypes,
+      });
     }
   }
+  const reachable = new Set<string>(reachableByVariant.keys());
   const covered = new Set<string>();
   let fullyCovered = false;
   for (const arm of arms) {
@@ -4103,7 +4453,28 @@ function checkMatchExhaustiveness(
     }
     if (pattern.type === 'EnumPattern') {
       if (pattern.enumName && pattern.enumName !== enumName) continue;
-      if (!defined.has(pattern.variant)) {
+      if (!reachable.has(pattern.variant)) {
+        const variantInfo = info.variants.get(pattern.variant);
+        const related: DiagnosticRelatedInformation[] = [
+          {
+            location: diagLocation(pattern.location ?? armLoc),
+            message: `Scrutinee type is constrained to '${formatType(scrutineeType, subst)}'`,
+          },
+        ];
+        if (variantInfo?.resultType) {
+          related.push({
+            location: diagLocation(variantInfo.location ?? pattern.location ?? armLoc),
+            message: `Variant '${enumName}.${pattern.variant}' constructs '${formatType(parseTypeName(variantInfo.resultType), subst)}'`,
+          });
+        }
+        diagnostics.push({
+          severity: 'warning',
+          code: 'LUM-004',
+          message: `Unreachable pattern '${enumName}.${pattern.variant}': excluded by type-index constraints`,
+          source: 'lumina',
+          location: diagLocation(armLoc),
+          relatedInformation: related,
+        });
         continue;
       }
       if (guardless && covered.has(pattern.variant)) {
@@ -4122,14 +4493,41 @@ function checkMatchExhaustiveness(
     }
   }
   if (fullyCovered) return;
-  const missing = Array.from(defined).filter(name => !covered.has(name));
+  const missing = Array.from(reachable).filter(name => !covered.has(name));
   if (missing.length === 0) return;
+  const suggestions = missing.map((name) => {
+    const candidate = reachableByVariant.get(name);
+    return candidate ? renderVariantPatternSuggestion(enumName, candidate, subst) : `${enumName}.${name}`;
+  });
+  const related: DiagnosticRelatedInformation[] = [
+    {
+      location: diagLocation(location),
+      message: `Scrutinee constrained type: ${formatType(scrutineeType, subst)}`,
+    },
+    {
+      location: diagLocation(location),
+      message: `Covered variants: ${Array.from(covered).join(', ') || 'none'}`,
+    },
+    {
+      location: diagLocation(location),
+      message: `Suggested missing pattern${suggestions.length === 1 ? '' : 's'}: ${suggestions.join(', ')}`,
+    },
+  ];
+  for (const missingName of missing) {
+    const candidate = reachableByVariant.get(missingName);
+    if (!candidate) continue;
+    related.push({
+      location: diagLocation(candidate.variantInfo.location ?? location),
+      message: `${enumName}.${missingName} constructs '${formatType(candidate.resultType, subst)}'`,
+    });
+  }
   diagnostics.push({
     severity: 'error',
     code: 'LUM-003',
-    message: `Non-exhaustive match. Missing cases: ${missing.join(', ')}`,
+    message: `Non-exhaustive match for '${formatType(scrutineeType, subst)}'. Missing pattern${missing.length === 1 ? '' : 's'}: ${suggestions.join(', ')}`,
     source: 'lumina',
     location: diagLocation(location),
+    relatedInformation: related,
   });
 }
 
@@ -4140,14 +4538,42 @@ function variantCanMatchScrutinee(
   scrutineeType: Type,
   subst: Subst
 ): boolean {
+  return instantiateVariantForScrutinee(enumName, info, variant.name, variant, scrutineeType, subst) !== null;
+}
+
+function instantiateVariantForScrutinee(
+  enumName: string,
+  info: EnumInfo,
+  variantName: string,
+  variant: EnumVariantInfo,
+  scrutineeType: Type,
+  subst: Subst
+): VariantMatchCandidate | null {
   const instantiated = instantiateEnumVariantTypes(enumName, info, variant);
   const trialSubst = new Map<number, Type>(subst);
   try {
     unify(instantiated.resultType, scrutineeType, trialSubst, activeWrapperSet);
-    return true;
+    const resultType = normalizeType(instantiated.resultType, trialSubst);
+    const paramTypes = instantiated.variantParamTypes.map((param) => normalizeType(param, trialSubst));
+    return {
+      variantName,
+      variantInfo: variant,
+      resultType,
+      paramTypes,
+    };
   } catch {
-    return false;
+    return null;
   }
+}
+
+function renderVariantPatternSuggestion(enumName: string, candidate: VariantMatchCandidate, subst: Subst): string {
+  if (candidate.paramTypes.length === 0) {
+    return `${enumName}.${candidate.variantName}`;
+  }
+  const placeholders = candidate.paramTypes
+    .map((param, index) => `_${index + 1}/*${formatType(param, subst)}*/`)
+    .join(', ');
+  return `${enumName}.${candidate.variantName}(${placeholders})`;
 }
 
 function checkStructRecursion(

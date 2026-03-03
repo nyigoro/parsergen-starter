@@ -3740,14 +3740,20 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const t = freshTypeVar();
     const u = freshTypeVar();
     const e = freshTypeVar();
+    const k = freshTypeVar();
     const fnTU = fnType([t], u);
 
     const pureOptionType: Type = fnType([t], adt('Option', [t]));
     const pureResultType: Type = fnType([t], adt('Result', [t, e]));
     const pureVecType: Type = fnType([t], adt('Vec', [t]));
+    const pureHashMapType: Type = fnType([k, t], adt('HashMap', [k, t]));
     const apOptionType: Type = fnType([adt('Option', [fnTU]), adt('Option', [t])], adt('Option', [u]));
     const apResultType: Type = fnType([adt('Result', [fnTU, e]), adt('Result', [t, e])], adt('Result', [u, e]));
     const apVecType: Type = fnType([adt('Vec', [fnTU]), adt('Vec', [t])], adt('Vec', [u]));
+    const apHashMapValuesType: Type = fnType(
+      [adt('HashMap', [k, fnTU]), adt('HashMap', [k, t])],
+      adt('HashMap', [k, u])
+    );
 
     return {
       kind: 'module',
@@ -3788,6 +3794,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
+          'pure_hashmap',
+          moduleFunctionWithScheme(
+            'pure_hashmap',
+            ['any', 'any'],
+            'HashMap<any,any>',
+            schemeFromVars(pureHashMapType, [k, t]),
+            ['key', 'value'],
+            'std://applicative'
+          ),
+        ],
+        [
           'ap_option',
           moduleFunctionWithScheme(
             'ap_option',
@@ -3820,6 +3837,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'std://applicative'
           ),
         ],
+        [
+          'ap_hashmap_values',
+          moduleFunctionWithScheme(
+            'ap_hashmap_values',
+            ['HashMap<any,any>', 'HashMap<any,any>'],
+            'HashMap<any,any>',
+            schemeFromVars(apHashMapValuesType, [k, t, u]),
+            ['fns', 'values'],
+            'std://applicative'
+          ),
+        ],
       ]),
     };
   })();
@@ -3828,6 +3856,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const t = freshTypeVar();
     const u = freshTypeVar();
     const e = freshTypeVar();
+    const k = freshTypeVar();
 
     const flatMapOptionType: Type = fnType(
       [adt('Option', [t]), fnType([t], adt('Option', [u]))],
@@ -3838,9 +3867,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
       adt('Result', [u, e])
     );
     const flatMapVecType: Type = fnType([adt('Vec', [t]), fnType([t], adt('Vec', [u]))], adt('Vec', [u]));
+    const flatMapHashMapValuesType: Type = fnType(
+      [adt('HashMap', [k, t]), fnType([t], adt('HashMap', [k, u]))],
+      adt('HashMap', [k, u])
+    );
     const joinOptionType: Type = fnType([adt('Option', [adt('Option', [t])])], adt('Option', [t]));
     const joinResultType: Type = fnType([adt('Result', [adt('Result', [t, e]), e])], adt('Result', [t, e]));
     const joinVecType: Type = fnType([adt('Vec', [adt('Vec', [t])])], adt('Vec', [t]));
+    const joinHashMapValuesType: Type = fnType(
+      [adt('HashMap', [k, adt('HashMap', [k, t])])],
+      adt('HashMap', [k, t])
+    );
 
     return {
       kind: 'module',
@@ -3881,6 +3918,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
+          'flat_map_hashmap_values',
+          moduleFunctionWithScheme(
+            'flat_map_hashmap_values',
+            ['HashMap<any,any>', 'any'],
+            'HashMap<any,any>',
+            schemeFromVars(flatMapHashMapValuesType, [k, t, u]),
+            ['values', 'mapper'],
+            'std://monad'
+          ),
+        ],
+        [
           'join_option',
           moduleFunctionWithScheme(
             'join_option',
@@ -3909,6 +3957,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
             ['Vec<Vec<any>>'],
             'Vec<any>',
             schemeFromVars(joinVecType, [t]),
+            ['values'],
+            'std://monad'
+          ),
+        ],
+        [
+          'join_hashmap_values',
+          moduleFunctionWithScheme(
+            'join_hashmap_values',
+            ['HashMap<any,HashMap<any,any>>'],
+            'HashMap<any,any>',
+            schemeFromVars(joinHashMapValuesType, [k, t]),
             ['values'],
             'std://monad'
           ),

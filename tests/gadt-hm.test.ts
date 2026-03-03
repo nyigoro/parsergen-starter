@@ -118,6 +118,55 @@ describe('GADT HM inference', () => {
     const ast = parser.parse(program) as { type: string };
     const result = inferProgram(ast as never);
     expect(result.diagnostics.some((diag) => diag.code === 'GADT-006')).toBe(true);
+    const escape = result.diagnostics.find((diag) => diag.code === 'GADT-006');
+    const related = escape?.relatedInformation?.map((item) => item.message).join(' ') ?? '';
+    expect(related).toContain('arm scope #');
+  });
+
+  test('rejects coercing existential payload to a concrete type', () => {
+    const program = `
+      trait Show {
+        fn show(self: Self) -> string;
+      }
+
+      enum ShowBox {
+        Box exists <T>(T): ShowBox where T: Show
+      }
+
+      fn force_i32(box: ShowBox) -> i32 {
+        let n: i32 = match box {
+          ShowBox.Box(v) => v
+        };
+        n
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.some((diag) => diag.code === 'GADT-007')).toBe(true);
+  });
+
+  test('rejects unifying distinct existential payloads in tuple matches', () => {
+    const program = `
+      trait Show {
+        fn show(self: Self) -> string;
+      }
+
+      enum ShowBox {
+        Box exists <T>(T): ShowBox where T: Show
+      }
+
+      fn compare(a: ShowBox, b: ShowBox) -> bool {
+        match (a, b) {
+          (ShowBox.Box(x), ShowBox.Box(y)) => x == y,
+          _ => false
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    expect(result.diagnostics.some((diag) => diag.code === 'GADT-007')).toBe(true);
   });
 
   test('supports tuple multi-pattern refinement for matching indices', () => {
@@ -181,5 +230,76 @@ describe('GADT HM inference', () => {
     const ast = parser.parse(program) as { type: string };
     const result = inferProgram(ast as never);
     expect(result.diagnostics.some((diag) => diag.code === 'LUM-001')).toBe(false);
+  });
+
+  test('reports indexed missing-pattern suggestions with constrained types', () => {
+    const program = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>,
+        Bool(bool): Expr<bool>
+      }
+
+      fn main(e: Expr<i32>) -> i32 {
+        match e {
+          Expr.Bool(b) => { return 0; }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const exhaustiveness = result.diagnostics.find((diag) => diag.code === 'LUM-003');
+    expect(exhaustiveness).toBeDefined();
+    expect(exhaustiveness?.message).toContain('Expr.Lit');
+    expect(exhaustiveness?.message).not.toContain('Expr.Bool');
+    const related = (exhaustiveness?.relatedInformation ?? []).map((item) => item.message).join(' ');
+    expect(related).toContain('Scrutinee constrained type');
+    expect(related).toContain('Suggested missing pattern');
+  });
+
+  test('flags unreachable arms after wildcard coverage', () => {
+    const program = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>,
+        Bool(bool): Expr<bool>
+      }
+
+      fn main(e: Expr<i32>) -> i32 {
+        match e {
+          _ => { return 0; },
+          Expr.Lit(n) => { return n; }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const unreachable = result.diagnostics.find((diag) => diag.code === 'LUM-004');
+    expect(unreachable).toBeDefined();
+    expect(unreachable?.message).toContain('previous patterns already cover all remaining cases');
+  });
+
+  test('uses index constraints when describing unreachable constructor arms', () => {
+    const program = `
+      enum Expr<T> {
+        Lit(i32): Expr<i32>,
+        Bool(bool): Expr<bool>
+      }
+
+      fn main(e: Expr<i32>) -> i32 {
+        match e {
+          Expr.Bool(b) => { return 0; },
+          Expr.Lit(n) => { return n; }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as { type: string };
+    const result = inferProgram(ast as never);
+    const unreachable = result.diagnostics.find((diag) => diag.code === 'LUM-004');
+    expect(unreachable).toBeDefined();
+    expect(unreachable?.message).toContain('type index');
+    const related = (unreachable?.relatedInformation ?? []).map((item) => item.message).join(' ');
+    expect(related).toContain('Scrutinee is constrained');
   });
 });
