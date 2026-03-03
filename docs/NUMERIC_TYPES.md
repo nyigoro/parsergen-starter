@@ -10,8 +10,8 @@ Lumina provides industry-standard numeric types with explicit sizes.
 | `i8` | 8-bit | -128 to 127 | i32 |
 | `i16` | 16-bit | -32,768 to 32,767 | i32 |
 | `i32` | 32-bit | -2^31 to 2^31-1 | i32 |
-| `i64` | 64-bit | -2^63 to 2^63-1 | Planned |
-| `i128` | 128-bit | -2^127 to 2^127-1 | Planned |
+| `i64` | 64-bit | -2^63 to 2^63-1 | i64 |
+| `i128` | 128-bit | -2^127 to 2^127-1 | i64-lowered |
 
 ### Unsigned Integers
 | Type | Size | Range | WASM Support |
@@ -19,8 +19,8 @@ Lumina provides industry-standard numeric types with explicit sizes.
 | `u8` | 8-bit | 0 to 255 | i32 |
 | `u16` | 16-bit | 0 to 65,535 | i32 |
 | `u32` | 32-bit | 0 to 2^32-1 | i32 |
-| `u64` | 64-bit | 0 to 2^64-1 | Planned |
-| `u128` | 128-bit | 0 to 2^128-1 | Planned |
+| `u64` | 64-bit | 0 to 2^64-1 | i64 |
+| `u128` | 128-bit | 0 to 2^128-1 | i64-lowered |
 
 ### Floating Point
 | Type | Size | Precision | WASM Support |
@@ -85,13 +85,12 @@ let c = (a as f64) + b;
 
 Currently supported in the WASM backend:
 - `i32` -> native WASM i32
+- `i64` / `u64` -> native WASM i64
 - `f64` -> native WASM f64
 - `f32` -> lowered to f64 (temporary)
-- Other integer sizes emit diagnostics and are treated as i32
+- `i128` / `u128` -> lowered to i64 path in this backend
 
 Planned:
-- `i64` support
-- Proper unsigned arithmetic
 - 128-bit integer emulation
 
 ## Explicit Conversions

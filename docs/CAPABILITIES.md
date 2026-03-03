@@ -31,7 +31,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | `#[derive(...)]` | Stable | Trait-based derived impl synthesis (`Clone`, `Debug`, `Eq`) for structs/enums, generic bound synthesis, collision diagnostics |
 | Const generics | Stable | Const params across structs/enums/functions/traits, where-clauses, explicit const args (`::<...>`), semantic + HM checks, monomorphization, JS/WASM fixed-array codegen |
 | GADTs (baseline) | Beta | Indexed variants + existential constraints, branch refinement, unreachable/index-aware diagnostics, existential escape checks |
-| Higher-kinded types (MVP+) | Beta | Arity/kind validation (`HKT-001`), partial constructors (`Result<_, E>`), user-defined constructors in HKT positions |
+| Higher-kinded types (MVP+) | Beta | Kind polymorphism + higher-order kind inference + constraint solving (`HKT-001`), partial/curried constructors (`Result<_, E>`, `Result<i32>`), constructor aliases/composition (`type Compose<F<_>, G<_>, A> = F<G<A>>`), `where` constructor bounds, associated-type arity (`type Wrapped<_>;`) |
 
 ## Type System (HM)
 | Feature | Status | Notes |
@@ -66,6 +66,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 |---|---|---|
 | Prelude enums (Option/Result) | Stable | Registry + prelude |
 | Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list`, `vec`, `hashmap`, `hashset`, `fs`, `http`, `time`, `regex`, `crypto` |
+| HKT stdlib traits | Stable | `@std/functor`, `@std/applicative`, `@std/monad` + Option/Result/Vec/HashMap helpers |
 | Frontend/reactivity primitives | Beta | `@std/reactive` + `@std/render` (`Signal`, `Memo`, `Effect`, `VNode`, renderer contract + DOM/SSR/Canvas/Terminal renderers) |
 | Runtime Option/Result | Stable | JS runtime + helpers |
 | Async I/O | Stable | `io.readLineAsync()` |
@@ -79,7 +80,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 |---|---|---|
 | AST lowering | Beta | Used by transpiler |
 | JS codegen | Stable | Match lowering + IIFE + source map support |
-| WASM codegen | Beta | ~100x faster for recursion in benchmarks |
+| WASM codegen | Beta | Broad JS parity, async/select lowering via promise handles, ~100x faster recursion in benchmarks |
 | IR optimization (SSA) | Stable | Functionâ€‘scoped SSA + loopâ€‘safe constant propagation |
 | Source maps | Stable | External + inline options |
 | Multiâ€‘file module compilation | Stable | Import resolution via bundling (topological compile planned) |
@@ -115,7 +116,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 - [x] Trait method dispatch in WASM
 - [x] Closures/lambdas in WASM
 - [x] Error handling (`?` operator)
-- [x] Async/await support (clear "not supported" diagnostics path via `WASM-ASYNC-001`)
+- [x] Async/await + select support (lowered through WASM promise-handle runtime imports)
 
 ### 1.2 Collections in WASM (Priority: P0)
 - [x] Vec operations (push, get, len, pop, clear, take, skip)
@@ -128,8 +129,8 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 - [x] If/else statements
 - [x] While loops
 - [x] For loops (range loops)
-- [ ] Match expressions with all patterns (currently enum/literal/wildcard/binding patterns)
-- [ ] Break/continue (not yet available in language syntax)
+- [x] Match expressions with all patterns (enum/literal/wildcard/binding/tuple/struct)
+- [x] Break/continue (available in language syntax + JS/WASM lowering)
 - [x] Return from nested contexts
 
 ### 1.4 Memory Management (Priority: P1)

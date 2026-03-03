@@ -124,11 +124,9 @@ const controlFlowCases: CaseSpec[] = [
     snippets: ['(func $main'],
   },
   {
-    name: 'unsupported async has clear diagnostic',
+    name: 'async await lowered via promise imports',
     source: 'async fn main() -> i32 { let x = await work(); x } async fn work() -> i32 { 1 }',
-    snippets: ['(export "main" (func $main))'],
-    allowErrorCodes: ['WASM-ASYNC-001'],
-    requiredErrorCodes: ['WASM-ASYNC-001'],
+    snippets: ['(import "env" "promise_await_i32"', '(import "env" "promise_resolve_i32"'],
   },
 ];
 

@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import fs from 'node:fs';
+import * as lumina from './lumina-runtime';
 
 export interface WASMRuntime {
   instance: WebAssembly.Instance;
@@ -11,6 +12,7 @@ type WasmEnvFns = {
   print_float: (n: number) => void;
   print_bool: (b: number) => void;
   print_string: (handle: number) => void;
+  print_i64: (n: bigint | number) => void;
   abs_int: (n: number) => number;
   abs_float: (n: number) => number;
   str_new: (ptr: number, len: number) => number;
@@ -19,9 +21,34 @@ type WasmEnvFns = {
   str_slice: (value: number, start: number, end: number, inclusive: number) => number;
   str_eq: (left: number, right: number) => number;
   str_from_int: (value: number) => number;
+  str_from_i64: (value: bigint | number) => number;
+  str_from_u64: (value: bigint | number) => number;
   str_from_float: (value: number) => number;
   str_from_bool: (value: number) => number;
   str_from_handle: (value: number) => number;
+  promise_resolve_i32: (value: number) => number;
+  promise_resolve_i64: (value: bigint | number) => number;
+  promise_resolve_f64: (value: number) => number;
+  promise_await_i32: (handle: number) => number;
+  promise_await_i64: (handle: number) => bigint;
+  promise_await_f64: (handle: number) => number;
+  promise_is_ready: (handle: number) => number;
+  promise_select_first_ready: (ptr: number, count: number) => number;
+  module_call0: (namespaceHandle: number, calleeHandle: number) => number;
+  module_call1: (namespaceHandle: number, calleeHandle: number, arg0: number) => number;
+  module_call2: (namespaceHandle: number, calleeHandle: number, arg0: number, arg1: number) => number;
+  module_call3: (namespaceHandle: number, calleeHandle: number, arg0: number, arg1: number, arg2: number) => number;
+  module_call4: (namespaceHandle: number, calleeHandle: number, arg0: number, arg1: number, arg2: number, arg3: number) => number;
+  module_call5: (
+    namespaceHandle: number,
+    calleeHandle: number,
+    arg0: number,
+    arg1: number,
+    arg2: number,
+    arg3: number,
+    arg4: number
+  ) => number;
+  module_call_ptr: (namespaceHandle: number, calleeHandle: number, argsPtr: number, argCount: number) => number;
   mem_retain: (ptr: number) => void;
   mem_release: (ptr: number) => void;
   mem_stats_live: () => number;
@@ -84,6 +111,12 @@ let nextWasmChannelId = 1;
 const wasmStringFallbackPool = new Map<number, string>();
 let nextWasmStringFallbackHandle = 1;
 const wasmHeapRefCounts = new Map<number, number>();
+type WasmPromiseEntry = {
+  settled: boolean;
+  value: unknown;
+};
+const wasmPromisePool = new Map<number, WasmPromiseEntry>();
+let nextWasmPromiseId = 1;
 let activeWasmMemory: WebAssembly.Memory | undefined;
 let activeWasmInstance: WebAssembly.Instance | undefined;
 const utf8Decoder = new TextDecoder();
@@ -282,6 +315,129 @@ const normalizeI32 = (value: unknown): number => {
   return Number(value) | 0;
 };
 
+const normalizeI64 = (value: unknown): bigint => {
+  if (typeof value === 'bigint') return BigInt.asIntN(64, value);
+  if (typeof value === 'number') return BigInt.asIntN(64, BigInt(Math.trunc(value)));
+  if (typeof value === 'string') {
+    try {
+      return BigInt.asIntN(64, BigInt(value));
+    } catch {
+      return 0n;
+    }
+  }
+  return 0n;
+};
+
+const isStringHandle = (value: number): boolean => {
+  const handle = Math.trunc(value);
+  if (wasmStringFallbackPool.has(handle)) return true;
+  const memory = activeWasmMemory;
+  if (!memory || handle <= 0) return false;
+  if (handle + 4 > memory.buffer.byteLength) return false;
+  const view = new DataView(memory.buffer);
+  const len = view.getInt32(handle, true);
+  return len >= 0 && handle + 4 + len <= memory.buffer.byteLength;
+};
+
+const decodeHostArg = (raw: number): unknown => {
+  const value = normalizeI32(raw);
+  if (isStringHandle(value)) return getWasmString(value);
+  return value;
+};
+
+const encodeHostValueAsI32 = (value: unknown): number => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return normalizeI32(value);
+  if (typeof value === 'bigint') return normalizeI32(value);
+  if (typeof value === 'string') return allocateManagedString(value);
+  return 0;
+};
+
+const promiseEntry = (id: number): WasmPromiseEntry | null => {
+  if (!Number.isFinite(id)) return null;
+  return wasmPromisePool.get(Math.trunc(id)) ?? null;
+};
+
+const registerPromise = (input: unknown): number => {
+  const id = nextWasmPromiseId++;
+  const entry: WasmPromiseEntry = { settled: false, value: undefined };
+  wasmPromisePool.set(id, entry);
+  Promise.resolve(input)
+    .then((value) => {
+      entry.value = value;
+      entry.settled = true;
+    })
+    .catch(() => {
+      entry.value = 0;
+      entry.settled = true;
+    });
+  return id;
+};
+
+const resolveModuleNamespace = (name: string): Record<string, unknown> | null => {
+  const key = name.trim();
+  switch (key) {
+    case 'io':
+      return lumina.io as unknown as Record<string, unknown>;
+    case 'str':
+    case 'string':
+      return lumina.str as unknown as Record<string, unknown>;
+    case 'math':
+      return lumina.math as unknown as Record<string, unknown>;
+    case 'fs':
+      return lumina.fs as unknown as Record<string, unknown>;
+    case 'path':
+      return lumina.path as unknown as Record<string, unknown>;
+    case 'env':
+      return lumina.env as unknown as Record<string, unknown>;
+    case 'process':
+      return lumina.process as unknown as Record<string, unknown>;
+    case 'json':
+      return lumina.json as unknown as Record<string, unknown>;
+    case 'http':
+      return lumina.http as unknown as Record<string, unknown>;
+    case 'time':
+      return lumina.time as unknown as Record<string, unknown>;
+    case 'regex':
+      return lumina.regex as unknown as Record<string, unknown>;
+    case 'crypto':
+      return lumina.crypto as unknown as Record<string, unknown>;
+    case 'list':
+      return lumina.list as unknown as Record<string, unknown>;
+    case 'render':
+      return lumina.render as unknown as Record<string, unknown>;
+    case 'reactive':
+      return lumina.reactive as unknown as Record<string, unknown>;
+    case 'channel':
+      return lumina.channel as unknown as Record<string, unknown>;
+    case 'thread':
+      return lumina.thread as unknown as Record<string, unknown>;
+    default:
+      return null;
+  }
+};
+
+const callModuleFunction = (namespaceHandle: number, calleeHandle: number, args: number[]): number => {
+  const namespace = getWasmString(namespaceHandle);
+  const callee = getWasmString(calleeHandle);
+  if (!namespace || !callee) return 0;
+  const target = resolveModuleNamespace(namespace);
+  if (!target) return 0;
+  const fn = target[callee];
+  if (typeof fn !== 'function') return 0;
+  const decoded = args.map((arg) => decodeHostArg(arg));
+  try {
+    const result = (fn as (...params: unknown[]) => unknown)(...decoded);
+    if (result && typeof (result as Promise<unknown>).then === 'function') {
+      return registerPromise(result);
+    }
+    return encodeHostValueAsI32(result);
+  } catch {
+    return 0;
+  }
+};
+
 const closeAndDeleteIfComplete = (id: number): void => {
   const entry = wasmChannels.get(id);
   if (!entry) return;
@@ -301,6 +457,7 @@ const defaultEnv: WasmEnvFns = {
   print_float: (n: number) => console.log(n),
   print_bool: (b: number) => console.log(b === 1 ? 'true' : 'false'),
   print_string: (handle: number) => console.log(getWasmString(handle)),
+  print_i64: (n: bigint | number) => console.log(normalizeI64(n).toString()),
   abs_int: (n: number) => Math.abs(n | 0),
   abs_float: (n: number) => Math.abs(n),
   str_new: (ptr: number, len: number) => {
@@ -319,6 +476,8 @@ const defaultEnv: WasmEnvFns = {
   },
   str_eq: (left: number, right: number) => (getWasmString(left) === getWasmString(right) ? 1 : 0),
   str_from_int: (value: number) => allocateManagedString(String(value | 0)),
+  str_from_i64: (value: bigint | number) => allocateManagedString(normalizeI64(value).toString()),
+  str_from_u64: (value: bigint | number) => allocateManagedString(BigInt.asUintN(64, normalizeI64(value)).toString()),
   str_from_float: (value: number) => allocateManagedString(String(value)),
   str_from_bool: (value: number) => allocateManagedString(value ? 'true' : 'false'),
   str_from_handle: (value: number) => {
@@ -326,6 +485,100 @@ const defaultEnv: WasmEnvFns = {
     const asString = getWasmString(key);
     if (asString.length > 0 || wasmStringFallbackPool.has(key)) return key | 0;
     return allocateManagedString(String(value | 0));
+  },
+  promise_resolve_i32: (value: number) => {
+    const id = nextWasmPromiseId++;
+    wasmPromisePool.set(id, { settled: true, value: normalizeI32(value) });
+    return id;
+  },
+  promise_resolve_i64: (value: bigint | number) => {
+    const id = nextWasmPromiseId++;
+    wasmPromisePool.set(id, { settled: true, value: normalizeI64(value) });
+    return id;
+  },
+  promise_resolve_f64: (value: number) => {
+    const id = nextWasmPromiseId++;
+    wasmPromisePool.set(id, { settled: true, value: Number(value) });
+    return id;
+  },
+  promise_await_i32: (handle: number) => {
+    const entry = promiseEntry(handle);
+    if (!entry || !entry.settled) return 0;
+    return encodeHostValueAsI32(entry.value);
+  },
+  promise_await_i64: (handle: number) => {
+    const entry = promiseEntry(handle);
+    if (!entry || !entry.settled) return 0n;
+    return normalizeI64(entry.value);
+  },
+  promise_await_f64: (handle: number) => {
+    const entry = promiseEntry(handle);
+    if (!entry || !entry.settled) return 0;
+    if (typeof entry.value === 'number') return entry.value;
+    if (typeof entry.value === 'bigint') return Number(entry.value);
+    if (typeof entry.value === 'string') {
+      const parsed = Number(entry.value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  },
+  promise_is_ready: (handle: number) => {
+    const entry = promiseEntry(handle);
+    return entry?.settled ? 1 : 0;
+  },
+  promise_select_first_ready: (ptr: number, count: number) => {
+    const total = Math.max(0, Math.trunc(count));
+    if (total === 0) return 0;
+    const memory = activeWasmMemory;
+    if (!memory) return 0;
+    const view = new DataView(memory.buffer);
+    const start = Math.max(0, Math.trunc(ptr));
+    for (let i = 0; i < total; i += 1) {
+      const at = start + i * 4;
+      if (at + 4 > view.byteLength) break;
+      const handle = view.getInt32(at, true);
+      const entry = promiseEntry(handle);
+      if (entry?.settled) return i | 0;
+    }
+    return 0;
+  },
+  module_call0: (namespaceHandle: number, calleeHandle: number) => callModuleFunction(namespaceHandle, calleeHandle, []),
+  module_call1: (namespaceHandle: number, calleeHandle: number, arg0: number) =>
+    callModuleFunction(namespaceHandle, calleeHandle, [arg0]),
+  module_call2: (namespaceHandle: number, calleeHandle: number, arg0: number, arg1: number) =>
+    callModuleFunction(namespaceHandle, calleeHandle, [arg0, arg1]),
+  module_call3: (namespaceHandle: number, calleeHandle: number, arg0: number, arg1: number, arg2: number) =>
+    callModuleFunction(namespaceHandle, calleeHandle, [arg0, arg1, arg2]),
+  module_call4: (
+    namespaceHandle: number,
+    calleeHandle: number,
+    arg0: number,
+    arg1: number,
+    arg2: number,
+    arg3: number
+  ) => callModuleFunction(namespaceHandle, calleeHandle, [arg0, arg1, arg2, arg3]),
+  module_call5: (
+    namespaceHandle: number,
+    calleeHandle: number,
+    arg0: number,
+    arg1: number,
+    arg2: number,
+    arg3: number,
+    arg4: number
+  ) => callModuleFunction(namespaceHandle, calleeHandle, [arg0, arg1, arg2, arg3, arg4]),
+  module_call_ptr: (namespaceHandle: number, calleeHandle: number, argsPtr: number, argCount: number) => {
+    const memory = activeWasmMemory;
+    if (!memory) return 0;
+    const count = Math.max(0, Math.trunc(argCount));
+    const base = Math.max(0, Math.trunc(argsPtr));
+    const view = new DataView(memory.buffer);
+    const args: number[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const at = base + i * 4;
+      if (at + 4 > view.byteLength) break;
+      args.push(view.getInt32(at, true));
+    }
+    return callModuleFunction(namespaceHandle, calleeHandle, args);
   },
   mem_retain: (ptr: number) => {
     retainManagedPtr(ptr);
@@ -600,6 +853,8 @@ export async function loadWASM(
   nextWasmStringFallbackHandle = 1;
   wasmChannels.clear();
   nextWasmChannelId = 1;
+  wasmPromisePool.clear();
+  nextWasmPromiseId = 1;
   activeWasmInstance = instance;
   activeWasmMemory = memory;
   return { instance, memory };

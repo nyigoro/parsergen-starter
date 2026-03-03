@@ -201,7 +201,7 @@ describe('WASM codegen (WAT)', () => {
     expect(result.wat).toContain('return');
   });
 
-  it('reports clear async/await diagnostics for unsupported WASM async runtime path', () => {
+  it('lowers async/await through wasm promise-handle runtime imports', () => {
     const source = `
       async fn main() -> int {
         let v = await compute();
@@ -215,7 +215,10 @@ describe('WASM codegen (WAT)', () => {
 
     const ast = parseProgram(source);
     const result = generateWATFromAst(ast, { exportMain: true });
-    expect(result.diagnostics.some((d) => d.code === 'WASM-ASYNC-001')).toBe(true);
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('(import "env" "promise_await_i32"');
+    expect(result.wat).toContain('(import "env" "promise_resolve_i32"');
   });
 
   it('supports lambda closures with captured locals', () => {
@@ -229,11 +232,100 @@ describe('WASM codegen (WAT)', () => {
 
     const ast = parseProgram(source);
     const result = generateWATFromAst(ast, { exportMain: true });
-    const hardErrors = result.diagnostics.filter((d) => d.severity === 'error' && d.code !== 'WASM-ASYNC-001');
+    const hardErrors = result.diagnostics.filter((d) => d.severity === 'error');
     expect(hardErrors).toHaveLength(0);
     expect(result.wat).toContain('(func $__lambda_');
     expect(result.wat).toContain('call $__lambda_');
     expect(result.diagnostics.some((d) => d.code === 'WASM-CLOSURE-001')).toBe(false);
+  });
+
+  it('supports i64 arithmetic without fallback diagnostics', () => {
+    const source = `
+      fn main() -> i64 {
+        let a: i64 = 2i64;
+        let b: i64 = 3i64;
+        return a * b + 1i64;
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('i64.mul');
+    expect(result.wat).toContain('i64.add');
+  });
+
+  it('lowers select expressions via promise select runtime import', () => {
+    const source = `
+      async fn work(url: string) -> string {
+        return url;
+      }
+
+      async fn main() -> string {
+        return select! {
+          first = work("a") => first,
+          _ = work("b") => "b"
+        };
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('(import "env" "promise_select_first_ready"');
+    expect(result.wat).toContain('call $promise_select_first_ready');
+  });
+
+  it('supports guarded match lowering without unsupported diagnostics', () => {
+    const source = `
+      fn main() -> i32 {
+        let x = 2;
+        return match x {
+          n if n > 1 => n,
+          _ => 0
+        };
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('(if (result i32)');
+  });
+
+  it('routes unknown stdlib module calls through generic host module-call imports', () => {
+    const source = `
+      import { path } from "@std";
+      fn main() -> string {
+        return path.join("a", "b");
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('(import "env" "module_call2"');
+    expect(result.wat).toContain('call $module_call2');
+  });
+
+  it('routes large-arity module calls through pointer-based host dispatcher', () => {
+    const source = `
+      import { path } from "@std";
+      fn main() -> string {
+        return path.join("a", "b", "c", "d", "e", "f");
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors.some((d) => d.code === 'LUM-002')).toBe(true);
+    expect(result.wat).toContain('(import "env" "module_call_ptr"');
+    expect(result.wat).toContain('call $module_call_ptr');
   });
 
   it('emits WASM imports/calls for vec/hashmap/hashset core operations', () => {
@@ -429,5 +521,68 @@ describe('WASM codegen (WAT)', () => {
     expect(result.wat).toContain('(global $free_head (mut i32)');
     expect(result.wat).toContain('(export "__alloc" (func $alloc))');
     expect(result.wat).toContain('(export "__free" (func $free))');
+  });
+
+  it('supports struct-pattern matches in WASM lowering', () => {
+    const source = `
+      struct Pair {
+        left: i32,
+        right: i32
+      }
+
+      fn main() -> i32 {
+        let p = Pair { left: 4, right: 5 };
+        match p {
+          Pair { left: a, right: b } => { a + b }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('local.set $a');
+    expect(result.wat).toContain('local.set $b');
+  });
+
+  it('supports tuple-pattern matches in WASM lowering', () => {
+    const source = `
+      fn main() -> i32 {
+        let t = (2, 3);
+        match t {
+          (a, b) => { a + b }
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('i32.const 24');
+    expect(result.wat).toContain('local.set $a');
+    expect(result.wat).toContain('local.set $b');
+  });
+
+  it('supports break/continue lowering in loop bodies', () => {
+    const source = `
+      fn main() -> i32 {
+        let mut i = 0;
+        while (i < 10) {
+          i = i + 1;
+          if (i == 3) { continue; }
+          if (i == 7) { break; }
+        }
+        i
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('br $while_loop_');
+    expect(result.wat).toContain('br $while_exit_');
   });
 });
