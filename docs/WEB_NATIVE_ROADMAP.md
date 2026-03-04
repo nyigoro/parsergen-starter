@@ -21,6 +21,14 @@ This roadmap sets Lumina's execution priority as a **web-native systems language
 - Deterministic behavior parity between JS and WASM for core language features.
 - Full browser smoke suite for compile -> load -> execute paths.
 
+### WASM v1 Explicit Unsupported Surface (Intentional)
+- `is` runtime narrowing (`WASM-IS-001`) stays out of scope for v1 backend.
+- Complex cast paths not yet modeled in backend (`WASM-CAST-001`).
+- Standalone range expressions and non-string range indexing (`WASM-RANGE-001`, `WASM-RANGE-002`).
+- Declaration statements inside executable blocks (`WASM-STMT-001`).
+- Unknown expression-kind fallback (`WASM-EXPR-001`).
+- Fallback unresolved method/type lowering (`WASM-TRAIT-001`, `WASM-TYPE-001`).
+
 ### P1: Performance + Memory Discipline
 - Benchmarks: Lumina JS vs Lumina WASM across parse/runtime workloads.
 - Memory validation for allocations, retain/release hooks, and long-running reactive apps.
@@ -38,6 +46,12 @@ This roadmap sets Lumina's execution priority as a **web-native systems language
 - WASM runtime import surface + module-call dispatcher maturity.
 - Web-native docs/examples and capability matrix sync.
 - Packaging workflow for browser/WASM consumption.
+
+## Browser-Native Runtime Rollout
+- [x] OPFS module (`@std/opfs`) with read/write/metadata/exists/dir operations.
+- [x] SharedArrayBuffer channels (`@std/sab_channel`) with bounded i32 send/recv/close semantics.
+- [x] WebGPU compute baseline (`@std/webgpu`) with adapter/device helpers and `compute_i32`.
+- [ ] Expand WebGPU surface beyond compute baseline (pipeline ergonomics + richer buffer/resource controls).
 
 ## Compatibility Policy
 - Keep Node/Deno support operational for CLI/tooling and test infrastructure.

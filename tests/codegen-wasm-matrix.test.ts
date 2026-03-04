@@ -206,11 +206,9 @@ const stringAndTypeCases: CaseSpec[] = [
     snippets: ['(func $__lambda_', 'call $__lambda_'],
   },
   {
-    name: 'array bounds check',
+    name: 'array literal lowers to vec handle',
     source: 'fn main() -> i32 { let a = [1, 2, 3]; 0 }',
-    snippets: [],
-    allowErrorCodes: ['WASM-001'],
-    requiredErrorCodes: ['WASM-001'],
+    snippets: ['call $vec_new', 'call $vec_push'],
   },
 ];
 

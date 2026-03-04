@@ -928,6 +928,216 @@ export const math = {
   e: Math.E,
 };
 
+interface OpfsFileLike {
+  size: number;
+  lastModified: number;
+  text: () => Promise<string>;
+}
+
+interface OpfsWritableLike {
+  write: (data: string) => Promise<void>;
+  close: () => Promise<void>;
+}
+
+interface OpfsFileHandleLike {
+  getFile: () => Promise<OpfsFileLike>;
+  createWritable: () => Promise<OpfsWritableLike>;
+}
+
+interface OpfsDirectoryLike {
+  getDirectoryHandle: (name: string, options?: { create?: boolean }) => Promise<OpfsDirectoryLike>;
+  getFileHandle: (name: string, options?: { create?: boolean }) => Promise<OpfsFileHandleLike>;
+  removeEntry: (name: string, options?: { recursive?: boolean }) => Promise<void>;
+  entries?: () => AsyncIterable<[string, unknown]>;
+  keys?: () => AsyncIterable<string>;
+}
+
+const hasOpfsSupport = (): boolean => {
+  const nav = (globalThis as { navigator?: { storage?: { getDirectory?: unknown } } }).navigator;
+  return typeof nav?.storage?.getDirectory === 'function';
+};
+
+const getOpfsRoot = async (): Promise<OpfsDirectoryLike> => {
+  const nav = (globalThis as { navigator?: { storage?: { getDirectory?: () => Promise<OpfsDirectoryLike> } } }).navigator;
+  const getter = nav?.storage?.getDirectory;
+  if (typeof getter !== 'function') {
+    throw new Error('OPFS is not available in this environment');
+  }
+  return await getter.call(nav.storage);
+};
+
+const opfsError = (error: unknown): string => {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+};
+
+const isOpfsNotFoundError = (error: unknown): boolean =>
+  !!error &&
+  typeof error === 'object' &&
+  ((error as { name?: string }).name === 'NotFoundError' || (error as { code?: string }).code === 'ENOENT');
+
+const splitOpfsPath = (path: string): string[] =>
+  String(path)
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0 && segment !== '.');
+
+const walkOpfsDirectory = async (segments: string[], create: boolean): Promise<OpfsDirectoryLike> => {
+  let current = await getOpfsRoot();
+  for (const segment of segments) {
+    if (segment === '..') {
+      throw new Error('OPFS path traversal is not supported');
+    }
+    current = await current.getDirectoryHandle(segment, { create });
+  }
+  return current;
+};
+
+const resolveOpfsParent = async (
+  path: string,
+  createParent: boolean
+): Promise<{ directory: OpfsDirectoryLike; name: string }> => {
+  const segments = splitOpfsPath(path);
+  if (segments.length === 0) {
+    throw new Error('Path must not be empty');
+  }
+  const name = segments[segments.length - 1];
+  const parentSegments = segments.slice(0, -1);
+  const directory = await walkOpfsDirectory(parentSegments, createParent);
+  return { directory, name };
+};
+
+const isLikelyRemotePath = (path: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//i.test(path) || path.startsWith('//');
+
+const opfsReadFile = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
+  try {
+    const { directory, name } = await resolveOpfsParent(path, false);
+    const handle = await directory.getFileHandle(name, { create: false });
+    const file = await handle.getFile();
+    const content = await file.text();
+    return Result.Ok(content);
+  } catch (error) {
+    return Result.Err(opfsError(error));
+  }
+};
+
+const opfsWriteFile = async (path: string, content: string): Promise<{ $tag: string; $payload?: unknown }> => {
+  try {
+    const { directory, name } = await resolveOpfsParent(path, true);
+    const handle = await directory.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(String(content));
+    await writable.close();
+    return Result.Ok(undefined);
+  } catch (error) {
+    return Result.Err(opfsError(error));
+  }
+};
+
+const opfsReadDir = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
+  try {
+    const segments = splitOpfsPath(path);
+    const directory = await walkOpfsDirectory(segments, false);
+    const entries: string[] = [];
+    if (typeof directory.entries === 'function') {
+      for await (const [name] of directory.entries()) {
+        entries.push(name);
+      }
+      return Result.Ok(entries);
+    }
+    if (typeof directory.keys === 'function') {
+      for await (const name of directory.keys()) {
+        entries.push(name);
+      }
+      return Result.Ok(entries);
+    }
+    return Result.Err('OPFS directory iteration is not available');
+  } catch (error) {
+    return Result.Err(opfsError(error));
+  }
+};
+
+const opfsMetadata = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
+  try {
+    const segments = splitOpfsPath(path);
+    if (segments.length === 0) {
+      return Result.Ok({ isFile: false, isDirectory: true, size: 0, modifiedMs: 0 });
+    }
+    const { directory, name } = await resolveOpfsParent(path, false);
+    try {
+      const fileHandle = await directory.getFileHandle(name, { create: false });
+      const file = await fileHandle.getFile();
+      return Result.Ok({
+        isFile: true,
+        isDirectory: false,
+        size: Math.trunc(file.size),
+        modifiedMs: Math.trunc(file.lastModified),
+      });
+    } catch (fileError) {
+      if (!isOpfsNotFoundError(fileError)) {
+        return Result.Err(opfsError(fileError));
+      }
+    }
+    const dirHandle = await directory.getDirectoryHandle(name, { create: false });
+    if (dirHandle) {
+      return Result.Ok({ isFile: false, isDirectory: true, size: 0, modifiedMs: 0 });
+    }
+    return Result.Err(`Entry not found: ${path}`);
+  } catch (error) {
+    return Result.Err(opfsError(error));
+  }
+};
+
+const opfsExists = async (path: string): Promise<boolean> => {
+  try {
+    const meta = await opfsMetadata(path);
+    return getEnumTag(meta as LuminaEnumLike) === 'Ok';
+  } catch {
+    return false;
+  }
+};
+
+const opfsMkdir = async (path: string, recursive = true): Promise<{ $tag: string; $payload?: unknown }> => {
+  try {
+    const segments = splitOpfsPath(path);
+    if (segments.length === 0) return Result.Ok(undefined);
+    if (recursive) {
+      await walkOpfsDirectory(segments, true);
+      return Result.Ok(undefined);
+    }
+    const parentSegments = segments.slice(0, -1);
+    const parent = await walkOpfsDirectory(parentSegments, false);
+    await parent.getDirectoryHandle(segments[segments.length - 1], { create: true });
+    return Result.Ok(undefined);
+  } catch (error) {
+    return Result.Err(opfsError(error));
+  }
+};
+
+const opfsRemoveFile = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
+  try {
+    const { directory, name } = await resolveOpfsParent(path, false);
+    await directory.removeEntry(name, { recursive: false });
+    return Result.Ok(undefined);
+  } catch (error) {
+    return Result.Err(opfsError(error));
+  }
+};
+
+export const opfs = {
+  is_available: (): boolean => hasOpfsSupport(),
+  readFile: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsReadFile(path),
+  writeFile: async (path: string, content: string): Promise<{ $tag: string; $payload?: unknown }> =>
+    opfsWriteFile(path, content),
+  readDir: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsReadDir(path),
+  metadata: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsMetadata(path),
+  exists: async (path: string): Promise<boolean> => opfsExists(path),
+  mkdir: async (path: string, recursive = true): Promise<{ $tag: string; $payload?: unknown }> =>
+    opfsMkdir(path, recursive),
+  removeFile: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsRemoveFile(path),
+};
+
 export const fs = {
   readFile: async (path: string) => {
     try {
@@ -935,6 +1145,9 @@ export const fs = {
         const fsPromises = await import('node:fs/promises');
         const content = await fsPromises.readFile(path, 'utf8');
         return Result.Ok(content);
+      }
+      if (opfs.is_available() && !isLikelyRemotePath(path)) {
+        return await opfs.readFile(path);
       }
       if (typeof fetch !== 'undefined') {
         const response = await fetch(path);
@@ -956,6 +1169,9 @@ export const fs = {
         await fsPromises.writeFile(path, content, 'utf8');
         return Result.Ok(undefined);
       }
+      if (opfs.is_available()) {
+        return await opfs.writeFile(path, content);
+      }
       return Result.Err('writeFile not supported in browser');
     } catch (error) {
       return Result.Err(String(error));
@@ -963,63 +1179,81 @@ export const fs = {
   },
   readDir: async (path: string) => {
     try {
+      if (isNodeRuntime()) {
+        const fsPromises = await import('node:fs/promises');
+        const entries = await fsPromises.readdir(path);
+        return Result.Ok(entries);
+      }
+      if (opfs.is_available()) {
+        return await opfs.readDir(path);
+      }
       if (!isNodeRuntime()) {
         return Result.Err('readDir is not supported in browser');
       }
-      const fsPromises = await import('node:fs/promises');
-      const entries = await fsPromises.readdir(path);
-      return Result.Ok(entries);
+      return Result.Err('No file system available');
     } catch (error) {
       return Result.Err(String(error));
     }
   },
   metadata: async (path: string) => {
     try {
-      if (!isNodeRuntime()) {
-        return Result.Err('metadata is not supported in browser');
+      if (isNodeRuntime()) {
+        const fsPromises = await import('node:fs/promises');
+        const stats = await fsPromises.stat(path);
+        return Result.Ok({
+          isFile: stats.isFile(),
+          isDirectory: stats.isDirectory(),
+          size: Math.trunc(stats.size),
+          modifiedMs: Math.trunc(stats.mtimeMs),
+        });
       }
-      const fsPromises = await import('node:fs/promises');
-      const stats = await fsPromises.stat(path);
-      return Result.Ok({
-        isFile: stats.isFile(),
-        isDirectory: stats.isDirectory(),
-        size: Math.trunc(stats.size),
-        modifiedMs: Math.trunc(stats.mtimeMs),
-      });
+      if (opfs.is_available()) {
+        return await opfs.metadata(path);
+      }
+      return Result.Err('metadata is not supported in browser');
     } catch (error) {
       return Result.Err(String(error));
     }
   },
   exists: async (path: string) => {
     try {
-      if (!isNodeRuntime()) return false;
-      const fsPromises = await import('node:fs/promises');
-      await fsPromises.access(path);
-      return true;
+      if (isNodeRuntime()) {
+        const fsPromises = await import('node:fs/promises');
+        await fsPromises.access(path);
+        return true;
+      }
+      if (opfs.is_available()) return await opfs.exists(path);
+      return false;
     } catch {
       return false;
     }
   },
   mkdir: async (path: string, recursive: boolean = true) => {
     try {
-      if (!isNodeRuntime()) {
-        return Result.Err('mkdir is not supported in browser');
+      if (isNodeRuntime()) {
+        const fsPromises = await import('node:fs/promises');
+        await fsPromises.mkdir(path, { recursive: !!recursive });
+        return Result.Ok(undefined);
       }
-      const fsPromises = await import('node:fs/promises');
-      await fsPromises.mkdir(path, { recursive: !!recursive });
-      return Result.Ok(undefined);
+      if (opfs.is_available()) {
+        return await opfs.mkdir(path, recursive);
+      }
+      return Result.Err('mkdir is not supported in browser');
     } catch (error) {
       return Result.Err(String(error));
     }
   },
   removeFile: async (path: string) => {
     try {
-      if (!isNodeRuntime()) {
-        return Result.Err('removeFile is not supported in browser');
+      if (isNodeRuntime()) {
+        const fsPromises = await import('node:fs/promises');
+        await fsPromises.unlink(path);
+        return Result.Ok(undefined);
       }
-      const fsPromises = await import('node:fs/promises');
-      await fsPromises.unlink(path);
-      return Result.Ok(undefined);
+      if (opfs.is_available()) {
+        return await opfs.removeFile(path);
+      }
+      return Result.Err('removeFile is not supported in browser');
     } catch (error) {
       return Result.Err(String(error));
     }
@@ -2979,6 +3213,322 @@ export const sync = {
   atomic_i32_sub: (value: AtomicI32, delta: number): number => value.sub(delta),
   atomic_i32_compare_exchange: (value: AtomicI32, expected: number, replacement: number): number =>
     value.compare_exchange(expected, replacement),
+};
+
+interface SABI32State {
+  view: Int32Array;
+  capacity: number;
+}
+
+const SAB_HEAD = 0;
+const SAB_TAIL = 1;
+const SAB_COUNT = 2;
+const SAB_SENDER_CLOSED = 3;
+const SAB_RECEIVER_CLOSED = 4;
+const SAB_DATA_OFFSET = 5;
+
+const createSABI32State = (capacity: number): SABI32State => {
+  const cap = Math.max(1, Math.trunc(capacity));
+  const buffer = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * (SAB_DATA_OFFSET + cap));
+  const view = new Int32Array(buffer);
+  Atomics.store(view, SAB_HEAD, 0);
+  Atomics.store(view, SAB_TAIL, 0);
+  Atomics.store(view, SAB_COUNT, 0);
+  Atomics.store(view, SAB_SENDER_CLOSED, 0);
+  Atomics.store(view, SAB_RECEIVER_CLOSED, 0);
+  return { view, capacity: cap };
+};
+
+const sabYield = async (): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+export class SABSenderI32 {
+  constructor(private readonly state: SABI32State) {}
+
+  try_send(value: number): boolean {
+    if (Atomics.load(this.state.view, SAB_SENDER_CLOSED) !== 0) return false;
+    if (Atomics.load(this.state.view, SAB_RECEIVER_CLOSED) !== 0) return false;
+    const count = Atomics.load(this.state.view, SAB_COUNT);
+    if (count >= this.state.capacity) return false;
+    const tail = Atomics.load(this.state.view, SAB_TAIL);
+    Atomics.store(this.state.view, SAB_DATA_OFFSET + tail, Math.trunc(value) | 0);
+    Atomics.store(this.state.view, SAB_TAIL, (tail + 1) % this.state.capacity);
+    Atomics.store(this.state.view, SAB_COUNT, count + 1);
+    Atomics.notify(this.state.view, SAB_COUNT, 1);
+    return true;
+  }
+
+  async send(value: number): Promise<boolean> {
+    for (;;) {
+      if (this.try_send(value)) return true;
+      if (this.is_closed()) return false;
+      await sabYield();
+    }
+  }
+
+  is_closed(): boolean {
+    return Atomics.load(this.state.view, SAB_SENDER_CLOSED) !== 0 || Atomics.load(this.state.view, SAB_RECEIVER_CLOSED) !== 0;
+  }
+
+  close(): void {
+    Atomics.store(this.state.view, SAB_SENDER_CLOSED, 1);
+    Atomics.notify(this.state.view, SAB_COUNT);
+  }
+
+  drop(): void {
+    this.close();
+  }
+}
+
+export class SABReceiverI32 {
+  constructor(private readonly state: SABI32State) {}
+
+  try_recv(): OptionLike {
+    const count = Atomics.load(this.state.view, SAB_COUNT);
+    if (count <= 0) return Option.None as OptionLike;
+    const head = Atomics.load(this.state.view, SAB_HEAD);
+    const value = Atomics.load(this.state.view, SAB_DATA_OFFSET + head);
+    Atomics.store(this.state.view, SAB_HEAD, (head + 1) % this.state.capacity);
+    Atomics.store(this.state.view, SAB_COUNT, count - 1);
+    Atomics.notify(this.state.view, SAB_COUNT, 1);
+    return Option.Some(value) as OptionLike;
+  }
+
+  async recv(): Promise<OptionLike> {
+    for (;;) {
+      const value = this.try_recv();
+      if (getEnumTag(value as LuminaEnumLike) === 'Some') return value;
+      if (this.is_closed()) return Option.None as OptionLike;
+      await sabYield();
+    }
+  }
+
+  is_closed(): boolean {
+    if (Atomics.load(this.state.view, SAB_RECEIVER_CLOSED) !== 0) return true;
+    if (Atomics.load(this.state.view, SAB_SENDER_CLOSED) !== 0 && Atomics.load(this.state.view, SAB_COUNT) <= 0) return true;
+    return false;
+  }
+
+  close(): void {
+    Atomics.store(this.state.view, SAB_RECEIVER_CLOSED, 1);
+    Atomics.notify(this.state.view, SAB_COUNT);
+  }
+
+  drop(): void {
+    this.close();
+  }
+}
+
+export const sab_channel = {
+  is_available: (): boolean => AtomicI32.is_available(),
+  bounded_i32: (capacity: number): { sender: SABSenderI32; receiver: SABReceiverI32 } => {
+    if (!AtomicI32.is_available()) {
+      throw new Error('SharedArrayBuffer + Atomics are not available in this environment');
+    }
+    const state = createSABI32State(capacity);
+    return { sender: new SABSenderI32(state), receiver: new SABReceiverI32(state) };
+  },
+  send_i32: (sender: SABSenderI32, value: number): boolean => sender.try_send(value),
+  try_send_i32: (sender: SABSenderI32, value: number): boolean => sender.try_send(value),
+  send_async_i32: (sender: SABSenderI32, value: number): Promise<boolean> => sender.send(value),
+  recv_i32: (receiver: SABReceiverI32): Promise<OptionLike> => receiver.recv(),
+  try_recv_i32: (receiver: SABReceiverI32): OptionLike => receiver.try_recv(),
+  close_sender_i32: (sender: SABSenderI32): void => sender.close(),
+  close_receiver_i32: (receiver: SABReceiverI32): void => receiver.close(),
+  is_sender_closed_i32: (sender: SABSenderI32): boolean => sender.is_closed(),
+  is_receiver_closed_i32: (receiver: SABReceiverI32): boolean => receiver.is_closed(),
+  close_i32: (ch: { sender: SABSenderI32; receiver: SABReceiverI32 }): void => {
+    ch.sender.close();
+    ch.receiver.close();
+  },
+};
+
+type WebGpuAdapterLike = {
+  requestDevice: () => Promise<unknown>;
+};
+
+type WebGpuLike = {
+  requestAdapter: () => Promise<WebGpuAdapterLike | null>;
+};
+
+const getWebGpu = (): WebGpuLike | null => {
+  const nav = (globalThis as { navigator?: { gpu?: WebGpuLike } }).navigator;
+  const gpu = nav?.gpu;
+  if (!gpu || typeof gpu.requestAdapter !== 'function') return null;
+  return gpu;
+};
+
+const toI32Array = (values: number[]): Int32Array => Int32Array.from(values.map((value) => Math.trunc(value) | 0));
+
+const alignTo4 = (value: number): number => {
+  const v = Math.max(4, Math.trunc(value));
+  const mod = v % 4;
+  return mod === 0 ? v : v + (4 - mod);
+};
+
+export const webgpu = {
+  is_available: (): boolean => getWebGpu() !== null,
+  request_adapter: async (): Promise<{ $tag: string; $payload?: unknown }> => {
+    try {
+      const gpu = getWebGpu();
+      if (!gpu) return Result.Err('WebGPU is not available in this environment');
+      const adapter = await gpu.requestAdapter();
+      if (!adapter) return Result.Err('No WebGPU adapter available');
+      return Result.Ok(adapter);
+    } catch (error) {
+      return Result.Err(opfsError(error));
+    }
+  },
+  request_device: async (adapter: unknown): Promise<{ $tag: string; $payload?: unknown }> => {
+    try {
+      const source = (adapter as WebGpuAdapterLike | null) ?? null;
+      const resolved =
+        source && typeof source.requestDevice === 'function'
+          ? source
+          : ((await webgpu.request_adapter()) as LuminaEnumLike);
+      if (isEnumLike(resolved) && getEnumTag(resolved) === 'Err') return resolved as { $tag: string; $payload?: unknown };
+      const adapterLike = (isEnumLike(resolved) ? getEnumPayload(resolved as LuminaEnumLike) : resolved) as WebGpuAdapterLike;
+      if (!adapterLike || typeof adapterLike.requestDevice !== 'function') {
+        return Result.Err('Invalid WebGPU adapter');
+      }
+      const device = await adapterLike.requestDevice();
+      return Result.Ok(device);
+    } catch (error) {
+      return Result.Err(opfsError(error));
+    }
+  },
+  compute_i32: async (
+    wgsl: string,
+    entryPoint: string,
+    input: number[],
+    outputLength?: number,
+    workgroupSize: number = 64
+  ): Promise<{ $tag: string; $payload?: unknown }> => {
+    try {
+      const deviceResult = await webgpu.request_device(null);
+      if (isEnumLike(deviceResult) && getEnumTag(deviceResult) === 'Err') return deviceResult;
+      const device = getEnumPayload(deviceResult as LuminaEnumLike) as {
+        createShaderModule: (descriptor: { code: string }) => unknown;
+        createBuffer: (descriptor: { size: number; usage: number }) => {
+          mapAsync?: (mode: number) => Promise<void>;
+          getMappedRange?: () => ArrayBuffer;
+          unmap?: () => void;
+          destroy?: () => void;
+        };
+        createComputePipeline?: (descriptor: {
+          layout: 'auto' | unknown;
+          compute: { module: unknown; entryPoint: string };
+        }) => unknown;
+        createComputePipelineAsync?: (descriptor: {
+          layout: 'auto' | unknown;
+          compute: { module: unknown; entryPoint: string };
+        }) => Promise<unknown>;
+        createBindGroup: (descriptor: { layout: unknown; entries: Array<{ binding: number; resource: { buffer: unknown } }> }) => unknown;
+        createCommandEncoder: () => {
+          beginComputePass: () => {
+            setPipeline: (pipeline: unknown) => void;
+            setBindGroup: (index: number, bindGroup: unknown) => void;
+            dispatchWorkgroups: (x: number, y?: number, z?: number) => void;
+            end: () => void;
+          };
+          copyBufferToBuffer: (
+            source: unknown,
+            sourceOffset: number,
+            target: unknown,
+            targetOffset: number,
+            size: number
+          ) => void;
+          finish: () => unknown;
+        };
+        queue: {
+          writeBuffer: (
+            buffer: unknown,
+            bufferOffset: number,
+            data: ArrayBufferLike | ArrayBufferView,
+            dataOffset?: number,
+            size?: number
+          ) => void;
+          submit: (commands: unknown[]) => void;
+          onSubmittedWorkDone?: () => Promise<void>;
+        };
+      };
+
+      const gpuBufferUsage = (globalThis as { GPUBufferUsage?: Record<string, number> }).GPUBufferUsage ?? {
+        MAP_READ: 0x0001,
+        COPY_SRC: 0x0004,
+        COPY_DST: 0x0008,
+        STORAGE: 0x0080,
+      };
+      const gpuMapMode = (globalThis as { GPUMapMode?: Record<string, number> }).GPUMapMode ?? { READ: 0x0001 };
+
+      const inputValues = toI32Array(Array.isArray(input) ? input : []);
+      const outLen = Math.max(0, Math.trunc(outputLength ?? inputValues.length));
+      const inBytes = alignTo4(inputValues.byteLength);
+      const outBytes = alignTo4(outLen * Int32Array.BYTES_PER_ELEMENT);
+      const safeWorkgroupSize = Math.max(1, Math.trunc(workgroupSize));
+      const dispatchCount = Math.max(1, Math.ceil(outLen / safeWorkgroupSize));
+
+      const shaderModule = device.createShaderModule({ code: String(wgsl) });
+      const inputBuffer = device.createBuffer({
+        size: inBytes,
+        usage: gpuBufferUsage.STORAGE | gpuBufferUsage.COPY_DST,
+      });
+      const outputBuffer = device.createBuffer({
+        size: outBytes,
+        usage: gpuBufferUsage.STORAGE | gpuBufferUsage.COPY_SRC,
+      });
+      const readBuffer = device.createBuffer({
+        size: outBytes,
+        usage: gpuBufferUsage.COPY_DST | gpuBufferUsage.MAP_READ,
+      });
+
+      device.queue.writeBuffer(inputBuffer, 0, inputValues, 0, inputValues.byteLength);
+      const pipeline = device.createComputePipelineAsync
+        ? await device.createComputePipelineAsync({
+            layout: 'auto',
+            compute: { module: shaderModule, entryPoint: String(entryPoint) },
+          })
+        : device.createComputePipeline!({
+            layout: 'auto',
+            compute: { module: shaderModule, entryPoint: String(entryPoint) },
+          });
+
+      const bindGroup = device.createBindGroup({
+        layout: (pipeline as { getBindGroupLayout: (index: number) => unknown }).getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: inputBuffer } },
+          { binding: 1, resource: { buffer: outputBuffer } },
+        ],
+      });
+
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.dispatchWorkgroups(dispatchCount, 1, 1);
+      pass.end();
+      encoder.copyBufferToBuffer(outputBuffer, 0, readBuffer, 0, outBytes);
+      device.queue.submit([encoder.finish()]);
+      if (typeof device.queue.onSubmittedWorkDone === 'function') {
+        await device.queue.onSubmittedWorkDone();
+      }
+      if (typeof readBuffer.mapAsync !== 'function' || typeof readBuffer.getMappedRange !== 'function') {
+        return Result.Err('WebGPU readback buffer does not support mapAsync');
+      }
+      await readBuffer.mapAsync(gpuMapMode.READ);
+      const mapped = readBuffer.getMappedRange();
+      const resultView = new Int32Array(mapped);
+      const result = Array.from(resultView.subarray(0, outLen));
+      readBuffer.unmap?.();
+      inputBuffer.destroy?.();
+      outputBuffer.destroy?.();
+      readBuffer.destroy?.();
+      return Result.Ok(result);
+    } catch (error) {
+      return Result.Err(opfsError(error));
+    }
+  },
 };
 
 type ReactiveCleanup = () => void;

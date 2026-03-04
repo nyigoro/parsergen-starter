@@ -613,4 +613,93 @@ describe('WASM codegen (WAT)', () => {
     expect(result.wat).toContain('br $while_loop_');
     expect(result.wat).toContain('br $while_exit_');
   });
+
+  it('uses explicit member diagnostics instead of generic unsupported errors', () => {
+    const source = `
+      fn main() -> i32 {
+        let y = 1;
+        let x = y.value;
+        x
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.some((d) => d.code === 'WASM-MEMBER-001')).toBe(true);
+    expect(result.diagnostics.some((d) => d.message.includes('unsupported assignment target member'))).toBe(false);
+  });
+
+  it('uses explicit struct literal diagnostics instead of unsupported errors', () => {
+    const source = `
+      struct Pair {
+        left: i32,
+        right: i32
+      }
+
+      fn main() -> Pair {
+        Pair { left: 1 }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.some((d) => d.code === 'WASM-STRUCT-001')).toBe(true);
+    expect(result.diagnostics.some((d) => d.message.includes('unsupported struct literal'))).toBe(false);
+  });
+
+  it('uses explicit try diagnostics instead of unsupported errors', () => {
+    const source = `
+      fn main() -> i32 {
+        let x = 1?;
+        x
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.some((d) => d.code === 'WASM-TRY-001')).toBe(true);
+    expect(result.diagnostics.some((d) => d.message.includes('unsupported try operator'))).toBe(false);
+  });
+
+  it('emits enum arity mismatch diagnostics without using unsupported fallback', () => {
+    const source = `
+      enum Option {
+        Some(i32),
+        None
+      }
+
+      fn main() -> i32 {
+        let o = Option.Some();
+        0
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.diagnostics.some((d) => d.code === 'WASM-GADT-001')).toBe(true);
+    expect(result.diagnostics.some((d) => d.message.includes('unsupported enum constructor'))).toBe(false);
+  });
+
+  it('keeps enum zero-payload member access working after member-lowering hardening', () => {
+    const source = `
+      enum Flag {
+        On,
+        Off
+      }
+
+      fn main() -> i32 {
+        let f = Flag.On;
+        match f {
+          Flag.On => 1,
+          Flag.Off => 0
+        }
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    const errors = result.diagnostics.filter((d) => d.severity === 'error');
+    expect(errors).toHaveLength(0);
+    expect(result.wat).toContain('i32.const 0');
+  });
 });

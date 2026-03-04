@@ -24,13 +24,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -53,6 +53,11 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append('\n');
     builder.append(
       `const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const opfs = { is_available: () => false, readFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), readDir: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), metadata: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), exists: async () => false, mkdir: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), removeFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }) };`,
       'Runtime'
     );
     builder.append('\n');
@@ -87,10 +92,20 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append('\n');
     builder.append(`const async_channel = channel;`, 'Runtime');
     builder.append('\n');
+    builder.append(
+      `const sab_channel = { is_available: () => false, bounded_i32: () => ({ sender: {}, receiver: {} }), send_i32: () => false, try_send_i32: () => false, send_async_i32: async () => false, recv_i32: async () => ({ $tag: "None" }), try_recv_i32: () => ({ $tag: "None" }), close_sender_i32: () => {}, close_receiver_i32: () => {}, is_sender_closed_i32: () => true, is_receiver_closed_i32: () => true, close_i32: () => {} };`,
+      'Runtime'
+    );
+    builder.append('\n');
     builder.append(`const timeout = async (ms) => await time.sleep(ms);`, 'Runtime');
     builder.append('\n');
     builder.append(
       `const join_all = async (values) => { const arr = Array.isArray(values) ? values : (values && values[Symbol.iterator]) ? Array.from(values) : []; return await Promise.all(arr.map((v) => Promise.resolve(v))); };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const webgpu = { is_available: () => false, request_adapter: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), request_device: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute_i32: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }) };`,
       'Runtime'
     );
     builder.append('\n');
@@ -149,16 +164,16 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       code +=
-        'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
+        'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
     } else {
       code +=
-        'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, path, env, process, json, http, time, join_all, timeout, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
+        'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
+      code += 'module.exports = { io, str, math, fs, opfs, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
     } else {
-      code += 'export { io, str, math, fs, path, env, process, json, http, time, join_all, timeout, async_channel, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
+      code += 'export { io, str, math, fs, opfs, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
     }
   }
 

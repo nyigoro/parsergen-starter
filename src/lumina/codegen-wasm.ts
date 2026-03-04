@@ -100,6 +100,13 @@ interface WasmStructInfo {
 
 type WasmStructLayout = Map<string, WasmStructInfo>;
 
+type StructFieldLookupResult =
+  | { kind: 'ok'; field: WasmStructFieldLayout }
+  | { kind: 'missing-object-type' }
+  | { kind: 'non-struct'; typeName: string }
+  | { kind: 'missing-struct-layout'; structName: string }
+  | { kind: 'missing-field'; structName: string; fieldName: string };
+
 interface WasmTraitMethodDispatch {
   traitName: string;
   forType: string;
@@ -574,16 +581,68 @@ class WasmBuilder {
     return type === 'i64' || type === 'f64' ? 8 : 4;
   }
 
-  private lookupStructFieldInfo(expr: Extract<LuminaExpr, { type: 'Member' }>): WasmStructFieldLayout | null {
+  private resolveStructInfo(name: string): WasmStructInfo | null {
+    const direct = this.structLayout.get(name);
+    if (direct) return direct;
+    const parsed = parseTypeName(name);
+    if (!parsed) return null;
+    return this.structLayout.get(parsed.base) ?? null;
+  }
+
+  private resolveStructFieldInfo(expr: Extract<LuminaExpr, { type: 'Member' }>): StructFieldLookupResult {
     const objectType =
       (typeof expr.object.id === 'number' ? this.exprTypes.get(expr.object.id) : undefined) ??
       (expr.object.type === 'Identifier' ? this.currentLocalTypes.get(expr.object.name) : undefined);
-    if (!objectType) return null;
+    if (!objectType) return { kind: 'missing-object-type' };
     const pruned = prune(objectType, this.subst);
-    if (pruned.kind !== 'adt') return null;
-    const struct = this.structLayout.get(pruned.name);
-    if (!struct) return null;
-    return struct.fields.get(expr.property) ?? null;
+    if (pruned.kind !== 'adt') return { kind: 'non-struct', typeName: this.formatType(pruned) };
+    const struct = this.resolveStructInfo(pruned.name);
+    if (!struct) return { kind: 'missing-struct-layout', structName: pruned.name };
+    const field = struct.fields.get(expr.property);
+    if (!field) {
+      return { kind: 'missing-field', structName: pruned.name, fieldName: expr.property };
+    }
+    return { kind: 'ok', field };
+  }
+
+  private describeStructFieldLookupFailure(
+    expr: Extract<LuminaExpr, { type: 'Member' }>,
+    lookup: Exclude<StructFieldLookupResult, { kind: 'ok' }>
+  ): string {
+    const member = this.formatMemberExpr(expr);
+    if (lookup.kind === 'missing-object-type') {
+      return `cannot resolve member '${member}' because object type is unknown during WASM codegen`;
+    }
+    if (lookup.kind === 'non-struct') {
+      return `cannot access member '${member}' on non-struct type '${lookup.typeName}'`;
+    }
+    if (lookup.kind === 'missing-struct-layout') {
+      return `missing WASM struct layout for '${lookup.structName}' while lowering '${member}'`;
+    }
+    return `unknown field '${lookup.fieldName}' on struct '${lookup.structName}' while lowering '${member}'`;
+  }
+
+  private flattenMemberPath(expr: LuminaExpr): string[] | null {
+    if (expr.type === 'Identifier') return [expr.name];
+    if (expr.type !== 'Member') return null;
+    const base = this.flattenMemberPath(expr.object);
+    if (!base) return null;
+    return [...base, expr.property];
+  }
+
+  private formatMemberExpr(expr: Extract<LuminaExpr, { type: 'Member' }>): string {
+    const objectPath = this.flattenMemberPath(expr.object);
+    if (!objectPath) return `<expr>.${expr.property}`;
+    return `${objectPath.join('.')}.${expr.property}`;
+  }
+
+  private resolveEnumNameFromExpr(expr: LuminaExpr): string | null {
+    const path = this.flattenMemberPath(expr);
+    if (!path || path.length === 0) return null;
+    for (let i = path.length - 1; i >= 0; i -= 1) {
+      if (this.enumLayout.has(path[i])) return path[i];
+    }
+    return null;
   }
 
   private allocStringLiteral(value: string): { offset: number; bytes: number[] } {
@@ -1027,7 +1086,7 @@ class WasmBuilder {
         if (op === '*') left *= right;
         else {
           if (right === 0) {
-            this.reportUnsupported('const division by zero', location);
+            this.reportCodegenError('const division by zero in WASM const-size evaluator', location, 'WASM-CONST-001');
             return null;
           }
           left = Math.floor(left / right);
@@ -1460,12 +1519,17 @@ class WasmBuilder {
               this.localLambdaBindings.delete(stmt.target.name);
             }
           } else if (stmt.target.type === 'Member') {
-            const fieldInfo = this.lookupStructFieldInfo(stmt.target);
-            if (!fieldInfo) {
-              this.reportUnsupported('assignment target member', stmt.location);
+            const fieldLookup = this.resolveStructFieldInfo(stmt.target);
+            if (fieldLookup.kind !== 'ok') {
+              this.reportCodegenError(
+                this.describeStructFieldLookupFailure(stmt.target, fieldLookup),
+                stmt.location,
+                'WASM-MEMBER-001'
+              );
               lines.push('unreachable');
               break;
             }
+            const fieldInfo = fieldLookup.field;
             lines.push(...this.emitExpr(stmt.target.object));
             if (fieldInfo.offset !== 0) {
               lines.push(`i32.const ${fieldInfo.offset}`);
@@ -1474,8 +1538,10 @@ class WasmBuilder {
             lines.push(...this.emitExpr(stmt.value));
             lines.push(`${fieldInfo.wasmType}.store`);
           } else {
-            this.reportUnsupported('assignment target', stmt.location);
-            lines.push('unreachable');
+            const unreachableTarget = stmt.target as never as { type?: string };
+            throw new Error(
+              `[internal] unreachable assign target kind in WASM codegen: ${unreachableTarget.type ?? 'unknown'}`
+            );
           }
           break;
         }
@@ -1488,7 +1554,7 @@ class WasmBuilder {
         case 'Break': {
           const exitLabel = this.loopExitLabels[this.loopExitLabels.length - 1];
           if (!exitLabel) {
-            this.reportUnsupported(`'break' outside loop`, stmt.location, 'WASM-LOOP-001');
+            this.reportCodegenError(`'break' outside loop`, stmt.location, 'WASM-LOOP-001');
             lines.push('unreachable');
             break;
           }
@@ -1498,7 +1564,7 @@ class WasmBuilder {
         case 'Continue': {
           const continueLabel = this.loopContinueLabels[this.loopContinueLabels.length - 1];
           if (!continueLabel) {
-            this.reportUnsupported(`'continue' outside loop`, stmt.location, 'WASM-LOOP-001');
+            this.reportCodegenError(`'continue' outside loop`, stmt.location, 'WASM-LOOP-001');
             lines.push('unreachable');
             break;
           }
@@ -1547,7 +1613,7 @@ class WasmBuilder {
             // Top-level enums are type-level metadata in this backend.
             lines.push('nop');
           } else {
-            this.reportUnsupported(stmt.type, stmt.location);
+            this.reportUnsupported(`statement '${stmt.type}' inside executable block`, stmt.location, 'WASM-STMT-001');
             lines.push('unreachable');
           }
           break;
@@ -2232,7 +2298,7 @@ class WasmBuilder {
     return false;
   }
 
-  private typeExprToWasm(typeExpr: LuminaTypeExpr, location?: Location): WasmValType | null {
+  private typeExprToWasm(typeExpr: LuminaTypeExpr, _location?: Location): WasmValType | null {
     if (typeof typeExpr === 'string') {
       const parsed = parseTypeName(typeExpr);
       const base = normalizeTargetTypeName(parsed?.base ?? typeExpr);
@@ -2267,12 +2333,12 @@ class WasmBuilder {
       if (/^[A-Z][A-Za-z0-9_]*$/.test(base)) {
         return 'i32';
       }
-      this.reportUnsupported(`enum payload type '${base}' in WASM backend`, location, 'WASM-GADT-001');
-      return null;
+      // Treat unknown payloads as opaque handles in WASM payload slots.
+      return 'i32';
     }
     if ((typeExpr as LuminaArrayType).kind === 'array') return 'i32';
-    this.reportUnsupported('non-string enum payload type in WASM backend', location, 'WASM-GADT-001');
-    return null;
+    // Non-string complex payload annotations lower through opaque pointer handles.
+    return 'i32';
   }
 
   private emitEnumAlloc(
@@ -2290,7 +2356,7 @@ class WasmBuilder {
     lines.push(`i32.const ${variant.tag}`);
     lines.push('i32.store');
     if (variant.arity !== payloadExprs.length) {
-      this.reportUnsupported(
+      this.reportCodegenError(
         `enum constructor payload arity ${payloadExprs.length} does not match variant arity ${variant.arity} for '${enumName}'`,
         location,
         'WASM-GADT-001'
@@ -2302,6 +2368,11 @@ class WasmBuilder {
     for (let i = 0; i < variant.arity; i += 1) {
       const payloadType = this.typeExprToWasm(variant.params[i], location);
       if (!payloadType) {
+        this.reportCodegenError(
+          `unable to lower payload ${i} for enum '${enumName}' variant tag ${variant.tag}`,
+          location,
+          'WASM-GADT-001'
+        );
         lines.push('unreachable');
         continue;
       }
@@ -2522,8 +2593,9 @@ class WasmBuilder {
       case 'InterpolatedString':
         return this.emitInterpolatedString(expr.parts ?? [], expr.location);
       case 'Member': {
-        const structField = this.lookupStructFieldInfo(expr);
-        if (structField) {
+        const structFieldLookup = this.resolveStructFieldInfo(expr);
+        if (structFieldLookup.kind === 'ok') {
+          const structField = structFieldLookup.field;
           const lines = this.emitExpr(expr.object);
           if (structField.offset !== 0) {
             lines.push(`i32.const ${structField.offset}`);
@@ -2532,19 +2604,35 @@ class WasmBuilder {
           lines.push(`${structField.wasmType}.load`);
           return lines;
         }
-        if (expr.object.type !== 'Identifier') {
-          this.reportUnsupported('member expression', expr.location);
+        if (structFieldLookup.kind !== 'missing-object-type') {
+          this.reportCodegenError(
+            this.describeStructFieldLookupFailure(expr, structFieldLookup),
+            expr.location,
+            'WASM-MEMBER-001'
+          );
           return ['unreachable'];
         }
-        const enumName = expr.object.name;
+        const enumName = this.resolveEnumNameFromExpr(expr.object);
+        if (!enumName) {
+          this.reportCodegenError(
+            `cannot resolve namespaced member '${this.formatMemberExpr(expr)}' in WASM backend`,
+            expr.location,
+            'WASM-MEMBER-001'
+          );
+          return ['unreachable'];
+        }
         const variantInfo = this.resolveEnumVariantInfo(enumName, expr.property);
         if (!variantInfo) {
-          this.reportUnsupported(`member '${expr.object.name}.${expr.property}'`, expr.location);
+          this.reportCodegenError(
+            `unknown enum variant '${enumName}.${expr.property}' in WASM backend`,
+            expr.location,
+            'WASM-GADT-001'
+          );
           return ['unreachable'];
         }
         if (variantInfo.arity !== 0) {
-          this.reportUnsupported(
-            `enum variant '${expr.object.name}.${expr.property}' payload in WASM backend`,
+          this.reportCodegenError(
+            `enum variant '${enumName}.${expr.property}' carries payload; use constructor call syntax '${enumName}.${expr.property}(...)'`,
             expr.location,
             'WASM-GADT-001'
           );
@@ -2568,12 +2656,16 @@ class WasmBuilder {
       case 'IsExpr': {
         const enumName = expr.enumName;
         if (!enumName) {
-          this.reportUnsupported('is expression without enum name in WASM backend', expr.location, 'WASM-GADT-001');
+          this.reportUnsupported('is expressions are unsupported in WASM v1 (missing enum context)', expr.location, 'WASM-IS-001');
           return ['unreachable'];
         }
         const variantInfo = this.resolveEnumVariantInfo(enumName, expr.variant);
         if (!variantInfo) {
-          this.reportUnsupported(`unknown enum variant '${enumName}.${expr.variant}'`, expr.location, 'WASM-GADT-001');
+          this.reportUnsupported(
+            `is expressions are unsupported in WASM v1 (unknown enum variant '${enumName}.${expr.variant}')`,
+            expr.location,
+            'WASM-IS-001'
+          );
           return ['unreachable'];
         }
         const valueLines = this.emitExpr(expr.value);
@@ -2621,7 +2713,7 @@ class WasmBuilder {
           const op = normalizedTarget.startsWith('u') ? 'i64.trunc_f64_u' : 'i64.trunc_f64_s';
           return [...valueLines, op];
         }
-        this.reportUnsupported(`cast to '${normalizedTarget}'`, expr.location);
+        this.reportUnsupported(`cast to '${normalizedTarget}'`, expr.location, 'WASM-CAST-001');
         return valueLines;
       }
       case 'Binary':
@@ -2637,16 +2729,18 @@ class WasmBuilder {
       case 'SelectExpr':
         return this.emitSelectExpr(expr);
       case 'Range':
-        this.reportUnsupported('standalone range expression in WASM backend', expr.location);
+        this.reportUnsupported('standalone range expression in WASM backend', expr.location, 'WASM-RANGE-001');
         return ['i32.const 0'];
       case 'Index':
         return this.emitIndex(expr);
+      case 'ArrayLiteral':
+        return this.emitArrayLiteral(expr);
       case 'TupleLiteral':
         return this.emitTupleLiteral(expr);
       case 'StructLiteral':
         return this.emitStructLiteral(expr);
       default:
-        this.reportUnsupported(expr.type, expr.location);
+        this.reportUnsupported(`expression '${expr.type}'`, expr.location, 'WASM-EXPR-001');
         return ['unreachable'];
     }
   }
@@ -2701,16 +2795,20 @@ class WasmBuilder {
   private emitTryExpr(value: LuminaExpr, location?: Location): string[] {
     const resultType = typeof value.id === 'number' ? this.exprTypes.get(value.id) : undefined;
     if (!resultType) {
-      this.reportUnsupported('try operator without inferred result type', location, 'WASM-TRY-001');
+      this.reportCodegenError('cannot lower ? operator without inferred Result type', location, 'WASM-TRY-001');
       return ['unreachable'];
     }
     const pruned = prune(resultType, this.subst);
     if (pruned.kind !== 'adt' || pruned.name !== 'Result' || pruned.params.length < 2) {
-      this.reportUnsupported('try operator outside Result context', location, 'WASM-TRY-001');
+      this.reportCodegenError('try operator requires Result<T, E> operand in WASM backend', location, 'WASM-TRY-001');
       return ['unreachable'];
     }
     if (this.currentFunctionReturn !== 'i32') {
-      this.reportUnsupported('try operator requires Result-returning WASM function', location, 'WASM-TRY-001');
+      this.reportCodegenError(
+        'try operator requires a Result-returning function when targeting WASM',
+        location,
+        'WASM-TRY-001'
+      );
       return ['unreachable'];
     }
     const okType = prune(pruned.params[0], this.subst);
@@ -2738,23 +2836,78 @@ class WasmBuilder {
   }
 
   private emitStructLiteral(expr: Extract<LuminaExpr, { type: 'StructLiteral' }>): string[] {
-    const struct = this.structLayout.get(expr.name);
+    const struct = this.resolveStructInfo(expr.name);
     if (!struct) {
-      this.reportUnsupported(`struct literal '${expr.name}'`, expr.location);
-      return ['unreachable'];
+      this.reportCodegenError(`unknown struct literal '${expr.name}' in WASM backend`, expr.location, 'WASM-STRUCT-001');
+      return ['i32.const 0'];
     }
     const fieldByName = new Map(expr.fields.map((field) => [field.name, field.value]));
+    for (const sourceField of expr.fields) {
+      if (!struct.fields.has(sourceField.name)) {
+        this.reportCodegenError(
+          `struct '${expr.name}' has no field '${sourceField.name}' in literal construction`,
+          sourceField.location ?? expr.location,
+          'WASM-STRUCT-001'
+        );
+      }
+    }
     const lines: string[] = [];
     for (const field of struct.orderedFields) {
       const valueExpr = fieldByName.get(field.name);
       if (!valueExpr) {
-        this.reportUnsupported(`missing field '${field.name}' in struct literal '${expr.name}'`, expr.location);
+        this.reportCodegenError(
+          `missing field '${field.name}' in struct literal '${expr.name}'`,
+          expr.location,
+          'WASM-STRUCT-001'
+        );
         lines.push(this.wasmConstZero(field.wasmType));
         continue;
       }
       lines.push(...this.emitExpr(valueExpr));
     }
     lines.push(`call $${sanitizeWasmIdent(expr.name)}_new`);
+    return lines;
+  }
+
+  private emitArrayLiteral(expr: Extract<LuminaExpr, { type: 'ArrayLiteral' }>): string[] {
+    const literalType = typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined;
+    const pruned = literalType ? prune(literalType, this.subst) : null;
+
+    // Default array literals infer as Vec<T>; lower via vec host imports.
+    if (pruned?.kind === 'adt' && pruned.name === 'Vec') {
+      const lines: string[] = ['call $vec_new', 'local.set $__tmp_i32'];
+      for (const element of expr.elements ?? []) {
+        lines.push('local.get $__tmp_i32');
+        lines.push(...this.emitExpr(element));
+        lines.push('call $vec_push');
+        lines.push('drop');
+      }
+      lines.push('local.get $__tmp_i32');
+      return lines;
+    }
+
+    const elementType =
+      pruned?.kind === 'adt' && pruned.name === 'Array' && pruned.params.length > 0
+        ? pruned.params[0]
+        : ({ kind: 'primitive', name: 'i32' } as Type);
+    const elementWasm = this.typeToWasm(elementType, expr.location) ?? 'i32';
+    const elementSize = elementWasm === 'f64' || elementWasm === 'i64' ? 8 : 4;
+    const headerSize = 4;
+    const totalSize = headerSize + expr.elements.length * elementSize;
+    const lines: string[] = [];
+    lines.push(`i32.const ${totalSize}`);
+    lines.push('call $alloc');
+    lines.push('local.tee $__tmp_i32');
+    lines.push(`i32.const ${expr.elements.length}`);
+    lines.push('i32.store');
+    for (let i = 0; i < expr.elements.length; i += 1) {
+      lines.push('local.get $__tmp_i32');
+      lines.push(`i32.const ${headerSize + i * elementSize}`);
+      lines.push('i32.add');
+      lines.push(...this.emitExpr(expr.elements[i]));
+      lines.push(this.wasmStoreOp(elementWasm));
+    }
+    lines.push('local.get $__tmp_i32');
     return lines;
   }
 
@@ -2929,7 +3082,7 @@ class WasmBuilder {
           'call $str_slice',
         ];
       }
-      this.reportUnsupported('range index on non-string value', expr.location);
+      this.reportUnsupported('range index on non-string value', expr.location, 'WASM-RANGE-002');
       return ['unreachable'];
     }
     const arrayInfo = this.extractArrayTypeInfo(objectType, expr.location);
@@ -2944,6 +3097,10 @@ class WasmBuilder {
       lines.push('end');
     }
     lines.push(...this.emitExpr(expr.object));
+    if (arrayInfo?.dataOffset && arrayInfo.dataOffset > 0) {
+      lines.push(`i32.const ${arrayInfo.dataOffset}`);
+      lines.push('i32.add');
+    }
     lines.push(...indexExpr);
     lines.push(`i32.const ${arrayInfo?.elementSize ?? 4}`);
     lines.push('i32.mul');
@@ -3008,7 +3165,7 @@ class WasmBuilder {
       if (variantInfo) {
         const argCount = expr.args?.length ?? 0;
         if (variantInfo.arity !== argCount) {
-          this.reportUnsupported(
+          this.reportCodegenError(
             `enum constructor '${expr.enumName}.${expr.callee.name}' arity mismatch in WASM backend`,
             expr.location,
             'WASM-GADT-001'
@@ -3484,14 +3641,14 @@ class WasmBuilder {
       }
     }
     if (pruned.kind === 'function') return 'i32';
-    this.reportUnsupported(`type '${this.formatType(pruned)}'`, location);
+    this.reportUnsupported(`type '${this.formatType(pruned)}'`, location, 'WASM-TYPE-001');
     return null;
   }
 
   private extractArrayTypeInfo(
     type: Type | undefined,
     location?: Location
-  ): { length: number | null; elementSize: number; elementWasm: WasmValType } | null {
+  ): { length: number | null; elementSize: number; elementWasm: WasmValType; dataOffset: number } | null {
     if (!type) return null;
     const pruned = prune(type, this.subst);
     if (pruned.kind === 'array') {
@@ -3502,7 +3659,7 @@ class WasmBuilder {
         const sizeValue = this.evaluateConstSizeText(this.formatConstExpr(pruned.size), location);
         if (sizeValue !== null) length = sizeValue;
       }
-      return { length, elementSize, elementWasm };
+      return { length, elementSize, elementWasm, dataOffset: 4 };
     }
     if (pruned.kind !== 'adt' || pruned.name !== 'Array' || pruned.params.length < 2) return null;
     const element = prune(pruned.params[0], this.subst);
@@ -3515,7 +3672,7 @@ class WasmBuilder {
     } else if (size.kind === 'primitive') {
       length = this.evaluateConstSizeText(size.name, location);
     }
-    return { length, elementSize, elementWasm };
+    return { length, elementSize, elementWasm, dataOffset: 4 };
   }
 
   private formatConstExpr(expr: TypeConstExpr): string {
@@ -3556,6 +3713,16 @@ class WasmBuilder {
     if (type.kind === 'adt') return type.name;
     if (type.kind === 'function') return 'fn';
     return type.kind;
+  }
+
+  private reportCodegenError(message: string, location?: Location, code: string = 'WASM-CODEGEN-001') {
+    this.diagnostics.push({
+      severity: 'error',
+      message: `WASM backend: ${message}`,
+      code,
+      location: location ?? defaultLocation,
+      source: 'lumina',
+    });
   }
 
   private reportUnsupported(feature: string, location?: Location, code: string = 'WASM-001') {

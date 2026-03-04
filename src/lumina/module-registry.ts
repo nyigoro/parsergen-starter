@@ -319,6 +319,324 @@ export function createStdModuleRegistry(): ModuleRegistry {
     ]),
   };
 
+  const opfsModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'opfs',
+    moduleId: 'std://opfs',
+    exports: new Map<string, ModuleExport>([
+      [
+        'is_available',
+        moduleFunction(
+          'is_available',
+          [],
+          'bool',
+          [],
+          primitive('bool'),
+          [],
+          'std://opfs'
+        ),
+      ],
+      [
+        'readFile',
+        moduleFunction(
+          'readFile',
+          ['string'],
+          'Promise<Result<string,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [primitive('string'), primitive('string')])),
+          ['path'],
+          'std://opfs'
+        ),
+      ],
+      [
+        'writeFile',
+        moduleFunction(
+          'writeFile',
+          ['string', 'string'],
+          'Promise<Result<void,string>>',
+          [primitive('string'), primitive('string')],
+          promiseType(adt('Result', [primitive('void'), primitive('string')])),
+          ['path', 'content'],
+          'std://opfs'
+        ),
+      ],
+      [
+        'readDir',
+        moduleFunction(
+          'readDir',
+          ['string'],
+          'Promise<Result<List<string>,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [adt('List', [primitive('string')]), primitive('string')])),
+          ['path'],
+          'std://opfs'
+        ),
+      ],
+      [
+        'metadata',
+        moduleFunction(
+          'metadata',
+          ['string'],
+          'Promise<Result<FileMetadata,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [adt('FileMetadata'), primitive('string')])),
+          ['path'],
+          'std://opfs'
+        ),
+      ],
+      [
+        'exists',
+        moduleFunction(
+          'exists',
+          ['string'],
+          'Promise<bool>',
+          [primitive('string')],
+          promiseType(primitive('bool')),
+          ['path'],
+          'std://opfs'
+        ),
+      ],
+      [
+        'mkdir',
+        moduleFunction(
+          'mkdir',
+          ['string', 'bool'],
+          'Promise<Result<void,string>>',
+          [primitive('string'), primitive('bool')],
+          promiseType(adt('Result', [primitive('void'), primitive('string')])),
+          ['path', 'recursive'],
+          'std://opfs'
+        ),
+      ],
+      [
+        'removeFile',
+        moduleFunction(
+          'removeFile',
+          ['string'],
+          'Promise<Result<void,string>>',
+          [primitive('string')],
+          promiseType(adt('Result', [primitive('void'), primitive('string')])),
+          ['path'],
+          'std://opfs'
+        ),
+      ],
+    ]),
+  };
+
+  const sabChannelModule: ModuleNamespace = (() => {
+    const senderT = adt('SABSenderI32');
+    const receiverT = adt('SABReceiverI32');
+    const channelT = adt('SABChannelI32');
+    const optionInt = adt('Option', [primitive('int')]);
+    return {
+      kind: 'module',
+      name: 'sab_channel',
+      moduleId: 'std://sab_channel',
+      exports: new Map<string, ModuleExport>([
+        [
+          'is_available',
+          moduleFunction(
+            'is_available',
+            [],
+            'bool',
+            [],
+            primitive('bool'),
+            [],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'bounded_i32',
+          moduleFunction(
+            'bounded_i32',
+            ['int'],
+            'SABChannelI32',
+            [primitive('int')],
+            channelT,
+            ['capacity'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'send_i32',
+          moduleFunction(
+            'send_i32',
+            ['SABSenderI32', 'int'],
+            'bool',
+            [senderT, primitive('int')],
+            primitive('bool'),
+            ['sender', 'value'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'try_send_i32',
+          moduleFunction(
+            'try_send_i32',
+            ['SABSenderI32', 'int'],
+            'bool',
+            [senderT, primitive('int')],
+            primitive('bool'),
+            ['sender', 'value'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'send_async_i32',
+          moduleFunction(
+            'send_async_i32',
+            ['SABSenderI32', 'int'],
+            'Promise<bool>',
+            [senderT, primitive('int')],
+            promiseType(primitive('bool')),
+            ['sender', 'value'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'recv_i32',
+          moduleFunction(
+            'recv_i32',
+            ['SABReceiverI32'],
+            'Promise<Option<int>>',
+            [receiverT],
+            promiseType(optionInt),
+            ['receiver'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'try_recv_i32',
+          moduleFunction(
+            'try_recv_i32',
+            ['SABReceiverI32'],
+            'Option<int>',
+            [receiverT],
+            optionInt,
+            ['receiver'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'close_sender_i32',
+          moduleFunction(
+            'close_sender_i32',
+            ['SABSenderI32'],
+            'void',
+            [senderT],
+            primitive('void'),
+            ['sender'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'close_receiver_i32',
+          moduleFunction(
+            'close_receiver_i32',
+            ['SABReceiverI32'],
+            'void',
+            [receiverT],
+            primitive('void'),
+            ['receiver'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'is_sender_closed_i32',
+          moduleFunction(
+            'is_sender_closed_i32',
+            ['SABSenderI32'],
+            'bool',
+            [senderT],
+            primitive('bool'),
+            ['sender'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'is_receiver_closed_i32',
+          moduleFunction(
+            'is_receiver_closed_i32',
+            ['SABReceiverI32'],
+            'bool',
+            [receiverT],
+            primitive('bool'),
+            ['receiver'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          'close_i32',
+          moduleFunction(
+            'close_i32',
+            ['SABChannelI32'],
+            'void',
+            [channelT],
+            primitive('void'),
+            ['channel'],
+            'std://sab_channel'
+          ),
+        ],
+      ]),
+    };
+  })();
+
+  const webgpuModule: ModuleNamespace = {
+    kind: 'module',
+    name: 'webgpu',
+    moduleId: 'std://webgpu',
+    exports: new Map<string, ModuleExport>([
+      [
+        'is_available',
+        moduleFunction(
+          'is_available',
+          [],
+          'bool',
+          [],
+          primitive('bool'),
+          [],
+          'std://webgpu'
+        ),
+      ],
+      [
+        'request_adapter',
+        moduleFunction(
+          'request_adapter',
+          [],
+          'Promise<Result<any,string>>',
+          [],
+          promiseType(adt('Result', [primitive('any'), primitive('string')])),
+          [],
+          'std://webgpu'
+        ),
+      ],
+      [
+        'request_device',
+        moduleFunction(
+          'request_device',
+          ['any'],
+          'Promise<Result<any,string>>',
+          [primitive('any')],
+          promiseType(adt('Result', [primitive('any'), primitive('string')])),
+          ['adapter'],
+          'std://webgpu'
+        ),
+      ],
+      [
+        'compute_i32',
+        moduleFunction(
+          'compute_i32',
+          ['string', 'string', 'Vec<int>', 'int', 'int'],
+          'Promise<Result<Vec<int>,string>>',
+          [primitive('string'), primitive('string'), adt('Vec', [primitive('int')]), primitive('int'), primitive('int')],
+          promiseType(adt('Result', [adt('Vec', [primitive('int')]), primitive('string')])),
+          ['wgsl', 'entryPoint', 'input', 'outputLength', 'workgroupSize'],
+          'std://webgpu'
+        ),
+      ],
+    ]),
+  };
+
   const pathModule: ModuleNamespace = {
     kind: 'module',
     name: 'path',
@@ -4228,6 +4546,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['foldable', foldableModule],
       ['traversable', traversableModule],
       ['fs', fsModule],
+      ['opfs', opfsModule],
       ['path', pathModule],
       ['env', envModule],
       ['process', processModule],
@@ -4235,6 +4554,8 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ['http', httpModule],
       ['time', timeModule],
       ['async_util', asyncModule],
+      ['sab_channel', sabChannelModule],
+      ['webgpu', webgpuModule],
       ['regex', regexModule],
       ['crypto', cryptoModule],
     ]),
@@ -4243,6 +4564,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std', stdModule);
   registry.set('@std/io', ioModule);
   registry.set('@std/fs', fsModule);
+  registry.set('@std/opfs', opfsModule);
   registry.set('@std/path', pathModule);
   registry.set('@std/env', envModule);
   registry.set('@std/process', processModule);
@@ -4267,8 +4589,10 @@ export function createStdModuleRegistry(): ModuleRegistry {
   registry.set('@std/priority_queue', priorityQueueModule);
   registry.set('@std/channel', channelModule);
   registry.set('@std/async_channel', asyncChannelModule);
+  registry.set('@std/sab_channel', sabChannelModule);
   registry.set('@std/thread', threadModule);
   registry.set('@std/sync', syncModule);
+  registry.set('@std/webgpu', webgpuModule);
   registry.set('@std/reactive', reactiveModule);
   registry.set('@std/render', renderModule);
   registry.set('@std/functor', functorModule);
