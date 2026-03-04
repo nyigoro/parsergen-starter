@@ -33,11 +33,12 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Array literals + indexing | Stable | `[1,2,3]`, `v[0]` |
 | Lambda expressions | Stable | `|x| x + 1` |
 | Collection method syntax | Stable | `v.push(1)` style lowering to stdlib calls |
+| Function overloading | Stable | Trait-based + ad-hoc stdlib overload resolution with `OVERLOAD_NO_MATCH`/`OVERLOAD_AMBIGUOUS` diagnostics |
 | Macros | Beta | Expansion phase with matcher/transcriber subset, lexical scoping, `![]`/`!()`/`!{}` calls, recursion/cycle diagnostics |
 | `#[derive(...)]` | Stable | Trait-based derived impl synthesis (`Clone`, `Debug`, `Eq`) for structs/enums, generic bound synthesis, collision diagnostics |
 | Const generics | Stable | Const params across structs/enums/functions/traits, where-clauses, explicit const args (`::<...>`), semantic + HM checks, monomorphization, JS/WASM fixed-array codegen |
-| GADTs (baseline) | Beta | Indexed variants + existential constraints, branch refinement, unreachable/index-aware diagnostics, existential escape checks |
-| Higher-kinded types (MVP+) | Beta | Kind polymorphism + higher-order kind inference + constraint solving (`HKT-001`), partial/curried constructors (`Result<_, E>`, `Result<i32>`), constructor aliases/composition (`type Compose<F<_>, G<_>, A> = F<G<A>>`), `where` constructor bounds, associated-type arity (`type Wrapped<_>;`) |
+| GADTs | Stable | Indexed variants + existential constraints, recursive refinement guards (`GADT-008`), nested/multi-pattern refinement, WASM nested + multi-payload match lowering, HKT-indexed non-existential positions |
+| Higher-kinded types | Stable | Kind polymorphism + higher-order inference + constraint solving (`HKT-001`), partial/curried constructors (`Result<_, E>`, `Result<i32>`), constructor aliases/composition, pattern refinement through HKT-applied positions, stable stdlib Functor/Applicative/Monad modules |
 
 ## Type System (HM)
 | Feature | Status | Notes |
@@ -59,12 +60,16 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Structured diagnostics | Stable | Error / warning severity |
 | HM type formatting | Stable | Pretty formatting for errors |
 | LSP hover (HM‑backed) | Stable | Uses HM inferred types + cross‑file source info |
-| LSP signature help | Beta | NodeID‑based mapping |
+| LSP signature help | Stable | Cursor-aware nested call resolution, overload candidate lists, active parameter tracking, HM-instantiated call-site labels |
 | LSP cross‑file definition | Stable | Aliases + namespace imports supported |
+| LSP references | Stable | Cross-module references include declaration/call/import/type/pattern sites with deduplication |
+| LSP rename | Stable | Cross-module rename with conflict checks, package-boundary protection, deterministic workspace edits |
 | Canonical module IDs + alias‑aware hover | Stable | Cross‑file hover & definition via module graph |
-| LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010; **range precision for nested generics deferred** |
+| LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010 with precise `_` replacement ranges for nested generic types |
 | LSP inlay hints | Stable | Type hints for inferred lets + parameter hints |
-| LSP refactor code actions | Stable | Extract local + collection call style rewrite |
+| LSP refactor code actions | Stable | Extract local/type alias, inline variable, collection call style rewrites |
+| LSP document/workspace symbols | Stable | Symbol kinds + workspace query coverage across multi-file projects |
+| LSP semantic tokens | Stable | Keyword/literal/type/value tokenization with stable output across non-semantic edits |
 | Diagnostic deduplication | Stable | HM + semantic merged |
 
 ## Standard Library & Runtime
@@ -72,6 +77,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 |---|---|---|
 | Prelude enums (Option/Result) | Stable | Registry + prelude |
 | Runtime stdlib expansion | Stable | Core modules: `io`, `str`, `math`, `list`, `vec`, `hashmap`, `hashset`, `fs`, `opfs`, `sab_channel`, `webgpu`, `http`, `time`, `regex`, `crypto` |
+| Numeric API unification | Stable | Unified `abs`, `min`, `max`, `pow` over int/float overloads; `absf`/`minf`/`maxf`/`powf` remain as deprecated aliases |
 | HKT stdlib traits | Stable | `@std/functor`, `@std/applicative`, `@std/monad` + Option/Result/Vec/HashMap helpers |
 | Frontend/reactivity primitives | Beta | `@std/reactive` + `@std/render` (`Signal`, `Memo`, `Effect`, `VNode`, renderer contract + DOM/SSR/Canvas/Terminal renderers) |
 | Runtime Option/Result | Stable | JS runtime + helpers |
@@ -92,7 +98,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 |---|---|---|
 | AST lowering | Beta | Used by transpiler |
 | JS codegen | Stable | Match lowering + IIFE + source map support |
-| WASM codegen | Beta | Broad JS parity, async/select lowering via promise handles, ~100x faster recursion in benchmarks |
+| WASM codegen | Beta | Core language + collections + control-flow parity implemented; async/select lowered via promise handles; explicit unsupported diagnostics remain for `is` narrowing and selected cast/range/dispatch/type edge-cases; ~100x faster recursion in benchmarks |
 | IR optimization (SSA) | Stable | Function‑scoped SSA + loop‑safe constant propagation |
 | Source maps | Stable | External + inline options |
 | Multi‑file module compilation | Stable | Import resolution via bundling (topological compile planned) |
@@ -120,51 +126,3 @@ This document tracks the current state of the Lumina language/tooling and near�
 5. **Borrow safety polish + advanced IDE refactors** (same goals, sequenced after web-native P0)
 
 Reference: `docs/WEB_NATIVE_ROADMAP.md`
-
-### P0 Release Gate: Core Language Features in WASM (Must Complete Entirely)
-- [x] String operations (beyond numerics)
-- [x] String interpolation codegen
-- [x] String slicing in WASM
-- [x] Struct construction and field access
-- [x] Enum construction and pattern matching
-- [x] Trait method dispatch in WASM
-- [x] Closures/lambdas in WASM
-- [x] Error handling (`?` operator)
-- [x] Async/await + select support (lowered through WASM promise-handle runtime imports)
-
-### 1.2 Collections in WASM (Priority: P0)
-- [x] Vec operations (push, get, len, pop, clear, take, skip)
-- [x] HashMap operations (new/len/insert/get/remove/contains_key/clear)
-- [x] HashSet operations (new/len/insert/contains/remove/clear)
-- [x] Array indexing with bounds checks
-- [x] Iterator methods in WASM (any/all/map/filter/fold/find/position)
-
-### 1.3 Control Flow in WASM (Priority: P0)
-- [x] If/else statements
-- [x] While loops
-- [x] For loops (range loops)
-- [x] Match expressions with all patterns (enum/literal/wildcard/binding/tuple/struct)
-- [x] Break/continue (available in language syntax + JS/WASM lowering)
-- [x] Return from nested contexts
-
-### 1.4 Memory Management (Priority: P1)
-- [x] String allocation in linear memory (host string ops now allocate/write string objects in WASM linear memory via exported allocator when available)
-- [x] Struct allocation (linear-memory bump allocator via `alloc`)
-- [x] Reference counting (if needed) (runtime hooks: `mem_retain` / `mem_release` / `mem_stats_live` for managed heap pointers)
-- [x] Garbage collection strategy (or explicit memory management) (explicit memory management: allocator + free-list + exported `__free`; no tracing GC)
-
-### 1.5 WASM Testing (Priority: P0)
-- [x] Comprehensive WASM codegen tests (50+ tests) (`tests/codegen-wasm-matrix.test.ts` + existing WASM codegen suites)
-- [x] Runtime behavior tests (not just compilation) (`tests/wasm-runtime-behavior.test.ts`, `tests/wasm-runtime.test.ts`, `tests/wasm-channel-runtime.test.ts`)
-- [x] Performance benchmarks vs JS (`scripts/benchmark/wasm-vs-js-bench.ts`, run with `npm run bench:wasm-vs-js`)
-- [x] Memory usage validation (`tests/wasm-memory-validation.test.ts`, `scripts/benchmark/wasm-memory-bench.ts`, run with `npm run bench:wasm-memory`)
-
-### WASM v1 Explicit Unsupported Diagnostics
-- `is` expressions / runtime narrowing in WASM (`WASM-IS-001`)
-- Unsupported cast combinations (`WASM-CAST-001`)
-- Standalone range expressions (`WASM-RANGE-001`)
-- Range slicing on non-string values (`WASM-RANGE-002`)
-- Statement declarations in executable blocks (trait/impl/struct/type/import) (`WASM-STMT-001`)
-- Unknown expression kind in backend lowering (`WASM-EXPR-001`)
-- Unresolved method dispatch paths (`WASM-TRAIT-001`)
-- Unresolved type-to-WASM mapping (`WASM-TYPE-001`)

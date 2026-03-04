@@ -913,14 +913,15 @@ export const str = {
 };
 
 export const math = {
-  abs: (value: number) => Math.trunc(Math.abs(value)),
-  min: (a: number, b: number) => Math.trunc(Math.min(a, b)),
-  max: (a: number, b: number) => Math.trunc(Math.max(a, b)),
+  abs: (value: number) => Math.abs(value),
+  min: (a: number, b: number) => Math.min(a, b),
+  max: (a: number, b: number) => Math.max(a, b),
   absf: (value: number) => Math.abs(value),
   minf: (a: number, b: number) => Math.min(a, b),
   maxf: (a: number, b: number) => Math.max(a, b),
   sqrt: (value: number) => Math.sqrt(value),
   pow: (base: number, exp: number) => Math.pow(base, exp),
+  powf: (base: number, exp: number) => Math.pow(base, exp),
   floor: (value: number) => Math.floor(value),
   ceil: (value: number) => Math.ceil(value),
   round: (value: number) => Math.round(value),

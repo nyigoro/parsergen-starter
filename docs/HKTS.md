@@ -126,3 +126,6 @@ trait Wrap<F> {
   - HKT bounds in type-parameter lists (`F<_>: Functor`, `G<_,_>: BiCtx`).
   - HKT associated-type arity (`type Wrapped<_>;`) with impl arity validation.
   - stdlib HKT traits/modules for `Functor`, `Applicative`, and `Monad` with implementations for `Option`, `Result`, `Vec`, and `HashMap` helpers.
+  - pattern refinement through HKT-applied positions once constructors are concrete (for example nested `Some/None` patterns inside `F<A>` fields after instantiation).
+  - stable inference for long monadic helper chains (`flat_map_*` style pipelines).
+  - WASM direct dispatch emission for monomorphized HKT-backed trait helpers through concrete receiver types.

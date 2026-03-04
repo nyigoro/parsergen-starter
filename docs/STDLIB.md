@@ -124,23 +124,29 @@ Checks if `needle` occurs within `haystack`.
 
 ## @std/math
 
-### abs(n: Int) -> Int
-Absolute value for integers.
+### abs(n: Int | Float) -> Int | Float
+Unified absolute value API via overloads.
+- `abs(i32|i64|u32|u64)` returns integer
+- `abs(f32|f64)` returns float
 
-### min(a: Int, b: Int) -> Int
-### max(a: Int, b: Int) -> Int
-Minimum / maximum for integers.
+### min(a: Int | Float, b: Int | Float) -> Int | Float
+### max(a: Int | Float, b: Int | Float) -> Int | Float
+Unified min/max APIs via overloads.
+- Integer variants map to integer runtime operations
+- Float variants map to float runtime operations
 
-### absf(n: Float) -> Float
-### minf(a: Float, b: Float) -> Float
-### maxf(a: Float, b: Float) -> Float
-Floating‑point variants (temporary until overloading).
+### pow(base: Int | Float, exp: Int | Float) -> Int | Float
+Unified power API via overloads.
 
 ### sqrt(n: Float) -> Float
 Square root.
 
-### pow(base: Float, exp: Float) -> Float
-Power function.
+### Deprecated compatibility aliases
+The following names still work but emit deprecation warnings:
+- `absf(n: Float) -> Float` (use `abs`)
+- `minf(a: Float, b: Float) -> Float` (use `min`)
+- `maxf(a: Float, b: Float) -> Float` (use `max`)
+- `powf(base: Float, exp: Float) -> Float` (use `pow`)
 
 ### floor(n: Float) -> Int
 ### ceil(n: Float) -> Int

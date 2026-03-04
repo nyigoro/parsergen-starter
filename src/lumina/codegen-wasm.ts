@@ -13,7 +13,7 @@ import {
   type LuminaMatchPattern,
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
-import { prune, type Type, type ConstExpr as TypeConstExpr, normalizePrimitiveName } from './types.js';
+import { prune, type Type, type ConstExpr as TypeConstExpr, normalizePrimitiveName, HKT_APPLY_TYPE_NAME } from './types.js';
 
 const normalizeTargetTypeName = (name: string): string => {
   if (name === 'int') return 'i32';
@@ -79,6 +79,7 @@ interface WasmEnumVariantInfo {
   arity: number;
   hasIndexedResult: boolean;
   params: LuminaTypeExpr[];
+  resultType?: LuminaTypeExpr | null;
 }
 
 type WasmEnumLayout = Map<string, Map<string, WasmEnumVariantInfo>>;
@@ -161,6 +162,7 @@ export function generateWATFromAst(
         arity: variant.params?.length ?? 0,
         hasIndexedResult: !!variant.resultType,
         params: variant.params ?? [],
+        resultType: variant.resultType ?? null,
       });
     });
     enumLayout.set(stmt.name, variants);
@@ -169,8 +171,8 @@ export function generateWATFromAst(
     enumLayout.set(
       'Option',
       new Map<string, WasmEnumVariantInfo>([
-        ['Some', { tag: 0, arity: 1, hasIndexedResult: false, params: ['i32'] }],
-        ['None', { tag: 1, arity: 0, hasIndexedResult: false, params: [] }],
+        ['Some', { tag: 0, arity: 1, hasIndexedResult: false, params: ['i32'], resultType: null }],
+        ['None', { tag: 1, arity: 0, hasIndexedResult: false, params: [], resultType: null }],
       ])
     );
   }
@@ -178,8 +180,8 @@ export function generateWATFromAst(
     enumLayout.set(
       'Result',
       new Map<string, WasmEnumVariantInfo>([
-        ['Ok', { tag: 0, arity: 1, hasIndexedResult: false, params: ['i32'] }],
-        ['Err', { tag: 1, arity: 1, hasIndexedResult: false, params: ['i32'] }],
+        ['Ok', { tag: 0, arity: 1, hasIndexedResult: false, params: ['i32'], resultType: null }],
+        ['Err', { tag: 1, arity: 1, hasIndexedResult: false, params: ['i32'], resultType: null }],
       ])
     );
   }
@@ -1682,12 +1684,78 @@ class WasmBuilder {
         const variants = this.enumLayout.get(pruned.name);
         if (variants?.has(pattern.variant)) return pruned.name;
       }
+      if (pruned.kind === 'adt' && pruned.name === HKT_APPLY_TYPE_NAME && pruned.params.length >= 2) {
+        const ctor = prune(pruned.params[0], this.subst);
+        if (ctor.kind === 'adt' && ctor.params.length === 0 && this.enumLayout.has(ctor.name)) {
+          const variants = this.enumLayout.get(ctor.name);
+          if (variants?.has(pattern.variant)) return ctor.name;
+        }
+      }
     }
     const candidates: string[] = [];
     for (const [enumName, variants] of this.enumLayout.entries()) {
       if (variants.has(pattern.variant)) candidates.push(enumName);
     }
     return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  private normalizeMatchValueTypeForEnum(valueType: Type | undefined, enumName: string): Type | undefined {
+    if (!valueType) return undefined;
+    const pruned = prune(valueType, this.subst);
+    if (pruned.kind !== 'adt' || pruned.name !== HKT_APPLY_TYPE_NAME || pruned.params.length < 2) {
+      return pruned;
+    }
+    const ctor = prune(pruned.params[0], this.subst);
+    if (ctor.kind !== 'adt' || ctor.params.length !== 0 || ctor.name !== enumName) {
+      return pruned;
+    }
+    return { kind: 'adt', name: enumName, params: pruned.params.slice(1) };
+  }
+
+  private typesDefinitelyIncompatible(left: Type | undefined, right: Type | undefined): boolean {
+    if (!left || !right) return false;
+    const l = prune(left, this.subst);
+    const r = prune(right, this.subst);
+    if (l.kind === 'variable' || r.kind === 'variable') return false;
+    if (l.kind === 'primitive' && normalizePrimitiveName(l.name) === 'any') return false;
+    if (r.kind === 'primitive' && normalizePrimitiveName(r.name) === 'any') return false;
+    if (l.kind === 'primitive' && r.kind === 'primitive') {
+      return normalizePrimitiveName(l.name) !== normalizePrimitiveName(r.name);
+    }
+    if (l.kind === 'adt' && r.kind === 'adt') {
+      if (l.name !== r.name) return true;
+      if (l.params.length !== r.params.length) return true;
+      for (let i = 0; i < l.params.length; i += 1) {
+        if (this.typesDefinitelyIncompatible(l.params[i], r.params[i])) return true;
+      }
+      return false;
+    }
+    if (l.kind === 'promise' && r.kind === 'promise') {
+      return this.typesDefinitelyIncompatible(l.inner, r.inner);
+    }
+    return false;
+  }
+
+  private variantCanMatchValueType(
+    enumName: string,
+    variantInfo: WasmEnumVariantInfo,
+    valueType?: Type
+  ): boolean {
+    if (!valueType || !variantInfo.resultType) return true;
+    const normalizedValue = this.normalizeMatchValueTypeForEnum(valueType, enumName);
+    if (!normalizedValue) return true;
+    const variantResultType = this.typeExprToPatternType(variantInfo.resultType);
+    if (!variantResultType) return true;
+    return !this.typesDefinitelyIncompatible(normalizedValue, variantResultType);
+  }
+
+  private isPatternStaticallyReachable(pattern: LuminaMatchPattern, valueType?: Type): boolean {
+    if (pattern.type !== 'EnumPattern') return true;
+    const enumName = this.resolvePatternEnumName(pattern, valueType);
+    if (!enumName) return true;
+    const variantInfo = this.resolveEnumVariantInfo(enumName, pattern.variant);
+    if (!variantInfo) return true;
+    return this.variantCanMatchValueType(enumName, variantInfo, valueType);
   }
 
   private emitPatternConditionFromLocal(
@@ -2480,13 +2548,14 @@ class WasmBuilder {
     const matchTemp = this.getMatchTempName(stmt);
     const valueType = typeof stmt.value.id === 'number' ? this.exprTypes.get(stmt.value.id) : undefined;
     const label = `$match_end_${this.nodeTempSuffix(stmt)}`;
+    const candidateArms = (stmt.arms ?? []).filter((arm) => this.isPatternStaticallyReachable(arm.pattern, valueType));
     const lines: string[] = [];
     lines.push(...this.emitExpr(stmt.value));
     lines.push(`local.set $${matchTemp}`);
     lines.push(`(block ${label}`);
     let hasFallback = false;
 
-    for (const arm of stmt.arms ?? []) {
+    for (const arm of candidateArms) {
       const condLines = this.emitPatternConditionFromLocal(arm.pattern, matchTemp, valueType);
       const bindLines = this.emitPatternBindingsFromLocal(arm.pattern, matchTemp, valueType);
       if (!condLines || !bindLines) return null;
@@ -2523,11 +2592,12 @@ class WasmBuilder {
     const resultType = this.typeToWasm(typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined, expr.location) ?? 'i32';
     const tempName = this.getMatchExprTempName(expr);
     const label = `$match_expr_end_${this.nodeTempSuffix(expr)}`;
+    const candidateArms = expr.arms.filter((arm) => this.isPatternStaticallyReachable(arm.pattern, valueType));
     const buildArm = (index: number): string[] | null => {
-      if (index >= expr.arms.length) {
+      if (index >= candidateArms.length) {
         return ['unreachable'];
       }
-      const arm = expr.arms[index];
+      const arm = candidateArms[index];
       const condLines = this.emitPatternConditionFromLocal(arm.pattern, tempName, valueType);
       const bindLines = this.emitPatternBindingsFromLocal(arm.pattern, tempName, valueType);
       if (!condLines || !bindLines) return null;
@@ -3160,6 +3230,21 @@ class WasmBuilder {
   private emitCall(expr: Extract<LuminaExpr, { type: 'Call' }>): string[] {
     const expectedResultWasm =
       typeof expr.id === 'number' ? this.typeToWasm(this.exprTypes.get(expr.id), expr.location) : null;
+
+    if (!expr.enumName && !expr.receiver && expr.callee.name === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && (expr.args?.length ?? 0) === 1) {
+      const targetArg = expr.typeArgs?.[0];
+      const targetType = normalizeTargetTypeName(typeof targetArg === 'string' ? targetArg : 'any');
+      if (targetType === 'string') {
+        return this.emitStringifiedExpr(expr.args[0]);
+      }
+      return this.emitExpr({
+        type: 'Cast',
+        expr: expr.args[0],
+        targetType,
+        location: expr.location,
+      });
+    }
+
     if (expr.enumName) {
       const variantInfo = this.resolveEnumVariantInfo(expr.enumName, expr.callee.name);
       if (variantInfo) {

@@ -121,6 +121,17 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
       'Move logic into a trait method constrained by the existential bound.',
     ],
   },
+  'GADT-008': {
+    code: 'GADT-008',
+    title: 'Recursive GADT refinement limit reached',
+    summary: 'Pattern refinement stopped because recursive GADT constraints exceeded the refinement safety guard.',
+    why: 'Deep or cyclic recursive constraints can otherwise cause non-terminating branch refinement.',
+    howToFix: [
+      'Break very deep nested patterns into smaller helper matches.',
+      'Refactor mutually recursive pattern constraints into explicit intermediate bindings.',
+      'Keep recursive constructors but avoid unbounded nested destructuring in a single pattern.',
+    ],
+  },
   'WASM-GADT-001': {
     code: 'WASM-GADT-001',
     title: 'WASM GADT lowering limit',

@@ -30,7 +30,9 @@ import {
   createStdModuleRegistry,
   getPreludeExports,
   resolveModuleBindings,
+  resolveModuleFunctionCandidates,
   type ModuleExport,
+  type ModuleFunction,
   type ModuleRegistry,
 } from './module-registry.js';
 import { expandMacrosInProgram } from './macro-expand.js';
@@ -83,6 +85,8 @@ interface ExistentialWitness {
 interface PatternRefinementContext {
   existentialWitnesses: ExistentialWitness[];
   scopeId: number;
+  depthLimitReported?: boolean;
+  refinementStack?: Set<string>;
 }
 
 interface PatternConstraintSolveResult {
@@ -121,6 +125,8 @@ const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
 };
+
+const MAX_GADT_REFINEMENT_DEPTH = 32;
 
 const literalNumericSuffixes = new Set<PrimitiveName>([
   'i8', 'i16', 'i32', 'i64', 'i128',
@@ -1366,6 +1372,7 @@ function inferStatement(
         const armPatternContext: PatternRefinementContext = {
           existentialWitnesses: [],
           scopeId: ++activeExistentialScopeSeed,
+          refinementStack: new Set<string>(),
         };
         const patternDiagnostics: Diagnostic[] = [];
         if (scrutineeType) {
@@ -1853,6 +1860,10 @@ function inferExpr(
       const valueType = inferChild(expr.expr);
       if (!valueType) return null;
       const targetType = parseTypeName(expr.targetType, undefined, undefined, defaultLocation);
+      const targetPruned = prune(targetType, subst);
+      if (targetPruned.kind === 'primitive' && normalizePrimitiveName(targetPruned.name) === 'string') {
+        return recordExprType(expr, targetType, subst);
+      }
       const fromNumeric = numericPrimitiveOf(valueType, subst);
       const toNumeric = numericPrimitiveOf(targetType, subst);
       if (!fromNumeric || !toNumeric) {
@@ -1937,6 +1948,124 @@ function inferExpr(
       return null;
     }
     case 'Call': {
+      const formatOverloadSignatures = (candidates: ModuleFunction[]): string =>
+        candidates
+          .map((candidate) => {
+            const args = candidate.paramTypes.join(', ');
+            return `${candidate.name}(${args}) -> ${candidate.returnType}`;
+          })
+          .join('; ');
+
+      const selectModuleOverloadCandidate = (
+        callName: string,
+        candidates: ModuleFunction[],
+        argTypes: Type[],
+        callLocation: Location | undefined
+      ): ModuleFunction | null => {
+        if (candidates.length === 0) return null;
+        const byArity = candidates.filter((candidate) => candidate.paramTypes.length === argTypes.length);
+        if (byArity.length === 0) {
+          if (candidates.length === 1) {
+            diagnostics.push({
+              severity: 'error',
+              code: 'LUM-002',
+              message: `Argument count mismatch for '${callName}'`,
+              source: 'lumina',
+              location: diagLocation(callLocation),
+            });
+            return null;
+          }
+          diagnostics.push({
+            severity: 'error',
+            code: 'OVERLOAD_NO_MATCH',
+            message: `No overload for '${callName}' matches ${argTypes.length} argument(s). Available signatures: ${formatOverloadSignatures(
+              candidates
+            )}`,
+            source: 'lumina',
+            location: diagLocation(callLocation),
+          });
+          return null;
+        }
+        if (byArity.length === 1) return byArity[0];
+
+        const viable: ModuleFunction[] = [];
+        for (const candidate of byArity) {
+          const trial = cloneSubst(subst);
+          const candidateType = instantiate(candidate.hmType);
+          const trialResult = freshTypeVar();
+          const trialFn: Type = { kind: 'function', args: argTypes, returnType: trialResult };
+          try {
+            unify(candidateType, trialFn, trial, activeWrapperSet);
+            viable.push(candidate);
+          } catch {
+            // candidate does not match argument shapes
+          }
+        }
+
+        if (viable.length === 1) return viable[0];
+        if (viable.length === 0) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'OVERLOAD_NO_MATCH',
+            message: `No overload for '${callName}' matches inferred argument types (${argTypes
+              .map((arg) => formatType(arg, subst))
+              .join(', ')}). Available signatures: ${formatOverloadSignatures(byArity)}`,
+            source: 'lumina',
+            location: diagLocation(callLocation),
+          });
+          return null;
+        }
+
+        const withExact = viable.map((candidate) => {
+          const parsedParams = candidate.paramTypes.map((param) => parseTypeName(param));
+          let exact = 0;
+          for (let i = 0; i < argTypes.length; i += 1) {
+            const expected = parsedParams[i];
+            if (!expected) continue;
+            const actualNorm = normalizeType(argTypes[i], subst);
+            const expectedNorm = normalizeType(expected, subst);
+            if (formatType(actualNorm, subst) === formatType(expectedNorm, subst)) {
+              exact += 1;
+            }
+          }
+          return { candidate, exact };
+        });
+        const bestExact = Math.max(...withExact.map((entry) => entry.exact));
+        const best = withExact.filter((entry) => entry.exact === bestExact).map((entry) => entry.candidate);
+        if (best.length === 1) return best[0];
+
+        diagnostics.push({
+          severity: 'error',
+          code: 'OVERLOAD_AMBIGUOUS',
+          message: `Ambiguous overload for '${callName}'. Matching signatures: ${formatOverloadSignatures(best)}`,
+          source: 'lumina',
+          location: diagLocation(callLocation),
+        });
+        return null;
+      };
+
+      if (!expr.receiver && !expr.enumName && expr.callee.name === 'cast') {
+        if ((expr.typeArgs?.length ?? 0) !== 1 || (expr.args?.length ?? 0) !== 1) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'TYPE-CAST',
+            message: `cast requires exactly one type argument and one value argument (for example: cast::<i32>(value))`,
+            source: 'lumina',
+            location: diagLocation(expr.location),
+          });
+          return null;
+        }
+        const targetArg = expr.typeArgs?.[0];
+        const targetType = typeof targetArg === 'string' ? targetArg : '_';
+        const syntheticCast: LuminaExpr = {
+          type: 'Cast',
+          expr: expr.args[0],
+          targetType,
+          location: expr.location,
+        };
+        return inferChild(syntheticCast, expectedType);
+      }
+
       const inferReceiverCall = (receiverExpr: LuminaExpr): Type => {
         const receiverType = inferChild(receiverExpr);
         const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
@@ -2815,8 +2944,8 @@ function inferExpr(
       if (enumName && !isShadowed && moduleBindings) {
         const moduleExport = moduleBindings.get(enumName);
         if (moduleExport?.kind === 'module') {
-          const member = moduleExport.exports.get(expr.callee.name);
-          if (!member || member.kind !== 'function') {
+          const candidates = resolveModuleFunctionCandidates(moduleExport, expr.callee.name);
+          if (candidates.length === 0) {
             diagnostics.push({
               severity: 'error',
               code: 'HM_MODULE_MEMBER',
@@ -2826,8 +2955,24 @@ function inferExpr(
             });
             return null;
           }
-          const calleeType = instantiate(member.hmType);
           const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
+          const selected = selectModuleOverloadCandidate(
+            `${expr.enumName}.${expr.callee.name}`,
+            candidates,
+            argTypes,
+            expr.location
+          );
+          if (!selected) return null;
+          if (selected.deprecatedMessage) {
+            diagnostics.push({
+              severity: 'warning',
+              code: 'DEPRECATED',
+              message: selected.deprecatedMessage,
+              source: 'lumina',
+              location: diagLocation(expr.location),
+            });
+          }
+          const calleeType = instantiate(selected.hmType);
           const resultType = freshTypeVar();
           const fnType: Type = { kind: 'function', args: argTypes, returnType: resultType };
           tryUnify(calleeType, fnType, subst, diagnostics, {
@@ -2859,6 +3004,42 @@ function inferExpr(
         );
         if (constructorType) return recordExprType(expr, constructorType, subst);
       }
+
+      if (moduleBindings) {
+        const directBinding = moduleBindings.get(expr.callee.name);
+        const directCandidates =
+          directBinding ? resolveModuleFunctionCandidates(directBinding, undefined) : [];
+        if (directCandidates.length > 0) {
+          const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
+          const selected = selectModuleOverloadCandidate(expr.callee.name, directCandidates, argTypes, expr.location);
+          if (!selected) return null;
+          if (selected.deprecatedMessage) {
+            diagnostics.push({
+              severity: 'warning',
+              code: 'DEPRECATED',
+              message: selected.deprecatedMessage,
+              source: 'lumina',
+              location: diagLocation(expr.location),
+            });
+          }
+          const calleeType = instantiate(selected.hmType);
+          const resultType = freshTypeVar();
+          const fnType: Type = { kind: 'function', args: argTypes, returnType: resultType };
+          tryUnify(calleeType, fnType, subst, diagnostics, {
+            location: expr.location,
+            note: `In call to '${expr.callee.name}'`,
+          });
+          if (expectedType) {
+            tryUnify(resultType, expectedType, subst, diagnostics, {
+              location: expr.location,
+              note: `Call result of '${expr.callee.name}' must match expected type`,
+            });
+          }
+          recordCallSignature(expr, argTypes, resultType, subst, inferredCalls);
+          return recordExprType(expr, resultType, subst);
+        }
+      }
+
       const calleeScheme = env.lookup(expr.callee.name);
       if (!calleeScheme) return null;
       const calleeType = instantiate(calleeScheme);
@@ -2888,6 +3069,16 @@ function inferExpr(
           const member = moduleExport.exports.get(expr.property);
           if (member?.kind === 'function' || member?.kind === 'value') {
             return recordExprType(expr, instantiate(member.hmType), subst);
+          }
+          if (member?.kind === 'overloaded-function') {
+            diagnostics.push({
+              severity: 'error',
+              code: 'OVERLOAD_AMBIGUOUS',
+              message: `Cannot use overloaded member '${objectName}.${expr.property}' as a value without a call context`,
+              source: 'lumina',
+              location: diagLocation(expr.location),
+            });
+            return recordExprType(expr, freshTypeVar(), subst);
           }
           diagnostics.push({
             severity: 'error',
@@ -2999,6 +3190,7 @@ function inferExpr(
         const armPatternContext: PatternRefinementContext = {
           existentialWitnesses: [],
           scopeId: ++activeExistentialScopeSeed,
+          refinementStack: new Set<string>(),
         };
         const patternDiagnostics: Diagnostic[] = [];
         applyMatchPattern(
@@ -3859,6 +4051,39 @@ function inferEnumConstructor(
   return prune(instantiated.resultType, subst);
 }
 
+function normalizeScrutineeForEnum(scrutineeType: Type, enumName: string, subst: Subst): Type {
+  const pruned = prune(scrutineeType, subst);
+  if (pruned.kind !== 'adt' || pruned.name !== HKT_APPLY_TYPE_NAME || pruned.params.length < 2) {
+    return scrutineeType;
+  }
+  const ctor = prune(pruned.params[0], subst);
+  if (ctor.kind !== 'adt' || ctor.params.length !== 0 || ctor.name !== enumName) {
+    return scrutineeType;
+  }
+  return { kind: 'adt', name: enumName, params: pruned.params.slice(1) };
+}
+
+function resolveEnumNameFromPatternScrutinee(
+  pattern: Extract<LuminaMatchPattern, { type: 'EnumPattern' }>,
+  scrutineeType: Type,
+  subst: Subst,
+  enumRegistry?: Map<string, EnumInfo>
+): string | null {
+  if (pattern.enumName) return pattern.enumName;
+  const pruned = prune(scrutineeType, subst);
+  if (pruned.kind === 'adt' && pruned.name !== HKT_APPLY_TYPE_NAME) {
+    return pruned.name;
+  }
+  if (pruned.kind === 'adt' && pruned.name === HKT_APPLY_TYPE_NAME && pruned.params.length >= 2) {
+    const ctor = prune(pruned.params[0], subst);
+    if (ctor.kind !== 'adt' || ctor.params.length !== 0) return null;
+    if (!enumRegistry) return ctor.name;
+    const candidate = enumRegistry.get(ctor.name);
+    if (candidate?.variants.has(pattern.variant)) return ctor.name;
+  }
+  return null;
+}
+
 function applyMatchPattern(
   pattern: LuminaMatchPattern,
   scrutineeType: Type,
@@ -3866,8 +4091,22 @@ function applyMatchPattern(
   subst: Subst,
   diagnostics: Diagnostic[],
   enumRegistry?: Map<string, EnumInfo>,
-  context?: PatternRefinementContext
+  context?: PatternRefinementContext,
+  depth: number = 0
 ) {
+  if (depth > MAX_GADT_REFINEMENT_DEPTH) {
+    if (context && !context.depthLimitReported) {
+      diagnostics.push({
+        severity: 'warning',
+        code: 'GADT-008',
+        message: `Reached GADT refinement depth limit (${MAX_GADT_REFINEMENT_DEPTH}); skipping deeper recursive refinements`,
+        source: 'lumina',
+        location: diagLocation(pattern.location),
+      });
+      context.depthLimitReported = true;
+    }
+    return;
+  }
   if (pattern.type === 'WildcardPattern') return;
   if (pattern.type === 'BindingPattern') {
     env.extend(pattern.name, { kind: 'scheme', variables: [], type: scrutineeType });
@@ -3888,7 +4127,7 @@ function applyMatchPattern(
     const tupleType: Type = { kind: 'adt', name: 'Tuple', params: elementTypes };
     tryUnify(scrutineeType, tupleType, subst, diagnostics, { location: pattern.location, note: 'Tuple pattern type' });
     pattern.elements.forEach((element, idx) => {
-      applyMatchPattern(element, elementTypes[idx], env, subst, diagnostics, enumRegistry, context);
+      applyMatchPattern(element, elementTypes[idx], env, subst, diagnostics, enumRegistry, context, depth + 1);
     });
     return;
   }
@@ -3914,7 +4153,7 @@ function applyMatchPattern(
         const fieldTypeName = info.fields.get(field.name);
         if (!fieldTypeName) continue;
         const fieldType = parseTypeNameWithEnv(fieldTypeName, mapping);
-        applyMatchPattern(field.pattern, fieldType, env, subst, diagnostics, enumRegistry, context);
+        applyMatchPattern(field.pattern, fieldType, env, subst, diagnostics, enumRegistry, context, depth + 1);
       }
       return;
     }
@@ -3922,7 +4161,7 @@ function applyMatchPattern(
   if (pattern.type !== 'EnumPattern') {
     return;
   }
-  const enumName = pattern.enumName ?? (scrutineeType.kind === 'adt' ? scrutineeType.name : null);
+  const enumName = resolveEnumNameFromPatternScrutinee(pattern, scrutineeType, subst, enumRegistry);
   if (!enumName || !enumRegistry) return;
   const info = enumRegistry.get(enumName);
   if (!info) {
@@ -3946,9 +4185,24 @@ function applyMatchPattern(
     });
     return;
   }
-  if (!variantCanMatchScrutinee(enumName, info, variantInfo, scrutineeType, subst)) {
+  const normalizedScrutinee = normalizeScrutineeForEnum(scrutineeType, enumName, subst);
+  const refinementKey = `${enumName}.${pattern.variant}|${formatType(normalizedScrutinee, subst)}`;
+  if (context?.refinementStack?.has(refinementKey)) {
+    if (!context.depthLimitReported) {
+      diagnostics.push({
+        severity: 'warning',
+        code: 'GADT-008',
+        message: `Detected recursive GADT refinement cycle at '${enumName}.${pattern.variant}'; skipping deeper recursive refinement`,
+        source: 'lumina',
+        location: diagLocation(pattern.location),
+      });
+      context.depthLimitReported = true;
+    }
+    return;
+  }
+  if (!variantCanMatchScrutinee(enumName, info, variantInfo, normalizedScrutinee, subst)) {
     const variantConstructs = variantInfo.resultType ? formatTypeAnnotation(variantInfo.resultType) : null;
-    const scrutineeText = formatType(scrutineeType, subst);
+    const scrutineeText = formatType(normalizedScrutinee, subst);
     const related: DiagnosticRelatedInformation[] = [];
     related.push({
       location: diagLocation(pattern.location),
@@ -3974,29 +4228,38 @@ function applyMatchPattern(
     });
     return;
   }
-  const instantiated = instantiateEnumVariantTypes(enumName, info, variantInfo);
-  if (context) {
-    context.existentialWitnesses.push(
-      ...instantiated.existentialWitnesses.map((witness) => ({ ...witness, scopeId: context.scopeId }))
-    );
+  if (context?.refinementStack) {
+    context.refinementStack.add(refinementKey);
   }
-  tryUnify(scrutineeType, instantiated.resultType, subst, diagnostics, {
-    location: pattern.location,
-    note: `Pattern '${enumName}.${pattern.variant}' refines the scrutinee type`,
-  });
-  const nestedPatterns = pattern.patterns ?? [];
-  if (nestedPatterns.length > 0) {
-    for (let i = 0; i < nestedPatterns.length && i < instantiated.variantParamTypes.length; i++) {
-      const expected = instantiated.variantParamTypes[i];
-      applyMatchPattern(nestedPatterns[i], expected, env, subst, diagnostics, enumRegistry, context);
+  try {
+    const instantiated = instantiateEnumVariantTypes(enumName, info, variantInfo);
+    if (context) {
+      context.existentialWitnesses.push(
+        ...instantiated.existentialWitnesses.map((witness) => ({ ...witness, scopeId: context.scopeId }))
+      );
     }
-    return;
-  }
-  for (let i = 0; i < pattern.bindings.length && i < instantiated.variantParamTypes.length; i++) {
-    const binding = pattern.bindings[i];
-    if (binding === '_') continue;
-    const expected = instantiated.variantParamTypes[i];
-    env.extend(binding, { kind: 'scheme', variables: [], type: expected });
+    tryUnify(normalizedScrutinee, instantiated.resultType, subst, diagnostics, {
+      location: pattern.location,
+      note: `Pattern '${enumName}.${pattern.variant}' refines the scrutinee type`,
+    });
+    const nestedPatterns = pattern.patterns ?? [];
+    if (nestedPatterns.length > 0) {
+      for (let i = 0; i < nestedPatterns.length && i < instantiated.variantParamTypes.length; i++) {
+        const expected = instantiated.variantParamTypes[i];
+        applyMatchPattern(nestedPatterns[i], expected, env, subst, diagnostics, enumRegistry, context, depth + 1);
+      }
+      return;
+    }
+    for (let i = 0; i < pattern.bindings.length && i < instantiated.variantParamTypes.length; i++) {
+      const binding = pattern.bindings[i];
+      if (binding === '_') continue;
+      const expected = instantiated.variantParamTypes[i];
+      env.extend(binding, { kind: 'scheme', variables: [], type: expected });
+    }
+  } finally {
+    if (context?.refinementStack) {
+      context.refinementStack.delete(refinementKey);
+    }
   }
 }
 
@@ -4398,7 +4661,17 @@ function checkMatchExhaustiveness(
   location?: Location
 ) {
   const resolved = prune(scrutineeType, subst);
-  let enumName: string | null = resolved.kind === 'adt' ? resolved.name : null;
+  let enumName: string | null = null;
+  if (resolved.kind === 'adt') {
+    if (resolved.name === HKT_APPLY_TYPE_NAME && resolved.params.length >= 2) {
+      const ctor = prune(resolved.params[0], subst);
+      if (ctor.kind === 'adt' && ctor.params.length === 0) {
+        enumName = ctor.name;
+      }
+    } else {
+      enumName = resolved.name;
+    }
+  }
   if (!enumName) {
     for (const arm of arms) {
       if (arm.pattern.type === 'EnumPattern' && arm.pattern.enumName) {
@@ -4550,9 +4823,10 @@ function instantiateVariantForScrutinee(
   subst: Subst
 ): VariantMatchCandidate | null {
   const instantiated = instantiateEnumVariantTypes(enumName, info, variant);
+  const normalizedScrutinee = normalizeScrutineeForEnum(scrutineeType, enumName, subst);
   const trialSubst = new Map<number, Type>(subst);
   try {
-    unify(instantiated.resultType, scrutineeType, trialSubst, activeWrapperSet);
+    unify(instantiated.resultType, normalizedScrutinee, trialSubst, activeWrapperSet);
     const resultType = normalizeType(instantiated.resultType, trialSubst);
     const paramTypes = instantiated.variantParamTypes.map((param) => normalizeType(param, trialSubst));
     return {

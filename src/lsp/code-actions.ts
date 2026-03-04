@@ -16,6 +16,43 @@ function extractHoleType(diagnostic: { relatedInformation?: Array<{ message: str
   return type;
 }
 
+function offsetAt(text: string, pos: { line: number; character: number }): number {
+  const lines = text.split(/\r?\n/);
+  let offset = 0;
+  for (let i = 0; i < pos.line; i++) {
+    offset += (lines[i] ?? '').length + 1;
+  }
+  return offset + pos.character;
+}
+
+function positionAt(text: string, offset: number): { line: number; character: number } {
+  const clamped = Math.max(0, Math.min(offset, text.length));
+  const upTo = text.slice(0, clamped);
+  const line = upTo.split('\n').length - 1;
+  const lineStart = upTo.lastIndexOf('\n') + 1;
+  return { line, character: clamped - lineStart };
+}
+
+function narrowHoleRange(text: string, range: Range): Range {
+  const start = offsetAt(text, range.start);
+  const end = offsetAt(text, range.end);
+  if (end <= start) return range;
+  const slice = text.slice(start, end);
+  const isIdentChar = (ch: string | undefined) => !!ch && /[A-Za-z0-9_]/.test(ch);
+  for (let i = 0; i < slice.length; i++) {
+    if (slice[i] !== '_') continue;
+    const abs = start + i;
+    const left = abs > 0 ? text[abs - 1] : undefined;
+    const right = abs + 1 < text.length ? text[abs + 1] : undefined;
+    if (isIdentChar(left) || isIdentChar(right)) continue;
+    return {
+      start: positionAt(text, abs),
+      end: positionAt(text, abs + 1),
+    };
+  }
+  return range;
+}
+
 export function getCodeActionsForDiagnostics(
   text: string,
   uri: string,
@@ -167,9 +204,10 @@ export function getCodeActionsForDiagnostics(
     if (diag.code === 'LUM-010' || /Cannot infer type for hole '_'/.test(diag.message)) {
       const inferredType = extractHoleType(diag);
       if (inferredType) {
+        const preciseRange = narrowHoleRange(text, diag.range);
         const edit: WorkspaceEdit = {
           changes: {
-            [uri]: [TextEdit.replace(diag.range, inferredType)],
+            [uri]: [TextEdit.replace(preciseRange, inferredType)],
           },
         };
         actions.push({

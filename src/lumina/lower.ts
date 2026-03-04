@@ -42,6 +42,18 @@ function createLowerContext(program: LuminaProgram): LowerContext {
   return { variantsByName, variantsByQualified, matchCounter: 0 };
 }
 
+const lowerTypeArgToText = (arg: unknown): string => {
+  if (typeof arg === 'string') return arg;
+  return '_';
+};
+
+const normalizeLowerCastTarget = (typeName: string): string => {
+  if (typeName === 'String') return 'string';
+  if (typeName === 'Int') return 'int';
+  if (typeName === 'Float') return 'float';
+  return typeName;
+};
+
 function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
   switch (stmt.type) {
     case 'ShaderDecl': {
@@ -474,6 +486,23 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       return bin;
     }
     case 'Call': {
+      if (!expr.enumName && !expr.receiver && expr.callee.name === 'cast' && expr.typeArgs && expr.typeArgs.length === 1 && expr.args.length === 1) {
+        const targetType = normalizeLowerCastTarget(lowerTypeArgToText(expr.typeArgs[0]));
+        if (targetType === 'string') {
+          return {
+            kind: 'Call',
+            callee: '__lumina_stringify',
+            args: [lowerExpr(expr.args[0], ctx)],
+            location: expr.location,
+          } as IRCall;
+        }
+        return {
+          kind: 'Cast',
+          expr: lowerExpr(expr.args[0], ctx),
+          targetType,
+          location: expr.location,
+        };
+      }
       const variant = expr.enumName
         ? ctx.variantsByQualified.get(`${expr.enumName}.${expr.callee.name}`)
         : ctx.variantsByName.get(expr.callee.name);

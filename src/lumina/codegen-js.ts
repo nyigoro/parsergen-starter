@@ -130,7 +130,7 @@ class JSGenerator {
       this.builder.append('\n');
       this.builder.append('const str = { length: (value) => value.length, concat: (a, b) => a + b, split: (value, sep) => value.split(sep), trim: (value) => value.trim(), contains: (haystack, needle) => haystack.includes(needle) };');
       this.builder.append('\n');
-      this.builder.append('const math = { abs: (value) => Math.trunc(Math.abs(value)), min: (a, b) => Math.trunc(Math.min(a, b)), max: (a, b) => Math.trunc(Math.max(a, b)), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };');
+      this.builder.append('const math = { abs: (value) => Math.abs(value), min: (a, b) => Math.min(a, b), max: (a, b) => Math.max(a, b), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), powf: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };');
       this.builder.append('\n');
       this.builder.append('const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };');
       this.builder.append('\n');
@@ -1316,6 +1316,23 @@ class JSGenerator {
       case 'Binary':
         return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));
       case 'Call': {
+        if (!expr.receiver && !expr.enumName && expr.callee.name === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && expr.args.length === 1) {
+          const targetArg = expr.typeArgs?.[0];
+          const targetType = normalizeNumericTypeName(
+            typeof targetArg === 'string' ? targetArg : 'any'
+          );
+          if (targetType === 'string') {
+            return withBase(concat('__lumina_stringify(', this.emitExpr(expr.args[0]), ')'));
+          }
+          return withBase(
+            this.emitExpr({
+              type: 'Cast',
+              expr: expr.args[0],
+              targetType,
+              location: expr.location,
+            })
+          );
+        }
         const resolution = expr.id != null ? this.traitMethodResolutions.get(expr.id) : undefined;
         if (resolution && (expr.enumName || expr.receiver)) {
           const receiverExpr: LuminaExpr = expr.receiver ?? {

@@ -38,6 +38,7 @@ import {
   createStdModuleRegistry,
   getPreludeExports,
   resolveModuleBindings,
+  resolveModuleFunctionCandidates,
   type ModuleExport,
   type ModuleFunction,
   type ModuleRegistry,
@@ -4410,20 +4411,110 @@ function typeCheckExpr(
     });
   };
 
+  const formatOverloadSignatures = (candidates: ModuleFunction[]): string =>
+    candidates
+      .map((candidate) => {
+        const args = candidate.paramTypes.join(', ');
+        return `${candidate.name}(${args}) -> ${candidate.returnType}`;
+      })
+      .join('; ');
+
+  const selectModuleFunctionCandidate = (
+    callName: string,
+    candidates: ModuleFunction[],
+    argTypes: Array<LuminaType | null>,
+    callLocation: Location | undefined
+  ): ModuleFunction | null => {
+    if (candidates.length === 0) return null;
+    const arityMatches = candidates.filter((candidate) => candidate.paramTypes.length === argTypes.length);
+    const considered = arityMatches.length > 0 ? arityMatches : candidates;
+    if (arityMatches.length === 0) {
+      if (candidates.length === 1) {
+        diagnostics.push(
+          diagAt(
+            `Argument count mismatch for '${callName}'`,
+            callLocation,
+            'error',
+            'LUM-002'
+          )
+        );
+        return candidates[0];
+      }
+      diagnostics.push(
+        diagAt(
+          `No overload for '${callName}' matches ${argTypes.length} argument(s). Available signatures: ${formatOverloadSignatures(
+            considered
+          )}`,
+          callLocation,
+          'error',
+          'OVERLOAD_NO_MATCH'
+        )
+      );
+      return null;
+    }
+    if (arityMatches.length === 1) return arityMatches[0];
+
+    const assignable = arityMatches.filter((candidate) =>
+      argTypes.every((argType, idx) => {
+        if (!argType) return true;
+        const expected = candidate.paramTypes[idx];
+        return (
+          isTypeAssignable(argType, expected, symbols, options?.typeParams) ||
+          isTypeAssignable(expected, argType, symbols, options?.typeParams)
+        );
+      })
+    );
+
+    if (assignable.length === 1) return assignable[0];
+    if (assignable.length === 0) {
+      diagnostics.push(
+        diagAt(
+          `No overload for '${callName}' matches argument types (${argTypes
+            .map((arg) => (arg ? formatTypeForDiagnostic(arg) : '_'))
+            .join(', ')}). Available signatures: ${formatOverloadSignatures(arityMatches)}`,
+          callLocation,
+          'error',
+          'OVERLOAD_NO_MATCH'
+        )
+      );
+      return null;
+    }
+
+    const withExact = assignable.map((candidate) => {
+      let exact = 0;
+      for (let i = 0; i < argTypes.length; i += 1) {
+        const argType = argTypes[i];
+        if (!argType) continue;
+        if (normalizeTypeForComparison(argType) === normalizeTypeForComparison(candidate.paramTypes[i])) {
+          exact += 1;
+        }
+      }
+      return { candidate, exact };
+    });
+    const bestExact = Math.max(...withExact.map((entry) => entry.exact));
+    const best = withExact.filter((entry) => entry.exact === bestExact).map((entry) => entry.candidate);
+    if (best.length === 1) return best[0];
+
+    diagnostics.push(
+      diagAt(
+        `Ambiguous overload for '${callName}'. Matching signatures: ${formatOverloadSignatures(best)}`,
+        callLocation,
+        'error',
+        'OVERLOAD_AMBIGUOUS'
+      )
+    );
+    return null;
+  };
+
   const resolveModuleFunction = (
     binding: ModuleExport | undefined,
-    member?: string
+    member: string | undefined,
+    callName: string,
+    argTypes: Array<LuminaType | null>,
+    callLocation: Location | undefined
   ): ModuleFunction | null => {
-    if (!binding) return null;
-    if (binding.kind === 'function') {
-      return member ? null : binding;
-    }
-    if (binding.kind === 'module') {
-      if (!member) return null;
-      const exp = binding.exports.get(member);
-      return exp && exp.kind === 'function' ? exp : null;
-    }
-    return null;
+    const candidates = resolveModuleFunctionCandidates(binding, member);
+    return selectModuleFunctionCandidate(callName, candidates, argTypes, callLocation);
   };
 
   const resolveTraitMethodCall = (
@@ -5700,6 +5791,9 @@ function typeCheckExpr(
     }
     const fromNorm = normalizeNumericType(valueType);
     const toNorm = normalizeNumericType(targetType);
+    if (toNorm === 'string') {
+      return 'string';
+    }
     if (!isNumericTypeName(fromNorm) || !isNumericTypeName(toNorm)) {
       diagnostics.push(
         diagAt(
@@ -6163,6 +6257,42 @@ function typeCheckExpr(
       const callee = expr.callee.name;
       const isLValue = (value: LuminaExpr) => value.type === 'Identifier' || value.type === 'Member';
 
+      if (!expr.receiver && !expr.enumName && callee === 'cast') {
+        if ((expr.typeArgs?.length ?? 0) !== 1 || expr.args.length !== 1) {
+          diagnostics.push(
+            diagAt(
+              `cast requires exactly one type argument and one value argument (for example: cast::<i32>(value))`,
+              expr.location,
+              'error',
+              'TYPE-CAST'
+            )
+          );
+          return null;
+        }
+        const targetType = typeArgToText(expr.typeArgs?.[0] as string | import('./ast.js').LuminaConstExpr);
+        const syntheticCast: LuminaExpr = {
+          type: 'Cast',
+          expr: expr.args[0],
+          targetType,
+          location: expr.location,
+        };
+        return typeCheckExpr(
+          syntheticCast,
+          symbols,
+          diagnostics,
+          scope,
+          options,
+          expectedType,
+          resolving,
+          pendingDeps,
+          currentFunction,
+          di,
+          pipedArgType,
+          allowPartialMoveBase,
+          skipMoveChecks
+        );
+      }
+
       if (expr.receiver) {
         const receiverType = typeCheckExpr(
           expr.receiver,
@@ -6185,12 +6315,8 @@ function typeCheckExpr(
 
         if (expr.receiver.type === 'Identifier') {
           const moduleBinding = options?.moduleBindings?.get(expr.receiver.name);
-          const moduleFn = moduleBinding ? resolveModuleFunction(moduleBinding, callee) : null;
-          if (moduleFn) {
-            if (moduleFn.paramTypes.length !== expr.args.length) {
-              diagnostics.push(diagAt(`Argument count mismatch for '${expr.receiver.name}.${callee}'`, expr.location));
-              return moduleFn.returnType;
-            }
+          const moduleCandidates = resolveModuleFunctionCandidates(moduleBinding, callee);
+          if (moduleCandidates.length > 0) {
             const argTypes: Array<LuminaType | null> = [];
             for (let i = 0; i < expr.args.length; i++) {
               const argType = typeCheckExpr(
@@ -6206,6 +6332,28 @@ function typeCheckExpr(
                 di
               );
               argTypes.push(argType);
+            }
+            const moduleFn = resolveModuleFunction(
+              moduleBinding,
+              callee,
+              `${expr.receiver.name}.${callee}`,
+              argTypes,
+              expr.location
+            );
+            if (!moduleFn) return ERROR_TYPE;
+            if (moduleFn.paramTypes.length !== expr.args.length) {
+              diagnostics.push(
+                diagAt(
+                  `Argument count mismatch for '${expr.receiver.name}.${callee}'`,
+                  expr.location,
+                  'error',
+                  'LUM-002'
+                )
+              );
+              return moduleFn.returnType;
+            }
+            for (let i = 0; i < expr.args.length; i++) {
+              const argType = argTypes[i];
               const expected = moduleFn.paramTypes[i];
               if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
                 reportCallArgMismatch(
@@ -6217,6 +6365,9 @@ function typeCheckExpr(
                   moduleFn.paramNames?.[i] ?? null
                 );
               }
+            }
+            if (moduleFn.deprecatedMessage) {
+              diagnostics.push(diagAt(moduleFn.deprecatedMessage, expr.location, 'warning', 'DEPRECATED'));
             }
             if (expr.receiver.name === 'thread' && callee === 'spawn') {
               validateThreadSpawnCall(expr.args, argTypes);
@@ -6243,33 +6394,56 @@ function typeCheckExpr(
         const receiverSym = symbols.get(expr.enumName);
         const variableShadow = receiverSym?.kind === 'variable';
         const moduleBinding = options?.moduleBindings?.get(expr.enumName);
-        const moduleFn = moduleBinding
-          ? resolveModuleFunction(moduleBinding, callee)
-          : null;
+        const moduleArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+        const moduleArgTypes: Array<LuminaType | null> = [];
+        for (let i = 0; i < moduleArgCount; i++) {
+          const argType =
+            pipedArgType && i === 0
+              ? pipedArgType
+              : typeCheckExpr(
+                  expr.args[pipedArgType ? i - 1 : i],
+                  symbols,
+                  diagnostics,
+                  scope,
+                  options,
+                  undefined,
+                  resolving,
+                  pendingDeps,
+                  currentFunction,
+                  di
+                );
+          moduleArgTypes.push(argType);
+        }
+        const moduleCandidates = !variableShadow
+          ? resolveModuleFunctionCandidates(moduleBinding, callee)
+          : [];
+        const moduleFn =
+          !variableShadow && moduleCandidates.length > 0
+            ? resolveModuleFunction(
+                moduleBinding,
+                callee,
+                `${expr.enumName}.${callee}`,
+                moduleArgTypes,
+                expr.location
+              )
+            : null;
+        if (!variableShadow && moduleCandidates.length > 0 && !moduleFn) {
+          return ERROR_TYPE;
+        }
         if (!variableShadow && moduleFn) {
-          const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
-          if (moduleFn.paramTypes.length !== effectiveArgCount) {
-            diagnostics.push(diagAt(`Argument count mismatch for '${expr.enumName}.${callee}'`, expr.location));
+          if (moduleFn.paramTypes.length !== moduleArgCount) {
+            diagnostics.push(
+              diagAt(
+                `Argument count mismatch for '${expr.enumName}.${callee}'`,
+                expr.location,
+                'error',
+                'LUM-002'
+              )
+            );
             return moduleFn.returnType;
           }
-          const argTypes: Array<LuminaType | null> = [];
-          for (let i = 0; i < effectiveArgCount; i++) {
-            const argType =
-              pipedArgType && i === 0
-                ? pipedArgType
-                : typeCheckExpr(
-                    expr.args[pipedArgType ? i - 1 : i],
-                    symbols,
-                    diagnostics,
-                    scope,
-                    options,
-                    undefined,
-                    resolving,
-                    pendingDeps,
-                    currentFunction,
-                    di
-                  );
-            argTypes.push(argType);
+          for (let i = 0; i < moduleArgCount; i++) {
+            const argType = moduleArgTypes[i];
             const expected = moduleFn.paramTypes[i];
             if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
               reportCallArgMismatch(
@@ -6282,8 +6456,11 @@ function typeCheckExpr(
               );
             }
           }
+          if (moduleFn.deprecatedMessage) {
+            diagnostics.push(diagAt(moduleFn.deprecatedMessage, expr.location, 'warning', 'DEPRECATED'));
+          }
           if (expr.enumName === 'thread' && callee === 'spawn' && !pipedArgType) {
-            validateThreadSpawnCall(expr.args, argTypes);
+            validateThreadSpawnCall(expr.args, moduleArgTypes);
           }
           return moduleFn.returnType;
         }
@@ -6297,7 +6474,7 @@ function typeCheckExpr(
               'UNRESOLVED_MEMBER'
             );
           }
-          if (exportMember.kind !== 'function') {
+          if (exportMember.kind !== 'function' && exportMember.kind !== 'overloaded-function') {
             return unresolvedMember(
               `Module member '${expr.enumName}.${callee}' is not callable`,
               expr.location,
@@ -6455,13 +6632,12 @@ function typeCheckExpr(
         return enumVariant.enumName;
       }
 
-      const directModuleFn = options?.moduleBindings?.get(callee);
-      if (directModuleFn && directModuleFn.kind === 'function') {
+      const directModuleBinding = options?.moduleBindings?.get(callee);
+      const directModuleCandidates =
+        directModuleBinding ? resolveModuleFunctionCandidates(directModuleBinding, undefined) : [];
+      if (directModuleCandidates.length > 0) {
         const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
-        if (directModuleFn.paramTypes.length !== effectiveArgCount) {
-          diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
-          return directModuleFn.returnType;
-        }
+        const argTypes: Array<LuminaType | null> = [];
         for (let i = 0; i < effectiveArgCount; i++) {
           const argType =
             pipedArgType && i === 0
@@ -6478,6 +6654,22 @@ function typeCheckExpr(
                   currentFunction,
                   di
                 );
+          argTypes.push(argType);
+        }
+        const directModuleFn = resolveModuleFunction(
+          directModuleBinding,
+          undefined,
+          callee,
+          argTypes,
+          expr.location
+        );
+        if (!directModuleFn) return ERROR_TYPE;
+        if (directModuleFn.paramTypes.length !== effectiveArgCount) {
+          diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location, 'error', 'LUM-002'));
+          return directModuleFn.returnType;
+        }
+        for (let i = 0; i < effectiveArgCount; i++) {
+          const argType = argTypes[i];
           const expected = directModuleFn.paramTypes[i];
           if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
             reportCallArgMismatch(
@@ -6489,6 +6681,9 @@ function typeCheckExpr(
               directModuleFn.paramNames?.[i] ?? null
             );
           }
+        }
+        if (directModuleFn.deprecatedMessage) {
+          diagnostics.push(diagAt(directModuleFn.deprecatedMessage, expr.location, 'warning', 'DEPRECATED'));
         }
         return directModuleFn.returnType;
       }
@@ -6928,7 +7123,7 @@ function typeCheckExpr(
       if (!variableShadow && binding && binding.kind === 'module') {
         const exp = binding.exports.get(expr.property);
         if (exp) {
-          if (exp.kind === 'function') return 'any';
+          if (exp.kind === 'function' || exp.kind === 'overloaded-function') return 'any';
           if (exp.kind === 'value') return exp.valueType;
         }
         if (expectedBase && expectedBase === objectName) {

@@ -13,14 +13,10 @@ import {
   Location,
   ReferenceParams,
   DefinitionParams,
-  SemanticTokensBuilder,
-  SemanticTokensLegend,
   CodeAction,
-  TextEdit,
   WorkspaceEdit,
   RenameParams,
   PrepareRenameParams,
-  Range,
   Hover,
   InlayHint,
   MarkupKind,
@@ -39,7 +35,6 @@ import { URI } from 'vscode-uri';
 import { compileGrammar } from '../grammar/index.js';
 import { ProjectContext } from '../project/context.js';
 import { defaultSettings, type LuminaLspSettings } from './config.js';
-import { createLuminaLexer } from '../lumina/lexer.js';
 import { buildCompletionItems } from './completion.js';
 import {
   createStdModuleRegistry,
@@ -51,6 +46,11 @@ import { getCodeActionsForDiagnostics } from './code-actions.js';
 import { buildModuleGraph, resolveSymbol, type ModuleGraph } from './module-graph.js';
 import { formatHoverContents } from './hover-format.js';
 import { buildInlayHints } from './inlay-hints.js';
+import { findReferencesAtPosition } from './references.js';
+import { applyRename } from './rename.js';
+import { buildInlineVariableCodeAction } from './refactor-inline.js';
+import { buildExtractTypeAliasCodeAction } from './refactor-extract-type.js';
+import { buildSemanticTokens, semanticTokensLegend } from './semantic-tokens.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -65,29 +65,6 @@ const debounceMs = 120;
 const moduleRegistry = createStdModuleRegistry();
 const preludeExports = getPreludeExports(moduleRegistry);
 const preludeExportMap = new Map<string, ModuleExport>(preludeExports.map((exp) => [exp.name, exp]));
-
-const semanticTokenTypes = [
-  'keyword',
-  'string',
-  'number',
-  'operator',
-  'variable',
-  'function',
-  'class',
-  'type',
-  'comment',
-] as const;
-
-const reservedKeywords = new Set([
-  'import', 'from', 'type', 'struct', 'enum', 'fn', 'let', 'return', 'if', 'else', 'for', 'while',
-  'match', 'true', 'false', 'pub', 'extern',
-]);
-const builtinTypes = new Set(['int', 'string', 'bool', 'void']);
-
-const semanticTokensLegend: SemanticTokensLegend = {
-  tokenTypes: [...semanticTokenTypes],
-  tokenModifiers: [],
-};
 
 function resolveGrammarPath(): string {
   if (settings.grammarPath) return path.resolve(settings.grammarPath);
@@ -116,23 +93,6 @@ function initProjectContext() {
 function uriToFsPath(uri: string): string {
   if (uri.startsWith('file://')) return URI.parse(uri).fsPath;
   return uri;
-}
-
-function isValidIdentifier(name: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
-}
-
-function addEdit(edit: WorkspaceEdit, uri: string, range: { start: { line: number; character: number }; end: { line: number; character: number } }, newText: string) {
-  if (!edit.changes) edit.changes = {};
-  if (!edit.changes[uri]) edit.changes[uri] = [];
-  edit.changes[uri].push(TextEdit.replace(range, newText));
-}
-
-function locationToRange(location: { start: { line: number; column: number }; end: { line: number; column: number } }): Range {
-  return {
-    start: { line: location.start.line - 1, character: location.start.column - 1 },
-    end: { line: location.end.line - 1, character: location.end.column - 1 },
-  };
 }
 
 
@@ -415,11 +375,13 @@ connection.onSignatureHelp((params): SignatureHelp | null => {
     resolveImportedMember: (base, member) => project?.resolveImportedMember(base, member, params.textDocument.uri),
   });
   if (!resolved) return null;
-  const parameters = resolved.signature.parameters.map((label) => ParameterInformation.create(label));
-  const signature = SignatureInformation.create(resolved.signature.label, undefined, ...parameters);
+  const signatureInfos = resolved.signatures.map((sig) => {
+    const parameters = sig.parameters.map((label) => ParameterInformation.create(label));
+    return SignatureInformation.create(sig.label, undefined, ...parameters);
+  });
   return {
-    signatures: [signature],
-    activeSignature: 0,
+    signatures: signatureInfos,
+    activeSignature: resolved.activeSignature,
     activeParameter: resolved.activeParam,
   };
 });
@@ -479,29 +441,7 @@ connection.onReferences((params: ReferenceParams): Location[] => {
   if (!project) return [];
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  const word = getWordAt(doc, params.position.line, params.position.character);
-  if (!word) return [];
-  const refs = project.findReferences(word);
-  const locations = refs.map((ref) => ({
-    uri: ref.uri,
-    range: {
-      start: { line: ref.location.start.line - 1, character: ref.location.start.column - 1 },
-      end: { line: ref.location.end.line - 1, character: ref.location.end.column - 1 },
-    },
-  }));
-  if (params.context.includeDeclaration) {
-    const def = project.findSymbolLocation(word);
-    if (def) {
-      locations.push({
-        uri: def.uri,
-        range: {
-          start: { line: def.location.start.line - 1, character: def.location.start.column - 1 },
-          end: { line: def.location.end.line - 1, character: def.location.end.column - 1 },
-        },
-      });
-    }
-  }
-  return locations;
+  return findReferencesAtPosition(project, doc, params.textDocument.uri, params.position, params.context.includeDeclaration);
 });
 
 connection.onPrepareRename((params: PrepareRenameParams) => {
@@ -528,67 +468,41 @@ connection.onPrepareRename((params: PrepareRenameParams) => {
 
 connection.onRenameRequest((params: RenameParams): WorkspaceEdit | null => {
   if (!project) return null;
-  if (!isValidIdentifier(params.newName)) return null;
-  if (reservedKeywords.has(params.newName) || builtinTypes.has(params.newName)) {
-    throw new ResponseError(ErrorCodes.InvalidRequest, `'${params.newName}' is reserved.`);
-  }
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return null;
-  const word = getWordAt(doc, params.position.line, params.position.character);
-  if (!word) return null;
-  if (params.newName === word) return null;
-  const def = project.findSymbolLocation(word, params.textDocument.uri);
-  if (def) {
-    if (project.hasSymbolGlobal(params.newName, { uri: def.uri, location: def.location })) {
-      throw new ResponseError(ErrorCodes.InvalidRequest, `Rename conflict: '${params.newName}' already exists in the project.`);
-    }
-    if (settings.renameConflictMode === 'all' && project.hasImportNameGlobal(params.newName)) {
-      throw new ResponseError(ErrorCodes.InvalidRequest, `Rename conflict: '${params.newName}' is imported in the project.`);
-    }
+  const result = applyRename({
+    project,
+    doc,
+    uri: params.textDocument.uri,
+    position: params.position,
+    newName: params.newName,
+  });
+  if (result.errors.length > 0) {
+    throw new ResponseError(ErrorCodes.InvalidRequest, result.errors[0].message);
   }
-  const edit: WorkspaceEdit = { changes: {} };
-
-  if (def) {
-    addEdit(edit, def.uri, locationToRange(def.location), params.newName);
-  }
-
-  if (def) {
-    const refs = project.findReferences(word);
-    for (const ref of refs) {
-      addEdit(edit, ref.uri, locationToRange(ref.location), params.newName);
-    }
-  } else {
-    const local = project.findLocalBindingAt(params.textDocument.uri, params.position);
-    if (!local) return null;
-    if (settings.renameConflictMode === 'all' && project.hasImportNameInDoc(params.newName, params.textDocument.uri)) {
-      throw new ResponseError(ErrorCodes.InvalidRequest, `Rename conflict: '${params.newName}' is imported in this file.`);
-    }
-    if (project.hasLocalConflictInScope(params.newName, params.textDocument.uri, local.scopeRange, local.location)) {
-      throw new ResponseError(ErrorCodes.InvalidRequest, `Rename conflict: '${params.newName}' already exists in this scope.`);
-    }
-    addEdit(edit, params.textDocument.uri, locationToRange(local.location), params.newName);
-    const refs = project.findReferencesInScope(local.name, params.textDocument.uri, local.scopeRange);
-    for (const ref of refs) {
-      addEdit(edit, ref.uri, locationToRange(ref.location), params.newName);
-    }
-  }
-
-  const summary = summarizeWorkspaceEdit(edit);
+  if (!result.edit) return null;
+  const summary = summarizeWorkspaceEdit(result.edit);
   const message = `Rename preview: ${summary.edits} edits across ${summary.files} file${summary.files === 1 ? '' : 's'}.`;
   if (settings.renamePreviewMode === 'popup') {
     connection.window.showInformationMessage(message);
   } else if (settings.renamePreviewMode === 'log') {
     connection.console.info(message);
   }
-  return edit;
+  return result.edit;
 });
 
 connection.onCodeAction((params): CodeAction[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  return getCodeActionsForDiagnostics(doc.getText(), params.textDocument.uri, params.context.diagnostics, {
+  const text = doc.getText();
+  const actions = getCodeActionsForDiagnostics(text, params.textDocument.uri, params.context.diagnostics, {
     range: params.range,
   });
+  const inline = buildInlineVariableCodeAction(text, params.textDocument.uri, params.range);
+  if (inline) actions.push(inline);
+  const extractType = buildExtractTypeAliasCodeAction(text, params.textDocument.uri, params.range);
+  if (extractType) actions.push(extractType);
+  return actions;
 });
 
 connection.languages.inlayHint.on((params): InlayHint[] => {
@@ -612,35 +526,7 @@ connection.languages.semanticTokens.on((params) => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return { data: [] };
   const symbols = project?.getSymbols(params.textDocument.uri)?.list() ?? [];
-  const symbolMap = new Map<string, 'function' | 'class' | 'variable'>();
-  for (const sym of symbols) {
-    if (sym.kind === 'function') symbolMap.set(sym.name, 'function');
-    else if (sym.kind === 'type') symbolMap.set(sym.name, 'class');
-    else symbolMap.set(sym.name, 'variable');
-  }
-
-  const builder = new SemanticTokensBuilder();
-  const lexer = createLuminaLexer();
-  lexer.reset(doc.getText());
-  for (const token of lexer) {
-    if (token.type === 'ws' || token.type === 'newline') continue;
-    let tokenType: typeof semanticTokenTypes[number] | null = null;
-    if (token.type === 'keyword') tokenType = 'keyword';
-    else if (token.type === 'string') tokenType = 'string';
-    else if (token.type === 'number') tokenType = 'number';
-    else if (token.type === 'op') tokenType = 'operator';
-    else if (token.type === 'comment') tokenType = 'comment';
-    else if (token.type === 'identifier') {
-      const builtinTypes = new Set(['int', 'string', 'bool', 'void']);
-      if (builtinTypes.has(token.text)) tokenType = 'type';
-      else tokenType = symbolMap.get(token.text) ?? 'variable';
-    }
-    if (!tokenType) continue;
-    const line = Math.max(0, (token.line ?? 1) - 1);
-    const char = Math.max(0, (token.col ?? 1) - 1);
-    builder.push(line, char, token.text.length, semanticTokenTypes.indexOf(tokenType), 0);
-  }
-  return builder.build();
+  return buildSemanticTokens(doc.getText(), symbols);
 });
 
 connection.onDidChangeWatchedFiles((change) => {

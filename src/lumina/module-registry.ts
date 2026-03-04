@@ -10,6 +10,16 @@ export interface ModuleFunction {
   hmType: TypeScheme;
   moduleId: string;
   exportName?: string;
+  runtimeName?: string;
+  deprecatedMessage?: string;
+}
+
+export interface ModuleOverloadedFunction {
+  kind: 'overloaded-function';
+  name: string;
+  variants: ModuleFunction[];
+  moduleId: string;
+  exportName?: string;
 }
 
 export interface ModuleValue {
@@ -28,7 +38,7 @@ export interface ModuleNamespace {
   exports: Map<string, ModuleExport>;
 }
 
-export type ModuleExport = ModuleFunction | ModuleValue | ModuleNamespace;
+export type ModuleExport = ModuleFunction | ModuleOverloadedFunction | ModuleValue | ModuleNamespace;
 export type ModuleRegistry = Map<string, ModuleNamespace>;
 
 const primitive = (name: 'int' | 'float' | 'string' | 'bool' | 'void' | 'any'): Type => ({
@@ -67,7 +77,8 @@ const moduleFunction = (
   hmArgs: Type[],
   hmReturn: Type,
   paramNames?: string[],
-  moduleId?: string
+  moduleId?: string,
+  options?: { runtimeName?: string; deprecatedMessage?: string }
 ): ModuleFunction => ({
   kind: 'function',
   name,
@@ -77,6 +88,8 @@ const moduleFunction = (
   hmType: scheme(fnType(hmArgs, hmReturn)),
   moduleId: moduleId ?? 'std://unknown',
   exportName: name,
+  runtimeName: options?.runtimeName,
+  deprecatedMessage: options?.deprecatedMessage,
 });
 
 const moduleFunctionWithScheme = (
@@ -85,7 +98,8 @@ const moduleFunctionWithScheme = (
   returnType: LuminaType,
   hmType: TypeScheme,
   paramNames?: string[],
-  moduleId?: string
+  moduleId?: string,
+  options?: { runtimeName?: string; deprecatedMessage?: string }
 ): ModuleFunction => ({
   kind: 'function',
   name,
@@ -94,6 +108,20 @@ const moduleFunctionWithScheme = (
   paramNames,
   hmType,
   moduleId: moduleId ?? 'std://unknown',
+  exportName: name,
+  runtimeName: options?.runtimeName,
+  deprecatedMessage: options?.deprecatedMessage,
+});
+
+const moduleOverloadedFunction = (
+  name: string,
+  variants: ModuleFunction[],
+  moduleId?: string
+): ModuleOverloadedFunction => ({
+  kind: 'overloaded-function',
+  name,
+  variants: variants.map((variant) => ({ ...variant, name })),
+  moduleId: moduleId ?? variants[0]?.moduleId ?? 'std://unknown',
   exportName: name,
 });
 
@@ -114,6 +142,23 @@ const moduleValue = (
 const aliasModuleFunction = (fn: ModuleFunction, name: string): ModuleFunction => {
   if (fn.name === name) return fn;
   return { ...fn, name, exportName: fn.exportName ?? fn.name };
+};
+
+const aliasModuleOverloadedFunction = (
+  fn: ModuleOverloadedFunction,
+  name: string
+): ModuleOverloadedFunction => {
+  if (fn.name === name) return fn;
+  return {
+    ...fn,
+    name,
+    exportName: fn.exportName ?? fn.name,
+    variants: fn.variants.map((variant) => ({
+      ...variant,
+      name,
+      exportName: variant.exportName ?? variant.name,
+    })),
+  };
 };
 
 const aliasModuleValue = (value: ModuleValue, name: string): ModuleValue => {
@@ -1583,37 +1628,88 @@ export function createStdModuleRegistry(): ModuleRegistry {
     exports: new Map<string, ModuleExport>([
       [
         'abs',
-        moduleFunction(
+        moduleOverloadedFunction(
           'abs',
-          ['int'],
-          'int',
-          [primitive('int')],
-          primitive('int'),
-          ['value'],
+          [
+            moduleFunction(
+              'abs',
+              ['int'],
+              'int',
+              [primitive('int')],
+              primitive('int'),
+              ['value'],
+              'std://math',
+              { runtimeName: 'math.abs' }
+            ),
+            moduleFunction(
+              'abs',
+              ['float'],
+              'float',
+              [primitive('float')],
+              primitive('float'),
+              ['value'],
+              'std://math',
+              { runtimeName: 'math.abs' }
+            ),
+          ],
           'std://math'
         ),
       ],
       [
         'min',
-        moduleFunction(
+        moduleOverloadedFunction(
           'min',
-          ['int', 'int'],
-          'int',
-          [primitive('int'), primitive('int')],
-          primitive('int'),
-          ['a', 'b'],
+          [
+            moduleFunction(
+              'min',
+              ['int', 'int'],
+              'int',
+              [primitive('int'), primitive('int')],
+              primitive('int'),
+              ['a', 'b'],
+              'std://math',
+              { runtimeName: 'math.min' }
+            ),
+            moduleFunction(
+              'min',
+              ['float', 'float'],
+              'float',
+              [primitive('float'), primitive('float')],
+              primitive('float'),
+              ['a', 'b'],
+              'std://math',
+              { runtimeName: 'math.min' }
+            ),
+          ],
           'std://math'
         ),
       ],
       [
         'max',
-        moduleFunction(
+        moduleOverloadedFunction(
           'max',
-          ['int', 'int'],
-          'int',
-          [primitive('int'), primitive('int')],
-          primitive('int'),
-          ['a', 'b'],
+          [
+            moduleFunction(
+              'max',
+              ['int', 'int'],
+              'int',
+              [primitive('int'), primitive('int')],
+              primitive('int'),
+              ['a', 'b'],
+              'std://math',
+              { runtimeName: 'math.max' }
+            ),
+            moduleFunction(
+              'max',
+              ['float', 'float'],
+              'float',
+              [primitive('float'), primitive('float')],
+              primitive('float'),
+              ['a', 'b'],
+              'std://math',
+              { runtimeName: 'math.max' }
+            ),
+          ],
           'std://math'
         ),
       ],
@@ -1626,7 +1722,11 @@ export function createStdModuleRegistry(): ModuleRegistry {
           [primitive('float')],
           primitive('float'),
           ['value'],
-          'std://math'
+          'std://math',
+          {
+            runtimeName: 'math.abs',
+            deprecatedMessage: `math.absf is deprecated; use math.abs`,
+          }
         ),
       ],
       [
@@ -1638,7 +1738,11 @@ export function createStdModuleRegistry(): ModuleRegistry {
           [primitive('float'), primitive('float')],
           primitive('float'),
           ['a', 'b'],
-          'std://math'
+          'std://math',
+          {
+            runtimeName: 'math.min',
+            deprecatedMessage: `math.minf is deprecated; use math.min`,
+          }
         ),
       ],
       [
@@ -1650,7 +1754,11 @@ export function createStdModuleRegistry(): ModuleRegistry {
           [primitive('float'), primitive('float')],
           primitive('float'),
           ['a', 'b'],
-          'std://math'
+          'std://math',
+          {
+            runtimeName: 'math.max',
+            deprecatedMessage: `math.maxf is deprecated; use math.max`,
+          }
         ),
       ],
       [
@@ -1667,14 +1775,47 @@ export function createStdModuleRegistry(): ModuleRegistry {
       ],
       [
         'pow',
-        moduleFunction(
+        moduleOverloadedFunction(
           'pow',
+          [
+            moduleFunction(
+              'pow',
+              ['int', 'int'],
+              'int',
+              [primitive('int'), primitive('int')],
+              primitive('int'),
+              ['base', 'exp'],
+              'std://math',
+              { runtimeName: 'math.pow' }
+            ),
+            moduleFunction(
+              'pow',
+              ['float', 'float'],
+              'float',
+              [primitive('float'), primitive('float')],
+              primitive('float'),
+              ['base', 'exp'],
+              'std://math',
+              { runtimeName: 'math.pow' }
+            ),
+          ],
+          'std://math'
+        ),
+      ],
+      [
+        'powf',
+        moduleFunction(
+          'powf',
           ['float', 'float'],
           'float',
           [primitive('float'), primitive('float')],
           primitive('float'),
           ['base', 'exp'],
-          'std://math'
+          'std://math',
+          {
+            runtimeName: 'math.pow',
+            deprecatedMessage: `math.powf is deprecated; use math.pow`,
+          }
         ),
       ],
       [
@@ -4867,6 +5008,8 @@ export function resolveModuleBindings(
           if (exp) {
             if (exp.kind === 'function') {
               bindings.set(localName, aliasModuleFunction(exp, localName));
+            } else if (exp.kind === 'overloaded-function') {
+              bindings.set(localName, aliasModuleOverloadedFunction(exp, localName));
             } else if (exp.kind === 'value') {
               bindings.set(localName, aliasModuleValue(exp, localName));
             } else {
@@ -4890,6 +5033,8 @@ export function resolveModuleBindings(
         if (exp) {
           if (exp.kind === 'function') {
             bindings.set(localName, aliasModuleFunction(exp, localName));
+          } else if (exp.kind === 'overloaded-function') {
+            bindings.set(localName, aliasModuleOverloadedFunction(exp, localName));
           } else if (exp.kind === 'value') {
             bindings.set(localName, aliasModuleValue(exp, localName));
           } else {
@@ -4900,6 +5045,25 @@ export function resolveModuleBindings(
     }
   }
   return bindings;
+}
+
+export function resolveModuleFunctionCandidates(
+  binding: ModuleExport | undefined,
+  member?: string
+): ModuleFunction[] {
+  if (!binding) return [];
+  const toCandidates = (exp: ModuleExport | undefined): ModuleFunction[] => {
+    if (!exp) return [];
+    if (exp.kind === 'function') return [exp];
+    if (exp.kind === 'overloaded-function') return [...exp.variants];
+    return [];
+  };
+  if (binding.kind === 'module') {
+    if (!member) return [];
+    return toCandidates(binding.exports.get(member));
+  }
+  if (member) return [];
+  return toCandidates(binding);
 }
 
 export function getPreludeExports(registry?: ModuleRegistry): ModuleExport[] {

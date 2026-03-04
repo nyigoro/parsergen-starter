@@ -49,16 +49,19 @@ Existential types are scoped to the arm that introduces them.
 - `GADT-001`: variant result must return the declaring enum.
 - `GADT-002`: variant type variables must be declared (enum params or existential params).
 - `GADT-004`: existential parameters cannot be const.
-- `GADT-005`: existential higher-kinded params are rejected.
+- `GADT-005`: existential higher-kinded params are rejected (intentionally unsupported in v1).
 - `LUM-003`: non-exhaustive matches are reported with index-aware filtering.
 - `LUM-004`: unreachable match arms are reported when index constraints rule them out.
 - `GADT-006`: existential values escaping an arm are rejected.
+- `GADT-008`: recursive refinement depth/cycle guard prevents runaway recursive refinements.
 - Existential parameters can carry trait bounds and those bounds are available inside the match arm.
 - JS codegen uses optimized tag-switch lowering for simple enum/GADT matches.
 - WASM backend supports:
   - discriminant-only enum/GADT matching (zero-payload variants)
   - payload enum constructor lowering (single and multi-payload)
-  - payload binding in simple matches (`Enum.Variant(a, b, ...)`)
+  - nested payload pattern checks and bindings
+  - index-incompatible arm pruning in match lowering
+  - opaque-handle lowering strategy for existential payload storage
 
 ## Example 1: Type-Safe AST
 
@@ -109,6 +112,5 @@ fn consume(box: ShowBox) -> i32 {
 
 ## Known Limits
 
-- WASM simple-match lowering currently requires direct enum variants (no guards, no deep nested destructuring).
-- Exhaustiveness diagnostics are index-aware, but nested constraint explanations can still improve.
-- Trait integration with deeply nested GADT refinements is still evolving.
+- Existential HKTs remain intentionally unsupported (`GADT-005`).
+- Exhaustiveness diagnostics are index-aware, but very large nested constraints may still report conservative unreachable warnings.

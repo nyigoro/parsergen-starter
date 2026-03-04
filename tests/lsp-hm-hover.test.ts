@@ -127,7 +127,7 @@ describe('LSP namespace hover for module aliases', () => {
       resolveImportedSymbol: (name) => project.resolveImportedSymbol(name, mainUri),
       resolveImportedMember: (base, member) => project.resolveImportedMember(base, member, mainUri),
     });
-    expect(label).toBe('add(a: i32, b: i32) -> any');
+    expect(label).toBe('add(a: i32, b: i32) -> int');
   });
 
   test('hover resolves multiple namespace aliases to same module', () => {
@@ -158,7 +158,7 @@ describe('LSP namespace hover for module aliases', () => {
       resolveImportedSymbol: (name) => project.resolveImportedSymbol(name, mainUri),
       resolveImportedMember: (base, member) => project.resolveImportedMember(base, member, mainUri),
     });
-    expect(label).toBe('add(a: i32, b: i32) -> any');
+    expect(label).toBe('add(a: i32, b: i32) -> int');
   });
 
   test('shadowed namespace does not resolve to module hover', () => {
