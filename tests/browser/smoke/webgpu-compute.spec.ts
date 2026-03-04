@@ -2,9 +2,11 @@ import { test, expect } from '@playwright/test';
 import { startSmokeServer } from '../fixtures/serve';
 
 const runSmoke = process.env.LUMINA_BROWSER_SMOKE === '1';
+const runWebGpuSmoke = process.env.LUMINA_WEBGPU_SMOKE === '1';
 
 test.describe('WebGPU compute smoke', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
+  test.skip(!runWebGpuSmoke, 'Set LUMINA_WEBGPU_SMOKE=1 on a GPU-capable runner');
 
   test('requests adapter/device and creates a compute pipeline when available', async ({ page }) => {
     const server = await startSmokeServer();

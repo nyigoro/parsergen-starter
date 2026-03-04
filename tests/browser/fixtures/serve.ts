@@ -23,6 +23,9 @@ const parser = compileGrammar(luminaGrammar);
 const parseProgram = (source: string): LuminaProgram => parser.parse(source.trim() + '\n') as LuminaProgram;
 
 const hashText = (value: string): string => createHash('sha256').update(value).digest('hex').slice(0, 20);
+const cdnModulePath = '/cdn/demo-pkg@1.0.0/index.js';
+const cdnModuleCode = 'export const marker = "demo-pkg"; export function run(value) { return value + 2; }\n';
+const cdnModuleIntegrity = `sha256-${createHash('sha256').update(cdnModuleCode).digest('base64')}`;
 
 const hasWabt = (): boolean => {
   try {
@@ -90,11 +93,73 @@ export async function startSmokeServer(): Promise<SmokeServer> {
   const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
     const pathname = requestUrl.pathname;
+    const origin = `${requestUrl.protocol}//${requestUrl.host}`;
 
     try {
       if (pathname === '/health') {
         res.writeHead(200, makeHeaders('application/json; charset=utf-8'));
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (pathname === cdnModulePath) {
+        res.writeHead(200, makeHeaders('text/javascript; charset=utf-8'));
+        res.end(cdnModuleCode);
+        return;
+      }
+
+      if (pathname === '/cdn/import-map.json') {
+        const url = `${origin}${cdnModulePath}`;
+        const map = {
+          imports: {
+            'demo-pkg': url,
+          },
+          integrity: {
+            [url]: cdnModuleIntegrity,
+          },
+        };
+        res.writeHead(200, makeHeaders('application/json; charset=utf-8'));
+        res.end(JSON.stringify(map));
+        return;
+      }
+
+      if (pathname === '/cdn/harness') {
+        const url = `${origin}${cdnModulePath}`;
+        const map = {
+          imports: {
+            'demo-pkg': url,
+          },
+          integrity: {
+            [url]: cdnModuleIntegrity,
+          },
+        };
+        const script = `
+window.__luminaImportMap = ${JSON.stringify(map)};
+const { run, marker } = await import('demo-pkg');
+window.__luminaCdnResult = {
+  marker,
+  value: run(5),
+  url: ${JSON.stringify(url)},
+  integrity: window.__luminaImportMap.integrity[${JSON.stringify(url)}]
+};
+document.getElementById('out').textContent = JSON.stringify(window.__luminaCdnResult);
+`;
+        const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Lumina CDN Harness</title>
+    <script type="importmap">${JSON.stringify({ imports: map.imports })}</script>
+  </head>
+  <body>
+    <pre id="out"></pre>
+    <script type="module">
+${script}
+    </script>
+  </body>
+</html>`;
+        res.writeHead(200, makeHeaders('text/html; charset=utf-8'));
+        res.end(html);
         return;
       }
 

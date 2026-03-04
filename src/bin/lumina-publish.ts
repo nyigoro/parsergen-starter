@@ -48,6 +48,13 @@ type PublishOptions = {
   stdout?: Pick<Console, 'log'>;
   deps?: Partial<PublishDependencies>;
   runCompileCheck?: (cwd: string, entry: string) => Promise<void>;
+  runBundleStep?: (
+    cwd: string,
+    entry: string,
+    target: 'browser' | 'wasm',
+    outPath: string,
+    loaderOut?: string
+  ) => Promise<void>;
 };
 
 const DEFAULT_IGNORE = ['.lumina/**', 'tests/**', '**/*.test.lm', '.tmp/**', 'node_modules/**'];
@@ -161,6 +168,7 @@ export async function runLuminaPublish(argv: string[], options: PublishOptions =
   const stdout = options.stdout ?? console;
   const dependencies: PublishDependencies = { ...DEFAULT_DEPENDENCIES, ...(options.deps ?? {}) };
   const compileCheck = options.runCompileCheck ?? runCompileDryRun;
+  const bundleStep = options.runBundleStep ?? runBundle;
   if (argv.includes('--help') || argv.includes('-h')) {
     stdout.log('Usage: lumina publish [--cdn] [--cdn-provider <lumina|npm|both>]');
     return;
@@ -219,8 +227,8 @@ export async function runLuminaPublish(argv: string[], options: PublishOptions =
   const wasmOut = path.join(tempDir, 'index.wasm');
   const loaderOut = path.join(tempDir, 'loader.js');
 
-  await runBundle(cwd, manifest.entry, 'browser', browserOut);
-  await runBundle(cwd, manifest.entry, 'wasm', wasmOut, loaderOut);
+  await bundleStep(cwd, manifest.entry, 'browser', browserOut);
+  await bundleStep(cwd, manifest.entry, 'wasm', wasmOut, loaderOut);
 
   const browserData = await fs.readFile(browserOut);
   const wasmData = await fs.readFile(wasmOut);

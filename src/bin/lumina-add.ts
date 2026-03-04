@@ -111,6 +111,24 @@ const inferLuminaEntry = async (
   return undefined;
 };
 
+const normalizePackageName = (value: string): string => {
+  const raw = value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return raw || 'lumina-package';
+};
+
+const createBootstrapManifest = (cwd: string): PackageManifest => ({
+  name: normalizePackageName(path.basename(cwd)),
+  version: '0.1.0',
+  entry: 'src/main.lm',
+  description: null,
+  authors: [],
+  license: null,
+  dependencies: new Map(),
+  devDeps: new Map(),
+  registry: null,
+  cdn: null,
+});
+
 const ensureManifest = async (cwd: string, dependencies: AddDependencies): Promise<PackageManifest> => {
   try {
     return await dependencies.readManifest(cwd);
@@ -118,7 +136,9 @@ const ensureManifest = async (cwd: string, dependencies: AddDependencies): Promi
     if (existsSync(path.join(cwd, 'lumina.toml')) || existsSync(path.join(cwd, 'package.json'))) {
       throw new Error('Unable to read lumina.toml');
     }
-    throw new Error('Missing lumina.toml (or package.json fallback). Run `lumina init` first.');
+    const bootstrap = createBootstrapManifest(cwd);
+    await dependencies.writeManifest(cwd, bootstrap);
+    return bootstrap;
   }
 };
 

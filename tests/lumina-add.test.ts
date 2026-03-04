@@ -107,4 +107,100 @@ describe('lumina add', () => {
     expect(writtenLockfile?.packages.get('json-utils@1.2.3')?.path).toBe('.lumina/packages/json-utils@1.2.3');
     expect(writtenLockfile?.packages.get('json-utils@1.2.3')?.lumina).toBe('./src/lib.lm');
   });
+
+  it('returns a clean error when package cannot be resolved', async () => {
+    const cwd = createTempDir();
+    fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, 'src', 'main.lm'), 'fn main() { }\n', 'utf-8');
+
+    await expect(
+      runLuminaAdd(['missing-pkg'], {
+        cwd,
+        deps: {
+          readManifest: async () => makeManifest(),
+          writeManifest: async () => {},
+          readLockfile: async () => ({ version: 1, packages: new Map() }),
+          writeLockfile: async () => {},
+          resolveRegistryConfig: () => ({ url: 'https://registry.example.dev', token: 'token' }),
+          resolveVersion: async () => {
+            throw new Error('Package not found: missing-pkg');
+          },
+          getVersionInfo: async () => {
+            throw new Error('unreachable');
+          },
+          downloadTarball: async () => Buffer.from(''),
+          verifyIntegrity: () => true,
+        },
+      })
+    ).rejects.toThrow('Package not found: missing-pkg');
+  });
+
+  it('returns a clean error when explicit package version is unavailable', async () => {
+    const cwd = createTempDir();
+    fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, 'src', 'main.lm'), 'fn main() { }\n', 'utf-8');
+
+    await expect(
+      runLuminaAdd(['json-utils@9.9.9'], {
+        cwd,
+        deps: {
+          readManifest: async () => makeManifest(),
+          writeManifest: async () => {},
+          readLockfile: async () => ({ version: 1, packages: new Map() }),
+          writeLockfile: async () => {},
+          resolveRegistryConfig: () => ({ url: 'https://registry.example.dev', token: 'token' }),
+          resolveVersion: async () => {
+            throw new Error('No matching version for json-utils@9.9.9');
+          },
+          getVersionInfo: async () => {
+            throw new Error('unreachable');
+          },
+          downloadTarball: async () => Buffer.from(''),
+          verifyIntegrity: () => true,
+        },
+      })
+    ).rejects.toThrow('No matching version for json-utils@9.9.9');
+  });
+
+  it('bootstraps a manifest when lumina.toml is missing', async () => {
+    const cwd = createTempDir();
+    const writeManifestCalls: PackageManifest[] = [];
+
+    await runLuminaAdd(['json-utils@^1.2.0'], {
+      cwd,
+      deps: {
+        readManifest: async () => {
+          throw new Error('Missing lumina.toml');
+        },
+        writeManifest: async (_dir, manifest) => {
+          writeManifestCalls.push(manifest);
+        },
+        readLockfile: async () => ({ version: 1, packages: new Map() }),
+        writeLockfile: async () => {},
+        resolveRegistryConfig: () => ({ url: 'https://registry.example.dev', token: 'token' }),
+        resolveVersion: async () => '1.2.3',
+        getVersionInfo: async () => ({
+          name: 'json-utils',
+          version: '1.2.3',
+          resolved: 'https://registry.example.dev/json-utils-1.2.3.tgz',
+          integrity: 'sha256:abc',
+          lumina: './src/lib.lm',
+          deps: new Map(),
+        }),
+        downloadTarball: async () =>
+          Buffer.from(
+            JSON.stringify({
+              files: [{ path: 'src/lib.lm', content: Buffer.from('fn util() -> i32 { 1 }\n', 'utf-8').toString('base64') }],
+            }),
+            'utf-8'
+          ),
+        verifyIntegrity: () => true,
+      },
+      stdout: { log: () => {} },
+    });
+
+    expect(writeManifestCalls.length).toBeGreaterThanOrEqual(2);
+    expect(writeManifestCalls[0].name.length).toBeGreaterThan(0);
+    expect(writeManifestCalls[1].dependencies.get('json-utils')).toBe('^1.2.0');
+  });
 });

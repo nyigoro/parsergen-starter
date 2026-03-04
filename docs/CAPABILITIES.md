@@ -101,17 +101,17 @@ This document tracks the current state of the Lumina language/tooling and near�
 ## Tooling & Codegen
 | Feature | Status | Notes |
 |---|---|---|
-| AST lowering | Beta | Used by transpiler |
+| AST lowering | Stable | Dedicated lowering coverage for declarations, pattern forms, pipe/try lowering, and compile-time declaration stripping |
 | JS codegen | Stable | Match lowering + IIFE + source map support |
 | WASM codegen | Beta | Core language + collections + control-flow parity implemented; standalone range expressions lower to heap-backed range records; trait/type fallback dispatch hard-fail paths replaced with explicit diagnostics; range indexing now lowers for strings, Vec slices, and fixed arrays; declaration statements in executable blocks are treated as compile-time-only no-ops; cast-to-bool lowering added; `is` narrowing remains target-gated in semantic (`WASM-IS-001`) with match-based guidance; ~100x faster recursion in benchmarks |
 | IR optimization (SSA) | Stable | Function‑scoped SSA + loop‑safe constant propagation |
 | Source maps | Stable | External + inline options |
 | Multi‑file module compilation | Stable | Import resolution via bundling (topological compile planned) |
-| Package management | Beta | Registry workflow (`lumina add`, `lumina install`, `lumina publish`, `lumina search`) + lockfile migration; ecosystem/discovery still expanding |
-| Web distribution tooling | Beta | `lumina bundle --target browser|wasm`, `lumina importmap`, browser lock generation (`lumina.browser.lock`), optional `lumina publish --cdn` artifact URL flow |
-| JS↔WASM parity harness | Beta | `tests/parity/parity-harness.ts` + backend parity suite compare stdout + return values, including async/await, chained await, and async-calls-async cases |
-| Browser smoke CI | Beta | Playwright smoke scaffolding in `tests/browser/` (`test:browser`) with OPFS/SAB/WebGPU/WASM load checks |
-| WASM perf validation suite | Beta | `tests/wasm-perf-validation.test.ts` tracks workload peak memory, large-collection memory behavior, long-run retain/release stability, and wasm binary-size regression baseline |
+| Package management | Stable | Registry workflow (`lumina add`, `lumina install`, `lumina publish`, `lumina search`) with publish-path validation, CDN artifact coverage, add/install edge-case tests, and lockfile migration |
+| Web distribution tooling | Stable | `lumina bundle --target browser|wasm`, `lumina importmap`, browser lock generation (`lumina.browser.lock`), optional `lumina publish --cdn`, and browser CDN/import-map consumption smoke coverage |
+| JS↔WASM parity harness | Stable | `tests/parity/parity-harness.ts` + expanded parity matrix (core language, async loops/chains, Result `?`, GADT/HKT-shaped programs) with explicit wat2wasm availability gating |
+| Browser smoke CI | Stable | Playwright smoke suite for OPFS/SAB/WASM load/WebGPU/stdlib browser modules + CDN import-map path, with retries/traces and dedicated CI job gating (`LUMINA_BROWSER_SMOKE=1`) |
+| WASM perf validation suite | Stable | `tests/wasm-perf-validation.test.ts` covers workload peak memory, load/fragmentation behavior, binary-size regression baselines, and explicit wat2wasm/update-baseline guardrails |
 | `lumina fmt` | Stable | Whitespace normalization + check mode |
 | `lumina lint` | Stable | Semantic diagnostics + style checks |
 | `lumina doc` | Stable | Markdown API extraction from declarations |

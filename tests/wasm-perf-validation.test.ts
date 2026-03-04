@@ -27,6 +27,8 @@ const hasWabt = (): boolean => {
   }
 };
 
+const wabtAvailable = hasWabt();
+
 const ensureTmp = () => {
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 };
@@ -166,8 +168,16 @@ const managedStringWat = `
 `.trim();
 
 describe('WASM memory/perf validation', () => {
-  it('tracks peak memory for benchmark workloads', async () => {
-    if (!hasWabt()) return;
+  const perfIt = wabtAvailable ? it : it.skip;
+
+  it('detects wat2wasm availability for perf harness', () => {
+    if (!wabtAvailable) {
+      console.warn('Skipping wasm perf validation: wat2wasm not available in PATH');
+    }
+    expect(typeof wabtAvailable).toBe('boolean');
+  });
+
+  perfIt('tracks peak memory for benchmark workloads', async () => {
     const fib = await compileSourceToWasm(fibWorkload, 'perf-fib');
     const vec = await compileSourceToWasm(vecWorkload, 'perf-vec');
     const str = await compileSourceToWasm(stringWorkload, 'perf-str');
@@ -193,8 +203,7 @@ describe('WASM memory/perf validation', () => {
     expect(strMem.peak - strMem.start).toBeLessThan(80 * 1024 * 1024);
   }, 30000);
 
-  it('keeps memory usage bounded under large collection load', async () => {
-    if (!hasWabt()) return;
+  perfIt('keeps memory usage bounded under large collection load', async () => {
     const compiled = await compileSourceToWasm(vecWorkload, 'perf-vec-load');
     const runtime = await loadWASM(compiled.wasmPath);
     if (typeof global.gc === 'function') global.gc();
@@ -213,8 +222,7 @@ describe('WASM memory/perf validation', () => {
     expect(maxObserved - before).toBeLessThan(28 * 1024 * 1024);
   });
 
-  it('stays bounded over long retain/release runs (fragmentation guard)', async () => {
-    if (!hasWabt()) return;
+  perfIt('stays bounded over long retain/release runs (fragmentation guard)', async () => {
     const runtime = await compileWatAndLoad(managedStringWat, 'perf-managed-strings');
     if (typeof global.gc === 'function') global.gc();
     const before = process.memoryUsage().heapUsed;
@@ -227,13 +235,18 @@ describe('WASM memory/perf validation', () => {
     expect(after - before).toBeLessThan(48 * 1024 * 1024);
   });
 
-  it('tracks wasm binary size regressions for reference workload', async () => {
-    if (!hasWabt()) return;
+  perfIt('tracks wasm binary size regressions for reference workload', async () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../examples/wasm-hello/math.lm'), 'utf-8');
     const compiled = await compileSourceToWasm(source, 'perf-reference');
     const current = compiled.size;
     const shouldUpdate = process.env.UPDATE_BASELINE === '1';
     if (!fs.existsSync(baselinePath) || shouldUpdate) {
+      if (!shouldUpdate && !fs.existsSync(baselinePath)) {
+        console.warn('No wasm perf baseline found. Creating a new baseline now.');
+      }
+      if (shouldUpdate) {
+        console.warn('UPDATE_BASELINE=1 set. Writing updated wasm perf baseline.');
+      }
       const next: Baseline = { reference_wasm_bytes: current };
       fs.writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`, 'utf-8');
       expect(current).toBeGreaterThan(0);

@@ -55,6 +55,8 @@ const hasWabt = (): boolean => {
   }
 };
 
+const WAT2WASM_AVAILABLE = hasWabt();
+
 const assertNoHardErrors = (diagnostics: Diagnostic[], phase: string): void => {
   const hard = diagnostics.filter((d) => d.severity === 'error');
   if (hard.length === 0) return;
@@ -64,7 +66,9 @@ const assertNoHardErrors = (diagnostics: Diagnostic[], phase: string): void => {
 
 const hashText = (value: string): string => createHash('sha256').update(value).digest('hex').slice(0, 16);
 
-export const supportsParityWasm = (): boolean => hasWabt();
+export const isWat2WasmAvailable = (): boolean => WAT2WASM_AVAILABLE;
+
+export const supportsParityWasm = (): boolean => isWat2WasmAvailable();
 
 export async function runJS(source: string): Promise<ParityRunOutput> {
   const ast = parseProgram(source);
@@ -93,7 +97,7 @@ export async function runJS(source: string): Promise<ParityRunOutput> {
 }
 
 export async function runWasm(source: string): Promise<ParityRunOutput> {
-  if (!hasWabt()) {
+  if (!isWat2WasmAvailable()) {
     throw new Error('wat2wasm is required for WASM parity tests');
   }
 
