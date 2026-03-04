@@ -588,8 +588,18 @@ Block
   = "{" _ statements:StatementList _ "}" { return createNode("Block", { body: statements }, location); }
 
 LetStmt
-  = "let" _ mut:("mut" __)? node:IdName _ typeAnn:(_ ":" _ typeName:TypeName { return typeName; })? _ "=" _ value:Expr _ ";"? {
-      return createNode("Let", { name: node.name, typeName: typeAnn || null, value, mutable: !!mut, location: node.location }, location);
+  = "let" _ refInfo:("ref" __ refMut:("mut" __)? {
+      return { ref: true, refMut: !!refMut };
+    })? mut:("mut" __)? node:IdName _ typeAnn:(_ ":" _ typeName:TypeName { return typeName; })? _ "=" _ value:Expr _ ";"? {
+      return createNode("Let", {
+        name: node.name,
+        typeName: typeAnn || null,
+        value,
+        mutable: refInfo ? !!refInfo.refMut : !!mut,
+        ref: !!refInfo,
+        refMut: !!(refInfo && refInfo.refMut),
+        location: node.location
+      }, location);
     }
 
 LetTupleStmt
@@ -1104,15 +1114,31 @@ MatchGuard
 
 MatchPattern
   = "_" { return createNode("WildcardPattern", {}, location); }
+  / RefBindingPattern
   / TupleMatchPattern
   / StructMatchPattern
   / LiteralMatchPattern
   / qual:QualifiedVariant _ binds:MatchBindingPatternList? {
       const patterns = binds || [];
-      const bindings = patterns.map(p => (p.type === "BindingPattern" ? p.name : (p.type === "WildcardPattern" ? "_" : "_")));
+      const bindings = patterns.map(p =>
+        p.type === "BindingPattern"
+          ? p.name
+          : p.type === "RefBindingPattern"
+            ? p.name
+            : (p.type === "WildcardPattern" ? "_" : "_")
+      );
       return createNode("EnumPattern", { variant: qual.variant, enumName: qual.enumName, bindings, patterns, location: qual.location }, location);
     }
   / name:IdName { return createNode("BindingPattern", { name: name.name, location: name.location }, location); }
+
+RefBindingPattern
+  = "ref" __ mut:("mut" __)? name:IdName {
+      return createNode("RefBindingPattern", {
+        name: name.name,
+        mutable: !!mut,
+        location: name.location
+      }, location);
+    }
 
 TupleMatchPattern
   = "(" _ head:MatchPattern _ "," _ tail:MatchPatternList _ ")" {

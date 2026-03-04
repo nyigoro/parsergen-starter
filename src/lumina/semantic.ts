@@ -419,6 +419,7 @@ function formatTypeForDiagnostic(type: LuminaType | null | undefined): string {
 function collectPatternBindingNames(pattern: import('./ast.js').LuminaMatchPattern, out: string[] = []): string[] {
   switch (pattern.type) {
     case 'BindingPattern':
+    case 'RefBindingPattern':
       out.push(pattern.name);
       return out;
     case 'TuplePattern':
@@ -450,6 +451,7 @@ function collectPatternBindingTypes(
   const visit = (pat: import('./ast.js').LuminaMatchPattern, currentType: LuminaType | null | undefined) => {
     switch (pat.type) {
       case 'BindingPattern':
+      case 'RefBindingPattern':
         out.set(pat.name, currentType ?? 'any');
         return;
       case 'WildcardPattern':
@@ -511,6 +513,120 @@ const getLValueBaseName = (expr: LuminaExpr): string | null => {
   }
   return current.type === 'Identifier' ? current.name : null;
 };
+
+const isLValueExpr = (expr: LuminaExpr): boolean => expr.type === 'Identifier' || expr.type === 'Member';
+
+type RefPatternBinding = {
+  name: string;
+  mutable: boolean;
+  location?: Location;
+};
+
+function collectRefPatternBindings(
+  pattern: import('./ast.js').LuminaMatchPattern,
+  out: RefPatternBinding[] = []
+): RefPatternBinding[] {
+  switch (pattern.type) {
+    case 'RefBindingPattern':
+      out.push({ name: pattern.name, mutable: !!pattern.mutable, location: pattern.location });
+      return out;
+    case 'TuplePattern':
+      for (const element of pattern.elements) collectRefPatternBindings(element, out);
+      return out;
+    case 'StructPattern':
+      for (const field of pattern.fields) collectRefPatternBindings(field.pattern, out);
+      return out;
+    case 'EnumPattern':
+      if (pattern.patterns && pattern.patterns.length > 0) {
+        for (const nested of pattern.patterns) collectRefPatternBindings(nested, out);
+      }
+      return out;
+    default:
+      return out;
+  }
+}
+
+function collectRefPatternBindingMap(
+  pattern: import('./ast.js').LuminaMatchPattern
+): Map<string, RefPatternBinding> {
+  const entries = collectRefPatternBindings(pattern);
+  const map = new Map<string, RefPatternBinding>();
+  for (const entry of entries) {
+    map.set(entry.name, entry);
+  }
+  return map;
+}
+
+function applyRefPatternBorrowChecks(
+  pattern: import('./ast.js').LuminaMatchPattern,
+  sourceExpr: LuminaExpr,
+  symbols: SymbolTable,
+  diagnostics: Diagnostic[],
+  scope?: Scope,
+  options?: AnalyzeOptions,
+  fallbackLocation?: Location
+) {
+  const refBindings = collectRefPatternBindings(pattern);
+  if (refBindings.length === 0) return;
+  const location = fallbackLocation ?? sourceExpr.location;
+  if (!isLValueExpr(sourceExpr)) {
+    for (const binding of refBindings) {
+      diagnostics.push(
+        diagAt(
+          `ref binding '${binding.name}' requires an lvalue source`,
+          binding.location ?? location,
+          'error',
+          'REF_LVALUE_REQUIRED'
+        )
+      );
+    }
+    return;
+  }
+
+  const baseName = getLValueBaseName(sourceExpr);
+  if (!baseName) {
+    for (const binding of refBindings) {
+      diagnostics.push(
+        diagAt(
+          `ref binding '${binding.name}' requires an lvalue source`,
+          binding.location ?? location,
+          'error',
+          'REF_LVALUE_REQUIRED'
+        )
+      );
+    }
+    return;
+  }
+
+  const baseSym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
+  for (const binding of refBindings) {
+    if (binding.mutable && baseSym?.kind === 'variable' && baseSym.mutable === false && !baseSym.refMutable) {
+      diagnostics.push(
+        diagAt(
+          `'${baseName}' must be mutable for 'ref mut' binding '${binding.name}'`,
+          binding.location ?? location,
+          'error',
+          'REF_MUT_REQUIRED'
+        )
+      );
+    }
+    if (scope) {
+      const ok = binding.mutable
+        ? scope.borrowMutLocal(baseName, binding.location ?? location)
+        : scope.borrowSharedLocal(baseName, binding.location ?? location);
+      if (!ok) {
+        diagnostics.push(
+          diagAt(
+            `Cannot borrow '${baseName}'${binding.mutable ? ' mutably' : ''} while it is already borrowed`,
+            binding.location ?? location,
+            'error',
+            'BORROW_CONFLICT'
+          )
+        );
+      }
+    }
+  }
+}
 
 const getMovePath = (expr: LuminaExpr): string | null => {
   if (expr.type === 'Identifier') return expr.name;
@@ -1891,7 +2007,7 @@ function warnOnImportedShadow(
 function collectComptimePatternBindingNames(pattern: { type?: string; [key: string]: unknown } | null | undefined, out: Set<string>): void {
   if (!pattern || typeof pattern !== 'object') return;
   const kind = pattern.type;
-  if (kind === 'BindingPattern' && typeof pattern.name === 'string') {
+  if ((kind === 'BindingPattern' || kind === 'RefBindingPattern') && typeof pattern.name === 'string') {
     out.add(pattern.name);
     return;
   }
@@ -2931,6 +3047,8 @@ function typeCheckStatement(
         type: expectedType ?? 'any',
         location: stmt.location,
         mutable: stmt.mutable ?? false,
+        ref: !!stmt.ref,
+        refMutable: !!stmt.refMut,
       });
       const valueType = typeCheckExpr(
         stmt.value,
@@ -2954,6 +3072,57 @@ function typeCheckStatement(
             stmt.location
           )
         );
+      }
+      if (stmt.ref) {
+        if (!isLValueExpr(stmt.value)) {
+          diagnostics.push(
+            diagAt(
+              `ref binding '${stmt.name}' requires an lvalue source`,
+              stmt.location ?? stmt.value.location,
+              'error',
+              'REF_LVALUE_REQUIRED'
+            )
+          );
+        } else {
+          const baseName = getLValueBaseName(stmt.value);
+          if (!baseName) {
+            diagnostics.push(
+              diagAt(
+                `ref binding '${stmt.name}' requires an lvalue source`,
+                stmt.location ?? stmt.value.location,
+                'error',
+                'REF_LVALUE_REQUIRED'
+              )
+            );
+          } else {
+            const baseSym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
+            if (stmt.refMut && baseSym?.kind === 'variable' && baseSym.mutable === false && !baseSym.refMutable) {
+              diagnostics.push(
+                diagAt(
+                  `'${baseName}' must be mutable for 'ref mut' binding '${stmt.name}'`,
+                  stmt.location ?? stmt.value.location,
+                  'error',
+                  'REF_MUT_REQUIRED'
+                )
+              );
+            }
+            if (scope) {
+              const ok = stmt.refMut
+                ? scope.borrowMutLocal(baseName, stmt.location ?? stmt.value.location)
+                : scope.borrowSharedLocal(baseName, stmt.location ?? stmt.value.location);
+              if (!ok) {
+                diagnostics.push(
+                  diagAt(
+                    `Cannot borrow '${baseName}'${stmt.refMut ? ' mutably' : ''} while it is already borrowed`,
+                    stmt.location ?? stmt.value.location,
+                    'error',
+                    'BORROW_CONFLICT'
+                  )
+                );
+              }
+            }
+          }
+        }
       }
       const finalType = expectedType ?? valueType ?? hmInferredType;
       if (!finalType) {
@@ -2983,6 +3152,8 @@ function typeCheckStatement(
         type: finalType ?? 'any',
         location: stmt.location,
         mutable: stmt.mutable ?? false,
+        ref: !!stmt.ref,
+        refMutable: !!stmt.refMut,
       });
       if (scope && di) {
         di.assign(scope, stmt.name);
@@ -3121,13 +3292,18 @@ function typeCheckStatement(
       finalizeScopeBorrows(elseScope, diagnostics, stmt.location);
 
       const bindingTypes = collectPatternBindingTypes(stmt.pattern, valueType ?? 'any', symbols);
+      const refBindingMap = collectRefPatternBindingMap(stmt.pattern);
+      applyRefPatternBorrowChecks(stmt.pattern, stmt.value, symbols, diagnostics, scope, options, stmt.location);
       for (const [name, bindingType] of bindingTypes.entries()) {
+        const refBinding = refBindingMap.get(name);
         symbols.define({
           name,
           kind: 'variable',
           type: bindingType,
           location: stmt.location,
-          mutable: stmt.mutable ?? false,
+          mutable: refBinding ? !!refBinding.mutable : (stmt.mutable ?? false),
+          ref: !!refBinding,
+          refMutable: !!refBinding?.mutable,
         });
         scope?.define(name, stmt.location);
         if (scope && di) {
@@ -3291,14 +3467,19 @@ function typeCheckStatement(
       const thenSymbols = cloneSymbolTable(symbols);
       const thenDi = di ? di.clone() : undefined;
       const bindingTypes = collectPatternBindingTypes(stmt.pattern, valueType ?? 'any', symbols);
+      const refBindingMap = collectRefPatternBindingMap(stmt.pattern);
+      applyRefPatternBorrowChecks(stmt.pattern, stmt.value, symbols, diagnostics, thenScope, options, stmt.location);
       for (const [name, bindingType] of bindingTypes.entries()) {
+        const refBinding = refBindingMap.get(name);
         thenScope.define(name, stmt.location);
         thenSymbols.define({
           name,
           kind: 'variable',
           type: bindingType,
           location: stmt.location,
-          mutable: false,
+          mutable: refBinding ? !!refBinding.mutable : false,
+          ref: !!refBinding,
+          refMutable: !!refBinding?.mutable,
         });
         if (thenDi) {
           thenDi.define(thenScope, name, true);
@@ -3506,6 +3687,8 @@ function typeCheckStatement(
       const loopDi = di ? di.clone() : undefined;
       const matchMutability = resolveMutableSource(stmt.value, symbols, options);
       const pattern = stmt.pattern;
+      const refBindingMap = collectRefPatternBindingMap(pattern);
+      applyRefPatternBorrowChecks(pattern, stmt.value, symbols, diagnostics, loopScope, options, stmt.location);
       if (pattern.type === 'EnumPattern') {
         if (pattern.enumName && matchBase && pattern.enumName !== matchBase) {
           diagnostics.push(diagAt(`While-let value is '${matchBase}', not '${pattern.enumName}'`, stmt.location));
@@ -3532,13 +3715,16 @@ function typeCheckStatement(
               if (binding === '_') return;
               const paramType = mappedParams[idx];
               if (!paramType) return;
+              const refBinding = refBindingMap.get(binding);
               loopScope.define(binding, stmt.location);
               loopSymbols.define({
                 name: binding,
                 kind: 'variable',
                 type: paramType,
                 location: stmt.location,
-                mutable: matchMutability,
+                mutable: refBinding ? !!refBinding.mutable : matchMutability,
+                ref: !!refBinding,
+                refMutable: !!refBinding?.mutable,
               });
               loopDi?.define(loopScope, binding, true);
             });
@@ -3804,6 +3990,7 @@ function typeCheckStatement(
           armSymbols.define(sym);
         }
         const pattern = arm.pattern;
+        const refBindingMap = collectRefPatternBindingMap(pattern);
         const guardless = !arm.guard;
         if (fullyCovered) {
           diagnostics.push(
@@ -3930,19 +4117,31 @@ function typeCheckStatement(
                 if (binding === '_') return;
                 const paramType = mappedParams[idx];
                 if (!paramType) return;
+                const refBinding = refBindingMap.get(binding);
                 armScope.define(binding, arm.location ?? stmt.location);
                 armSymbols.define({
                   name: binding,
                   kind: 'variable',
                   type: paramType,
                   location: arm.location ?? stmt.location,
-                  mutable: matchMutability,
+                  mutable: refBinding ? !!refBinding.mutable : matchMutability,
+                  ref: !!refBinding,
+                  refMutable: !!refBinding?.mutable,
                 });
                 if (armDi) {
                   armDi.define(armScope, binding, true);
                 }
               });
             }
+            applyRefPatternBorrowChecks(
+              pattern,
+              stmt.value,
+              symbols,
+              diagnostics,
+              armScope,
+              options,
+              arm.location ?? stmt.location
+            );
             if (arm.guard) {
               const guardType = typeCheckExpr(
                 arm.guard,
@@ -3980,20 +4179,35 @@ function typeCheckStatement(
             branchBorrows.push(snapshotBorrows(scope));
             continue;
           }
-        } else if (pattern.type === 'BindingPattern') {
+        } else if (pattern.type === 'BindingPattern' || pattern.type === 'RefBindingPattern') {
           if (guardless) {
             hasWildcard = true;
             fullyCovered = true;
           }
-          armScope.define(pattern.name, arm.location ?? stmt.location);
+          const bindingName = pattern.name;
+          const isRefBinding = pattern.type === 'RefBindingPattern';
+          armScope.define(bindingName, arm.location ?? stmt.location);
           armSymbols.define({
-            name: pattern.name,
+            name: bindingName,
             kind: 'variable',
             type: matchType ?? 'any',
             location: arm.location ?? stmt.location,
-            mutable: matchMutability,
+            mutable: isRefBinding ? !!pattern.mutable : matchMutability,
+            ref: isRefBinding,
+            refMutable: isRefBinding ? !!pattern.mutable : false,
           });
-          if (armDi) armDi.define(armScope, pattern.name, true);
+          if (isRefBinding) {
+            applyRefPatternBorrowChecks(
+              pattern,
+              stmt.value,
+              symbols,
+              diagnostics,
+              armScope,
+              options,
+              arm.location ?? stmt.location
+            );
+          }
+          if (armDi) armDi.define(armScope, bindingName, true);
         } else {
           const genericBindingTypes = collectPatternBindingTypes(pattern, matchType ?? 'any', symbols);
           for (const [binding, bindingType] of genericBindingTypes.entries()) {
@@ -7313,6 +7527,7 @@ function typeCheckExpr(
       }
 
       const pattern = arm.pattern;
+      const refBindingMap = collectRefPatternBindingMap(pattern);
       const guardless = !arm.guard;
       if (fullyCovered) {
         diagnostics.push(
@@ -7439,19 +7654,31 @@ function typeCheckExpr(
               if (binding === '_') return;
               const paramType = mappedParams[idx];
               if (!paramType) return;
+              const refBinding = refBindingMap.get(binding);
               armScope.define(binding, arm.location ?? expr.location);
               armSymbols.define({
                 name: binding,
                 kind: 'variable',
                 type: paramType,
                 location: arm.location ?? expr.location,
-                mutable: matchMutability,
+                mutable: refBinding ? !!refBinding.mutable : matchMutability,
+                ref: !!refBinding,
+                refMutable: !!refBinding?.mutable,
               });
               if (di) {
                 di.define(armScope, binding, true);
               }
             });
           }
+          applyRefPatternBorrowChecks(
+            pattern,
+            expr.value,
+            symbols,
+            diagnostics,
+            armScope,
+            options,
+            arm.location ?? expr.location
+          );
           if (arm.guard) {
             const guardType = typeCheckExpr(
               arm.guard,
@@ -7495,21 +7722,36 @@ function typeCheckExpr(
           branchBorrows.push(snapshotBorrows(scope));
           continue;
         }
-      } else if (pattern.type === 'BindingPattern') {
+      } else if (pattern.type === 'BindingPattern' || pattern.type === 'RefBindingPattern') {
         if (guardless) {
           hasWildcard = true;
           fullyCovered = true;
         }
-        armScope.define(pattern.name, arm.location ?? expr.location);
+        const bindingName = pattern.name;
+        const isRefBinding = pattern.type === 'RefBindingPattern';
+        armScope.define(bindingName, arm.location ?? expr.location);
         armSymbols.define({
-          name: pattern.name,
+          name: bindingName,
           kind: 'variable',
           type: matchType ?? 'any',
           location: arm.location ?? expr.location,
-          mutable: matchMutability,
+          mutable: isRefBinding ? !!pattern.mutable : matchMutability,
+          ref: isRefBinding,
+          refMutable: isRefBinding ? !!pattern.mutable : false,
         });
+        if (isRefBinding) {
+          applyRefPatternBorrowChecks(
+            pattern,
+            expr.value,
+            symbols,
+            diagnostics,
+            armScope,
+            options,
+            arm.location ?? expr.location
+          );
+        }
         if (di) {
-          di.define(armScope, pattern.name, true);
+          di.define(armScope, bindingName, true);
         }
       } else {
         const genericBindingTypes = collectPatternBindingTypes(pattern, matchType ?? 'any', symbols);
@@ -7898,11 +8140,26 @@ class Scope {
       return true;
     }
 
+    borrowMutLocal(name: string, location?: Location): boolean {
+      if (!this.canBorrowMut(name)) return false;
+      this.borrowedMut.set(name, location);
+      this.borrowedShared.delete(name);
+      return true;
+    }
+
     borrowShared(name: string, location?: Location): boolean {
       const root = this.resolveBorrowRoot(name);
       if (!root.canBorrowShared(name)) return false;
       if (!root.borrowedMut.has(name)) {
         root.borrowedShared.set(name, location);
+      }
+      return true;
+    }
+
+    borrowSharedLocal(name: string, location?: Location): boolean {
+      if (!this.canBorrowShared(name)) return false;
+      if (!this.borrowedMut.has(name)) {
+        this.borrowedShared.set(name, location);
       }
       return true;
     }

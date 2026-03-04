@@ -401,6 +401,16 @@ function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
           } as IRIf);
         }
 
+        if (arm.pattern.type === 'BindingPattern' || arm.pattern.type === 'RefBindingPattern') {
+          armBody.unshift({
+            kind: 'Let',
+            name: arm.pattern.name,
+            value: { kind: 'Identifier', name: tempName } as IRIdentifier,
+            location: arm.location ?? stmt.location,
+          } as IRLet);
+          wildcardBody = armBody;
+          continue;
+        }
         if (arm.pattern.type === 'WildcardPattern') {
           wildcardBody = armBody;
           continue;
@@ -672,7 +682,12 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
         value: lowerExpr(expr.value, ctx),
         arms: expr.arms.map((arm) => ({
           variant: arm.pattern.type === 'EnumPattern' ? arm.pattern.variant : null,
-          bindings: arm.pattern.type === 'EnumPattern' ? arm.pattern.bindings : [],
+          bindings:
+            arm.pattern.type === 'EnumPattern'
+              ? arm.pattern.bindings
+              : arm.pattern.type === 'BindingPattern' || arm.pattern.type === 'RefBindingPattern'
+                ? [arm.pattern.name]
+                : [],
           body: arm.guard
             ? ({
                 kind: 'MatchExpr',

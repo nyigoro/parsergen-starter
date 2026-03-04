@@ -512,6 +512,8 @@ function renamePattern(pattern: LuminaMatchPattern, scope: AlphaScope): LuminaMa
   switch (pattern.type) {
     case 'BindingPattern':
       return { ...pattern, name: bindRenamed(scope, pattern.name) };
+    case 'RefBindingPattern':
+      return { ...pattern, name: bindRenamed(scope, pattern.name) };
     case 'EnumPattern': {
       const renamedBindings = (pattern.bindings ?? []).map((binding) => bindRenamed(scope, binding));
       return {

@@ -327,6 +327,8 @@ export interface LuminaLet {
   typeName: LuminaTypeExpr | null;
   value: LuminaExpr;
   mutable?: boolean;
+  ref?: boolean;
+  refMut?: boolean;
   location?: Location;
 }
 
@@ -429,6 +431,7 @@ export type LuminaMatchPattern = (
   | LuminaEnumPattern
   | LuminaWildcardPattern
   | LuminaBindingPattern
+  | LuminaRefBindingPattern
   | LuminaLiteralPattern
   | LuminaTuplePattern
   | LuminaStructPattern
@@ -452,6 +455,13 @@ export interface LuminaWildcardPattern {
 export interface LuminaBindingPattern {
   type: 'BindingPattern';
   name: string;
+  location?: Location;
+}
+
+export interface LuminaRefBindingPattern {
+  type: 'RefBindingPattern';
+  name: string;
+  mutable: boolean;
   location?: Location;
 }
 

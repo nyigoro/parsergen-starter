@@ -4022,9 +4022,19 @@ export const sync = {
     value.compare_exchange(expected, replacement),
 };
 
-interface SABI32State {
-  view: Int32Array;
+type SABChannelKind = 'i32' | 'u32' | 'f32' | 'f64';
+
+interface SABChannelState {
+  mode: 'sab' | 'fallback';
+  kind: SABChannelKind;
   capacity: number;
+  control?: Int32Array;
+  dataI32?: Int32Array;
+  dataU32?: Uint32Array;
+  dataF32?: Float32Array;
+  dataF64?: Float64Array;
+  fallbackSender?: Sender<number>;
+  fallbackReceiver?: Receiver<number>;
 }
 
 const SAB_HEAD = 0;
@@ -4032,37 +4042,127 @@ const SAB_TAIL = 1;
 const SAB_COUNT = 2;
 const SAB_SENDER_CLOSED = 3;
 const SAB_RECEIVER_CLOSED = 4;
-const SAB_DATA_OFFSET = 5;
+const SAB_CLOSE_FLAG = 5;
+const SAB_CONTROL_WORDS = 6;
+const SAB_DATA_OFFSET_BYTES = Int32Array.BYTES_PER_ELEMENT * SAB_CONTROL_WORDS;
 
-const createSABI32State = (capacity: number): SABI32State => {
+const sabElementSize = (kind: SABChannelKind): number => (kind === 'f64' ? 8 : 4);
+
+const normalizeSabValue = (kind: SABChannelKind, value: number): number => {
+  const n = Number(value);
+  switch (kind) {
+    case 'u32':
+      return Math.trunc(n) >>> 0;
+    case 'f32':
+      return Math.fround(n);
+    case 'f64':
+      return Number(n);
+    case 'i32':
+    default:
+      return Math.trunc(n) | 0;
+  }
+};
+
+const createSABChannelState = (capacity: number, kind: SABChannelKind): SABChannelState => {
   const cap = Math.max(1, Math.trunc(capacity));
-  const buffer = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * (SAB_DATA_OFFSET + cap));
-  const view = new Int32Array(buffer);
-  Atomics.store(view, SAB_HEAD, 0);
-  Atomics.store(view, SAB_TAIL, 0);
-  Atomics.store(view, SAB_COUNT, 0);
-  Atomics.store(view, SAB_SENDER_CLOSED, 0);
-  Atomics.store(view, SAB_RECEIVER_CLOSED, 0);
-  return { view, capacity: cap };
+  if (AtomicI32.is_available()) {
+    const totalBytes = SAB_DATA_OFFSET_BYTES + cap * sabElementSize(kind);
+    const buffer = new SharedArrayBuffer(totalBytes);
+    const control = new Int32Array(buffer, 0, SAB_CONTROL_WORDS);
+    Atomics.store(control, SAB_HEAD, 0);
+    Atomics.store(control, SAB_TAIL, 0);
+    Atomics.store(control, SAB_COUNT, 0);
+    Atomics.store(control, SAB_SENDER_CLOSED, 0);
+    Atomics.store(control, SAB_RECEIVER_CLOSED, 0);
+    Atomics.store(control, SAB_CLOSE_FLAG, 0);
+    const state: SABChannelState = {
+      mode: 'sab',
+      kind,
+      capacity: cap,
+      control,
+    };
+    if (kind === 'i32') {
+      state.dataI32 = new Int32Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
+    } else if (kind === 'u32') {
+      state.dataU32 = new Uint32Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
+    } else if (kind === 'f32') {
+      state.dataF32 = new Float32Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
+    } else {
+      state.dataF64 = new Float64Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
+    }
+    return state;
+  }
+
+  if (channel.is_available()) {
+    const fallback = channel.bounded<number>(cap);
+    return {
+      mode: 'fallback',
+      kind,
+      capacity: cap,
+      fallbackSender: fallback.sender,
+      fallbackReceiver: fallback.receiver,
+    };
+  }
+
+  throw new Error('SharedArrayBuffer + Atomics or MessageChannel fallback is not available in this environment');
+};
+
+const writeSabStateValue = (state: SABChannelState, index: number, value: number): void => {
+  const normalized = normalizeSabValue(state.kind, value);
+  switch (state.kind) {
+    case 'u32':
+      state.dataU32![index] = normalized >>> 0;
+      return;
+    case 'f32':
+      state.dataF32![index] = Math.fround(normalized);
+      return;
+    case 'f64':
+      state.dataF64![index] = Number(normalized);
+      return;
+    case 'i32':
+    default:
+      state.dataI32![index] = Math.trunc(normalized) | 0;
+      return;
+  }
+};
+
+const readSabStateValue = (state: SABChannelState, index: number): number => {
+  switch (state.kind) {
+    case 'u32':
+      return (state.dataU32![index] >>> 0);
+    case 'f32':
+      return Math.fround(state.dataF32![index]);
+    case 'f64':
+      return Number(state.dataF64![index]);
+    case 'i32':
+    default:
+      return Math.trunc(state.dataI32![index]) | 0;
+  }
 };
 
 const sabYield = async (): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
-export class SABSenderI32 {
-  constructor(private readonly state: SABI32State) {}
+class SABSenderBase {
+  constructor(private readonly state: SABChannelState) {}
 
   try_send(value: number): boolean {
-    if (Atomics.load(this.state.view, SAB_SENDER_CLOSED) !== 0) return false;
-    if (Atomics.load(this.state.view, SAB_RECEIVER_CLOSED) !== 0) return false;
-    const count = Atomics.load(this.state.view, SAB_COUNT);
+    const normalized = normalizeSabValue(this.state.kind, value);
+    if (this.state.mode === 'fallback') {
+      if (!this.state.fallbackSender) return false;
+      return channel.try_send(this.state.fallbackSender, normalized);
+    }
+    const control = this.state.control!;
+    if (Atomics.load(control, SAB_SENDER_CLOSED) !== 0) return false;
+    if (Atomics.load(control, SAB_RECEIVER_CLOSED) !== 0) return false;
+    const count = Atomics.load(control, SAB_COUNT);
     if (count >= this.state.capacity) return false;
-    const tail = Atomics.load(this.state.view, SAB_TAIL);
-    Atomics.store(this.state.view, SAB_DATA_OFFSET + tail, Math.trunc(value) | 0);
-    Atomics.store(this.state.view, SAB_TAIL, (tail + 1) % this.state.capacity);
-    Atomics.store(this.state.view, SAB_COUNT, count + 1);
-    Atomics.notify(this.state.view, SAB_COUNT, 1);
+    const tail = Atomics.load(control, SAB_TAIL);
+    writeSabStateValue(this.state, tail, normalized);
+    Atomics.store(control, SAB_TAIL, (tail + 1) % this.state.capacity);
+    Atomics.store(control, SAB_COUNT, count + 1);
+    Atomics.notify(control, SAB_COUNT, 1);
     return true;
   }
 
@@ -4074,13 +4174,35 @@ export class SABSenderI32 {
     }
   }
 
+  async send_timeout(value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> {
+    const deadline = Date.now() + Math.max(0, Math.trunc(timeoutMs));
+    for (;;) {
+      if (this.try_send(value)) return Result.Ok(undefined);
+      if (this.is_closed()) return Result.Err('closed');
+      if (Date.now() >= deadline) return Result.Err('timeout');
+      await sabYield();
+    }
+  }
+
   is_closed(): boolean {
-    return Atomics.load(this.state.view, SAB_SENDER_CLOSED) !== 0 || Atomics.load(this.state.view, SAB_RECEIVER_CLOSED) !== 0;
+    if (this.state.mode === 'fallback') {
+      if (!this.state.fallbackSender) return true;
+      return channel.is_sender_closed(this.state.fallbackSender);
+    }
+    const control = this.state.control!;
+    return Atomics.load(control, SAB_SENDER_CLOSED) !== 0 || Atomics.load(control, SAB_RECEIVER_CLOSED) !== 0;
   }
 
   close(): void {
-    Atomics.store(this.state.view, SAB_SENDER_CLOSED, 1);
-    Atomics.notify(this.state.view, SAB_COUNT);
+    if (this.state.mode === 'fallback') {
+      if (!this.state.fallbackSender) return;
+      channel.close_sender(this.state.fallbackSender);
+      return;
+    }
+    const control = this.state.control!;
+    Atomics.store(control, SAB_SENDER_CLOSED, 1);
+    Atomics.store(control, SAB_CLOSE_FLAG, 1);
+    Atomics.notify(control, SAB_COUNT);
   }
 
   drop(): void {
@@ -4088,21 +4210,39 @@ export class SABSenderI32 {
   }
 }
 
-export class SABReceiverI32 {
-  constructor(private readonly state: SABI32State) {}
+class SABReceiverBase {
+  constructor(private readonly state: SABChannelState) {}
 
   try_recv(): OptionLike {
-    const count = Atomics.load(this.state.view, SAB_COUNT);
+    if (this.state.mode === 'fallback') {
+      if (!this.state.fallbackReceiver) return Option.None as OptionLike;
+      const value = channel.try_recv(this.state.fallbackReceiver) as OptionLike;
+      if (getEnumTag(value as LuminaEnumLike) !== 'Some') return Option.None as OptionLike;
+      return Option.Some(normalizeSabValue(this.state.kind, Number(getEnumPayload(value as LuminaEnumLike)))) as OptionLike;
+    }
+    const control = this.state.control!;
+    const count = Atomics.load(control, SAB_COUNT);
     if (count <= 0) return Option.None as OptionLike;
-    const head = Atomics.load(this.state.view, SAB_HEAD);
-    const value = Atomics.load(this.state.view, SAB_DATA_OFFSET + head);
-    Atomics.store(this.state.view, SAB_HEAD, (head + 1) % this.state.capacity);
-    Atomics.store(this.state.view, SAB_COUNT, count - 1);
-    Atomics.notify(this.state.view, SAB_COUNT, 1);
+    const head = Atomics.load(control, SAB_HEAD);
+    const value = readSabStateValue(this.state, head);
+    Atomics.store(control, SAB_HEAD, (head + 1) % this.state.capacity);
+    Atomics.store(control, SAB_COUNT, count - 1);
+    Atomics.notify(control, SAB_COUNT, 1);
     return Option.Some(value) as OptionLike;
   }
 
   async recv(): Promise<OptionLike> {
+    if (this.state.mode === 'fallback') {
+      if (!this.state.fallbackReceiver) return Option.None as OptionLike;
+      for (;;) {
+        const value = await channel.recv(this.state.fallbackReceiver) as OptionLike;
+        if (getEnumTag(value as LuminaEnumLike) === 'Some') {
+          return Option.Some(normalizeSabValue(this.state.kind, Number(getEnumPayload(value as LuminaEnumLike)))) as OptionLike;
+        }
+        if (this.is_closed()) return Option.None as OptionLike;
+        await sabYield();
+      }
+    }
     for (;;) {
       const value = this.try_recv();
       if (getEnumTag(value as LuminaEnumLike) === 'Some') return value;
@@ -4112,14 +4252,26 @@ export class SABReceiverI32 {
   }
 
   is_closed(): boolean {
-    if (Atomics.load(this.state.view, SAB_RECEIVER_CLOSED) !== 0) return true;
-    if (Atomics.load(this.state.view, SAB_SENDER_CLOSED) !== 0 && Atomics.load(this.state.view, SAB_COUNT) <= 0) return true;
+    if (this.state.mode === 'fallback') {
+      if (!this.state.fallbackReceiver) return true;
+      return channel.is_receiver_closed(this.state.fallbackReceiver);
+    }
+    const control = this.state.control!;
+    if (Atomics.load(control, SAB_RECEIVER_CLOSED) !== 0) return true;
+    if (Atomics.load(control, SAB_SENDER_CLOSED) !== 0 && Atomics.load(control, SAB_COUNT) <= 0) return true;
     return false;
   }
 
   close(): void {
-    Atomics.store(this.state.view, SAB_RECEIVER_CLOSED, 1);
-    Atomics.notify(this.state.view, SAB_COUNT);
+    if (this.state.mode === 'fallback') {
+      if (!this.state.fallbackReceiver) return;
+      channel.close_receiver(this.state.fallbackReceiver);
+      return;
+    }
+    const control = this.state.control!;
+    Atomics.store(control, SAB_RECEIVER_CLOSED, 1);
+    Atomics.store(control, SAB_CLOSE_FLAG, 1);
+    Atomics.notify(control, SAB_COUNT);
   }
 
   drop(): void {
@@ -4127,18 +4279,38 @@ export class SABReceiverI32 {
   }
 }
 
+export class SABSenderI32 extends SABSenderBase {}
+export class SABReceiverI32 extends SABReceiverBase {}
+export class SABSenderU32 extends SABSenderBase {}
+export class SABReceiverU32 extends SABReceiverBase {}
+export class SABSenderF32 extends SABSenderBase {}
+export class SABReceiverF32 extends SABReceiverBase {}
+export class SABSenderF64 extends SABSenderBase {}
+export class SABReceiverF64 extends SABReceiverBase {}
+
 export const sab_channel = {
-  is_available: (): boolean => AtomicI32.is_available(),
+  is_available: (): boolean => AtomicI32.is_available() || channel.is_available(),
   bounded_i32: (capacity: number): { sender: SABSenderI32; receiver: SABReceiverI32 } => {
-    if (!AtomicI32.is_available()) {
-      throw new Error('SharedArrayBuffer + Atomics are not available in this environment');
-    }
-    const state = createSABI32State(capacity);
+    const state = createSABChannelState(capacity, 'i32');
     return { sender: new SABSenderI32(state), receiver: new SABReceiverI32(state) };
+  },
+  bounded_u32: (capacity: number): { sender: SABSenderU32; receiver: SABReceiverU32 } => {
+    const state = createSABChannelState(capacity, 'u32');
+    return { sender: new SABSenderU32(state), receiver: new SABReceiverU32(state) };
+  },
+  bounded_f32: (capacity: number): { sender: SABSenderF32; receiver: SABReceiverF32 } => {
+    const state = createSABChannelState(capacity, 'f32');
+    return { sender: new SABSenderF32(state), receiver: new SABReceiverF32(state) };
+  },
+  bounded_f64: (capacity: number): { sender: SABSenderF64; receiver: SABReceiverF64 } => {
+    const state = createSABChannelState(capacity, 'f64');
+    return { sender: new SABSenderF64(state), receiver: new SABReceiverF64(state) };
   },
   send_i32: (sender: SABSenderI32, value: number): boolean => sender.try_send(value),
   try_send_i32: (sender: SABSenderI32, value: number): boolean => sender.try_send(value),
   send_async_i32: (sender: SABSenderI32, value: number): Promise<boolean> => sender.send(value),
+  send_timeout_i32: (sender: SABSenderI32, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
+    sender.send_timeout(value, timeoutMs),
   recv_i32: (receiver: SABReceiverI32): Promise<OptionLike> => receiver.recv(),
   try_recv_i32: (receiver: SABReceiverI32): OptionLike => receiver.try_recv(),
   close_sender_i32: (sender: SABSenderI32): void => sender.close(),
@@ -4146,6 +4318,51 @@ export const sab_channel = {
   is_sender_closed_i32: (sender: SABSenderI32): boolean => sender.is_closed(),
   is_receiver_closed_i32: (receiver: SABReceiverI32): boolean => receiver.is_closed(),
   close_i32: (ch: { sender: SABSenderI32; receiver: SABReceiverI32 }): void => {
+    ch.sender.close();
+    ch.receiver.close();
+  },
+  send_u32: (sender: SABSenderU32, value: number): boolean => sender.try_send(value),
+  try_send_u32: (sender: SABSenderU32, value: number): boolean => sender.try_send(value),
+  send_async_u32: (sender: SABSenderU32, value: number): Promise<boolean> => sender.send(value),
+  send_timeout_u32: (sender: SABSenderU32, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
+    sender.send_timeout(value, timeoutMs),
+  recv_u32: (receiver: SABReceiverU32): Promise<OptionLike> => receiver.recv(),
+  try_recv_u32: (receiver: SABReceiverU32): OptionLike => receiver.try_recv(),
+  close_sender_u32: (sender: SABSenderU32): void => sender.close(),
+  close_receiver_u32: (receiver: SABReceiverU32): void => receiver.close(),
+  is_sender_closed_u32: (sender: SABSenderU32): boolean => sender.is_closed(),
+  is_receiver_closed_u32: (receiver: SABReceiverU32): boolean => receiver.is_closed(),
+  close_u32: (ch: { sender: SABSenderU32; receiver: SABReceiverU32 }): void => {
+    ch.sender.close();
+    ch.receiver.close();
+  },
+  send_f32: (sender: SABSenderF32, value: number): boolean => sender.try_send(value),
+  try_send_f32: (sender: SABSenderF32, value: number): boolean => sender.try_send(value),
+  send_async_f32: (sender: SABSenderF32, value: number): Promise<boolean> => sender.send(value),
+  send_timeout_f32: (sender: SABSenderF32, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
+    sender.send_timeout(value, timeoutMs),
+  recv_f32: (receiver: SABReceiverF32): Promise<OptionLike> => receiver.recv(),
+  try_recv_f32: (receiver: SABReceiverF32): OptionLike => receiver.try_recv(),
+  close_sender_f32: (sender: SABSenderF32): void => sender.close(),
+  close_receiver_f32: (receiver: SABReceiverF32): void => receiver.close(),
+  is_sender_closed_f32: (sender: SABSenderF32): boolean => sender.is_closed(),
+  is_receiver_closed_f32: (receiver: SABReceiverF32): boolean => receiver.is_closed(),
+  close_f32: (ch: { sender: SABSenderF32; receiver: SABReceiverF32 }): void => {
+    ch.sender.close();
+    ch.receiver.close();
+  },
+  send_f64: (sender: SABSenderF64, value: number): boolean => sender.try_send(value),
+  try_send_f64: (sender: SABSenderF64, value: number): boolean => sender.try_send(value),
+  send_async_f64: (sender: SABSenderF64, value: number): Promise<boolean> => sender.send(value),
+  send_timeout_f64: (sender: SABSenderF64, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
+    sender.send_timeout(value, timeoutMs),
+  recv_f64: (receiver: SABReceiverF64): Promise<OptionLike> => receiver.recv(),
+  try_recv_f64: (receiver: SABReceiverF64): OptionLike => receiver.try_recv(),
+  close_sender_f64: (sender: SABSenderF64): void => sender.close(),
+  close_receiver_f64: (receiver: SABReceiverF64): void => receiver.close(),
+  is_sender_closed_f64: (sender: SABSenderF64): boolean => sender.is_closed(),
+  is_receiver_closed_f64: (receiver: SABReceiverF64): boolean => receiver.is_closed(),
+  close_f64: (ch: { sender: SABSenderF64; receiver: SABReceiverF64 }): void => {
     ch.sender.close();
     ch.receiver.close();
   },
@@ -4313,6 +4530,7 @@ type WebGpuCanvasRecord = {
   context: WebGpuCanvasContextLike;
   format: string;
   configuredDevice: WebGpuDeviceLike | null;
+  hasSubmittedFrame: boolean;
 };
 
 let webgpuNextHandle = 1;
@@ -4426,6 +4644,12 @@ const alignTo4 = (value: number): number => {
   const v = Math.max(4, Math.trunc(value));
   const mod = v % 4;
   return mod === 0 ? v : v + (4 - mod);
+};
+
+const hasWgslStageEntryPoint = (source: string, stage: 'compute' | 'vertex' | 'fragment', entryPoint: string): boolean => {
+  const escaped = entryPoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`@${stage}[\\s\\S]*\\bfn\\s+${escaped}\\s*\\(`, 'm');
+  return pattern.test(source);
 };
 
 export const webgpu = {
@@ -4698,11 +4922,15 @@ export const webgpu = {
         context,
         format,
         configuredDevice: null,
+        hasSubmittedFrame: false,
       });
       return Result.Ok(id);
     } catch (error) {
       return Result.Err(opfsError(error));
     }
+  },
+  canvas_destroy: (canvasHandle: number): void => {
+    webgpuCanvases.delete(Math.trunc(canvasHandle));
   },
   present: (
     device: unknown,
@@ -4714,6 +4942,9 @@ export const webgpu = {
       if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
       const canvasEntry = webgpuCanvases.get(Math.trunc(canvasHandle));
       if (!canvasEntry) return Result.Err(`Unknown WebGPU canvas handle ${canvasHandle}`);
+      if (!canvasEntry.hasSubmittedFrame) {
+        return Result.Err('No submitted render frame available for present');
+      }
       if (typeof canvasEntry.context.configure === 'function' && canvasEntry.configuredDevice !== resolvedDevice) {
         canvasEntry.context.configure({
           device: resolvedDevice,
@@ -4722,6 +4953,7 @@ export const webgpu = {
         });
         canvasEntry.configuredDevice = resolvedDevice;
       }
+      canvasEntry.hasSubmittedFrame = false;
       return Result.Ok(undefined);
     } catch (error) {
       return Result.Err(opfsError(error));
@@ -4746,6 +4978,12 @@ export const webgpu = {
       const vertexShader = String(config?.vertex_shader ?? '');
       const fragmentShader = String(config?.fragment_shader ?? '');
       if (!vertexShader || !fragmentShader) return Result.Err('Render pipeline requires vertex and fragment shaders');
+      if (!hasWgslStageEntryPoint(vertexShader, 'vertex', 'main')) {
+        return Result.Err('Invalid WGSL vertex shader: expected @vertex fn main(...)');
+      }
+      if (!hasWgslStageEntryPoint(fragmentShader, 'fragment', 'main')) {
+        return Result.Err('Invalid WGSL fragment shader: expected @fragment fn main(...)');
+      }
       const vertexModule = resolvedDevice.createShaderModule({ code: vertexShader });
       const fragmentModule = resolvedDevice.createShaderModule({ code: fragmentShader });
       const vertexLayouts = Array.isArray(config?.vertex_layout) ? config.vertex_layout : [];
@@ -4795,6 +5033,9 @@ export const webgpu = {
       return Result.Err(opfsError(error));
     }
   },
+  render_pipeline_destroy: (pipelineHandle: number): void => {
+    webgpuPipelines.delete(Math.trunc(pipelineHandle));
+  },
   render_frame: (
     device: unknown,
     pipelineHandle: number,
@@ -4807,8 +5048,14 @@ export const webgpu = {
       if (!pipelineEntry) return Result.Err(`Unknown WebGPU pipeline handle ${pipelineHandle}`);
       const canvasEntry = webgpuCanvases.get(Math.trunc(config?.canvas));
       if (!canvasEntry) return Result.Err(`Unknown WebGPU canvas handle ${config?.canvas}`);
-      const presentResult = webgpu.present(resolvedDevice, canvasEntry.id, pipelineHandle);
-      if (getEnumTag(presentResult as LuminaEnumLike) === 'Err') return presentResult;
+      if (typeof canvasEntry.context.configure === 'function' && canvasEntry.configuredDevice !== resolvedDevice) {
+        canvasEntry.context.configure({
+          device: resolvedDevice,
+          format: canvasEntry.format,
+          alphaMode: 'opaque',
+        });
+        canvasEntry.configuredDevice = resolvedDevice;
+      }
       const currentTexture = canvasEntry.context.getCurrentTexture?.();
       if (!currentTexture || typeof currentTexture.createView !== 'function') {
         return Result.Err('Canvas context does not provide current texture');
@@ -4833,26 +5080,30 @@ export const webgpu = {
       pass.setPipeline?.(pipelineEntry.pipeline);
       for (const [slot, bufferHandle] of (pipelineEntry.config.vertex_buffers ?? []).entries()) {
         const bufferEntry = webgpuBuffers.get(Math.trunc(bufferHandle));
-        if (!bufferEntry) continue;
+        if (!bufferEntry) return Result.Err(`Unknown WebGPU vertex buffer handle ${bufferHandle}`);
         pass.setVertexBuffer?.(slot, bufferEntry.buffer);
+      }
+      for (const uniformHandle of pipelineEntry.config.uniforms ?? []) {
+        const uniformEntry = webgpuBuffers.get(Math.trunc(uniformHandle));
+        if (!uniformEntry || uniformEntry.kind !== 'uniform') {
+          return Result.Err(`Unknown WebGPU uniform handle ${uniformHandle}`);
+        }
       }
       const indexHandle = pipelineEntry.config.index_buffer;
       const shouldIndexed = !!config?.indexed || (indexHandle !== null && indexHandle !== undefined);
       const drawCount = Math.max(0, Math.trunc(config?.draw_count ?? 0));
       if (shouldIndexed && indexHandle !== null && indexHandle !== undefined) {
         const indexEntry = webgpuBuffers.get(Math.trunc(indexHandle));
-        if (indexEntry) {
-          pass.setIndexBuffer?.(indexEntry.buffer, 'uint32');
-          pass.drawIndexed?.(drawCount || indexEntry.elementCount || 0, 1, 0, 0, 0);
-        } else {
-          pass.draw?.(drawCount, 1, 0, 0);
-        }
+        if (!indexEntry) return Result.Err(`Unknown WebGPU index buffer handle ${indexHandle}`);
+        pass.setIndexBuffer?.(indexEntry.buffer, 'uint32');
+        pass.drawIndexed?.(drawCount || indexEntry.elementCount || 0, 1, 0, 0, 0);
       } else {
         pass.draw?.(drawCount, 1, 0, 0);
       }
       pass.end();
       resolvedDevice.queue.submit([encoder.finish()]);
-      return Result.Ok(undefined);
+      canvasEntry.hasSubmittedFrame = true;
+      return webgpu.present(resolvedDevice, canvasEntry.id, pipelineHandle);
     } catch (error) {
       return Result.Err(opfsError(error));
     }
@@ -4878,7 +5129,11 @@ export const webgpu = {
       const safeWorkgroupSize = Math.max(1, Math.trunc(workgroupSize));
       const dispatchCount = Math.max(1, Math.ceil(outLen / safeWorkgroupSize));
 
-      const shaderModule = device.createShaderModule({ code: String(wgsl) });
+      const shaderSource = String(wgsl);
+      if (!hasWgslStageEntryPoint(shaderSource, 'compute', String(entryPoint))) {
+        return Result.Err(`Invalid WGSL compute shader: expected @compute fn ${String(entryPoint)}(...)`);
+      }
+      const shaderModule = device.createShaderModule({ code: shaderSource });
       const inputBuffer = device.createBuffer({
         size: inBytes,
         usage: WEBGPU_BUFFER_USAGE.STORAGE | WEBGPU_BUFFER_USAGE.COPY_DST,
@@ -4945,6 +5200,11 @@ export const webgpu = {
     workgroupSize: number = 64
   ): Promise<{ $tag: string; $payload?: unknown }> =>
     webgpu.compute(wgsl, entryPoint, input, outputLength, workgroupSize, 'i32'),
+  __debug_counts: (): { buffers: number; pipelines: number; canvases: number } => ({
+    buffers: webgpuBuffers.size,
+    pipelines: webgpuPipelines.size,
+    canvases: webgpuCanvases.size,
+  }),
 };
 
 type ReactiveCleanup = () => void;

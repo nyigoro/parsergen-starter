@@ -164,9 +164,9 @@ class JSGenerator {
       this.builder.append('\n');
       this.builder.append('const async_channel = channel;');
       this.builder.append('\n');
-      this.builder.append('const sab_channel = { is_available: () => false, bounded_i32: () => ({ sender: {}, receiver: {} }), send_i32: () => false, try_send_i32: () => false, send_async_i32: async () => false, recv_i32: async () => ({ $tag: "None" }), try_recv_i32: () => ({ $tag: "None" }), close_sender_i32: () => {}, close_receiver_i32: () => {}, is_sender_closed_i32: () => true, is_receiver_closed_i32: () => true, close_i32: () => {} };');
+      this.builder.append('const sab_channel = { is_available: () => false, bounded_i32: () => ({ sender: {}, receiver: {} }), bounded_u32: () => ({ sender: {}, receiver: {} }), bounded_f32: () => ({ sender: {}, receiver: {} }), bounded_f64: () => ({ sender: {}, receiver: {} }), send_i32: () => false, try_send_i32: () => false, send_async_i32: async () => false, send_timeout_i32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_i32: async () => ({ $tag: "None" }), try_recv_i32: () => ({ $tag: "None" }), close_sender_i32: () => {}, close_receiver_i32: () => {}, is_sender_closed_i32: () => true, is_receiver_closed_i32: () => true, close_i32: () => {}, send_u32: () => false, try_send_u32: () => false, send_async_u32: async () => false, send_timeout_u32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_u32: async () => ({ $tag: "None" }), try_recv_u32: () => ({ $tag: "None" }), close_sender_u32: () => {}, close_receiver_u32: () => {}, is_sender_closed_u32: () => true, is_receiver_closed_u32: () => true, close_u32: () => {}, send_f32: () => false, try_send_f32: () => false, send_async_f32: async () => false, send_timeout_f32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_f32: async () => ({ $tag: "None" }), try_recv_f32: () => ({ $tag: "None" }), close_sender_f32: () => {}, close_receiver_f32: () => {}, is_sender_closed_f32: () => true, is_receiver_closed_f32: () => true, close_f32: () => {}, send_f64: () => false, try_send_f64: () => false, send_async_f64: async () => false, send_timeout_f64: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_f64: async () => ({ $tag: "None" }), try_recv_f64: () => ({ $tag: "None" }), close_sender_f64: () => {}, close_receiver_f64: () => {}, is_sender_closed_f64: () => true, is_receiver_closed_f64: () => true, close_f64: () => {} };');
       this.builder.append('\n');
-      this.builder.append('const webgpu = { GPU_BUFFER_USAGE_STORAGE: 0x80, GPU_BUFFER_USAGE_UNIFORM: 0x40, GPU_BUFFER_USAGE_VERTEX: 0x20, GPU_BUFFER_USAGE_INDEX: 0x10, GPU_BUFFER_USAGE_COPY_SRC: 0x04, GPU_BUFFER_USAGE_COPY_DST: 0x08, is_available: () => false, request_adapter: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), request_device: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_write: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_read: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_destroy: () => {}, uniform_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_update: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_destroy: () => {}, vertex_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), index_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), vertex_buffer_destroy: () => {}, index_buffer_destroy: () => {}, canvas: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), present: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_pipeline: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_frame: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute_i32: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }) };');
+      this.builder.append('const webgpu = { GPU_BUFFER_USAGE_STORAGE: 0x80, GPU_BUFFER_USAGE_UNIFORM: 0x40, GPU_BUFFER_USAGE_VERTEX: 0x20, GPU_BUFFER_USAGE_INDEX: 0x10, GPU_BUFFER_USAGE_COPY_SRC: 0x04, GPU_BUFFER_USAGE_COPY_DST: 0x08, is_available: () => false, request_adapter: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), request_device: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_write: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_read: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_destroy: () => {}, uniform_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_update: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_destroy: () => {}, vertex_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), index_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), vertex_buffer_destroy: () => {}, index_buffer_destroy: () => {}, canvas: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), canvas_destroy: () => {}, present: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_pipeline: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_pipeline_destroy: () => {}, render_frame: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute_i32: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), __debug_counts: () => ({ buffers: 0, pipelines: 0, canvases: 0 }) };');
       this.builder.append('\n');
       this.builder.append('const timeout = async (ms) => await time.sleep(ms);');
       this.builder.append('\n');
@@ -933,7 +933,7 @@ class JSGenerator {
     arms: Array<{ pattern: LuminaMatchPattern; guard?: LuminaExpr | null }>
   ): boolean {
     const isSimpleNestedPayloadPattern = (pattern: LuminaMatchPattern): boolean => {
-      if (pattern.type === 'BindingPattern' || pattern.type === 'WildcardPattern') return true;
+      if (pattern.type === 'BindingPattern' || pattern.type === 'RefBindingPattern' || pattern.type === 'WildcardPattern') return true;
       return false;
     };
     let hasEnumPattern = false;
@@ -949,7 +949,7 @@ class JSGenerator {
         }
         continue;
       }
-      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern') {
+      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern' || arm.pattern.type === 'RefBindingPattern') {
         catchAllCount += 1;
         if (catchAllCount > 1) return false;
         continue;
@@ -1011,6 +1011,7 @@ class JSGenerator {
     switch (pattern.type) {
       case 'WildcardPattern':
       case 'BindingPattern':
+      case 'RefBindingPattern':
         return 'true';
       case 'LiteralPattern':
         return `${valueExpr} === ${JSON.stringify(pattern.value)}`;
@@ -1055,6 +1056,7 @@ class JSGenerator {
     const emit = (pat: LuminaMatchPattern, valueCode: string) => {
       switch (pat.type) {
         case 'BindingPattern':
+        case 'RefBindingPattern':
           lines.push(`${keyword} ${pat.name} = ${valueCode};`);
           return;
         case 'TuplePattern':
@@ -1645,6 +1647,7 @@ class JSGenerator {
   private collectPatternBindings(pattern: LuminaMatchPattern): string[] {
     switch (pattern.type) {
       case 'BindingPattern':
+      case 'RefBindingPattern':
         return [pattern.name];
       case 'TuplePattern':
         return pattern.elements.flatMap((element) => this.collectPatternBindings(element));

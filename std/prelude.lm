@@ -23,7 +23,16 @@ extern type Semaphore from "@std/sync";
 extern type AtomicI32 from "@std/sync";
 extern type SABSenderI32 from "@std/sab_channel";
 extern type SABReceiverI32 from "@std/sab_channel";
+extern type SABSenderU32 from "@std/sab_channel";
+extern type SABReceiverU32 from "@std/sab_channel";
+extern type SABSenderF32 from "@std/sab_channel";
+extern type SABReceiverF32 from "@std/sab_channel";
+extern type SABSenderF64 from "@std/sab_channel";
+extern type SABReceiverF64 from "@std/sab_channel";
 struct SABChannelI32 { sender: SABSenderI32, receiver: SABReceiverI32 }
+struct SABChannelU32 { sender: SABSenderU32, receiver: SABReceiverU32 }
+struct SABChannelF32 { sender: SABSenderF32, receiver: SABReceiverF32 }
+struct SABChannelF64 { sender: SABSenderF64, receiver: SABReceiverF64 }
 extern type DOMElement from "@std/dom";
 extern type EventHandle from "@std/dom";
 extern type WorkerHandle from "@std/web_worker";

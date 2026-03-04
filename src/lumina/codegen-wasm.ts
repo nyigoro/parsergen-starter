@@ -1870,6 +1870,7 @@ class WasmBuilder {
     switch (pattern.type) {
       case 'WildcardPattern':
       case 'BindingPattern':
+      case 'RefBindingPattern':
         return ['i32.const 1'];
       case 'LiteralPattern': {
         if (typeof pattern.value === 'number') {
@@ -1975,6 +1976,7 @@ class WasmBuilder {
       case 'LiteralPattern':
         return [];
       case 'BindingPattern':
+      case 'RefBindingPattern':
         if (pattern.name === '_') return [];
         return [...valueLines, `local.set $${pattern.name}`];
       case 'EnumPattern': {
@@ -2372,6 +2374,7 @@ class WasmBuilder {
   private collectPatternBindingNames(pattern: LuminaMatchPattern): string[] {
     switch (pattern.type) {
       case 'BindingPattern':
+      case 'RefBindingPattern':
         return pattern.name === '_' ? [] : [pattern.name];
       case 'TuplePattern':
         return pattern.elements.flatMap((element) => this.collectPatternBindingNames(element));
@@ -2503,7 +2506,7 @@ class WasmBuilder {
       if (nested.length !== arity) return null;
       const out: string[] = [];
       for (const n of nested) {
-        if (n.type === 'BindingPattern') {
+        if (n.type === 'BindingPattern' || n.type === 'RefBindingPattern') {
           out.push(n.name);
           continue;
         }
@@ -2534,8 +2537,8 @@ class WasmBuilder {
 
     for (const arm of stmt.arms) {
       if (arm.guard) return null;
-      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern') {
-        if (arm.pattern.type === 'BindingPattern') {
+      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern' || arm.pattern.type === 'RefBindingPattern') {
+        if (arm.pattern.type === 'BindingPattern' || arm.pattern.type === 'RefBindingPattern') {
           lines.push(`  local.get $${matchTemp}`);
           lines.push(`  local.set $${arm.pattern.name}`);
         }
@@ -2615,7 +2618,7 @@ class WasmBuilder {
         lines.push(`    br ${label}`);
       }
       lines.push('  end');
-      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern') {
+      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern' || arm.pattern.type === 'RefBindingPattern') {
         hasFallback = true;
         break;
       }

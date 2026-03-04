@@ -4130,7 +4130,7 @@ function applyMatchPattern(
     return;
   }
   if (pattern.type === 'WildcardPattern') return;
-  if (pattern.type === 'BindingPattern') {
+  if (pattern.type === 'BindingPattern' || pattern.type === 'RefBindingPattern') {
     env.extend(pattern.name, { kind: 'scheme', variables: [], type: scrutineeType });
     return;
   }
@@ -4291,6 +4291,8 @@ function formatPatternForDiagnostic(pattern: LuminaMatchPattern): string {
       return '_';
     case 'BindingPattern':
       return pattern.name;
+    case 'RefBindingPattern':
+      return `${pattern.mutable ? 'ref mut' : 'ref'} ${pattern.name}`;
     case 'LiteralPattern':
       return typeof pattern.value === 'string' ? JSON.stringify(pattern.value) : String(pattern.value);
     case 'TuplePattern':
@@ -4740,7 +4742,7 @@ function checkMatchExhaustiveness(
       });
       continue;
     }
-    if (pattern.type === 'WildcardPattern' || pattern.type === 'BindingPattern') {
+    if (pattern.type === 'WildcardPattern' || pattern.type === 'BindingPattern' || pattern.type === 'RefBindingPattern') {
       if (guardless) {
         fullyCovered = true;
       }

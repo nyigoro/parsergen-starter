@@ -6,7 +6,7 @@ const runSmoke = process.env.LUMINA_BROWSER_SMOKE === '1';
 test.describe('WebGPU render smoke', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
 
-  test('configures canvas context and submits a simple render pass when available', async ({ page }) => {
+  test('performs GPU buffer round-trip and renders a non-background center pixel', async ({ page }) => {
     const server = await startSmokeServer();
     try {
       const source = Buffer.from('fn main() -> i32 { 0 }', 'utf-8').toString('base64');
@@ -31,6 +31,29 @@ test.describe('WebGPU render smoke', () => {
         if (!context) return { available: true, ok: false };
         const format = nav.gpu.getPreferredCanvasFormat();
         context.configure({ device, format, alphaMode: 'opaque' });
+
+        const GPU_BUFFER_USAGE_COPY_SRC = 0x04;
+        const GPU_BUFFER_USAGE_COPY_DST = 0x08;
+        const GPU_BUFFER_USAGE_MAP_READ = 0x0001;
+        const srcBuffer = device.createBuffer({
+          size: 12,
+          usage: GPU_BUFFER_USAGE_COPY_SRC | GPU_BUFFER_USAGE_COPY_DST,
+        });
+        const dstBuffer = device.createBuffer({
+          size: 12,
+          usage: GPU_BUFFER_USAGE_COPY_DST | GPU_BUFFER_USAGE_MAP_READ,
+        });
+        const input = new Uint32Array([7, 11, 13]);
+        device.queue.writeBuffer(srcBuffer, 0, input);
+        const copyEncoder = device.createCommandEncoder();
+        copyEncoder.copyBufferToBuffer(srcBuffer, 0, dstBuffer, 0, 12);
+        device.queue.submit([copyEncoder.finish()]);
+        await dstBuffer.mapAsync(0x0001);
+        const copied = Array.from(new Uint32Array(dstBuffer.getMappedRange().slice(0)));
+        dstBuffer.unmap();
+        srcBuffer.destroy();
+        dstBuffer.destroy();
+        const bufferRoundTrip = copied[0] === 7 && copied[1] === 11 && copied[2] === 13;
 
         const shader = device.createShaderModule({
           code: `
@@ -71,11 +94,40 @@ test.describe('WebGPU render smoke', () => {
         pass.draw(3, 1, 0, 0);
         pass.end();
         device.queue.submit([encoder.finish()]);
-        return { available: true, ok: true };
+
+        if (typeof device.queue.onSubmittedWorkDone === 'function') {
+          await device.queue.onSubmittedWorkDone();
+        }
+
+        let sampleSupported = false;
+        let centerChanged = false;
+        try {
+          if (typeof createImageBitmap === 'function') {
+            const bitmap = await createImageBitmap(canvas);
+            const sampleCanvas = document.createElement('canvas');
+            sampleCanvas.width = canvas.width;
+            sampleCanvas.height = canvas.height;
+            const ctx2d = sampleCanvas.getContext('2d');
+            if (ctx2d) {
+              ctx2d.drawImage(bitmap, 0, 0);
+              const data = ctx2d.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+              sampleSupported = true;
+              centerChanged = data[0] !== 0 || data[1] !== 0 || data[2] !== 0;
+            }
+          }
+        } catch {
+          sampleSupported = false;
+        }
+
+        return { available: true, ok: true, bufferRoundTrip, sampleSupported, centerChanged };
       });
 
       test.skip(!result.available, 'WebGPU unavailable in this browser context');
       expect(result.ok).toBe(true);
+      expect(result.bufferRoundTrip).toBe(true);
+      if (result.sampleSupported) {
+        expect(result.centerChanged).toBe(true);
+      }
     } finally {
       await server.close();
     }

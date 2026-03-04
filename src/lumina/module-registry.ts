@@ -1200,33 +1200,51 @@ export function createStdModuleRegistry(): ModuleRegistry {
   };
 
   const sabChannelModule: ModuleNamespace = (() => {
-    const senderT = adt('SABSenderI32');
-    const receiverT = adt('SABReceiverI32');
-    const channelT = adt('SABChannelI32');
     const optionInt = adt('Option', [primitive('int')]);
-    return {
-      kind: 'module',
-      name: 'sab_channel',
-      moduleId: 'std://sab_channel',
-      exports: new Map<string, ModuleExport>([
+    const optionFloat = adt('Option', [primitive('float')]);
+    const resultVoidString = adt('Result', [primitive('void'), primitive('string')]);
+
+    const makeTypedExports = (
+      suffix: 'i32' | 'u32' | 'f32' | 'f64',
+      valueTypeName: 'int' | 'float'
+    ): Array<[string, ModuleExport]> => {
+      const senderTypeName =
+        suffix === 'i32'
+          ? 'SABSenderI32'
+          : suffix === 'u32'
+            ? 'SABSenderU32'
+            : suffix === 'f32'
+              ? 'SABSenderF32'
+              : 'SABSenderF64';
+      const receiverTypeName =
+        suffix === 'i32'
+          ? 'SABReceiverI32'
+          : suffix === 'u32'
+            ? 'SABReceiverU32'
+            : suffix === 'f32'
+              ? 'SABReceiverF32'
+              : 'SABReceiverF64';
+      const channelTypeName =
+        suffix === 'i32'
+          ? 'SABChannelI32'
+          : suffix === 'u32'
+            ? 'SABChannelU32'
+            : suffix === 'f32'
+              ? 'SABChannelF32'
+              : 'SABChannelF64';
+      const senderT = adt(senderTypeName);
+      const receiverT = adt(receiverTypeName);
+      const channelT = adt(channelTypeName);
+      const valueType = primitive(valueTypeName);
+      const optionType = valueTypeName === 'int' ? optionInt : optionFloat;
+
+      return [
         [
-          'is_available',
+          `bounded_${suffix}`,
           moduleFunction(
-            'is_available',
-            [],
-            'bool',
-            [],
-            primitive('bool'),
-            [],
-            'std://sab_channel'
-          ),
-        ],
-        [
-          'bounded_i32',
-          moduleFunction(
-            'bounded_i32',
+            `bounded_${suffix}`,
             ['int'],
-            'SABChannelI32',
+            channelTypeName,
             [primitive('int')],
             channelT,
             ['capacity'],
@@ -1234,70 +1252,82 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
-          'send_i32',
+          `send_${suffix}`,
           moduleFunction(
-            'send_i32',
-            ['SABSenderI32', 'int'],
+            `send_${suffix}`,
+            [senderTypeName, valueTypeName],
             'bool',
-            [senderT, primitive('int')],
+            [senderT, valueType],
             primitive('bool'),
             ['sender', 'value'],
             'std://sab_channel'
           ),
         ],
         [
-          'try_send_i32',
+          `try_send_${suffix}`,
           moduleFunction(
-            'try_send_i32',
-            ['SABSenderI32', 'int'],
+            `try_send_${suffix}`,
+            [senderTypeName, valueTypeName],
             'bool',
-            [senderT, primitive('int')],
+            [senderT, valueType],
             primitive('bool'),
             ['sender', 'value'],
             'std://sab_channel'
           ),
         ],
         [
-          'send_async_i32',
+          `send_async_${suffix}`,
           moduleFunction(
-            'send_async_i32',
-            ['SABSenderI32', 'int'],
+            `send_async_${suffix}`,
+            [senderTypeName, valueTypeName],
             'Promise<bool>',
-            [senderT, primitive('int')],
+            [senderT, valueType],
             promiseType(primitive('bool')),
             ['sender', 'value'],
             'std://sab_channel'
           ),
         ],
         [
-          'recv_i32',
+          `send_timeout_${suffix}`,
           moduleFunction(
-            'recv_i32',
-            ['SABReceiverI32'],
-            'Promise<Option<int>>',
+            `send_timeout_${suffix}`,
+            [senderTypeName, valueTypeName, 'int'],
+            'Promise<Result<void,string>>',
+            [senderT, valueType, primitive('int')],
+            promiseType(resultVoidString),
+            ['sender', 'value', 'timeout_ms'],
+            'std://sab_channel'
+          ),
+        ],
+        [
+          `recv_${suffix}`,
+          moduleFunction(
+            `recv_${suffix}`,
+            [receiverTypeName],
+            `Promise<Option<${valueTypeName}>>`,
             [receiverT],
-            promiseType(optionInt),
+            promiseType(optionType),
             ['receiver'],
             'std://sab_channel'
           ),
         ],
         [
-          'try_recv_i32',
+          `try_recv_${suffix}`,
           moduleFunction(
-            'try_recv_i32',
-            ['SABReceiverI32'],
-            'Option<int>',
+            `try_recv_${suffix}`,
+            [receiverTypeName],
+            `Option<${valueTypeName}>`,
             [receiverT],
-            optionInt,
+            optionType,
             ['receiver'],
             'std://sab_channel'
           ),
         ],
         [
-          'close_sender_i32',
+          `close_sender_${suffix}`,
           moduleFunction(
-            'close_sender_i32',
-            ['SABSenderI32'],
+            `close_sender_${suffix}`,
+            [senderTypeName],
             'void',
             [senderT],
             primitive('void'),
@@ -1306,10 +1336,10 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
-          'close_receiver_i32',
+          `close_receiver_${suffix}`,
           moduleFunction(
-            'close_receiver_i32',
-            ['SABReceiverI32'],
+            `close_receiver_${suffix}`,
+            [receiverTypeName],
             'void',
             [receiverT],
             primitive('void'),
@@ -1318,10 +1348,10 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
-          'is_sender_closed_i32',
+          `is_sender_closed_${suffix}`,
           moduleFunction(
-            'is_sender_closed_i32',
-            ['SABSenderI32'],
+            `is_sender_closed_${suffix}`,
+            [senderTypeName],
             'bool',
             [senderT],
             primitive('bool'),
@@ -1330,10 +1360,10 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
-          'is_receiver_closed_i32',
+          `is_receiver_closed_${suffix}`,
           moduleFunction(
-            'is_receiver_closed_i32',
-            ['SABReceiverI32'],
+            `is_receiver_closed_${suffix}`,
+            [receiverTypeName],
             'bool',
             [receiverT],
             primitive('bool'),
@@ -1342,10 +1372,10 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
-          'close_i32',
+          `close_${suffix}`,
           moduleFunction(
-            'close_i32',
-            ['SABChannelI32'],
+            `close_${suffix}`,
+            [channelTypeName],
             'void',
             [channelT],
             primitive('void'),
@@ -1353,7 +1383,33 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'std://sab_channel'
           ),
         ],
-      ]),
+      ];
+    };
+
+    const exports = new Map<string, ModuleExport>([
+      [
+        'is_available',
+        moduleFunction(
+          'is_available',
+          [],
+          'bool',
+          [],
+          primitive('bool'),
+          [],
+          'std://sab_channel'
+        ),
+      ],
+      ...makeTypedExports('i32', 'int'),
+      ...makeTypedExports('u32', 'int'),
+      ...makeTypedExports('f32', 'float'),
+      ...makeTypedExports('f64', 'float'),
+    ]);
+
+    return {
+      kind: 'module',
+      name: 'sab_channel',
+      moduleId: 'std://sab_channel',
+      exports,
     };
   })();
 
@@ -1577,6 +1633,18 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
+          'canvas_destroy',
+          moduleFunction(
+            'canvas_destroy',
+            ['int'],
+            'void',
+            [primitive('int')],
+            primitive('void'),
+            ['canvas'],
+            'std://webgpu'
+          ),
+        ],
+        [
           'present',
           moduleFunction(
             'present',
@@ -1597,6 +1665,18 @@ export function createStdModuleRegistry(): ModuleRegistry {
             [primitive('any'), primitive('any')],
             promiseType(adt('Result', [primitive('int'), primitive('string')])),
             ['device', 'config'],
+            'std://webgpu'
+          ),
+        ],
+        [
+          'render_pipeline_destroy',
+          moduleFunction(
+            'render_pipeline_destroy',
+            ['int'],
+            'void',
+            [primitive('int')],
+            primitive('void'),
+            ['pipeline'],
             'std://webgpu'
           ),
         ],

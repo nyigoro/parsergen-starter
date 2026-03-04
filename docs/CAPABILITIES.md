@@ -22,7 +22,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Pattern matching | Stable | Exhaustiveness checks in HM + semantic |
 | Member access / namespace access | Stable | Module/struct/enum/trait resolution order covered by regressions |
 | Pipe operator (`|>`) | Stable | Lowered in semantic / HM |
-| `ref` / `ref mut` | Beta | Grammar + semantic checks |
+| `ref` / `ref mut` | Stable | Parameter + pattern binding support (`let ref`, match/if-let/while-let ref bindings) with semantic borrow checks |
 | Move expressions (`move x`) | Stable | **Partial moves** supported with path tracking + tests |
 | Type holes (`_`) in annotations | Stable | **HM validation** + LUMâ€‘010 |
 | Async/await | Stable | `async fn`, `await`, Promise<T> |
@@ -89,11 +89,11 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Browser DOM module | Stable | `dom.query/query_all/create`, attrs/text/html/style, child ops, event add/remove with Node-stub and cleanup coverage |
 | Browser worker module | Stable | `web_worker.spawn/spawn_inline/post/on_message/on_error/terminate`, worker-context helpers with round-trip + stress + cleanup tests |
 | Browser streams module | Stable | `web_streams.from_fetch/from_string/from_bytes/read_chunk/read_all/read_text/pipe/cancel` with async/error/stress/cleanup coverage |
-| SAB channels | Beta | `sab_channel` bounded i32 channel API with send/recv/close helpers |
+| SAB channels | Stable | Typed `sab_channel` APIs (`i32/u32/f32/f64`) with timeout/backpressure, close semantics, fallback parity, and stress coverage |
 | WebGPU compute | Stable | Generic `webgpu.compute(...)` (`i32/u32/f32/f64/u8`) + `compute_i32` compatibility alias |
-| WebGPU buffers/resources | Beta | Typed buffers (`buffer_create/write/read/destroy`), uniforms, vertex/index buffers, canvas/present handles |
-| WebGPU render pipeline | Beta | `render_pipeline` + `render_frame` with vertex/index binding and clear/draw submission |
-| WGSL shader DSL | Beta | `shader compute|vertex|fragment ...` syntax + compiler to WGSL strings; raw WGSL strings still supported |
+| WebGPU buffers/resources | Stable | Typed buffers + uniform/vertex/index lifecycle with stale-handle errors, cleanup checks, and stress/handle-leak coverage |
+| WebGPU render pipeline | Stable | `render_pipeline`/`render_frame`/`present` lifecycle with explicit Err paths, browser smoke rendering, and repeated build/destroy validation |
+| WGSL shader DSL | Stable | `shader compute|vertex|fragment ...` + structural validation coverage; raw WGSL passthrough remains supported |
 | Time/Duration | Stable | `time.nowMs`, `time.instantNow`, `time.elapsedMs`, `time.sleep` |
 | Regex | Stable | Validation, test, find/findAll, replace |
 | Crypto | Stable | SHA-256, HMAC-SHA256, random bytes/int, AES-GCM |
