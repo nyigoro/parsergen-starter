@@ -25,6 +25,7 @@ import {
 import { inlinePass } from '../lumina/inline.js';
 import { comptimePass } from '../lumina/comptime.js';
 import { fuseVecPipelines } from '../lumina/stream-fusion.js';
+import { buildModuleGraph, clearModuleGraphCache, compileInOrder, type ExportEnv } from '../lumina/module-graph.js';
 import { loadWASM, callWASMFunction } from '../wasm-runtime.js';
 import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
@@ -36,11 +37,15 @@ import { runParsergen } from './cli-core.js';
 import { type RawSourceMap } from 'source-map';
 import {
   initProject,
-  installPackages,
-  addPackages,
   removePackages,
   listPackages,
 } from '../commands/package.js';
+import { runLuminaAdd } from './lumina-add.js';
+import { runLuminaInstall } from './lumina-install.js';
+import { runLuminaPublish } from './lumina-publish.js';
+import { readManifest } from '../lumina/package-manifest.js';
+import { resolveRegistryConfig, search as searchRegistry } from '../lumina/registry-client.js';
+import { readLockfileSync } from '../lumina/lockfile.js';
 
 type Target = 'cjs' | 'esm' | 'wasm';
 
@@ -257,6 +262,7 @@ type LuminaLockfile = {
 type LockfilePackage = {
   version: string;
   resolved: string;
+  path?: string;
   integrity?: string;
   lumina?: string | Record<string, string>;
 };
@@ -398,8 +404,9 @@ function resolveImport(
 function findLockfileRoot(fromPath: string): string | null {
   let current = path.dirname(fromPath);
   while (true) {
+    const modern = path.join(current, 'lumina.lock');
     const candidate = path.join(current, 'lumina.lock.json');
-    if (existsSync(candidate)) return current;
+    if (existsSync(modern) || existsSync(candidate)) return current;
     const parent = path.dirname(current);
     if (parent === current) return null;
     current = parent;
@@ -407,6 +414,24 @@ function findLockfileRoot(fromPath: string): string | null {
 }
 
 function loadLockfile(root: string): LuminaLockfile | null {
+  const modernLock = path.join(root, 'lumina.lock');
+  if (existsSync(modernLock)) {
+    const modern = readLockfileSync(root);
+    const packages: Record<string, LockfilePackage> = {};
+    for (const entry of modern.packages.values()) {
+      packages[entry.name] = {
+        version: entry.version,
+        resolved: entry.resolved,
+        path: entry.path,
+        integrity: entry.integrity,
+        lumina: entry.lumina,
+      };
+    }
+    return {
+      lockfileVersion: modern.version,
+      packages,
+    };
+  }
   const lockPath = path.join(root, 'lumina.lock.json');
   try {
     const stat = statSync(lockPath);
@@ -459,7 +484,7 @@ function resolveBareImport(
     entry = lumina['.'];
   }
   if (!entry) return null;
-  let pkgRoot = pkg.resolved;
+  let pkgRoot = pkg.path ?? pkg.resolved;
   if (!path.isAbsolute(pkgRoot)) {
     pkgRoot = path.resolve(root, pkgRoot);
   }
@@ -1034,6 +1059,26 @@ function monomorphizeAst(
   };
 }
 
+function collectModuleExportEnv(program: unknown): ExportEnv {
+  const symbols = new Map<string, { name: string; kind: string }>();
+  const types = new Map<string, { name: string }>();
+  const body = (program as { body?: unknown[] } | null)?.body;
+  if (!Array.isArray(body)) return { symbols, types };
+  for (const stmt of body) {
+    if (!stmt || typeof stmt !== 'object') continue;
+    const node = stmt as { type?: string; name?: string };
+    if (!node.type || !node.name) continue;
+    if (node.type === 'FnDecl' || node.type === 'Let' || node.type === 'TraitDecl' || node.type === 'ImplDecl') {
+      symbols.set(node.name, { name: node.name, kind: node.type });
+      continue;
+    }
+    if (node.type === 'StructDecl' || node.type === 'EnumDecl' || node.type === 'TypeDecl') {
+      types.set(node.name, { name: node.name });
+    }
+  }
+  return { symbols, types };
+}
+
 function programUsesAstOnlySyntax(program: unknown): boolean {
   const visitExpr = (expr: unknown): boolean => {
     if (!expr || typeof expr !== 'object') return false;
@@ -1152,6 +1197,89 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
 
   const body = (program as { body?: unknown[] } | null)?.body;
   return Array.isArray(body) ? body.some((stmt) => visitStmt(stmt)) : false;
+}
+
+async function compileLuminaTopologically(
+  sourcePath: string,
+  outPath: string,
+  target: Target,
+  grammarPath: string,
+  useRecovery: boolean,
+  diCfg: boolean,
+  useAstJs: boolean,
+  noOptimize: boolean,
+  noInline: boolean,
+  noComptime: boolean,
+  sourceMap: boolean,
+  inlineSourceMap: boolean,
+  stopOnUnresolvedMemberError: boolean
+) {
+  const parser = await loadGrammar(grammarPath);
+  const lockfileRoot = findLockfileRoot(sourcePath);
+  const graph = await buildModuleGraph(sourcePath, {
+    stdPath: configStdPath,
+    fileExtensions: configFileExtensions,
+    lockfileRoot,
+    grammarPath,
+  });
+
+  if (graph.cycleErrors.length > 0) {
+    for (const cycle of graph.cycleErrors) {
+      console.error(`[MODULE-CYCLE-001] ${cycle.message}`);
+    }
+    return { ok: false, map: undefined, ir: undefined };
+  }
+
+  const topoResult = await compileInOrder(graph, {
+    compileNode: async ({ node }) => {
+      if (!node.path) return { skipCacheWrite: true };
+      const nodeSource = await fs.readFile(node.path, 'utf-8');
+      const { ast, diagnostics, parseError } = parseSource(nodeSource, parser, useRecovery);
+      if (parseError || !ast) {
+        if (diagnostics.length > 0) {
+          formatDiagnosticsWithSnippet(nodeSource, diagnostics);
+        }
+        return {
+          diagnostics,
+          ast: null,
+          exportEnv: null,
+          skipCacheWrite: true,
+        };
+      }
+      return {
+        ast: ast as never,
+        exportEnv: collectModuleExportEnv(ast),
+        diagnostics,
+      };
+    },
+  });
+
+  if (!topoResult.success) {
+    for (const [nodeKey, diagnostics] of topoResult.diagnostics.entries()) {
+      const first = diagnostics.find((diag) => diag.severity === 'error');
+      if (!first) continue;
+      console.error(`[${first.code ?? 'DIAG'}] ${first.message} (${nodeKey})`);
+    }
+    return { ok: false, map: undefined, ir: undefined };
+  }
+
+  // Topological mode validates and caches module units first, then emits via the current
+  // stable compiler pipeline to preserve output parity during rollout.
+  return compileLumina(
+    sourcePath,
+    outPath,
+    target,
+    grammarPath,
+    useRecovery,
+    diCfg,
+    useAstJs,
+    noOptimize,
+    noInline,
+    noComptime,
+    sourceMap,
+    inlineSourceMap,
+    stopOnUnresolvedMemberError
+  );
 }
 
 async function compileLumina(
@@ -1855,6 +1983,10 @@ Commands:
   repl             Interactive REPL with Lumina grammar
   grammar          Parser generator tools (was parsergen)
   init             Initialize a parser project template
+  add <pkg...>     Add package(s) from Lumina registry
+  install          Install packages from lumina.lock
+  publish          Publish current package to registry
+  search <query>   Search Lumina package registry
 
 Options:
   --out <file>         Output JS file (default: lumina.out.js)
@@ -1869,6 +2001,8 @@ Options:
   --inline-sourcemap   Embed base64 source map (legacy)
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
+  --topo-compile       Enable module-graph/topological compile path
+  --clear-cache        Clear module-graph cache before running command
   --ast-js             Emit JS directly from AST (no IR)
   --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
   --no-inline          Disable AST inlining pass after monomorphization
@@ -1884,8 +2018,10 @@ Config file:
   lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir, recovery
 Commands:
   init                 Initialize a Lumina project (package.json + src/)
-  install              Install dependencies via npm and write lumina.lock.json
+  install              Install dependencies from lumina.lock
   add <pkg...>         Add dependency (supports @scope/pkg@version)
+  publish              Publish current package
+  search <query>       Search package registry
   remove <pkg...>      Remove dependency
   list                 List Lumina-resolvable packages from lumina.lock.json
 `);
@@ -2092,8 +2228,6 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   const initYes = parseBooleanFlag(args, '--yes');
-  const installFrozen = parseBooleanFlag(args, '--frozen');
-  const addDev = parseBooleanFlag(args, '--dev');
   const fmtCheck = parseBooleanFlag(args, '--check');
   const docPublicOnly = parseBooleanFlag(args, '--public-only');
 
@@ -2103,12 +2237,42 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === 'install') {
-    await installPackages({ frozen: installFrozen });
+    await runLuminaInstall(argv.slice(1));
     return;
   }
 
   if (command === 'add') {
-    await addPackages(positionalArgs, { dev: addDev });
+    await runLuminaAdd(argv.slice(1));
+    return;
+  }
+
+  if (command === 'publish') {
+    await runLuminaPublish(argv.slice(1));
+    return;
+  }
+
+  if (command === 'search') {
+    const query = positionalArgs.join(' ').trim();
+    if (query.length === 0) {
+      throw new Error('Missing <query> for search');
+    }
+    const manifest = await readManifest(process.cwd()).catch(() => ({
+      name: '',
+      version: '0.0.0',
+      entry: 'src/main.lm',
+      description: null,
+      authors: [],
+      license: null,
+      dependencies: new Map<string, string>(),
+      devDeps: new Map<string, string>(),
+      registry: null,
+    }));
+    const registryConfig = resolveRegistryConfig(manifest, process.env);
+    const result = await searchRegistry(query, registryConfig);
+    console.log(`Found ${result.total} package(s):`);
+    for (const entry of result.results) {
+      console.log(`- ${entry.name}@${entry.version}${entry.description ? ` - ${entry.description}` : ''}`);
+    }
     return;
   }
 
@@ -2170,6 +2334,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const noOptimize = parseBooleanFlag(args, '--no-optimize');
   const noInline = parseBooleanFlag(args, '--no-inline');
   const noComptime = parseBooleanFlag(args, '--no-comptime');
+  const topoCompile = parseBooleanFlag(args, '--topo-compile');
+  const clearModuleCache = parseBooleanFlag(args, '--clear-cache');
   const stopOnUnresolvedMemberError = parseBooleanFlag(args, '--stop-on-unresolved');
   const listConfig = parseBooleanFlag(args, '--list-config');
   const sourceMapMode = args.get('--source-map') as string | undefined;
@@ -2198,6 +2364,11 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     ? path.resolve(config.stdPath)
     : (configStdPath || path.resolve('std'));
   await loadDepsCache();
+
+  if (clearModuleCache) {
+    await clearModuleGraphCache();
+    console.log('Cleared module graph cache.');
+  }
 
   if (listConfig) {
     console.log(
@@ -2270,25 +2441,41 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         );
         if (!result.ok) process.exit(1);
       } else {
-        const result = await compileLumina(
-          sourcePath,
-          outPath,
-          target,
-          grammarPath,
-          useRecovery,
-          diCfg,
-          useAstJs,
-          noOptimize,
-          noInline,
-          noComptime,
-          sourceMap,
-          inlineSourceMap,
-          stopOnUnresolvedMemberError
-        );
-        if (!result.ok) process.exit(1);
-        if (debugIr && result.ir) {
+        const compileResult = topoCompile
+          ? await compileLuminaTopologically(
+              sourcePath,
+              outPath,
+              target,
+              grammarPath,
+              useRecovery,
+              diCfg,
+              useAstJs,
+              noOptimize,
+              noInline,
+              noComptime,
+              sourceMap,
+              inlineSourceMap,
+              stopOnUnresolvedMemberError
+            )
+          : await compileLumina(
+              sourcePath,
+              outPath,
+              target,
+              grammarPath,
+              useRecovery,
+              diCfg,
+              useAstJs,
+              noOptimize,
+              noInline,
+              noComptime,
+              sourceMap,
+              inlineSourceMap,
+              stopOnUnresolvedMemberError
+            );
+        if (!compileResult.ok) process.exit(1);
+        if (debugIr && compileResult.ir) {
           const dotPath = outPath + '.dot';
-          const dot = irToDot(result.ir);
+          const dot = irToDot(compileResult.ir);
           await fs.writeFile(dotPath, dot, 'utf-8');
           console.log(`IR graph: ${dotPath}`);
         }

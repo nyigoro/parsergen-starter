@@ -462,6 +462,133 @@ describe('Lumina semantic analysis', () => {
     expect(moveError).toBeTruthy();
   });
 
+  test('keeps borrow active across statements within the same scope', () => {
+    const program = `
+      fn borrow(ref x: int) -> int { return x; }
+      fn main() {
+        let mut x: int = 1;
+        let _held = borrow(x);
+        let y = move x;
+        return y;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'MOVE_WHILE_BORROWED');
+    expect(moveError).toBeTruthy();
+  });
+
+  test('releases borrows when the source scope exits', () => {
+    const program = `
+      fn borrow(ref x: int) -> int { return x; }
+      fn main() {
+        {
+          let mut x: int = 1;
+          let _held = borrow(x);
+        }
+        let mut x: int = 2;
+        let y = move x;
+        return y;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const loopError = analysis.diagnostics.find(d => d.code === 'MOVE_WHILE_BORROWED' || d.code === 'BORROW_ESCAPES_SCOPE');
+    expect(loopError).toBeFalsy();
+  });
+
+  test('keeps borrows active after branch merge when only one branch borrows', () => {
+    const program = `
+      fn borrow(ref x: int) -> int { return x; }
+      fn main() {
+        let mut x: int = 1;
+        if (true) {
+          let _held = borrow(x);
+        } else {
+          let _v = 0;
+        }
+        let y = move x;
+        return y;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const moveError = analysis.diagnostics.find(d => d.code === 'MOVE_WHILE_BORROWED');
+    expect(moveError).toBeTruthy();
+  });
+
+  test('does not retain branch-local borrows after merge when both branch scopes end', () => {
+    const program = `
+      fn borrow(ref x: int) -> int { return x; }
+      fn main() {
+        if (true) {
+          let mut a: int = 1;
+          let _ha = borrow(a);
+        } else {
+          let mut b: int = 2;
+          let _hb = borrow(b);
+        }
+        let mut z: int = 3;
+        let y = move z;
+        return y;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const borrowErrors = analysis.diagnostics.filter(d =>
+      d.code === 'MOVE_WHILE_BORROWED' ||
+      d.code === 'BORROW_ESCAPES_SCOPE' ||
+      d.code === 'BORROW_ESCAPES_LOOP'
+    );
+    expect(borrowErrors).toHaveLength(0);
+  });
+
+  test('allows loop iteration when borrows are contained in inner scopes', () => {
+    const program = `
+      fn borrow(ref x: int) -> int { return x; }
+      fn main() {
+        let mut i: int = 0;
+        while (i < 1) {
+          {
+            let mut t: int = i;
+            let _held = borrow(t);
+          }
+          i = i + 1;
+        }
+        return i;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const loopError = analysis.diagnostics.find(d => d.code === 'BORROW_ESCAPES_LOOP');
+    expect(loopError).toBeFalsy();
+  });
+
+  test('reports BORROW_ESCAPES_LOOP when a borrow remains active at loop back-edge', () => {
+    const program = `
+      fn borrow(ref x: int) -> int { return x; }
+      fn main() {
+        let mut i: int = 0;
+        let mut x: int = 1;
+        while (i < 1) {
+          let _held = borrow(x);
+          i = i + 1;
+        }
+        return i;
+      }
+    `.trim() + '\n';
+
+    const result = parser.parse(program) as { type: string };
+    const analysis = analyzeLumina(result as never);
+    const loopError = analysis.diagnostics.find(d => d.code === 'BORROW_ESCAPES_LOOP');
+    expect(loopError).toBeTruthy();
+  });
+
   test('requires move closure for thread.spawn when capturing variables', () => {
     const program = `
       import { thread } from "@std";

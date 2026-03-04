@@ -146,6 +146,9 @@ function normalizeStatement(stmt: LuminaStatement) {
       }
       return;
     }
+    case 'ShaderDecl': {
+      return;
+    }
     case 'ImplDecl': {
       normalizeTypeParams(stmt.typeParams, stmt.location);
       normalizeWhereTypeBounds(stmt.whereTypeBounds, stmt.location);

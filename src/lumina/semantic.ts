@@ -20,6 +20,7 @@ import { normalizeTypeForComparison, normalizeTypeForDisplay, normalizeTypeNameF
 import { ConstEvaluator } from './const-eval.js';
 import { expandMacrosInProgram } from './macro-expand.js';
 import { expandDerivesInProgram } from './derive-expand.js';
+import { compileShaderDsl } from './wgsl-compiler.js';
 import { HKT_APPLY_TYPE_NAME } from './types.js';
 import type { ConstExpr as TypeConstExpr } from './types.js';
 import {
@@ -229,6 +230,13 @@ const builtinTypes: Set<LuminaType> = new Set([
   'Renderer',
   'RenderRoot',
   'ReactiveRenderRoot',
+  'RenderPipelineConfig',
+  'VertexLayout',
+  'RenderFrameConfig',
+  'CanvasHandle',
+  'BufferHandle',
+  'UniformHandle',
+  'PipelineHandle',
 ]);
 
 const numericTypes: Set<LuminaType> = new Set([
@@ -697,6 +705,16 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
             bounds: (constraint.bounds ?? []).map((bound) => resolveTypeExpr(bound) ?? 'any'),
           })),
         })),
+      });
+    } else if (stmt.type === 'ShaderDecl') {
+      symbols.define({
+        name: stmt.name,
+        kind: 'variable',
+        type: 'string',
+        mutable: false,
+        location: stmt.location,
+        visibility: 'private',
+        uri: options?.currentUri,
       });
     } else if (stmt.type === 'FnDecl') {
       const cachedReturn = options?.cachedFunctionReturns?.get(stmt.name);
@@ -2267,6 +2285,7 @@ function resolveFunctionBody(
     );
   }
   collectUnusedBindings(fnScope, diagnostics, stmt.location);
+  finalizeScopeBorrows(fnScope, diagnostics, stmt.location);
   if (bodyReturn) return signatureReturn ?? bodyReturn;
   const hasReturn = blockHasReturn(stmt.body);
   if (pendingDeps.get(stmt.name)?.size) {
@@ -2735,6 +2754,32 @@ function typeCheckStatement(
     case 'TraitDecl':
     case 'ImplDecl':
       return;
+    case 'ShaderDecl': {
+      const params = (stmt.params ?? [])
+        .map((param) => {
+          const attribute = param.attribute
+            ? `@${param.attribute.kind}(${param.attribute.value})`
+            : '';
+          return `${param.name}: ${param.typeName}${attribute ? ` ${attribute}` : ''}`;
+        })
+        .join(', ');
+      const returnSegment = stmt.returnType
+        ? ` -> ${stmt.returnType}${
+            stmt.returnAttribute ? ` @${stmt.returnAttribute.kind}(${stmt.returnAttribute.value})` : ''
+          }`
+        : '';
+      const workgroupSegment = stmt.workgroupSize
+        ? ` @workgroup_size(${stmt.workgroupSize[0]}, ${stmt.workgroupSize[1]}, ${stmt.workgroupSize[2]})`
+        : '';
+      const source = `shader ${stmt.stage} ${stmt.name}(${params})${returnSegment}${workgroupSegment} {${stmt.body ?? ''}}`;
+      const compiled = compileShaderDsl(source);
+      if (!compiled.ok) {
+        for (const message of compiled.diagnostics) {
+          diagnostics.push(diagAt(message, stmt.location, 'error', 'SHADER_INVALID'));
+        }
+      }
+      return;
+    }
     case 'StructDecl': {
       if (stmt.typeParams && stmt.typeParams.length > 0) {
         const traitNames = options?.traitRegistry ? new Set(options.traitRegistry.traits.keys()) : undefined;
@@ -3071,6 +3116,7 @@ function typeCheckStatement(
         currentFunction,
         di ? di.clone() : undefined
       );
+      finalizeScopeBorrows(elseScope, diagnostics, stmt.location);
 
       const bindingTypes = collectPatternBindingTypes(stmt.pattern, valueType ?? 'any', symbols);
       for (const [name, bindingType] of bindingTypes.entries()) {
@@ -3108,6 +3154,7 @@ function typeCheckStatement(
         }
       }
       const baseMoves = snapshotMoves(scope);
+      const baseBorrows = snapshotBorrows(scope);
       if (di) {
         const thenDi = di.clone();
         const elseDi = di.clone();
@@ -3131,9 +3178,13 @@ function typeCheckStatement(
           currentFunction,
           thenDi
         );
+        finalizeScopeBorrows(thenScope, diagnostics, stmt.thenBlock.location ?? stmt.location);
         const thenMoves = snapshotMoves(scope);
+        const thenBorrows = snapshotBorrows(scope);
         restoreMoves(baseMoves);
+        restoreBorrows(baseBorrows);
         let elseMoves = baseMoves;
+        let elseBorrows = baseBorrows;
         if (stmt.elseBlock) {
           const elseScope = new Scope(scope);
           const elseSymbols = cloneSymbolTable(symbols);
@@ -3156,9 +3207,12 @@ function typeCheckStatement(
             currentFunction,
             elseDi
           );
+          finalizeScopeBorrows(elseScope, diagnostics, stmt.elseBlock.location ?? stmt.location);
           elseMoves = snapshotMoves(scope);
+          elseBorrows = snapshotBorrows(scope);
         }
         mergeMoves(scope, [thenMoves, elseMoves]);
+        mergeBorrows(scope, [thenBorrows, elseBorrows]);
         di.mergeFromBranches([thenDi, elseDi]);
       } else {
         const thenScope = new Scope(scope);
@@ -3180,9 +3234,13 @@ function typeCheckStatement(
           pendingDeps,
           currentFunction
         );
+        finalizeScopeBorrows(thenScope, diagnostics, stmt.thenBlock.location ?? stmt.location);
         const thenMoves = snapshotMoves(scope);
+        const thenBorrows = snapshotBorrows(scope);
         restoreMoves(baseMoves);
+        restoreBorrows(baseBorrows);
         let elseMoves = baseMoves;
+        let elseBorrows = baseBorrows;
         if (stmt.elseBlock) {
           const elseScope = new Scope(scope);
           const elseSymbols = cloneSymbolTable(symbols);
@@ -3204,9 +3262,12 @@ function typeCheckStatement(
             pendingDeps,
             currentFunction
           );
+          finalizeScopeBorrows(elseScope, diagnostics, stmt.elseBlock.location ?? stmt.location);
           elseMoves = snapshotMoves(scope);
+          elseBorrows = snapshotBorrows(scope);
         }
         mergeMoves(scope, [thenMoves, elseMoves]);
+        mergeBorrows(scope, [thenBorrows, elseBorrows]);
       }
       return;
     }
@@ -3254,6 +3315,7 @@ function typeCheckStatement(
         currentFunction,
         thenDi
       );
+      finalizeScopeBorrows(thenScope, diagnostics, stmt.thenBlock.location ?? stmt.location);
 
       if (stmt.elseBlock) {
         const elseScope = new Scope(scope);
@@ -3271,6 +3333,7 @@ function typeCheckStatement(
           currentFunction,
           di ? di.clone() : undefined
         );
+        finalizeScopeBorrows(elseScope, diagnostics, stmt.elseBlock.location ?? stmt.location);
       }
       return;
     }
@@ -3280,6 +3343,7 @@ function typeCheckStatement(
         diagnostics.push(diagAt(`While condition must be 'bool'`, stmt.location));
       }
       const baseMoves = snapshotMoves(scope);
+      const baseBorrows = snapshotBorrows(scope);
       activeLoopDepth += 1;
       try {
         if (di) {
@@ -3317,8 +3381,16 @@ function typeCheckStatement(
         activeLoopDepth -= 1;
       }
       const bodyMoves = snapshotMoves(scope);
+      const bodyBorrows = snapshotBorrows(scope);
+      reportLoopBorrowEscapes(
+        stmt.location,
+        collectLoopEscapedBorrows(baseBorrows, bodyBorrows),
+        diagnostics
+      );
       restoreMoves(baseMoves);
+      restoreBorrows(baseBorrows);
       mergeMoves(scope, [baseMoves, bodyMoves]);
+      mergeBorrows(scope, [baseBorrows, bodyBorrows]);
       return;
     }
     case 'For': {
@@ -3357,6 +3429,8 @@ function typeCheckStatement(
       });
 
       const baseMoves = snapshotMoves(scope);
+      const baseBorrows = snapshotBorrows(scope);
+      const loopBaseBorrows = snapshotBorrows(loopScope);
       activeLoopDepth += 1;
       try {
         if (di) {
@@ -3394,8 +3468,18 @@ function typeCheckStatement(
       }
       collectUnusedBindings(loopScope, diagnostics, stmt.location);
       const bodyMoves = snapshotMoves(scope);
+      const bodyBorrows = snapshotBorrows(scope);
+      const loopBodyBorrows = snapshotBorrows(loopScope);
+      reportLoopBorrowEscapes(
+        stmt.location,
+        collectLoopEscapedBorrows(loopBaseBorrows, loopBodyBorrows),
+        diagnostics
+      );
       restoreMoves(baseMoves);
+      restoreBorrows(baseBorrows);
       mergeMoves(scope, [baseMoves, bodyMoves]);
+      mergeBorrows(scope, [baseBorrows, bodyBorrows]);
+      finalizeScopeBorrows(loopScope, diagnostics, stmt.location);
       return;
     }
     case 'WhileLet': {
@@ -3461,6 +3545,8 @@ function typeCheckStatement(
       }
 
       const baseMoves = snapshotMoves(scope);
+      const baseBorrows = snapshotBorrows(scope);
+      const loopBaseBorrows = snapshotBorrows(loopScope);
       activeLoopDepth += 1;
       try {
         typeCheckStatement(
@@ -3481,8 +3567,18 @@ function typeCheckStatement(
       }
       collectUnusedBindings(loopScope, diagnostics, stmt.location);
       const bodyMoves = snapshotMoves(scope);
+      const bodyBorrows = snapshotBorrows(scope);
+      const loopBodyBorrows = snapshotBorrows(loopScope);
+      reportLoopBorrowEscapes(
+        stmt.location,
+        collectLoopEscapedBorrows(loopBaseBorrows, loopBodyBorrows),
+        diagnostics
+      );
       restoreMoves(baseMoves);
+      restoreBorrows(baseBorrows);
       mergeMoves(scope, [baseMoves, bodyMoves]);
+      mergeBorrows(scope, [baseBorrows, bodyBorrows]);
+      finalizeScopeBorrows(loopScope, diagnostics, stmt.location);
       return;
     }
     case 'Assign': {
@@ -3676,6 +3772,7 @@ function typeCheckStatement(
         );
       }
       collectUnusedBindings(blockScope, diagnostics, stmt.location);
+      finalizeScopeBorrows(blockScope, diagnostics, stmt.location);
       return;
     }
     case 'MatchStmt': {
@@ -3690,11 +3787,14 @@ function typeCheckStatement(
       let hasEnumPattern = false;
       const branchStates: DefiniteAssignment[] = [];
       const baseMoves = snapshotMoves(scope);
+      const baseBorrows = snapshotBorrows(scope);
       const branchMoves: Array<Map<Scope, Map<string, Location | undefined>>> = [];
+      const branchBorrows: Array<Map<Scope, BorrowState>> = [];
       const matchValueName = stmt.value.type === 'Identifier' ? stmt.value.name : null;
       const matchMutability = resolveMutableSource(stmt.value, symbols, options);
       for (const arm of stmt.arms) {
         restoreMoves(baseMoves);
+        restoreBorrows(baseBorrows);
         const armScope = new Scope(scope);
         const armSymbols = new SymbolTable();
         const armDi = di ? di.clone() : undefined;
@@ -3872,8 +3972,10 @@ function typeCheckStatement(
               armDi
             );
             collectUnusedBindings(armScope, diagnostics, arm.location ?? stmt.location);
+            finalizeScopeBorrows(armScope, diagnostics, arm.location ?? stmt.location);
             if (armDi) branchStates.push(armDi);
             branchMoves.push(snapshotMoves(scope));
+            branchBorrows.push(snapshotBorrows(scope));
             continue;
           }
         } else if (pattern.type === 'BindingPattern') {
@@ -3923,14 +4025,19 @@ function typeCheckStatement(
         }
         typeCheckStatement(arm.body, armSymbols, diagnostics, currentReturnType, armScope, options, returnCollector, resolving, pendingDeps, currentFunction, armDi);
         collectUnusedBindings(armScope, diagnostics, arm.location ?? stmt.location);
+        finalizeScopeBorrows(armScope, diagnostics, arm.location ?? stmt.location);
         if (armDi) branchStates.push(armDi);
         branchMoves.push(snapshotMoves(scope));
+        branchBorrows.push(snapshotBorrows(scope));
       }
       if (di && branchStates.length > 0) {
         di.mergeFromBranches(branchStates);
       }
       if (branchMoves.length > 0) {
         mergeMoves(scope, branchMoves);
+      }
+      if (branchBorrows.length > 0) {
+        mergeBorrows(scope, branchBorrows);
       }
       if (hasEnumPattern && matchType && (!enumSym || !enumSym.enumVariants)) {
         diagnostics.push(diagAt(`Match expression must be an enum`, stmt.location));
@@ -3987,7 +4094,7 @@ function typeCheckStatement(
       return;
     }
   } finally {
-    scope?.clearBorrows();
+    // Borrow state is tracked at lexical scope granularity and released on scope exit.
   }
 }
 
@@ -5208,6 +5315,7 @@ function typeCheckExpr(
     for (const sym of symbols.list()) {
       local.define(sym);
     }
+    const lambdaBaseBorrows = snapshotBorrows(scope);
     const lambdaScope = new Scope(scope);
     const lambdaDi = di ? di.clone() : undefined;
     const typeParams = new Map<string, LuminaType | undefined>(options?.typeParams ?? []);
@@ -5262,6 +5370,8 @@ function typeCheckExpr(
         lambdaDi
       );
     }
+    restoreBorrows(lambdaBaseBorrows);
+    finalizeScopeBorrows(lambdaScope, diagnostics, expr.location);
 
     const captured = Array.from(lambdaScope.reads).filter((name) => {
       if (lambdaScope.locals.has(name)) return false;
@@ -5422,6 +5532,7 @@ function typeCheckExpr(
         allowPartialMoveBase,
         skipMoveChecks
       );
+      finalizeScopeBorrows(armScope, diagnostics, arm.location ?? expr.location);
 
       if (!bodyType) continue;
       if (!unifiedBodyType) {
@@ -5847,6 +5958,21 @@ function typeCheckExpr(
                     'REF_MUT_REQUIRED'
                   )
                 );
+              }
+              if (scope) {
+                const ok = requiresMut
+                  ? scope.borrowMut(baseName, expr.left.location ?? expr.location)
+                  : scope.borrowShared(baseName, expr.left.location ?? expr.location);
+                if (!ok) {
+                  diagnostics.push(
+                    diagAt(
+                      `Cannot borrow '${baseName}'${requiresMut ? ' mutably' : ''} while it is already borrowed`,
+                      expr.left.location ?? expr.location,
+                      'error',
+                      'BORROW_CONFLICT'
+                    )
+                  );
+                }
               }
             }
           }
@@ -6545,7 +6671,9 @@ function typeCheckExpr(
               );
             }
             if (scope) {
-              const ok = refMutable ? scope.borrowMut(baseName) : scope.borrowShared(baseName);
+              const ok = refMutable
+                ? scope.borrowMut(baseName, argExpr.location ?? expr.location)
+                : scope.borrowShared(baseName, argExpr.location ?? expr.location);
               if (!ok) {
                 diagnostics.push(
                   diagAt(
@@ -6944,12 +7072,15 @@ function typeCheckExpr(
     let hasEnumPattern = false;
     let armType: LuminaType | null = null;
     const baseMoves = snapshotMoves(scope);
+    const baseBorrows = snapshotBorrows(scope);
     const branchMoves: Array<Map<Scope, Map<string, Location | undefined>>> = [];
+    const branchBorrows: Array<Map<Scope, BorrowState>> = [];
     const matchValueName = expr.value.type === 'Identifier' ? expr.value.name : null;
     const matchMutability = resolveMutableSource(expr.value, symbols, options);
 
     for (const arm of expr.arms) {
       restoreMoves(baseMoves);
+      restoreBorrows(baseBorrows);
       const armScope = new Scope(scope);
       const armSymbols = new SymbolTable();
       for (const sym of symbols.list()) {
@@ -7134,7 +7265,9 @@ function typeCheckExpr(
             }
           }
           collectUnusedBindings(armScope, diagnostics, arm.location ?? expr.location);
+          finalizeScopeBorrows(armScope, diagnostics, arm.location ?? expr.location);
           branchMoves.push(snapshotMoves(scope));
+          branchBorrows.push(snapshotBorrows(scope));
           continue;
         }
       } else if (pattern.type === 'BindingPattern') {
@@ -7208,11 +7341,16 @@ function typeCheckExpr(
         }
       }
       collectUnusedBindings(armScope, diagnostics, arm.location ?? expr.location);
+      finalizeScopeBorrows(armScope, diagnostics, arm.location ?? expr.location);
       branchMoves.push(snapshotMoves(scope));
+      branchBorrows.push(snapshotBorrows(scope));
     }
 
     if (branchMoves.length > 0) {
       mergeMoves(scope, branchMoves);
+    }
+    if (branchBorrows.length > 0) {
+      mergeBorrows(scope, branchBorrows);
     }
     if (hasEnumPattern && matchType && (!enumSym || !enumSym.enumVariants)) {
       diagnostics.push(diagAt(`Match expression must be an enum`, expr.location));
@@ -7276,9 +7414,32 @@ function snapshotMoves(scope?: Scope): Map<Scope, Map<string, Location | undefin
   return snapshot;
 }
 
+type BorrowState = {
+  mut: Map<string, Location | undefined>;
+  shared: Map<string, Location | undefined>;
+};
+
+function snapshotBorrows(scope?: Scope): Map<Scope, BorrowState> {
+  const snapshot = new Map<Scope, BorrowState>();
+  for (let current = scope; current; current = current.parent) {
+    snapshot.set(current, {
+      mut: new Map(current.borrowedMut),
+      shared: new Map(current.borrowedShared),
+    });
+  }
+  return snapshot;
+}
+
 function restoreMoves(snapshot: Map<Scope, Map<string, Location | undefined>>) {
   for (const [scope, moved] of snapshot) {
     scope.moved = new Map(moved);
+  }
+}
+
+function restoreBorrows(snapshot: Map<Scope, BorrowState>) {
+  for (const [scope, borrowState] of snapshot) {
+    scope.borrowedMut = new Map(borrowState.mut);
+    scope.borrowedShared = new Map(borrowState.shared);
   }
 }
 
@@ -7302,14 +7463,139 @@ function mergeMoves(
   }
 }
 
+function mergeBorrows(
+  scope: Scope | undefined,
+  branches: Array<Map<Scope, BorrowState>>
+) {
+  let current: Scope | undefined = scope;
+  while (current) {
+    const currentScope = current;
+    const mergedMut = new Map<string, Location | undefined>();
+    const mergedShared = new Map<string, Location | undefined>();
+
+    for (const branch of branches) {
+      const borrowState = branch.get(currentScope);
+      if (!borrowState) continue;
+      for (const [name, location] of borrowState.mut) {
+        if (!mergedMut.has(name)) {
+          mergedMut.set(name, location);
+        }
+        mergedShared.delete(name);
+      }
+      for (const [name, location] of borrowState.shared) {
+        if (mergedMut.has(name)) continue;
+        if (!mergedShared.has(name)) {
+          mergedShared.set(name, location);
+        }
+      }
+    }
+
+    currentScope.borrowedMut = mergedMut;
+    currentScope.borrowedShared = mergedShared;
+    current = currentScope.parent;
+  }
+}
+
+function collectLoopEscapedBorrows(
+  base: Map<Scope, BorrowState>,
+  body: Map<Scope, BorrowState>,
+): Array<{ name: string; location?: Location }> {
+  const escaped = new Map<string, Location | undefined>();
+  for (const [scope, bodyState] of body) {
+    const baseState = base.get(scope) ?? { mut: new Map<string, Location | undefined>(), shared: new Map<string, Location | undefined>() };
+    for (const [name, location] of bodyState.mut) {
+      if (!baseState.mut.has(name) && !baseState.shared.has(name) && !escaped.has(name)) {
+        escaped.set(name, location);
+      }
+    }
+    for (const [name, location] of bodyState.shared) {
+      if (!baseState.mut.has(name) && !baseState.shared.has(name) && !escaped.has(name)) {
+        escaped.set(name, location);
+      }
+    }
+  }
+  return Array.from(escaped.entries()).map(([name, location]) => ({ name, location }));
+}
+
+function reportLoopBorrowEscapes(
+  stmtLocation: Location | undefined,
+  escaped: Array<{ name: string; location?: Location }>,
+  diagnostics: Diagnostic[],
+) {
+  for (const escape of escaped) {
+    diagnostics.push(
+      diagAt(
+        `Borrow of '${escape.name}' escapes loop iteration`,
+        stmtLocation ?? escape.location,
+        'error',
+        'BORROW_ESCAPES_LOOP',
+        escape.location
+          ? [
+              {
+                location: escape.location,
+                message: `Borrow created here`,
+              },
+            ]
+          : undefined
+      )
+    );
+  }
+}
+
+function hasBorrowInAncestor(scope: Scope, name: string): { scope: Scope; location?: Location } | null {
+  let current = scope.parent;
+  while (current) {
+    if (current.locals.has(name)) {
+      // Shadowing boundary: borrows above this point refer to a different binding.
+      return null;
+    }
+    const mut = current.borrowedMut.get(name);
+    if (mut !== undefined || current.borrowedMut.has(name)) {
+      return { scope: current, location: mut };
+    }
+    const shared = current.borrowedShared.get(name);
+    if (shared !== undefined || current.borrowedShared.has(name)) {
+      return { scope: current, location: shared };
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+function finalizeScopeBorrows(scope: Scope, diagnostics: Diagnostic[], location?: Location) {
+  for (const [name, localLocation] of scope.locals) {
+    const ancestorBorrow = hasBorrowInAncestor(scope, name);
+    if (!ancestorBorrow) continue;
+    diagnostics.push(
+      diagAt(
+        `Borrow of '${name}' outlives the scope where it is defined`,
+        location ?? localLocation,
+        'error',
+        'BORROW_ESCAPES_SCOPE',
+        [
+          {
+            location: localLocation ?? location ?? defaultLocation,
+            message: `Binding '${name}' defined here`,
+          },
+          {
+            location: ancestorBorrow.location ?? location ?? defaultLocation,
+            message: `Borrow still active here`,
+          },
+        ]
+      )
+    );
+  }
+  scope.clearBorrows();
+}
+
 class Scope {
     parent?: Scope;
     locals = new Map<string, Location | undefined>();
     reads = new Set<string>();
     writes = new Set<string>();
     narrowed = new Map<string, LuminaType>();
-    borrowedMut = new Set<string>();
-    borrowedShared = new Set<string>();
+    borrowedMut = new Map<string, Location | undefined>();
+    borrowedShared = new Map<string, Location | undefined>();
     moved = new Map<string, Location | undefined>();
     children: Scope[] = [];
 
@@ -7354,6 +7640,16 @@ class Scope {
       return this.parent?.lookupNarrowed(name);
     }
 
+    private resolveBorrowRoot(name: string): Scope {
+      if (this.locals.has(name)) return this;
+      let current: Scope | undefined = this.parent;
+      while (current) {
+        if (current.locals.has(name)) return current;
+        current = current.parent;
+      }
+      return this;
+    }
+
     canBorrowMut(name: string): boolean {
       if (this.borrowedMut.has(name) || this.borrowedShared.has(name)) return false;
       return this.parent ? this.parent.canBorrowMut(name) : true;
@@ -7369,15 +7665,20 @@ class Scope {
     return this.parent ? this.parent.isBorrowed(name) : false;
   }
 
-  borrowMut(name: string): boolean {
-      if (!this.canBorrowMut(name)) return false;
-      this.borrowedMut.add(name);
+  borrowMut(name: string, location?: Location): boolean {
+      const root = this.resolveBorrowRoot(name);
+      if (!root.canBorrowMut(name)) return false;
+      root.borrowedMut.set(name, location);
+      root.borrowedShared.delete(name);
       return true;
     }
 
-    borrowShared(name: string): boolean {
-      if (!this.canBorrowShared(name)) return false;
-      this.borrowedShared.add(name);
+    borrowShared(name: string, location?: Location): boolean {
+      const root = this.resolveBorrowRoot(name);
+      if (!root.canBorrowShared(name)) return false;
+      if (!root.borrowedMut.has(name)) {
+        root.borrowedShared.set(name, location);
+      }
       return true;
     }
 

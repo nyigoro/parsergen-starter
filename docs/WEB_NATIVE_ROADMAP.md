@@ -50,8 +50,10 @@ This roadmap sets Lumina's execution priority as a **web-native systems language
 ## Browser-Native Runtime Rollout
 - [x] OPFS module (`@std/opfs`) with read/write/metadata/exists/dir operations.
 - [x] SharedArrayBuffer channels (`@std/sab_channel`) with bounded i32 send/recv/close semantics.
-- [x] WebGPU compute baseline (`@std/webgpu`) with adapter/device helpers and `compute_i32`.
-- [ ] Expand WebGPU surface beyond compute baseline (pipeline ergonomics + richer buffer/resource controls).
+- [x] WebGPU compute generalized (`@std/webgpu.compute`) with typed input/output (`i32/u32/f32/f64/u8`) and `compute_i32` alias.
+- [x] WebGPU typed resource surface (`buffer_create/write/read/destroy`, uniforms, vertex/index buffers).
+- [x] WebGPU canvas + render path (`canvas`, `present`, `render_pipeline`, `render_frame`) for browser rendering flows.
+- [x] WGSL DSL compiler (`shader compute|vertex|fragment`) with raw WGSL pass-through support.
 
 ## Compatibility Policy
 - Keep Node/Deno support operational for CLI/tooling and test infrastructure.

@@ -5,9 +5,32 @@
     return { id: ++nodeId, type: type, ...data, location: resolvedLoc };
   }
 
+  function constExprToText(node) {
+    if (!node || typeof node !== "object") return "_";
+    if (node.type === "ConstLiteral") return String(node.value);
+    if (node.type === "ConstParam") return node.name;
+    if (node.type === "ConstUnary") return `${node.op}${constExprToText(node.expr)}`;
+    if (node.type === "ConstBinary") return `${constExprToText(node.left)}${node.op}${constExprToText(node.right)}`;
+    if (node.type === "ConstCall") return `${node.name}(${(node.args || []).map(constExprToText).join(",")})`;
+    if (node.type === "ConstIf") return `if ${constExprToText(node.condition)} { ${constExprToText(node.thenExpr)} } else { ${constExprToText(node.elseExpr)} }`;
+    return "_";
+  }
+
+  function typeNameToText(typeName) {
+    if (typeof typeName === "string") return typeName;
+    if (!typeName || typeof typeName !== "object") return "_";
+    if (typeName.kind === "TypeHole") return "_";
+    if (typeName.kind === "array") {
+      const elem = typeNameToText(typeName.element);
+      const size = typeName.size ? constExprToText(typeName.size) : "";
+      return size ? `[${elem};${size}]` : `[${elem}]`;
+    }
+    return "_";
+  }
+
   function expectedStatementTokens() {
     return [
-      "fn", "async", "comptime", "struct", "enum", "type", "extern", "import", "pub", "trait", "impl", "macro_rules",
+      "fn", "async", "comptime", "struct", "enum", "type", "extern", "import", "pub", "trait", "impl", "macro_rules", "shader",
       "let", "if", "while", "match", "return", "break", "continue",
       "identifier", "number", "string", "true", "false",
       "{", "}"
@@ -40,7 +63,7 @@ RecoverableStatement
   / error:InvalidStatement { return error; }
 
 SyncKeyword
-  = "fn" / "async" / "comptime" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl"
+  = "fn" / "async" / "comptime" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "shader"
 
 InvalidStatement
   = tokens:(!(";" / "}" / SyncKeyword) .)+ (";" / &"}" / &SyncKeyword / !.) {
@@ -53,6 +76,7 @@ InvalidStatement
 Statement
   = Import
   / MacroRulesDecl
+  / ShaderDecl
   / TraitDecl
   / ImplDecl
   / StructDecl
@@ -87,6 +111,68 @@ MacroRulesDecl
   = "macro_rules" _ "!" _ node:IdName _ "{" body:MacroRulesBody "}" _ ";"? {
       return createNode("MacroRulesDecl", { name: node.name, body, location: node.location }, location);
     }
+
+ShaderDecl
+  = "shader" _ stage:("compute" / "vertex" / "fragment") __ node:IdName _ "(" _ params:ShaderParamList? _ ")" _ ret:ShaderReturn? _ workgroup:ShaderWorkgroup? _ body:ShaderBody {
+      return createNode("ShaderDecl", {
+        stage,
+        name: node.name,
+        params: params || [],
+        returnType: ret ? ret.typeName : null,
+        returnAttribute: ret ? ret.attribute : null,
+        workgroupSize: workgroup || null,
+        body,
+        location: node.location,
+      }, location);
+    }
+
+ShaderParamList
+  = head:ShaderParam tail:(_ "," _ ShaderParam)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+ShaderParam
+  = node:IdName _ ":" _ typeName:TypeName _ attr:ShaderAttribute? {
+      return {
+        name: node.name,
+        typeName: typeNameToText(typeName),
+        attribute: attr || null,
+        location: node.location,
+      };
+    }
+
+ShaderReturn
+  = "->" _ typeName:TypeName _ attr:ShaderAttribute? {
+      return {
+        typeName: typeNameToText(typeName),
+        attribute: attr || null,
+      };
+    }
+
+ShaderAttribute
+  = "@" kind:("builtin" / "location") _ "(" _ value:$((!(")") .)*) _ ")" {
+      return { kind, value: value.trim(), location: location() };
+    }
+
+ShaderWorkgroup
+  = "@workgroup_size" _ "(" _ x:Number _ "," _ y:Number _ "," _ z:Number _ ")" {
+      return [
+        Math.max(1, Math.trunc(x.value)),
+        Math.max(1, Math.trunc(y.value)),
+        Math.max(1, Math.trunc(z.value))
+      ];
+    }
+  / "@workgroup_size" _ "(" _ x:Number _ ")" {
+      return [Math.max(1, Math.trunc(x.value)), 1, 1];
+    }
+
+ShaderBody
+  = "{" parts:ShaderBodyPart* "}" _ ";"? { return parts.join(""); }
+
+ShaderBodyPart
+  = ShaderBodyBrace
+  / text:$(!("{" / "}") .) { return text; }
+
+ShaderBodyBrace
+  = "{" inner:ShaderBodyPart* "}" { return "{" + inner.join("") + "}"; }
 
 MacroRulesBody
   = parts:MacroRulesPart* { return parts.join(""); }
@@ -268,17 +354,7 @@ TypeName
       const rendered = args.map(arg => {
         if (typeof arg === "string") return arg;
         if (arg && typeof arg === "object" && arg.type && String(arg.type).startsWith("Const")) {
-          const toText = (node) => {
-            if (!node || typeof node !== "object") return "_";
-            if (node.type === "ConstLiteral") return String(node.value);
-            if (node.type === "ConstParam") return node.name;
-            if (node.type === "ConstUnary") return `${node.op}${toText(node.expr)}`;
-            if (node.type === "ConstBinary") return `${toText(node.left)}${node.op}${toText(node.right)}`;
-            if (node.type === "ConstCall") return `${node.name}(${(node.args || []).map(toText).join(",")})`;
-            if (node.type === "ConstIf") return `if ${toText(node.condition)} { ${toText(node.thenExpr)} } else { ${toText(node.elseExpr)} }`;
-            return "_";
-          };
-          return toText(arg);
+          return constExprToText(arg);
         }
         return "_";
       });
@@ -837,7 +913,7 @@ StructLiteralField
   = field:IdName _ ":" _ value:Expr { return { name: field.name, value, location: field.location }; }
 
 Keyword
-  = ("fn" / "async" / "comptime" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "let" / "mut" / "ref" / "move"
+  = ("fn" / "async" / "comptime" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "shader" / "let" / "mut" / "ref" / "move"
     / "if" / "else" / "while" / "match" / "return" / "break" / "continue" / "for" / "in" / "true" / "false" / "from" / "as" / "is" / "select" / "macro_rules"
     / "exists" / "where") ![a-zA-Z0-9_]
 

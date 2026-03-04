@@ -99,6 +99,7 @@ export interface LuminaProgram extends LuminaNode {
 export type LuminaStatement = (
   | LuminaImport
   | LuminaMacroRulesDecl
+  | LuminaShaderDecl
   | LuminaTraitDecl
   | LuminaImplDecl
   | LuminaTypeDecl
@@ -122,6 +123,31 @@ export type LuminaStatement = (
   | LuminaBlock
   | LuminaErrorNode
 ) & LuminaNode;
+
+export interface LuminaShaderDecl {
+  type: 'ShaderDecl';
+  stage: 'compute' | 'vertex' | 'fragment';
+  name: string;
+  params: LuminaShaderParam[];
+  returnType?: string | null;
+  returnAttribute?: LuminaShaderAttribute | null;
+  workgroupSize?: [number, number, number] | null;
+  body: string;
+  location?: Location;
+}
+
+export interface LuminaShaderParam {
+  name: string;
+  typeName: string;
+  attribute?: LuminaShaderAttribute | null;
+  location?: Location;
+}
+
+export interface LuminaShaderAttribute {
+  kind: 'builtin' | 'location';
+  value: string;
+  location?: Location;
+}
 
 export interface LuminaImportSpec {
   name: string;

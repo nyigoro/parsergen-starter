@@ -1,7 +1,13 @@
 import { type LuminaProgram, type LuminaStatement, type LuminaExpr } from './ast.js';
 import { type IRNode, type IRProgram, type IRFunction, type IRLet, type IRReturn, type IRExprStmt, type IRBinary, type IRNumber, type IRString, type IRIdentifier, type IRNoop, type IRCall, type IRIf, type IRBoolean, type IRWhile, type IRAssign, type IRMember, type IRIndex, type IREnumConstruct, type IRMatchExpr, type IRStructLiteral } from './ir.js';
+import { compileShaderDsl } from './wgsl-compiler.js';
 
-export function lowerLumina(program: LuminaProgram): IRProgram {
+export type LowerImportEnv = {
+  symbols: Map<string, { name: string; kind: string }>;
+  types: Map<string, { name: string }>;
+};
+
+export function lowerLumina(program: LuminaProgram, _importEnv: LowerImportEnv | null = null): IRProgram {
   const ctx = createLowerContext(program);
   return {
     kind: 'Program',
@@ -38,6 +44,34 @@ function createLowerContext(program: LuminaProgram): LowerContext {
 
 function lowerStatement(stmt: LuminaStatement, ctx: LowerContext): IRNode {
   switch (stmt.type) {
+    case 'ShaderDecl': {
+      const params = (stmt.params ?? [])
+        .map((param) => {
+          const attribute = param.attribute
+            ? `@${param.attribute.kind}(${param.attribute.value})`
+            : '';
+          return `${param.name}: ${param.typeName}${attribute ? ` ${attribute}` : ''}`;
+        })
+        .join(', ');
+      const returnSegment = stmt.returnType
+        ? ` -> ${stmt.returnType}${
+            stmt.returnAttribute ? ` @${stmt.returnAttribute.kind}(${stmt.returnAttribute.value})` : ''
+          }`
+        : '';
+      const workgroupSegment = stmt.workgroupSize
+        ? ` @workgroup_size(${stmt.workgroupSize[0]}, ${stmt.workgroupSize[1]}, ${stmt.workgroupSize[2]})`
+        : '';
+      const shaderSource = `shader ${stmt.stage} ${stmt.name}(${params})${returnSegment}${workgroupSegment} {${stmt.body ?? ''}}`;
+      const compiled = compileShaderDsl(shaderSource);
+      const shaderWgsl = compiled.ok && compiled.wgsl ? compiled.wgsl : stmt.body ?? '';
+      const letNode: IRLet = {
+        kind: 'Let',
+        name: stmt.name,
+        value: { kind: 'String', value: shaderWgsl, location: stmt.location } as IRString,
+        location: stmt.location,
+      };
+      return letNode;
+    }
     case 'FnDecl': {
       const fn: IRFunction = {
         kind: 'Function',
