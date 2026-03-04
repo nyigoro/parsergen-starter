@@ -4,7 +4,6 @@ import {
   type LuminaStatement,
   type LuminaExpr,
   type LuminaFnDecl,
-  type LuminaImplDecl,
   type LuminaTraitDecl,
   type LuminaStructDecl,
   type LuminaTypeExpr,

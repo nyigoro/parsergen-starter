@@ -236,6 +236,7 @@ export default [
       'coverage/',
       '.nyc_output',
       'tmp/',
+      '.tmp/**',
       'temp/',
       '.vscode/',
       '.idea/',

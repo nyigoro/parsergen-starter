@@ -353,9 +353,6 @@ const isNestedBindingValue = (value: MacroBindingValue): value is LuminaExpr[][]
 
 const cloneFlatBinding = (value: LuminaExpr[]): LuminaExpr[] => value.map((item) => cloneExpr(item));
 
-const cloneNestedBinding = (value: LuminaExpr[][]): LuminaExpr[][] =>
-  value.map((row) => row.map((item) => cloneExpr(item)));
-
 const maxRepeatDepth = (nodes: MacroTemplateNode[]): number => {
   let depth = 0;
   for (const node of nodes) {

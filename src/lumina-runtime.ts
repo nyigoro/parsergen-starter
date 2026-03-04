@@ -6204,6 +6204,26 @@ export class ReactiveRenderRoot {
   }
 }
 
+const toRenderErrorMessage = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('Canvas renderer requires')) {
+    return 'Canvas renderer not available in this environment';
+  }
+  if (message.includes('Terminal renderer')) {
+    return 'Terminal renderer not available in this environment';
+  }
+  if (message.toLowerCase().includes('not supported')) {
+    return 'Canvas renderer not available in this environment';
+  }
+  return message;
+};
+
+const isDisposableLike = (value: unknown): value is { dispose: () => void } =>
+  !!value && typeof value === 'object' && typeof (value as { dispose?: unknown }).dispose === 'function';
+
+const isUnmountableLike = (value: unknown): value is { unmount: () => void } =>
+  !!value && typeof value === 'object' && typeof (value as { unmount?: unknown }).unmount === 'function';
+
 const coerceRenderer = (candidate: unknown): Renderer => {
   if (!candidate || typeof candidate !== 'object') {
     throw new Error('Renderer must be an object with a mount function');
@@ -6232,7 +6252,14 @@ export const render = {
   memo_peek: <T>(memo: Memo<T>): T => memo.peek(),
   memo_dispose: <T>(memo: Memo<T>): void => memo.dispose(),
   effect: (fn: (onCleanup: (cleanup: ReactiveCleanup) => void) => void | ReactiveCleanup): Effect => new Effect(fn),
-  dispose_effect: (effect: Effect): void => effect.dispose(),
+  dispose_effect: (effect: unknown): void => {
+    if (!isDisposableLike(effect)) return;
+    try {
+      effect.dispose();
+    } catch {
+      // Keep stale/invalid handles idempotent.
+    }
+  },
   batch: <T>(fn: () => T): T => {
     batchDepth += 1;
     try {
@@ -6298,41 +6325,91 @@ export const render = {
   render_to_string: (node: VNode): string => renderToString(node),
   render_to_terminal: (node: VNode): string => renderToTerminal(node),
   create_root: (renderer: unknown, container: unknown): RenderRoot => new RenderRoot(coerceRenderer(renderer), container),
-  mount: (renderer: unknown, container: unknown, node: VNode): RenderRoot => {
+  mount: (renderer: unknown, container: unknown, node: VNode): RenderRoot | { $tag: string; $payload?: unknown } => {
+    if (container == null) return Result.Err('Render container is required');
     const root = new RenderRoot(coerceRenderer(renderer), container);
-    root.mount(node);
-    return root;
+    try {
+      root.mount(node);
+      return root;
+    } catch (error) {
+      return Result.Err(toRenderErrorMessage(error));
+    }
   },
-  hydrate: (renderer: unknown, container: unknown, node: VNode): RenderRoot => {
+  hydrate: (renderer: unknown, container: unknown, node: VNode): RenderRoot | { $tag: string; $payload?: unknown } => {
+    if (container == null) return Result.Err('Render container is required');
     const root = new RenderRoot(coerceRenderer(renderer), container);
-    root.hydrate(node);
-    return root;
+    try {
+      root.hydrate(node);
+      return root;
+    } catch (error) {
+      return Result.Err(toRenderErrorMessage(error));
+    }
   },
-  mount_reactive: (renderer: unknown, container: unknown, view: () => VNode): ReactiveRenderRoot => {
+  mount_reactive: (
+    renderer: unknown,
+    container: unknown,
+    view: () => VNode
+  ): ReactiveRenderRoot | { $tag: string; $payload?: unknown } => {
+    if (container == null) return Result.Err('Render container is required');
     const root = new RenderRoot(coerceRenderer(renderer), container);
-    const fx = new Effect(() => {
-      const node = view();
-      root.update(node);
-    });
-    return new ReactiveRenderRoot(root, fx);
+    try {
+      const fx = new Effect(() => {
+        const node = view();
+        root.update(node);
+      });
+      return new ReactiveRenderRoot(root, fx);
+    } catch (error) {
+      return Result.Err(toRenderErrorMessage(error));
+    }
   },
-  hydrate_reactive: (renderer: unknown, container: unknown, view: () => VNode): ReactiveRenderRoot => {
+  hydrate_reactive: (
+    renderer: unknown,
+    container: unknown,
+    view: () => VNode
+  ): ReactiveRenderRoot | { $tag: string; $payload?: unknown } => {
+    if (container == null) return Result.Err('Render container is required');
     const root = new RenderRoot(coerceRenderer(renderer), container);
     let initialized = false;
-    const fx = new Effect(() => {
-      const node = view();
-      if (!initialized) {
-        root.hydrate(node);
-        initialized = true;
-        return;
-      }
-      root.update(node);
-    });
-    return new ReactiveRenderRoot(root, fx);
+    try {
+      const fx = new Effect(() => {
+        const node = view();
+        if (!initialized) {
+          root.hydrate(node);
+          initialized = true;
+          return;
+        }
+        root.update(node);
+      });
+      return new ReactiveRenderRoot(root, fx);
+    } catch (error) {
+      return Result.Err(toRenderErrorMessage(error));
+    }
   },
-  update: (root: RenderRoot, node: VNode): void => root.update(node),
-  unmount: (root: RenderRoot): void => root.unmount(),
-  dispose_reactive: (root: ReactiveRenderRoot): void => root.dispose(),
+  update: (root: unknown, node: VNode): void => {
+    if (!root || typeof root !== 'object') return;
+    if (typeof (root as { update?: unknown }).update !== 'function') return;
+    try {
+      (root as { update: (next: VNode) => void }).update(node);
+    } catch {
+      // Keep stale/invalid handles idempotent.
+    }
+  },
+  unmount: (root: unknown): void => {
+    if (!isUnmountableLike(root)) return;
+    try {
+      root.unmount();
+    } catch {
+      // Keep stale/invalid handles idempotent.
+    }
+  },
+  dispose_reactive: (root: unknown): void => {
+    if (!isDisposableLike(root)) return;
+    try {
+      root.dispose();
+    } catch {
+      // Keep stale/invalid handles idempotent.
+    }
+  },
 };
 
 export const createSignal = <T>(initial: T): Signal<T> => render.signal(initial);
