@@ -1564,6 +1564,39 @@ const toDomHandle = (element: DomElementRecord | null | undefined): number => {
 const fromDomHandle = (handle: number): DomElementRecord | null =>
   domElements.get(Math.trunc(handle)) ?? null;
 
+const createDomStubElement = (): {
+  textContent: string;
+  innerHTML: string;
+  style: Record<string, unknown>;
+  getAttribute: (name: string) => string | null;
+  setAttribute: (name: string, value: string) => void;
+  removeAttribute: (name: string) => void;
+  appendChild: (child: unknown) => void;
+  removeChild: (child: unknown) => void;
+} => {
+  const attrs = new Map<string, string>();
+  const children: unknown[] = [];
+  return {
+    textContent: '',
+    innerHTML: '',
+    style: {},
+    getAttribute: (name: string) => attrs.get(String(name)) ?? null,
+    setAttribute: (name: string, value: string) => {
+      attrs.set(String(name), String(value));
+    },
+    removeAttribute: (name: string) => {
+      attrs.delete(String(name));
+    },
+    appendChild: (child: unknown) => {
+      children.push(child);
+    },
+    removeChild: (child: unknown) => {
+      const idx = children.indexOf(child);
+      if (idx >= 0) children.splice(idx, 1);
+    },
+  };
+};
+
 export const dom = {
   is_available: (): boolean => getDocumentHandle() !== null,
   query: (selector: string) => {
@@ -1579,7 +1612,7 @@ export const dom = {
   },
   create: (tag: string): number => {
     const doc = getDocumentHandle();
-    if (!doc) return 0;
+    if (!doc) return toDomHandle(createDomStubElement());
     return toDomHandle(doc.createElement(String(tag)));
   },
   get_attr: (elementHandle: number, name: string) => {
@@ -1634,7 +1667,7 @@ export const dom = {
   },
   add_event: (elementHandle: number, event: string, handler: unknown): number => {
     const element = fromDomHandle(elementHandle) as EventTarget | null;
-    if (!element || typeof element.addEventListener !== 'function' || typeof handler !== 'function') return 0;
+    if (!element || typeof handler !== 'function') return 0;
     const listener: EventListener = () => {
       try {
         (handler as () => void)();
@@ -1642,7 +1675,9 @@ export const dom = {
         // ignore user handler failures in runtime bridge
       }
     };
-    element.addEventListener(String(event), listener);
+    if (typeof element.addEventListener === 'function') {
+      element.addEventListener(String(event), listener);
+    }
     const handle = domNextEventHandle++;
     domEvents.set(handle, { element, event: String(event), listener });
     return handle;
@@ -3680,6 +3715,25 @@ const registerRuntimeStream = (state: RuntimeStreamRecord['state']): number => {
   return id;
 };
 
+const cleanupRuntimeStreamHandle = (handle: number, seen: Set<number> = new Set()): void => {
+  const normalized = Math.trunc(handle);
+  if (seen.has(normalized)) return;
+  seen.add(normalized);
+  const record = runtimeStreams.get(normalized);
+  if (!record) return;
+  if (record.state.kind === 'reader' && typeof record.state.reader.cancel === 'function') {
+    try {
+      void record.state.reader.cancel();
+    } catch {
+      // ignore cancellation failures
+    }
+  }
+  runtimeStreams.delete(normalized);
+  if (record.state.kind === 'pipe') {
+    cleanupRuntimeStreamHandle(record.state.sourceHandle, seen);
+  }
+};
+
 const readChunkFromRuntimeStream = async (handle: number, seen: Set<number> = new Set()): Promise<StreamChunkRead> => {
   const normalized = Math.trunc(handle);
   if (seen.has(normalized)) {
@@ -3771,8 +3825,14 @@ export const web_streams = {
     const all: number[] = [];
     for (;;) {
       const next = await readChunkFromRuntimeStream(streamHandle);
-      if (!next.ok) return Result.Err(next.error);
-      if (next.chunk == null) return Result.Ok(all);
+      if (!next.ok) {
+        cleanupRuntimeStreamHandle(streamHandle);
+        return Result.Err(next.error);
+      }
+      if (next.chunk == null) {
+        cleanupRuntimeStreamHandle(streamHandle);
+        return Result.Ok(all);
+      }
       all.push(...next.chunk);
     }
   },
@@ -3793,17 +3853,7 @@ export const web_streams = {
     });
   },
   cancel: (streamHandle: number): void => {
-    const normalized = Math.trunc(streamHandle);
-    const record = runtimeStreams.get(normalized);
-    if (!record) return;
-    if (record.state.kind === 'reader' && typeof record.state.reader.cancel === 'function') {
-      try {
-        void record.state.reader.cancel();
-      } catch {
-        // ignore cancellation failures
-      }
-    }
-    runtimeStreams.delete(normalized);
+    cleanupRuntimeStreamHandle(streamHandle);
   },
 };
 

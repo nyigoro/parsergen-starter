@@ -1414,6 +1414,12 @@ class WasmBuilder {
     };
     addLocal('__enum_tmp', 'i32');
     addLocal('__tmp_i32', 'i32');
+    addLocal('__slice_obj', 'i32');
+    addLocal('__slice_start', 'i32');
+    addLocal('__slice_end', 'i32');
+    addLocal('__slice_count', 'i32');
+    addLocal('__slice_result', 'i32');
+    addLocal('__slice_idx', 'i32');
     const walk = (stmt: LuminaStatement) => {
       if (stmt.type === 'Let') {
         const name = stmt.name;
@@ -1628,13 +1634,18 @@ class WasmBuilder {
         case 'EnumDecl':
         case 'TypeDecl':
         case 'Import':
-          if (stmt.type === 'EnumDecl') {
-            // Top-level enums are type-level metadata in this backend.
-            lines.push('nop');
-          } else {
-            this.reportUnsupported(`statement '${stmt.type}' inside executable block`, stmt.location, 'WASM-STMT-001');
-            lines.push('unreachable');
-          }
+        case 'MacroRulesDecl':
+        case 'ShaderDecl':
+          // Declaration/type-level statements do not emit runtime instructions inside executable blocks.
+          lines.push('nop');
+          break;
+        case 'FnDecl':
+          this.reportCodegenError(
+            `nested function declaration '${stmt.name}' inside executable block is not supported by the WASM backend`,
+            stmt.location,
+            'WASM-STMT-001'
+          );
+          lines.push('nop');
           break;
         case 'Block':
           lines.push(...this.emitBlock(stmt.body ?? [], true));
@@ -2763,17 +2774,15 @@ class WasmBuilder {
       case 'IsExpr': {
         const enumName = expr.enumName;
         if (!enumName) {
-          this.reportUnsupported('is expressions are unsupported in WASM v1 (missing enum context)', expr.location, 'WASM-IS-001');
-          return ['unreachable'];
+          throw new Error(
+            `[internal] unreachable IsExpr in WASM codegen: semantic gate (WASM-IS-001) should reject missing enum context`
+          );
         }
         const variantInfo = this.resolveEnumVariantInfo(enumName, expr.variant);
         if (!variantInfo) {
-          this.reportUnsupported(
-            `is expressions are unsupported in WASM v1 (unknown enum variant '${enumName}.${expr.variant}')`,
-            expr.location,
-            'WASM-IS-001'
+          throw new Error(
+            `[internal] unreachable IsExpr in WASM codegen: semantic gate (WASM-IS-001) should reject unknown variant '${enumName}.${expr.variant}'`
           );
-          return ['unreachable'];
         }
         const valueLines = this.emitExpr(expr.value);
         if (this.enumUsesHeapRepresentation(enumName)) {
@@ -2799,6 +2808,12 @@ class WasmBuilder {
           sourceType && sourceType.kind === 'primitive' ? normalizePrimitiveName(sourceType.name) : null;
         const sourceWasm = this.typeToWasm(sourceType, expr.location) ?? targetWasm;
 
+        if (normalizedTarget === 'bool') {
+          if (sourceWasm === 'i64') return [...valueLines, 'i64.const 0', 'i64.ne'];
+          if (sourceWasm === 'f64') return [...valueLines, 'f64.const 0', 'f64.ne'];
+          return [...valueLines, 'i32.const 0', 'i32.ne'];
+        }
+
         if (sourceWasm === targetWasm) return valueLines;
         if (sourceWasm === 'i32' && targetWasm === 'f64') {
           const op = sourcePrim && isUnsignedTypeName(sourcePrim) ? 'f64.convert_i32_u' : 'f64.convert_i32_s';
@@ -2823,8 +2838,12 @@ class WasmBuilder {
           const op = normalizedTarget.startsWith('u') ? 'i64.trunc_f64_u' : 'i64.trunc_f64_s';
           return [...valueLines, op];
         }
-        this.reportUnsupported(`cast to '${normalizedTarget}'`, expr.location, 'WASM-CAST-001');
-        return valueLines;
+        this.reportCodegenError(
+          `unhandled cast lowering from '${sourceWasm}' to '${targetWasm}' for target '${normalizedTarget}'`,
+          expr.location,
+          'WASM-CAST-001'
+        );
+        return ['unreachable'];
       }
       case 'Binary':
         return this.emitBinary(expr);
@@ -3303,7 +3322,14 @@ class WasmBuilder {
           'call $str_slice',
         ];
       }
-      this.reportUnsupported('range index on non-string value', expr.location, 'WASM-RANGE-002');
+      if (prunedObject?.kind === 'adt' && prunedObject.name === 'Vec') {
+        return this.emitVecRangeIndex(expr);
+      }
+      const arrayInfo = this.extractArrayTypeInfo(objectType, expr.location);
+      if (arrayInfo) {
+        return this.emitArrayRangeIndex(expr, arrayInfo);
+      }
+      this.reportCodegenError('range index on unsupported value type', expr.location, 'WASM-RANGE-002');
       return ['unreachable'];
     }
     const arrayInfo = this.extractArrayTypeInfo(objectType, expr.location);
@@ -3327,6 +3353,185 @@ class WasmBuilder {
     lines.push('i32.mul');
     lines.push('i32.add');
     lines.push(this.wasmLoadOp(arrayInfo?.elementWasm ?? 'i32'));
+    return lines;
+  }
+
+  private emitVecRangeIndex(expr: Extract<LuminaExpr, { type: 'Index' }>): string[] {
+    const range = expr.index;
+    const lines: string[] = [];
+    lines.push(...this.emitExpr(expr.object));
+    lines.push('local.set $__slice_obj');
+    if (range.start) {
+      lines.push(...this.emitExprAsI32(range.start));
+    } else {
+      lines.push('i32.const 0');
+    }
+    lines.push('local.set $__slice_start');
+    lines.push('local.get $__slice_start');
+    lines.push('i32.const 0');
+    lines.push('i32.lt_s');
+    lines.push('if');
+    lines.push('  i32.const 0');
+    lines.push('  local.set $__slice_start');
+    lines.push('end');
+    lines.push('local.get $__slice_obj');
+    lines.push('local.get $__slice_start');
+    lines.push('call $vec_skip');
+    lines.push('local.set $__slice_result');
+    if (range.end) {
+      lines.push(...this.emitExprAsI32(range.end));
+      if (range.inclusive) {
+        lines.push('i32.const 1');
+        lines.push('i32.add');
+      }
+    } else {
+      lines.push('local.get $__slice_obj');
+      lines.push('call $vec_len');
+    }
+    lines.push('local.set $__slice_end');
+    lines.push('local.get $__slice_end');
+    lines.push('local.get $__slice_start');
+    lines.push('i32.sub');
+    lines.push('local.set $__slice_count');
+    lines.push('local.get $__slice_count');
+    lines.push('i32.const 0');
+    lines.push('i32.lt_s');
+    lines.push('if');
+    lines.push('  i32.const 0');
+    lines.push('  local.set $__slice_count');
+    lines.push('end');
+    lines.push('local.get $__slice_result');
+    lines.push('local.get $__slice_count');
+    lines.push('call $vec_take');
+    return lines;
+  }
+
+  private emitArrayRangeIndex(
+    expr: Extract<LuminaExpr, { type: 'Index' }>,
+    arrayInfo: { length: number | null; elementSize: number; elementWasm: WasmValType; dataOffset: number }
+  ): string[] {
+    const range = expr.index;
+    const sliceId = this.matchCounter++;
+    const doneLabel = `$arr_slice_done_${sliceId}`;
+    const loopLabel = `$arr_slice_loop_${sliceId}`;
+    const lines: string[] = [];
+
+    lines.push(...this.emitExpr(expr.object));
+    lines.push('local.set $__slice_obj');
+
+    if (range.start) {
+      lines.push(...this.emitExprAsI32(range.start));
+    } else {
+      lines.push('i32.const 0');
+    }
+    lines.push('local.set $__slice_start');
+
+    lines.push('local.get $__slice_obj');
+    lines.push('i32.load');
+    lines.push('local.set $__slice_end');
+
+    if (range.end) {
+      lines.push(...this.emitExprAsI32(range.end));
+      if (range.inclusive) {
+        lines.push('i32.const 1');
+        lines.push('i32.add');
+      }
+      lines.push('local.set $__slice_count');
+    } else {
+      lines.push('local.get $__slice_end');
+      lines.push('local.set $__slice_count');
+    }
+
+    lines.push('local.get $__slice_start');
+    lines.push('i32.const 0');
+    lines.push('i32.lt_s');
+    lines.push('if');
+    lines.push('  i32.const 0');
+    lines.push('  local.set $__slice_start');
+    lines.push('end');
+    lines.push('local.get $__slice_start');
+    lines.push('local.get $__slice_end');
+    lines.push('i32.gt_s');
+    lines.push('if');
+    lines.push('  local.get $__slice_end');
+    lines.push('  local.set $__slice_start');
+    lines.push('end');
+
+    lines.push('local.get $__slice_count');
+    lines.push('i32.const 0');
+    lines.push('i32.lt_s');
+    lines.push('if');
+    lines.push('  i32.const 0');
+    lines.push('  local.set $__slice_count');
+    lines.push('end');
+    lines.push('local.get $__slice_count');
+    lines.push('local.get $__slice_end');
+    lines.push('i32.gt_s');
+    lines.push('if');
+    lines.push('  local.get $__slice_end');
+    lines.push('  local.set $__slice_count');
+    lines.push('end');
+    lines.push('local.get $__slice_count');
+    lines.push('local.get $__slice_start');
+    lines.push('i32.lt_s');
+    lines.push('if');
+    lines.push('  local.get $__slice_start');
+    lines.push('  local.set $__slice_count');
+    lines.push('end');
+
+    lines.push('local.get $__slice_count');
+    lines.push('local.get $__slice_start');
+    lines.push('i32.sub');
+    lines.push('local.set $__slice_count');
+
+    lines.push('local.get $__slice_count');
+    lines.push(`i32.const ${arrayInfo.elementSize}`);
+    lines.push('i32.mul');
+    lines.push('i32.const 4');
+    lines.push('i32.add');
+    lines.push('call $alloc');
+    lines.push('local.set $__slice_result');
+    lines.push('local.get $__slice_result');
+    lines.push('local.get $__slice_count');
+    lines.push('i32.store');
+
+    lines.push('i32.const 0');
+    lines.push('local.set $__slice_idx');
+    lines.push(`(block ${doneLabel}`);
+    lines.push(`  (loop ${loopLabel}`);
+    lines.push('    local.get $__slice_idx');
+    lines.push('    local.get $__slice_count');
+    lines.push('    i32.ge_u');
+    lines.push(`    br_if ${doneLabel}`);
+
+    lines.push('    local.get $__slice_result');
+    lines.push('    i32.const 4');
+    lines.push('    i32.add');
+    lines.push('    local.get $__slice_idx');
+    lines.push(`    i32.const ${arrayInfo.elementSize}`);
+    lines.push('    i32.mul');
+    lines.push('    i32.add');
+
+    lines.push('    local.get $__slice_obj');
+    lines.push(`    i32.const ${arrayInfo.dataOffset}`);
+    lines.push('    i32.add');
+    lines.push('    local.get $__slice_start');
+    lines.push('    local.get $__slice_idx');
+    lines.push('    i32.add');
+    lines.push(`    i32.const ${arrayInfo.elementSize}`);
+    lines.push('    i32.mul');
+    lines.push('    i32.add');
+    lines.push(`    ${this.wasmLoadOp(arrayInfo.elementWasm)}`);
+    lines.push(`    ${this.wasmStoreOp(arrayInfo.elementWasm)}`);
+
+    lines.push('    local.get $__slice_idx');
+    lines.push('    i32.const 1');
+    lines.push('    i32.add');
+    lines.push('    local.set $__slice_idx');
+    lines.push(`    br ${loopLabel}`);
+    lines.push('  )');
+    lines.push(')');
+    lines.push('local.get $__slice_result');
     return lines;
   }
 
@@ -3978,13 +4183,4 @@ class WasmBuilder {
     });
   }
 
-  private reportUnsupported(feature: string, location?: Location, code: string = 'WASM-001') {
-    this.diagnostics.push({
-      severity: 'error',
-      message: `WASM backend: unsupported ${feature}`,
-      code,
-      location: location ?? defaultLocation,
-      source: 'lumina',
-    });
-  }
 }

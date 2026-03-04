@@ -208,21 +208,21 @@
     global.set $free_head
   )
   (func $add (param $a i32) (param $b i32) (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32)
     local.get $a
     local.get $b
     i32.add
     return
   )
   (func $multiply (param $a i32) (param $b i32) (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32)
     local.get $a
     local.get $b
     i32.mul
     return
   )
   (func $factorial (param $n i32) (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $result i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32) (local $result i32)
     i32.const 0
     local.set $result
     local.get $n
@@ -247,7 +247,7 @@
     return
   )
   (func $fibonacci (param $n i32) (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $result i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32) (local $result i32)
     i32.const 0
     local.set $result
     local.get $n
@@ -275,7 +275,7 @@
     return
   )
   (func $main  (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $sum i32) (local $product i32) (local $fact i32) (local $fib i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32) (local $sum i32) (local $product i32) (local $fact i32) (local $fib i32)
     i32.const 10
     i32.const 20
     call $add

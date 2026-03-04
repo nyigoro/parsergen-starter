@@ -1695,9 +1695,16 @@ function inferExpr(
       const indexType = inferChild(expr.index);
       if (indexType && indexType.kind === 'adt' && indexType.name === 'Range') {
         if (objectType) {
+          const prunedObject = prune(objectType, subst);
+          if (prunedObject.kind === 'primitive' && normalizePrimitiveName(prunedObject.name) === 'string') {
+            return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
+          }
+          if (prunedObject.kind === 'adt' && (prunedObject.name === 'Vec' || prunedObject.name === 'Array')) {
+            return recordExprType(expr, objectType, subst);
+          }
           tryUnify(objectType, { kind: 'primitive', name: 'string' }, subst, diagnostics, {
             location: expr.location,
-            note: `Range indexing expects a string`,
+            note: `Range indexing expects a string or Vec/Array value`,
           });
         }
         return recordExprType(expr, { kind: 'primitive', name: 'string' }, subst);
@@ -1862,6 +1869,21 @@ function inferExpr(
       const targetType = parseTypeName(expr.targetType, undefined, undefined, defaultLocation);
       const targetPruned = prune(targetType, subst);
       if (targetPruned.kind === 'primitive' && normalizePrimitiveName(targetPruned.name) === 'string') {
+        return recordExprType(expr, targetType, subst);
+      }
+      if (targetPruned.kind === 'primitive' && normalizePrimitiveName(targetPruned.name) === 'bool') {
+        const fromNumeric = numericPrimitiveOf(valueType, subst);
+        const fromPruned = prune(valueType, subst);
+        const fromBool = fromPruned.kind === 'primitive' && normalizePrimitiveName(fromPruned.name) === 'bool';
+        if (!fromNumeric && !fromBool) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'TYPE-CAST',
+            message: `Cannot cast ${formatType(valueType, subst)} to ${formatType(targetType, subst)}`,
+            source: 'lumina',
+            location: diagLocation(expr.location),
+          });
+        }
         return recordExprType(expr, targetType, subst);
       }
       const fromNumeric = numericPrimitiveOf(valueType, subst);

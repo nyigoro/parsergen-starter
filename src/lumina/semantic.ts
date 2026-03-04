@@ -5725,6 +5725,10 @@ function typeCheckExpr(
 
     if (indexNorm === 'Range') {
       if (objectNorm === 'string') return 'string';
+      const rangeObject = parseTypeName(objectType);
+      if (rangeObject && (rangeObject.base === 'Vec' || rangeObject.base === 'Array')) {
+        return objectType;
+      }
       diagnostics.push(
         diagAt(
           `Cannot index '${formatTypeForDiagnostic(objectType)}' with '${formatTypeForDiagnostic(indexType)}'`,
@@ -5794,6 +5798,20 @@ function typeCheckExpr(
     const toNorm = normalizeNumericType(targetType);
     if (toNorm === 'string') {
       return 'string';
+    }
+    if (toNorm === 'bool') {
+      if (isNumericTypeName(fromNorm) || fromNorm === 'bool') {
+        return 'bool';
+      }
+      diagnostics.push(
+        diagAt(
+          `Cannot cast '${formatTypeForDiagnostic(valueType)}' to '${formatTypeForDiagnostic(targetType)}'`,
+          expr.location,
+          'error',
+          'TYPE-CAST'
+        )
+      );
+      return 'bool';
     }
     if (!isNumericTypeName(fromNorm) || !isNumericTypeName(toNorm)) {
       diagnostics.push(

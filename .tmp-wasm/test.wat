@@ -208,7 +208,7 @@
     global.set $free_head
   )
   (func $next (param $i i32) (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32)
     local.get $i
     i32.const 3
     i32.lt_s
@@ -246,7 +246,7 @@
     return
   )
   (func $main  (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $total i32) (local $i i32) (local $__for_end_301 i32) (local $w i32) (local $__whilelet_464 i32) (local $v i32) (local $branch i32) (local $__match_expr_576 i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32) (local $total i32) (local $i i32) (local $__for_end_301 i32) (local $w i32) (local $__whilelet_464 i32) (local $v i32) (local $branch i32) (local $__match_expr_576 i32)
     i32.const 0
     local.set $total
     i32.const 0

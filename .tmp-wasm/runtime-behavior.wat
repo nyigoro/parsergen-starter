@@ -221,7 +221,7 @@
   )
   ;;   field name: offset 0, size 4, align 4
   (func $main  (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $u i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32) (local $u i32)
     i32.const 32
     i32.const 1
     call $str_new
@@ -247,7 +247,7 @@
     return
   )
   (func $Printable_User_print (param $self i32) (result i32)
-  (local $__enum_tmp i32) (local $__tmp_i32 i32)
+  (local $__enum_tmp i32) (local $__tmp_i32 i32) (local $__slice_obj i32) (local $__slice_start i32) (local $__slice_end i32) (local $__slice_count i32) (local $__slice_result i32) (local $__slice_idx i32)
     i32.const 38
     i32.const 2
     call $str_new

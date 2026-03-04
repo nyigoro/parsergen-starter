@@ -83,12 +83,12 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Runtime Option/Result | Stable | JS runtime + helpers |
 | Async I/O | Stable | `io.readLineAsync()` |
 | File system | Stable | `fs.readFile`, `fs.writeFile`, `fs.readDir`, `fs.metadata`, `fs.exists`, `fs.mkdir`, `fs.removeFile` |
-| Browser OPFS | Beta | `opfs.readFile`, `opfs.writeFile`, `opfs.readDir`, `opfs.metadata`, `opfs.exists`, `opfs.mkdir`, `opfs.removeFile` |
-| Browser URL module | Beta | `url.parse`, `url.build`, URL field getters/setters, query parameter append, `url.is_available` |
-| Browser web storage | Beta | `web_storage.local_*` + `web_storage.session_*` with browser API + Node in-memory fallback |
-| Browser DOM module | Beta | `dom.query/query_all/create`, attrs/text/html/style, child ops, event add/remove with opaque handles |
-| Browser worker module | Beta | `web_worker.spawn/spawn_inline/post/on_message/on_error/terminate`, worker-context helpers |
-| Browser streams module | Beta | `web_streams.from_fetch/from_string/from_bytes/read_chunk/read_all/read_text/pipe/cancel` |
+| Browser OPFS | Stable | `opfs.readFile`, `opfs.writeFile`, `opfs.readDir`, `opfs.metadata`, `opfs.exists`, `opfs.mkdir`, `opfs.removeFile` with stress + error-path + parity coverage |
+| Browser URL module | Stable | `url.parse`, `url.build`, URL field getters/setters, query parameter append, `url.is_available` with edge parsing matrix + stress coverage |
+| Browser web storage | Stable | `web_storage.local_*` + `web_storage.session_*` with quota/error-path coverage and Node in-memory parity tests |
+| Browser DOM module | Stable | `dom.query/query_all/create`, attrs/text/html/style, child ops, event add/remove with Node-stub and cleanup coverage |
+| Browser worker module | Stable | `web_worker.spawn/spawn_inline/post/on_message/on_error/terminate`, worker-context helpers with round-trip + stress + cleanup tests |
+| Browser streams module | Stable | `web_streams.from_fetch/from_string/from_bytes/read_chunk/read_all/read_text/pipe/cancel` with async/error/stress/cleanup coverage |
 | SAB channels | Beta | `sab_channel` bounded i32 channel API with send/recv/close helpers |
 | WebGPU compute | Stable | Generic `webgpu.compute(...)` (`i32/u32/f32/f64/u8`) + `compute_i32` compatibility alias |
 | WebGPU buffers/resources | Beta | Typed buffers (`buffer_create/write/read/destroy`), uniforms, vertex/index buffers, canvas/present handles |
@@ -103,7 +103,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 |---|---|---|
 | AST lowering | Beta | Used by transpiler |
 | JS codegen | Stable | Match lowering + IIFE + source map support |
-| WASM codegen | Beta | Core language + collections + control-flow parity implemented; standalone range expressions lower to heap-backed range records; trait/type fallback dispatch hard-fail paths replaced with explicit diagnostics; `is` narrowing is now target-gated in semantic (`WASM-IS-001`) with match-based guidance; remaining explicit unsupported diagnostics are concentrated in non-string range indexing, declaration-in-expression-block paths, and selected cast edges; ~100x faster recursion in benchmarks |
+| WASM codegen | Beta | Core language + collections + control-flow parity implemented; standalone range expressions lower to heap-backed range records; trait/type fallback dispatch hard-fail paths replaced with explicit diagnostics; range indexing now lowers for strings, Vec slices, and fixed arrays; declaration statements in executable blocks are treated as compile-time-only no-ops; cast-to-bool lowering added; `is` narrowing remains target-gated in semantic (`WASM-IS-001`) with match-based guidance; ~100x faster recursion in benchmarks |
 | IR optimization (SSA) | Stable | Functionâ€‘scoped SSA + loopâ€‘safe constant propagation |
 | Source maps | Stable | External + inline options |
 | Multiâ€‘file module compilation | Stable | Import resolution via bundling (topological compile planned) |
