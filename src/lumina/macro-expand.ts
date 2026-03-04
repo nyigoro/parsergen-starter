@@ -54,13 +54,23 @@ interface PatternMatchResult {
   matched: boolean;
   unsupported: boolean;
   reason?: string;
-  bindings: Map<string, LuminaExpr[]>;
+  unsupportedCode?: string;
+  bindings: Map<string, LuminaExpr[] | LuminaExpr[][]>;
 }
+
+type MacroBindingValue = LuminaExpr[] | LuminaExpr[][];
+type MacroBindings = Map<string, MacroBindingValue>;
 
 const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
 };
+
+const MACRO_PARSE_CODE = 'MACRO-001';
+const MACRO_UNSUPPORTED_CODE = 'MACRO-002';
+const MACRO_SEPARATOR_CODE = 'MACRO-003';
+const MACRO_PATTERN_POSITION_CODE = 'MACRO-004';
+const MACRO_NESTED_REPEAT_CODE = 'MACRO-005';
 
 const openToDelimiter = (open: string): MacroDelimiter | null => {
   if (open === '[') return '[]';
@@ -251,7 +261,7 @@ const parseMacroRules = (decl: LuminaMacroRulesDecl, diagnostics: Diagnostic[]):
     const patternGroup = parseDelimitedGroup(body, cursor);
     if (!patternGroup) {
       diagnostics.push(
-        diag('MACRO_PARSE', `Failed to parse pattern in macro '${decl.name}'`, decl.location)
+        diag(MACRO_PARSE_CODE, `Failed to parse pattern in macro '${decl.name}'`, decl.location)
       );
       break;
     }
@@ -260,7 +270,7 @@ const parseMacroRules = (decl: LuminaMacroRulesDecl, diagnostics: Diagnostic[]):
 
     if (body.slice(cursor, cursor + 2) !== '=>') {
       diagnostics.push(
-        diag('MACRO_PARSE', `Expected '=>' in macro rule for '${decl.name}'`, decl.location)
+        diag(MACRO_PARSE_CODE, `Expected '=>' in macro rule for '${decl.name}'`, decl.location)
       );
       break;
     }
@@ -270,7 +280,7 @@ const parseMacroRules = (decl: LuminaMacroRulesDecl, diagnostics: Diagnostic[]):
     const transcriberGroup = parseDelimitedGroup(body, cursor);
     if (!transcriberGroup) {
       diagnostics.push(
-        diag('MACRO_PARSE', `Failed to parse transcriber in macro '${decl.name}'`, decl.location)
+        diag(MACRO_PARSE_CODE, `Failed to parse transcriber in macro '${decl.name}'`, decl.location)
       );
       break;
     }
@@ -280,7 +290,7 @@ const parseMacroRules = (decl: LuminaMacroRulesDecl, diagnostics: Diagnostic[]):
     const transcriberDelimiter = openToDelimiter(transcriberGroup.open);
     if (!patternDelimiter || !transcriberDelimiter) {
       diagnostics.push(
-        diag('MACRO_PARSE', `Unsupported delimiter in macro '${decl.name}'`, decl.location)
+        diag(MACRO_PARSE_CODE, `Unsupported delimiter in macro '${decl.name}'`, decl.location)
       );
       continue;
     }
@@ -289,7 +299,7 @@ const parseMacroRules = (decl: LuminaMacroRulesDecl, diagnostics: Diagnostic[]):
     const transcriberParsed = parseTemplateNodes(transcriberGroup.content, 'transcriber');
     if (!patternParsed.ok || !transcriberParsed.ok) {
       diagnostics.push(
-        diag('MACRO_PARSE', `Invalid macro template in '${decl.name}'`, decl.location)
+        diag(MACRO_PARSE_CODE, `Invalid macro template in '${decl.name}'`, decl.location)
       );
       continue;
     }
@@ -322,67 +332,295 @@ const createChildScope = (parent: MacroScope): MacroScope => ({ parent, macros: 
 const cleanTemplateNodes = (nodes: MacroTemplateNode[]): MacroTemplateNode[] =>
   nodes.filter((node) => !(node.kind === 'lit' && node.text.trim() === ''));
 
-const hasNestedRepeat = (nodes: MacroTemplateNode[]): boolean =>
-  nodes.some((node) => node.kind === 'repeat' && node.nodes.some((inner) => inner.kind === 'repeat'));
+const normalizeLiteralToken = (value: string): string => value.trim();
 
-const isCommaLiteral = (node: MacroTemplateNode): boolean =>
-  node.kind === 'lit' && node.text.trim() === ',';
-
-const matchRepeatNode = (
-  node: Extract<MacroTemplateNode, { kind: 'repeat' }>,
-  args: LuminaExpr[]
-): PatternMatchResult => {
-  const inner = cleanTemplateNodes(node.nodes);
-  if (inner.length !== 1 || inner[0].kind !== 'var') {
-    return {
-      matched: false,
-      unsupported: true,
-      reason: 'Only $($x:expr),* style repetitions are currently supported in patterns',
-      bindings: new Map(),
-    };
-  }
-  if (node.separator && node.separator !== ',') {
-    return {
-      matched: false,
-      unsupported: true,
-      reason: `Unsupported repetition separator '${node.separator}'`,
-      bindings: new Map(),
-    };
-  }
-
-  const varName = inner[0].name;
-  if (node.op === '+' && args.length === 0) {
-    return { matched: false, unsupported: false, bindings: new Map() };
-  }
-  if (node.op === '?' && args.length > 1) {
-    return { matched: false, unsupported: false, bindings: new Map() };
-  }
-
-  const out = new Map<string, LuminaExpr[]>();
-  out.set(varName, args.map((arg) => cloneExpr(arg)));
-  return { matched: true, unsupported: false, bindings: out };
+const normalizeInvokeSeparators = (args: LuminaExpr[], separators?: string[]): string[] => {
+  if (args.length <= 1) return [];
+  const normalized = (separators ?? []).map((sep) => normalizeLiteralToken(sep));
+  if (normalized.length === args.length - 1) return normalized;
+  return Array.from({ length: Math.max(0, args.length - 1) }, () => ',');
 };
 
-const matchPattern = (nodes: MacroTemplateNode[], args: LuminaExpr[]): PatternMatchResult => {
-  if (hasNestedRepeat(nodes)) {
+const isRepeatSeparatorSupported = (separator: string): boolean => {
+  const normalized = normalizeLiteralToken(separator);
+  return normalized === '' || normalized === ',' || normalized === ';' || normalized === '=>';
+};
+
+const isPassthroughLiteral = (literal: string): boolean => normalizeLiteralToken(literal) !== '';
+
+const isNestedBindingValue = (value: MacroBindingValue): value is LuminaExpr[][] =>
+  value.length > 0 && Array.isArray(value[0]);
+
+const cloneFlatBinding = (value: LuminaExpr[]): LuminaExpr[] => value.map((item) => cloneExpr(item));
+
+const cloneNestedBinding = (value: LuminaExpr[][]): LuminaExpr[][] =>
+  value.map((row) => row.map((item) => cloneExpr(item)));
+
+const maxRepeatDepth = (nodes: MacroTemplateNode[]): number => {
+  let depth = 0;
+  for (const node of nodes) {
+    if (node.kind === 'repeat') {
+      depth = Math.max(depth, 1 + maxRepeatDepth(node.nodes));
+    }
+  }
+  return depth;
+};
+
+const toBindingMap = (flatBindings: Map<string, LuminaExpr[]>): MacroBindings => {
+  const out: MacroBindings = new Map();
+  for (const [name, values] of flatBindings) out.set(name, cloneFlatBinding(values));
+  return out;
+};
+
+const appendFlatBindingValue = (out: Map<string, LuminaExpr[]>, name: string, value: LuminaExpr) => {
+  const current = out.get(name) ?? [];
+  current.push(cloneExpr(value));
+  out.set(name, current);
+};
+
+const mergeFlatBindings = (target: Map<string, LuminaExpr[]>, source: Map<string, LuminaExpr[]>) => {
+  for (const [name, values] of source) {
+    const current = target.get(name) ?? [];
+    current.push(...cloneFlatBinding(values));
+    target.set(name, current);
+  }
+};
+
+const matchFlatSequence = (
+  nodes: MacroTemplateNode[],
+  args: LuminaExpr[],
+  separators: string[],
+  startArg: number,
+  startSep: number
+): {
+  ok: boolean;
+  consumedArgs: number;
+  consumedSeps: number;
+  captures: Map<string, LuminaExpr[]>;
+  unsupportedReason?: string;
+  unsupportedCode?: string;
+} => {
+  let argIndex = startArg;
+  let sepIndex = startSep;
+  const captures = new Map<string, LuminaExpr[]>();
+  for (const node of cleanTemplateNodes(nodes)) {
+    if (node.kind === 'var') {
+      if (argIndex >= args.length) {
+        return { ok: false, consumedArgs: 0, consumedSeps: 0, captures };
+      }
+      appendFlatBindingValue(captures, node.name, args[argIndex]);
+      argIndex += 1;
+      continue;
+    }
+    if (node.kind === 'repeat') {
+      return {
+        ok: false,
+        consumedArgs: 0,
+        consumedSeps: 0,
+        captures,
+        unsupportedReason: 'Nested repeat patterns require a dedicated repetition context',
+        unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+      };
+    }
+    const expected = normalizeLiteralToken(node.text);
+    if (expected === '') continue;
+    if (sepIndex >= separators.length) {
+      return { ok: false, consumedArgs: 0, consumedSeps: 0, captures };
+    }
+    if (normalizeLiteralToken(separators[sepIndex] ?? '') !== expected) {
+      return { ok: false, consumedArgs: 0, consumedSeps: 0, captures };
+    }
+    sepIndex += 1;
+  }
+  return {
+    ok: true,
+    consumedArgs: argIndex - startArg,
+    consumedSeps: sepIndex - startSep,
+    captures,
+  };
+};
+
+const matchNestedRepeatNode = (
+  node: Extract<MacroTemplateNode, { kind: 'repeat' }>,
+  args: LuminaExpr[],
+  separators: string[]
+): PatternMatchResult => {
+  const outerSep = normalizeLiteralToken(node.separator);
+  if (!isRepeatSeparatorSupported(outerSep)) {
     return {
       matched: false,
       unsupported: true,
-      reason: 'Nested repetitions are not yet supported',
+      unsupportedCode: MACRO_SEPARATOR_CODE,
+      reason: `Unsupported repetition separator '${outerSep}'`,
       bindings: new Map(),
     };
   }
 
-  const cleaned = cleanTemplateNodes(nodes);
-  for (const node of cleaned) {
-    if (node.kind === 'lit' && !isCommaLiteral(node)) {
-      return {
-        matched: false,
-        unsupported: true,
-        reason: `Unsupported literal token '${node.text.trim()}' in macro pattern`,
-        bindings: new Map(),
-      };
+  const outerInner = cleanTemplateNodes(node.nodes);
+  if (outerInner.length !== 1 || outerInner[0].kind !== 'repeat') {
+    return {
+      matched: false,
+      unsupported: true,
+      unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+      reason: 'Nested repetitions currently support one inner repeat group per outer iteration',
+      bindings: new Map(),
+    };
+  }
+
+  const innerRepeat = outerInner[0];
+  if (maxRepeatDepth(innerRepeat.nodes) > 0) {
+    return {
+      matched: false,
+      unsupported: true,
+      unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+      reason: 'Nested repetition depth greater than 2 is not supported',
+      bindings: new Map(),
+    };
+  }
+
+  const rows: Array<{ args: LuminaExpr[]; separators: string[] }> = [];
+  if (args.length > 0) {
+    let currentArgs: LuminaExpr[] = [args[0]];
+    let currentSeps: string[] = [];
+    for (let idx = 0; idx < separators.length; idx += 1) {
+      const sep = normalizeLiteralToken(separators[idx] ?? '');
+      const nextArg = args[idx + 1];
+      if (sep === outerSep && outerSep !== '') {
+        rows.push({ args: currentArgs, separators: currentSeps });
+        currentArgs = [nextArg];
+        currentSeps = [];
+        continue;
+      }
+      currentSeps.push(sep);
+      currentArgs.push(nextArg);
     }
+    rows.push({ args: currentArgs, separators: currentSeps });
+  }
+
+  if (node.op === '+' && rows.length === 0) {
+    return { matched: false, unsupported: false, bindings: new Map() };
+  }
+  if (node.op === '?' && rows.length > 1) {
+    return { matched: false, unsupported: false, bindings: new Map() };
+  }
+
+  const nestedBindings: MacroBindings = new Map();
+  for (const row of rows) {
+    const rowMatch = matchFlatRepeatNode(innerRepeat, row.args, row.separators);
+    if (!rowMatch.matched) {
+      if (rowMatch.unsupported) return rowMatch;
+      return { matched: false, unsupported: false, bindings: new Map() };
+    }
+    for (const [name, values] of rowMatch.bindings) {
+      if (isNestedBindingValue(values)) {
+        return {
+          matched: false,
+          unsupported: true,
+          unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+          reason: `Nested binding rank for '${name}' exceeds supported depth`,
+          bindings: new Map(),
+        };
+      }
+      const existing = nestedBindings.get(name);
+      if (!existing) {
+        nestedBindings.set(name, [cloneFlatBinding(values)]);
+        continue;
+      }
+      if (!isNestedBindingValue(existing)) {
+        return {
+          matched: false,
+          unsupported: true,
+          unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+          reason: `Metavariable '${name}' bound with incompatible repetition ranks`,
+          bindings: new Map(),
+        };
+      }
+      existing.push(cloneFlatBinding(values));
+      nestedBindings.set(name, existing);
+    }
+  }
+
+  return { matched: true, unsupported: false, bindings: nestedBindings };
+};
+
+const matchFlatRepeatNode = (
+  node: Extract<MacroTemplateNode, { kind: 'repeat' }>,
+  args: LuminaExpr[],
+  separators: string[]
+): PatternMatchResult => {
+  const inner = cleanTemplateNodes(node.nodes);
+  const repeatSeparator = normalizeLiteralToken(node.separator);
+  if (!isRepeatSeparatorSupported(repeatSeparator)) {
+    return {
+      matched: false,
+      unsupported: true,
+      unsupportedCode: MACRO_SEPARATOR_CODE,
+      reason: `Unsupported repetition separator '${repeatSeparator}'`,
+      bindings: new Map(),
+    };
+  }
+  if (inner.length === 0) {
+    return {
+      matched: false,
+      unsupported: true,
+      unsupportedCode: MACRO_UNSUPPORTED_CODE,
+      reason: 'Empty repetition body is not supported',
+      bindings: new Map(),
+    };
+  }
+
+  let cursorArg = 0;
+  let cursorSep = 0;
+  let iterations = 0;
+  const captures = new Map<string, LuminaExpr[]>();
+  while (cursorArg < args.length) {
+    if (iterations > 0 && repeatSeparator !== '') {
+      const actualSep = normalizeLiteralToken(separators[cursorSep] ?? '');
+      if (actualSep !== repeatSeparator) break;
+      cursorSep += 1;
+    }
+
+    const attempt = matchFlatSequence(inner, args, separators, cursorArg, cursorSep);
+    if (!attempt.ok) {
+      if (attempt.unsupportedReason) {
+        return {
+          matched: false,
+          unsupported: true,
+          unsupportedCode: attempt.unsupportedCode ?? MACRO_UNSUPPORTED_CODE,
+          reason: attempt.unsupportedReason,
+          bindings: new Map(),
+        };
+      }
+      if (iterations > 0 && repeatSeparator !== '') {
+        return { matched: false, unsupported: false, bindings: new Map() };
+      }
+      break;
+    }
+    if (attempt.consumedArgs === 0 && attempt.consumedSeps === 0) break;
+    mergeFlatBindings(captures, attempt.captures);
+    cursorArg += attempt.consumedArgs;
+    cursorSep += attempt.consumedSeps;
+    iterations += 1;
+    if (node.op === '?') break;
+  }
+
+  if (node.op === '+' && iterations === 0) return { matched: false, unsupported: false, bindings: new Map() };
+  if (node.op === '?' && iterations > 1) return { matched: false, unsupported: false, bindings: new Map() };
+  if (cursorArg !== args.length || cursorSep !== separators.length) return { matched: false, unsupported: false, bindings: new Map() };
+  return { matched: true, unsupported: false, bindings: toBindingMap(captures) };
+};
+
+const matchPattern = (nodes: MacroTemplateNode[], args: LuminaExpr[], separators: string[]): PatternMatchResult => {
+  const cleaned = cleanTemplateNodes(nodes);
+  const repeatDepth = maxRepeatDepth(cleaned);
+  if (repeatDepth > 2) {
+    return {
+      matched: false,
+      unsupported: true,
+      unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+      reason: 'Nested repetition depth greater than 2 is not supported',
+      bindings: new Map(),
+    };
   }
 
   if (cleaned.length === 0) {
@@ -393,103 +631,250 @@ const matchPattern = (nodes: MacroTemplateNode[], args: LuminaExpr[]): PatternMa
     const single = cleaned[0];
     if (single.kind === 'var') {
       if (args.length !== 1) return { matched: false, unsupported: false, bindings: new Map() };
-      const out = new Map<string, LuminaExpr[]>();
+      const out: MacroBindings = new Map();
       out.set(single.name, [cloneExpr(args[0])]);
       return { matched: true, unsupported: false, bindings: out };
     }
     if (single.kind === 'repeat') {
-      return matchRepeatNode(single, args);
+      if (maxRepeatDepth(single.nodes) > 0) return matchNestedRepeatNode(single, args, separators);
+      return matchFlatRepeatNode(single, args, separators);
     }
   }
 
   if (cleaned.length % 2 === 0) {
-    return {
-      matched: false,
-      unsupported: true,
-      reason: 'Unsupported pattern shape',
-      bindings: new Map(),
-    };
+    throw new Error('[internal] MACRO: even-length pattern nodes — parser invariant violated');
   }
 
-  const out = new Map<string, LuminaExpr[]>();
-  let argIndex = 0;
-  for (let idx = 0; idx < cleaned.length; idx += 1) {
+  for (let idx = 0; idx < cleaned.length; idx += 2) {
     const node = cleaned[idx];
-    if (idx % 2 === 0) {
-      if (node.kind !== 'var') {
-        return {
-          matched: false,
-          unsupported: true,
-          reason: 'Only comma-separated variables are supported in this pattern',
-          bindings: new Map(),
-        };
-      }
-      if (argIndex >= args.length) return { matched: false, unsupported: false, bindings: new Map() };
-      out.set(node.name, [cloneExpr(args[argIndex])]);
-      argIndex += 1;
-    } else if (!isCommaLiteral(node)) {
+    if (node.kind !== 'var') {
       return {
         matched: false,
         unsupported: true,
-        reason: `Expected comma separator, found '${node.kind === 'lit' ? node.text.trim() : node.kind}'`,
+        unsupportedCode: MACRO_PATTERN_POSITION_CODE,
+        reason: 'Expected a metavariable in pattern position',
         bindings: new Map(),
       };
     }
   }
-  if (argIndex !== args.length) return { matched: false, unsupported: false, bindings: new Map() };
-  return { matched: true, unsupported: false, bindings: out };
+
+  const attempt = matchFlatSequence(cleaned, args, separators, 0, 0);
+  if (attempt.unsupportedReason) {
+    return {
+      matched: false,
+      unsupported: true,
+      unsupportedCode: attempt.unsupportedCode ?? MACRO_UNSUPPORTED_CODE,
+      reason: attempt.unsupportedReason,
+      bindings: new Map(),
+    };
+  }
+  if (!attempt.ok) return { matched: false, unsupported: false, bindings: new Map() };
+  if (attempt.consumedArgs !== args.length || attempt.consumedSeps !== separators.length) {
+    return { matched: false, unsupported: false, bindings: new Map() };
+  }
+  return { matched: true, unsupported: false, bindings: toBindingMap(attempt.captures) };
 };
+
+const getFlatBinding = (bindings: MacroBindings, name: string): LuminaExpr[] | null => {
+  const value = bindings.get(name);
+  if (!value) return null;
+  if (isNestedBindingValue(value)) return null;
+  return value;
+};
+
+const getNestedBinding = (bindings: MacroBindings, name: string): LuminaExpr[][] | null => {
+  const value = bindings.get(name);
+  if (!value) return null;
+  if (!isNestedBindingValue(value)) return null;
+  return value;
+};
+
+const flattenBindingValue = (value: MacroBindingValue): LuminaExpr[] =>
+  isNestedBindingValue(value) ? value.flatMap((row) => row.map((item) => cloneExpr(item))) : cloneFlatBinding(value);
 
 const expandTemplateNodesToExprList = (
   nodes: MacroTemplateNode[],
-  bindings: Map<string, LuminaExpr[]>
-): { ok: boolean; exprs: LuminaExpr[]; reason?: string } => {
-  if (hasNestedRepeat(nodes)) {
-    return { ok: false, exprs: [], reason: 'Nested repetitions are not yet supported in transcribers' };
+  bindings: MacroBindings,
+  depth = 1
+): { ok: boolean; exprs: LuminaExpr[]; reason?: string; unsupportedCode?: string } => {
+  if (maxRepeatDepth(nodes) > 2 || depth > 2) {
+    return {
+      ok: false,
+      exprs: [],
+      reason: 'Nested repetition depth greater than 2 is not supported in transcribers',
+      unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+    };
   }
   const out: LuminaExpr[] = [];
   for (const node of cleanTemplateNodes(nodes)) {
     if (node.kind === 'lit') {
-      const lit = node.text.trim();
-      if (lit === '' || lit === ',' || lit === ';') continue;
-      return { ok: false, exprs: [], reason: `Unsupported literal token '${lit}' in transcriber` };
+      const lit = normalizeLiteralToken(node.text);
+      if (!lit) continue;
+      if (isPassthroughLiteral(lit)) continue;
+      return {
+        ok: false,
+        exprs: [],
+        reason: `Unsupported literal token '${lit}' in transcriber`,
+        unsupportedCode: MACRO_UNSUPPORTED_CODE,
+      };
     }
     if (node.kind === 'var') {
       const values = bindings.get(node.name);
-      if (!values || values.length === 0) {
-        return { ok: false, exprs: [], reason: `Unbound metavariable '${node.name}'` };
+      if (!values) {
+        return {
+          ok: false,
+          exprs: [],
+          reason: `Unbound metavariable '${node.name}'`,
+          unsupportedCode: MACRO_UNSUPPORTED_CODE,
+        };
       }
-      for (const value of values) out.push(cloneExpr(value));
+      out.push(...flattenBindingValue(values));
       continue;
     }
+
+    const separator = normalizeLiteralToken(node.separator);
+    if (!isRepeatSeparatorSupported(separator)) {
+      return {
+        ok: false,
+        exprs: [],
+        reason: `Unsupported transcriber separator '${separator}'`,
+        unsupportedCode: MACRO_SEPARATOR_CODE,
+      };
+    }
+
     const inner = cleanTemplateNodes(node.nodes);
-    if (inner.length !== 1 || inner[0].kind !== 'var') {
-      return { ok: false, exprs: [], reason: 'Only simple repetition transcribers are supported' };
+    if (inner.length === 0) continue;
+    const nestedNode = inner.find((entry) => entry.kind === 'repeat');
+    if (nestedNode) {
+      if (depth >= 2) {
+        return {
+          ok: false,
+          exprs: [],
+          reason: 'Nested repetition depth greater than 2 is not supported in transcribers',
+          unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+        };
+      }
+
+      const nestedVarNames = Array.from(
+        new Set(
+          inner.flatMap((entry) => {
+            if (entry.kind === 'var') return [entry.name];
+            if (entry.kind === 'repeat') {
+              return cleanTemplateNodes(entry.nodes)
+                .filter((child): child is Extract<MacroTemplateNode, { kind: 'var' }> => child.kind === 'var')
+                .map((child) => child.name);
+            }
+            return [];
+          })
+        )
+      );
+      const rowCount = nestedVarNames.reduce<number>((count, name) => {
+        const nested = getNestedBinding(bindings, name);
+        if (!nested) return count;
+        return count === 0 ? nested.length : Math.min(count, nested.length);
+      }, 0);
+
+      if (node.op === '+' && rowCount === 0) {
+        return {
+          ok: false,
+          exprs: [],
+          reason: 'Nested repetition requires at least one row',
+          unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+        };
+      }
+      if (node.op === '?' && rowCount > 1) {
+        return {
+          ok: false,
+          exprs: [],
+          reason: 'Nested optional repetition expected at most one row',
+          unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+        };
+      }
+
+      const maxRows = node.op === '?' ? Math.min(rowCount, 1) : rowCount;
+      for (let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
+        const rowBindings: MacroBindings = new Map(bindings);
+        for (const [name, value] of bindings) {
+          if (!isNestedBindingValue(value)) continue;
+          const row = value[rowIndex] ?? [];
+          rowBindings.set(name, cloneFlatBinding(row));
+        }
+        const rowResult = expandTemplateNodesToExprList(inner, rowBindings, depth + 1);
+        if (!rowResult.ok) return rowResult;
+        out.push(...rowResult.exprs.map((expr) => cloneExpr(expr)));
+      }
+      continue;
     }
-    if (node.separator && node.separator !== ',') {
-      return { ok: false, exprs: [], reason: `Unsupported transcriber separator '${node.separator}'` };
+
+    const varNames = Array.from(
+      new Set(
+        inner
+          .filter((entry): entry is Extract<MacroTemplateNode, { kind: 'var' }> => entry.kind === 'var')
+          .map((entry) => entry.name)
+      )
+    );
+    const iterationCount = varNames.reduce<number>((count, name) => {
+      const values = getFlatBinding(bindings, name) ?? [];
+      return count === 0 ? values.length : Math.min(count, values.length);
+    }, 0);
+
+    if (node.op === '+' && iterationCount === 0) {
+      return {
+        ok: false,
+        exprs: [],
+        reason: `Repetition requires at least one value`,
+        unsupportedCode: MACRO_UNSUPPORTED_CODE,
+      };
     }
-    const values = bindings.get(inner[0].name) ?? [];
-    if (node.op === '+' && values.length === 0) {
-      return { ok: false, exprs: [], reason: `Metavariable '${inner[0].name}' requires at least one repetition` };
+    if (node.op === '?' && iterationCount > 1) {
+      return {
+        ok: false,
+        exprs: [],
+        reason: `Optional repetition expected at most one value`,
+        unsupportedCode: MACRO_UNSUPPORTED_CODE,
+      };
     }
-    if (node.op === '?' && values.length > 1) {
-      return { ok: false, exprs: [], reason: `Metavariable '${inner[0].name}' expected at most one repetition` };
+
+    const maxIterations = node.op === '?' ? Math.min(iterationCount, 1) : iterationCount;
+    for (let iterationIndex = 0; iterationIndex < maxIterations; iterationIndex += 1) {
+      for (const innerNode of inner) {
+        if (innerNode.kind === 'lit') {
+          const literal = normalizeLiteralToken(innerNode.text);
+          if (!literal) continue;
+          if (isPassthroughLiteral(literal)) continue;
+          return {
+            ok: false,
+            exprs: [],
+            reason: `Unsupported literal token '${literal}' in transcriber`,
+            unsupportedCode: MACRO_UNSUPPORTED_CODE,
+          };
+        }
+        if (innerNode.kind === 'repeat') {
+          return {
+            ok: false,
+            exprs: [],
+            reason: 'Nested repetition requires dedicated nested context',
+            unsupportedCode: MACRO_NESTED_REPEAT_CODE,
+          };
+        }
+        const values = getFlatBinding(bindings, innerNode.name) ?? [];
+        if (iterationIndex >= values.length) continue;
+        out.push(cloneExpr(values[iterationIndex]));
+      }
     }
-    for (const value of values) out.push(cloneExpr(value));
   }
   return { ok: true, exprs: out };
 };
 
 const tryExpandToScalarExpr = (
   source: string,
-  bindings: Map<string, LuminaExpr[]>,
+  bindings: MacroBindings,
   location?: Location
 ): LuminaExpr | null => {
   const trimmed = source.trim();
   if (/^\$[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
     const key = trimmed.slice(1);
-    const values = bindings.get(key);
+    const values = getFlatBinding(bindings, key);
     if (!values || values.length !== 1) return null;
     const value = cloneExpr(values[0]);
     value.location = location ?? value.location;
@@ -512,7 +897,7 @@ const tryExpandToScalarExpr = (
 
 const tryExpandToMacroInvokeExpr = (
   source: string,
-  bindings: Map<string, LuminaExpr[]>,
+  bindings: MacroBindings,
   location?: Location
 ): LuminaExpr | null => {
   const match = source.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s*!\s*(\[|\(|\{)([\s\S]*)(\]|\)|\})$/);
@@ -533,6 +918,7 @@ const tryExpandToMacroInvokeExpr = (
     type: 'MacroInvoke',
     name,
     args: expanded.exprs.map((expr) => cloneExpr(expr)),
+    separators: [],
     delimiter,
     location,
   };
@@ -549,13 +935,20 @@ const makeRelatedDef = (macro: MacroDef | null): DiagnosticRelatedInformation[] 
 };
 
 const applyMacroRule = (
-  macro: MacroDef,
+  _macro: MacroDef,
   rule: ParsedRule,
   invoke: Extract<LuminaExpr, { type: 'MacroInvoke' }>
-): { ok: boolean; expr?: LuminaExpr; unsupportedReason?: string } => {
-  const matched = matchPattern(rule.patternNodes, invoke.args);
+): { ok: boolean; expr?: LuminaExpr; unsupportedReason?: string; unsupportedCode?: string } => {
+  const invokeSeparators = normalizeInvokeSeparators(invoke.args ?? [], invoke.separators);
+  const matched = matchPattern(rule.patternNodes, invoke.args, invokeSeparators);
   if (!matched.matched) {
-    if (matched.unsupported) return { ok: false, unsupportedReason: matched.reason };
+    if (matched.unsupported) {
+      return {
+        ok: false,
+        unsupportedReason: matched.reason,
+        unsupportedCode: matched.unsupportedCode,
+      };
+    }
     return { ok: false };
   }
 
@@ -567,7 +960,11 @@ const applyMacroRule = (
 
   const transcribed = expandTemplateNodesToExprList(rule.transcriberNodes, matched.bindings);
   if (!transcribed.ok) {
-    return { ok: false, unsupportedReason: transcribed.reason };
+    return {
+      ok: false,
+      unsupportedReason: transcribed.reason,
+      unsupportedCode: transcribed.unsupportedCode,
+    };
   }
 
   const exprs = transcribed.exprs;
@@ -620,19 +1017,23 @@ const expandMacroInvoke = (
 
   const related = makeRelatedDef(macro);
   let unsupportedReason: string | null = null;
+  let unsupportedCode: string | null = null;
   for (const rule of macro.rules) {
     if (rule.patternDelimiter !== invoke.delimiter) continue;
     const applied = applyMacroRule(macro, rule, invoke);
     if (applied.ok && applied.expr) {
       return applied.expr;
     }
-    if (applied.unsupportedReason) unsupportedReason = applied.unsupportedReason;
+    if (applied.unsupportedReason) {
+      unsupportedReason = applied.unsupportedReason;
+      unsupportedCode = applied.unsupportedCode ?? MACRO_UNSUPPORTED_CODE;
+    }
   }
 
   if (unsupportedReason) {
     diagnostics.push(
       diag(
-        'MACRO_UNSUPPORTED_PATTERN',
+        unsupportedCode ?? MACRO_UNSUPPORTED_CODE,
         `Unsupported macro pattern/transcriber for '${invoke.name}!': ${unsupportedReason}`,
         invoke.location,
         related

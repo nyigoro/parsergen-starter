@@ -604,7 +604,7 @@ describe('macro expansion matrix: diagnostics and spans', () => {
       },
     },
     {
-      name: 'C05 nested repetitions report MACRO_UNSUPPORTED_PATTERN',
+      name: 'C05 depth-2 nested repetitions expand successfully',
       source: `
         macro_rules! nested {
           ($($($x:expr),*),*) => ($x);
@@ -612,11 +612,11 @@ describe('macro expansion matrix: diagnostics and spans', () => {
         fn main() -> i32 { nested!(1, 2) }
       `,
       assert: (diagnostics) => {
-        expect(hasDiag(diagnostics, 'MACRO_UNSUPPORTED_PATTERN')).toBe(true);
+        expect(diagnostics).toHaveLength(0);
       },
     },
     {
-      name: 'C06 unsupported pattern includes definition related info',
+      name: 'C06 depth-2 nested repetitions remain deterministic',
       source: `
         macro_rules! nested {
           ($($($x:expr),*),*) => ($x);
@@ -624,12 +624,11 @@ describe('macro expansion matrix: diagnostics and spans', () => {
         fn main() -> i32 { nested!(1, 2) }
       `,
       assert: (diagnostics) => {
-        const diag = diagnostics.find((d) => d.code === 'MACRO_UNSUPPORTED_PATTERN');
-        expect(diag?.relatedInformation?.length).toBeGreaterThan(0);
+        expect(diagnostics).toHaveLength(0);
       },
     },
     {
-      name: 'C07 malformed macro rule reports MACRO_PARSE',
+      name: 'C07 malformed macro rule reports MACRO-001',
       source: `
         macro_rules! bad {
           ($x:expr) ($x);
@@ -637,7 +636,7 @@ describe('macro expansion matrix: diagnostics and spans', () => {
         fn main() -> i32 { bad!(1) }
       `,
       assert: (diagnostics) => {
-        expect(hasDiag(diagnostics, 'MACRO_PARSE')).toBe(true);
+        expect(hasDiag(diagnostics, 'MACRO-001')).toBe(true);
       },
     },
     {
@@ -883,18 +882,18 @@ describe('macro expansion matrix: repetition and edge tokens', () => {
       },
     },
     {
-      name: 'E05 unsupported literal token in pattern reports stable diagnostic',
+      name: 'E05 literal-only matcher position emits MACRO-004',
       source: `
         macro_rules! literaly {
-          [foo $x:expr] => [$x];
+          [foo] => [1];
         }
         fn main() -> i32 {
-          let a = literaly![1];
+          let a = literaly![];
           0
         }
       `,
       assert: (_ast, diagnostics) => {
-        expect(hasDiag(diagnostics, 'MACRO_UNSUPPORTED_PATTERN')).toBe(true);
+        expect(hasDiag(diagnostics, 'MACRO-004')).toBe(true);
       },
     },
   ];

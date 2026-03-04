@@ -60,6 +60,61 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
       'Apply enough type arguments when a concrete type (`*`) is required.',
     ],
   },
+  'MACRO-001': {
+    code: 'MACRO-001',
+    title: 'Macro parse failure',
+    summary: 'A `macro_rules!` declaration could not be parsed into valid pattern/transcriber rules.',
+    why: 'Macro rules require balanced delimiters and a valid `pattern => transcriber` structure.',
+    howToFix: [
+      'Check delimiter pairs in both pattern and transcriber blocks.',
+      'Ensure each rule includes `=>` between pattern and transcriber.',
+      'Remove malformed tokens and re-run with diagnostics enabled.',
+    ],
+  },
+  'MACRO-002': {
+    code: 'MACRO-002',
+    title: 'Unsupported macro pattern or transcriber',
+    summary: 'The macro invocation matched a rule that uses a pattern/transcriber form not supported yet.',
+    why: 'Macro expansion currently supports a bounded matcher/transcriber subset with deterministic lowering.',
+    howToFix: [
+      'Simplify the macro rule to supported repetition/literal forms.',
+      'Split complex rules into smaller helper macros.',
+      'Check the detailed unsupported reason attached to this diagnostic.',
+    ],
+  },
+  'MACRO-003': {
+    code: 'MACRO-003',
+    title: 'Unsupported repetition separator',
+    summary: 'The repetition separator token is not supported by the current macro matcher/transcriber.',
+    why: 'Only a constrained separator set is supported for deterministic macro argument splitting.',
+    howToFix: [
+      'Use `,`, `;`, or `=>` as repetition separators.',
+      'Avoid separators that require token-level parsing beyond expression boundaries.',
+      'Refactor the macro to consume explicit grouped expressions.',
+    ],
+  },
+  'MACRO-004': {
+    code: 'MACRO-004',
+    title: 'Invalid matcher position',
+    summary: 'A non-metavariable token appeared where the matcher requires a metavariable capture.',
+    why: 'The matcher expects capture positions to be metavariables so arguments can be bound deterministically.',
+    howToFix: [
+      'Replace the token at the capture position with a metavariable like `$x:expr`.',
+      'Move fixed literal tokens into separator/literal positions between captures.',
+      'Check rule structure for accidental token ordering issues.',
+    ],
+  },
+  'MACRO-005': {
+    code: 'MACRO-005',
+    title: 'Nested repetition depth exceeded',
+    summary: 'The macro rule uses nested repetition deeper than the supported depth.',
+    why: 'Macro expansion currently supports nested repetition only up to two levels.',
+    howToFix: [
+      'Reduce repetition nesting depth to at most two levels.',
+      'Break deep nested loops into helper macros.',
+      'Flatten repeated structures before macro expansion when possible.',
+    ],
+  },
   'TYPE-CAST': {
     code: 'TYPE-CAST',
     title: 'Invalid cast',

@@ -34,7 +34,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Lambda expressions | Stable | `|x| x + 1` |
 | Collection method syntax | Stable | `v.push(1)` style lowering to stdlib calls |
 | Function overloading | Stable | Trait-based + ad-hoc stdlib overload resolution with `OVERLOAD_NO_MATCH`/`OVERLOAD_AMBIGUOUS` diagnostics |
-| Macros | Beta | Expansion phase with matcher/transcriber subset, lexical scoping, `![]`/`!()`/`!{}` calls, recursion/cycle diagnostics |
+| Macros | Stable | Expansion phase with lexical scoping, `![]`/`!()`/`!{}` calls, structured diagnostics (`MACRO-001..005`), multi-var + nested (depth<=2) repetition support, and deterministic recursion/cycle handling |
 | `#[derive(...)]` | Stable | Trait-based derived impl synthesis (`Clone`, `Debug`, `Eq`) for structs/enums, generic bound synthesis, collision diagnostics |
 | Const generics | Stable | Const params across structs/enums/functions/traits, where-clauses, explicit const args (`::<...>`), semantic + HM checks, monomorphization, JS/WASM fixed-array codegen |
 | GADTs | Stable | Indexed variants + existential constraints, recursive refinement guards (`GADT-008`), nested/multi-pattern refinement, WASM nested + multi-payload match lowering, HKT-indexed non-existential positions |

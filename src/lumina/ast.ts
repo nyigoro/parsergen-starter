@@ -618,6 +618,7 @@ export interface LuminaMacroInvoke {
   type: 'MacroInvoke';
   name: string;
   args: LuminaExpr[];
+  separators?: string[];
   delimiter: '[]' | '()' | '{}';
   expansionError?: boolean;
   location?: Location;

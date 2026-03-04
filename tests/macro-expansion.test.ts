@@ -118,7 +118,7 @@ describe('macro expansion phase', () => {
     expect(expanded.diagnostics.some((d) => d.code === 'MACRO_RECURSION_LIMIT')).toBe(true);
   });
 
-  it('reports unsupported nested repetitions with stable diagnostics', () => {
+  it('supports depth-2 nested repetitions', () => {
     const source = `
       macro_rules! nested {
         ($($($x:expr),*),*) => ($x);
@@ -131,7 +131,7 @@ describe('macro expansion phase', () => {
 
     const ast = parseProgram(source);
     const expanded = expandMacrosInProgram(ast);
-    expect(expanded.diagnostics.some((d) => d.code === 'MACRO_UNSUPPORTED_PATTERN')).toBe(true);
+    expect(expanded.diagnostics).toHaveLength(0);
   });
 
   it('applies lexical scoping: invocation before declaration is unresolved', () => {
