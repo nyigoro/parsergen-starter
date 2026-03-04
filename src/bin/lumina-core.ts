@@ -43,6 +43,8 @@ import {
 import { runLuminaAdd } from './lumina-add.js';
 import { runLuminaInstall } from './lumina-install.js';
 import { runLuminaPublish } from './lumina-publish.js';
+import { runLuminaBundle } from './lumina-bundle.js';
+import { runLuminaImportmap } from './lumina-importmap.js';
 import { readManifest } from '../lumina/package-manifest.js';
 import { resolveRegistryConfig, search as searchRegistry } from '../lumina/registry-client.js';
 import { readLockfileSync } from '../lumina/lockfile.js';
@@ -1309,7 +1311,7 @@ async function compileLumina(
     }
     return true;
   };
-  const analysisOptions = { diDebug: diCfg, stopOnUnresolvedMemberError };
+  const analysisOptions = { diDebug: diCfg, stopOnUnresolvedMemberError, target };
   const lockfileRoot = findLockfileRoot(sourcePath);
   const applyMonomorphize = (program: unknown): unknown | null => {
     const mono = monomorphizeAst(program, { noInline, noComptime });
@@ -1986,11 +1988,18 @@ Commands:
   add <pkg...>     Add package(s) from Lumina registry
   install          Install packages from lumina.lock
   publish          Publish current package to registry
+  bundle <file>    Bundle Lumina source for browser/wasm distribution
+  importmap        Generate browser import map from lock data
   search <query>   Search Lumina package registry
 
 Options:
   --out <file>         Output JS file (default: lumina.out.js)
   --target <cjs|esm|wasm>   Output module format (default: esm)
+  --loader-out <file>  Loader output path for wasm bundle target
+  --import-map <file>  Emit browser import-map.json during bundle
+  --minify             Minify browser bundle output
+  --cdn                Upload browser/wasm CDN artifacts on publish
+  --cdn-provider <p>   CDN provider: lumina | npm | both
   --grammar <path>     Override grammar path
   --dry-run            Parse and analyze only (compile command)
   --recovery           Enable resilient parsing (panic mode)
@@ -2013,6 +2022,11 @@ Options:
   --yes                Use defaults without prompts (init)
   --frozen             Use npm ci if lockfile is present (install)
   --dev                Add package as dev dependency (add)
+  --limit <n>          Limit search result count (search)
+  --offset <n>         Search result offset (search)
+  --sort <mode>        Search sort: relevance|downloads|updated
+  --tags <a,b>         Comma-separated tag filter for search
+  --json               Print search output as JSON
 
 Config file:
   lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir, recovery
@@ -2021,6 +2035,8 @@ Commands:
   install              Install dependencies from lumina.lock
   add <pkg...>         Add dependency (supports @scope/pkg@version)
   publish              Publish current package
+  bundle               Bundle browser/wasm artifacts
+  importmap            Generate browser import map
   search <query>       Search package registry
   remove <pkg...>      Remove dependency
   list                 List Lumina-resolvable packages from lumina.lock.json
@@ -2251,6 +2267,11 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     return;
   }
 
+  if (command === 'importmap') {
+    await runLuminaImportmap(argv.slice(1));
+    return;
+  }
+
   if (command === 'search') {
     const query = positionalArgs.join(' ').trim();
     if (query.length === 0) {
@@ -2268,7 +2289,35 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       registry: null,
     }));
     const registryConfig = resolveRegistryConfig(manifest, process.env);
-    const result = await searchRegistry(query, registryConfig);
+    const limitRaw = args.get('--limit');
+    const offsetRaw = args.get('--offset');
+    const sortRaw = args.get('--sort');
+    const tagsRaw = args.get('--tags');
+    const asJson = parseBooleanFlag(args, '--json');
+    const limit = typeof limitRaw === 'string' ? Number(limitRaw) : undefined;
+    const offset = typeof offsetRaw === 'string' ? Number(offsetRaw) : undefined;
+    const sort =
+      sortRaw === 'relevance' || sortRaw === 'downloads' || sortRaw === 'updated'
+        ? sortRaw
+        : undefined;
+    const tags =
+      typeof tagsRaw === 'string'
+        ? tagsRaw
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0)
+        : undefined;
+
+    const result = await searchRegistry(query, registryConfig, {
+      limit: Number.isFinite(limit) ? limit : undefined,
+      offset: Number.isFinite(offset) ? offset : undefined,
+      sort,
+      tags,
+    });
+    if (asJson) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
     console.log(`Found ${result.total} package(s):`);
     for (const entry of result.results) {
       console.log(`- ${entry.name}@${entry.version}${entry.description ? ` - ${entry.description}` : ''}`);
@@ -2487,6 +2536,26 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         }
       }
     }
+    return;
+  }
+
+  if (command === 'bundle') {
+    await runLuminaBundle(argv.slice(1), {
+      cwd: process.cwd(),
+      deps: {
+        compileTask: compileLuminaTask,
+      },
+      grammarPath,
+      useRecovery,
+      diCfg,
+      useAstJs,
+      noOptimize,
+      noInline,
+      noComptime,
+      sourceMap,
+      inlineSourceMap,
+      stopOnUnresolvedMemberError,
+    });
     return;
   }
 

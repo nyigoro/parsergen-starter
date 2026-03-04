@@ -210,6 +210,28 @@ const stringAndTypeCases: CaseSpec[] = [
     source: 'fn main() -> i32 { let a = [1, 2, 3]; 0 }',
     snippets: ['call $vec_new', 'call $vec_push'],
   },
+  {
+    name: 'standalone range expression lowers to heap record',
+    source: 'fn main() -> i32 { let r = 0..3; if r == r { 1 } else { 0 } }',
+    snippets: ['i32.const 20', 'call $alloc', 'i32.store'],
+  },
+  {
+    name: 'nested cast expression lowering',
+    source: 'fn main() -> i32 { cast<i32>(cast<f64>(5)) }',
+    snippets: ['f64.convert_i32_s'],
+  },
+  {
+    name: 'tuple return type lowered as pointer payload',
+    source: 'fn pair() -> (i32, i32) { (1, 2) } fn main() -> i32 { let p = pair(); match p { (a, b) => a + b } }',
+    snippets: ['(func $pair', 'call $pair', 'local.set $a', 'local.set $b'],
+  },
+  {
+    name: 'invalid expression call target reports explicit expr diagnostic',
+    source: 'fn main() -> i32 { (|x| x + 1)(5) }',
+    snippets: ['i32.const 0'],
+    allowErrorCodes: ['WASM-EXPR-001'],
+    requiredErrorCodes: ['WASM-EXPR-001'],
+  },
 ];
 
 const collectionCases: CaseSpec[] = [

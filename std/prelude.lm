@@ -24,6 +24,10 @@ extern type AtomicI32 from "@std/sync";
 extern type SABSenderI32 from "@std/sab_channel";
 extern type SABReceiverI32 from "@std/sab_channel";
 struct SABChannelI32 { sender: SABSenderI32, receiver: SABReceiverI32 }
+extern type DOMElement from "@std/dom";
+extern type EventHandle from "@std/dom";
+extern type WorkerHandle from "@std/web_worker";
+extern type ReadableStream from "@std/web_streams";
 extern type Signal<T> from "@std/render";
 extern type Memo<T> from "@std/render";
 extern type Effect from "@std/render";

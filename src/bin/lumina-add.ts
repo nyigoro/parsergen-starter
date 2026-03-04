@@ -136,6 +136,10 @@ const updateLock = (
     path: toPosixRelative(cwd, installDir),
     integrity: info.integrity,
     lumina: luminaEntry,
+    cdnUrl: info.cdnUrl ?? null,
+    npmCdnUrl: info.npmCdnUrl ?? null,
+    esm: info.esm ?? null,
+    wasm: info.wasm ?? null,
     deps: new Map(info.deps),
   });
 

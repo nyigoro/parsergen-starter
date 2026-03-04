@@ -192,19 +192,36 @@ export function generateWATFromAst(
   const implMethods: WasmTraitMethodDispatch[] = [];
 
   for (const stmt of program.body) {
-    if (stmt.type === 'TraitDecl') {
-      traitDecls.set(stmt.name, stmt);
-      continue;
-    }
-    if (stmt.type === 'StructDecl') {
-      structDecls.set(stmt.name, stmt);
-      continue;
-    }
+    if (stmt.type === 'TraitDecl') traitDecls.set(stmt.name, stmt);
+    if (stmt.type === 'StructDecl') structDecls.set(stmt.name, stmt);
+  }
+
+  for (const stmt of program.body) {
     if (stmt.type !== 'ImplDecl') continue;
-    const impl = stmt as LuminaImplDecl;
+    const impl = stmt;
     const traitName = resolveTypeExprName(impl.traitType);
     const forTypeName = resolveTypeExprName(impl.forType);
-    for (const method of impl.methods ?? []) {
+    const methodsToRegister = [...(impl.methods ?? [])];
+    const overrides = new Set(methodsToRegister.map((method) => method.name));
+    const traitDecl = traitDecls.get(traitName);
+    if (traitDecl) {
+      for (const traitMethod of traitDecl.methods ?? []) {
+        if (!traitMethod.body || overrides.has(traitMethod.name)) continue;
+        methodsToRegister.push({
+          type: 'FnDecl',
+          name: traitMethod.name,
+          async: false,
+          params: traitMethod.params ?? [],
+          returnType: traitMethod.returnType ?? null,
+          typeParams: traitMethod.typeParams ?? [],
+          whereClauses: traitMethod.whereClauses ?? [],
+          whereTypeBounds: traitMethod.whereTypeBounds ?? [],
+          body: traitMethod.body,
+          location: traitMethod.location ?? impl.location,
+        });
+      }
+    }
+    for (const method of methodsToRegister) {
       const wasmName = `${sanitizeWasmIdent(traitName)}_${sanitizeWasmIdent(forTypeName)}_${sanitizeWasmIdent(method.name)}`;
       const inferredParams = infer.inferredFnParams.get(method.name);
       if (inferredParams) {
@@ -2199,6 +2216,17 @@ class WasmBuilder {
     return this.typeToWasm(type, expr.location);
   }
 
+  private resolveDispatchTypeName(type: Type | undefined): string | null {
+    if (!type) return null;
+    const pruned = prune(type, this.subst);
+    if (pruned.kind === 'adt') return pruned.name;
+    if (pruned.kind === 'primitive') return normalizePrimitiveName(pruned.name);
+    if (pruned.kind === 'array') return 'Array';
+    if (pruned.kind === 'promise') return 'Promise';
+    if (pruned.kind === 'function') return 'Function';
+    return null;
+  }
+
   private isUnsignedExpr(expr: LuminaExpr): boolean {
     const type = typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined;
     if (!type) return false;
@@ -2715,6 +2743,15 @@ class WasmBuilder {
       }
       case 'Try':
         return this.emitTryExpr(expr.value, expr.location);
+      case 'Move':
+        return expr.target.type === 'Member' ? this.emitExpr(expr.target as LuminaExpr) : this.emitExpr(expr.target);
+      case 'MacroInvoke':
+        this.reportCodegenError(
+          `macro invocation '${expr.name}!' must be expanded before WASM lowering`,
+          expr.location,
+          'WASM-EXPR-001'
+        );
+        return ['i32.const 0'];
       case 'Identifier':
         return [`local.get $${expr.name}`];
       case 'Await': {
@@ -2748,6 +2785,9 @@ class WasmBuilder {
         const valueLines = this.emitExpr(expr.expr);
         const targetTypeName = typeof expr.targetType === 'string' ? expr.targetType : 'any';
         const normalizedTarget = normalizeTargetTypeName(targetTypeName);
+        if (normalizedTarget === 'string') {
+          return this.emitStringifiedExpr(expr.expr);
+        }
         const targetWasm: WasmValType =
           normalizedTarget === 'i64' || normalizedTarget === 'u64' || normalizedTarget === 'i128' || normalizedTarget === 'u128'
             ? 'i64'
@@ -2799,19 +2839,20 @@ class WasmBuilder {
       case 'SelectExpr':
         return this.emitSelectExpr(expr);
       case 'Range':
-        this.reportUnsupported('standalone range expression in WASM backend', expr.location, 'WASM-RANGE-001');
-        return ['i32.const 0'];
+        return this.emitStandaloneRange(expr);
       case 'Index':
         return this.emitIndex(expr);
       case 'ArrayLiteral':
         return this.emitArrayLiteral(expr);
+      case 'ArrayRepeatLiteral':
+        return this.emitArrayRepeatLiteral(expr);
       case 'TupleLiteral':
         return this.emitTupleLiteral(expr);
       case 'StructLiteral':
         return this.emitStructLiteral(expr);
       default:
-        this.reportUnsupported(`expression '${expr.type}'`, expr.location, 'WASM-EXPR-001');
-        return ['unreachable'];
+        this.reportCodegenError(`unhandled expression '${expr.type}'`, expr.location, 'WASM-EXPR-001');
+        return ['i32.const 0'];
     }
   }
 
@@ -2939,6 +2980,37 @@ class WasmBuilder {
     return lines;
   }
 
+  private emitExprAsI32(expr: LuminaExpr): string[] {
+    const wasmType = this.inferExprWasmType(expr) ?? 'i32';
+    const lines = this.emitExpr(expr);
+    if (wasmType === 'f64') {
+      lines.push('i32.trunc_f64_s');
+      return lines;
+    }
+    if (wasmType === 'i64') {
+      lines.push('i32.wrap_i64');
+      return lines;
+    }
+    return lines;
+  }
+
+  private emitStandaloneRange(expr: Extract<LuminaExpr, { type: 'Range' }>): string[] {
+    // Heap layout:
+    // [0]=start(i32), [4]=end(i32), [8]=inclusive(i32), [12]=hasStart(i32), [16]=hasEnd(i32)
+    const lines: string[] = ['i32.const 20', 'call $alloc', 'local.tee $__tmp_i32'];
+    const startLines = expr.start ? this.emitExprAsI32(expr.start) : ['i32.const 0'];
+    const endLines = expr.end ? this.emitExprAsI32(expr.end) : ['i32.const 0'];
+
+    lines.push(...startLines, 'i32.store');
+    lines.push('local.get $__tmp_i32', 'i32.const 4', 'i32.add');
+    lines.push(...endLines, 'i32.store');
+    lines.push('local.get $__tmp_i32', 'i32.const 8', 'i32.add', `i32.const ${expr.inclusive ? 1 : 0}`, 'i32.store');
+    lines.push('local.get $__tmp_i32', 'i32.const 12', 'i32.add', `i32.const ${expr.start ? 1 : 0}`, 'i32.store');
+    lines.push('local.get $__tmp_i32', 'i32.const 16', 'i32.add', `i32.const ${expr.end ? 1 : 0}`, 'i32.store');
+    lines.push('local.get $__tmp_i32');
+    return lines;
+  }
+
   private emitArrayLiteral(expr: Extract<LuminaExpr, { type: 'ArrayLiteral' }>): string[] {
     const literalType = typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined;
     const pruned = literalType ? prune(literalType, this.subst) : null;
@@ -2977,6 +3049,85 @@ class WasmBuilder {
       lines.push(...this.emitExpr(expr.elements[i]));
       lines.push(this.wasmStoreOp(elementWasm));
     }
+    lines.push('local.get $__tmp_i32');
+    return lines;
+  }
+
+  private emitArrayRepeatLiteral(expr: Extract<LuminaExpr, { type: 'ArrayRepeatLiteral' }>): string[] {
+    const literalType = typeof expr.id === 'number' ? this.exprTypes.get(expr.id) : undefined;
+    const pruned = literalType ? prune(literalType, this.subst) : null;
+    if (pruned?.kind === 'adt' && pruned.name === 'Vec') {
+      const lines: string[] = ['call $vec_new', 'local.set $__tmp_i32'];
+      lines.push(...this.emitExprAsI32(expr.count), 'local.set $__enum_tmp');
+      lines.push('(block $repeat_done');
+      lines.push('  (loop $repeat_loop');
+      lines.push('    local.get $__enum_tmp');
+      lines.push('    i32.const 0');
+      lines.push('    i32.le_s');
+      lines.push('    br_if $repeat_done');
+      lines.push('    local.get $__tmp_i32');
+      lines.push(...this.emitExpr(expr.value).map((line) => `    ${line}`));
+      lines.push('    call $vec_push');
+      lines.push('    drop');
+      lines.push('    local.get $__enum_tmp');
+      lines.push('    i32.const 1');
+      lines.push('    i32.sub');
+      lines.push('    local.set $__enum_tmp');
+      lines.push('    br $repeat_loop');
+      lines.push('  )');
+      lines.push(')');
+      lines.push('local.get $__tmp_i32');
+      return lines;
+    }
+
+    const countLines = this.emitExprAsI32(expr.count);
+    const elementType =
+      pruned?.kind === 'adt' && pruned.name === 'Array' && pruned.params.length > 0
+        ? pruned.params[0]
+        : ({ kind: 'primitive', name: 'i32' } as Type);
+    const elementWasm = this.typeToWasm(elementType, expr.location) ?? 'i32';
+    const elementSize = elementWasm === 'f64' || elementWasm === 'i64' ? 8 : 4;
+    const headerSize = 4;
+    const lines: string[] = [];
+    lines.push(...countLines);
+    lines.push('local.tee $__enum_tmp');
+    lines.push('i32.const 0');
+    lines.push('i32.lt_s');
+    lines.push('if');
+    lines.push('  i32.const 0');
+    lines.push('  local.set $__enum_tmp');
+    lines.push('end');
+    lines.push('local.get $__enum_tmp');
+    lines.push(`i32.const ${elementSize}`);
+    lines.push('i32.mul');
+    lines.push(`i32.const ${headerSize}`);
+    lines.push('i32.add');
+    lines.push('call $alloc');
+    lines.push('local.tee $__tmp_i32');
+    lines.push('local.get $__enum_tmp');
+    lines.push('i32.store');
+    lines.push('(block $arr_repeat_done');
+    lines.push('  (loop $arr_repeat_loop');
+    lines.push('    local.get $__enum_tmp');
+    lines.push('    i32.const 0');
+    lines.push('    i32.le_s');
+    lines.push('    br_if $arr_repeat_done');
+    lines.push('    local.get $__enum_tmp');
+    lines.push('    i32.const 1');
+    lines.push('    i32.sub');
+    lines.push('    local.set $__enum_tmp');
+    lines.push('    local.get $__tmp_i32');
+    lines.push(`    i32.const ${headerSize}`);
+    lines.push('    i32.add');
+    lines.push('    local.get $__enum_tmp');
+    lines.push(`    i32.const ${elementSize}`);
+    lines.push('    i32.mul');
+    lines.push('    i32.add');
+    lines.push(...this.emitExpr(expr.value).map((line) => `    ${line}`));
+    lines.push(`    ${this.wasmStoreOp(elementWasm)}`);
+    lines.push('    br $arr_repeat_loop');
+    lines.push('  )');
+    lines.push(')');
     lines.push('local.get $__tmp_i32');
     return lines;
   }
@@ -3231,6 +3382,15 @@ class WasmBuilder {
     const expectedResultWasm =
       typeof expr.id === 'number' ? this.typeToWasm(this.exprTypes.get(expr.id), expr.location) : null;
 
+    if (expr.callee.name === '__invalid__' || expr.callee.name === '__invalid') {
+      this.reportCodegenError(
+        'immediate expression calls must be lowered before WASM codegen (invalid call target)',
+        expr.location,
+        'WASM-EXPR-001'
+      );
+      return ['i32.const 0'];
+    }
+
     if (!expr.enumName && !expr.receiver && expr.callee.name === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && (expr.args?.length ?? 0) === 1) {
       const targetArg = expr.typeArgs?.[0];
       const targetType = normalizeTargetTypeName(typeof targetArg === 'string' ? targetArg : 'any');
@@ -3313,8 +3473,7 @@ class WasmBuilder {
     const receiverType =
       (typeof receiverExpr.id === 'number' ? this.exprTypes.get(receiverExpr.id) : undefined) ??
       (receiverExpr.type === 'Identifier' ? this.currentLocalTypes.get(receiverExpr.name) : undefined);
-    const pruned = receiverType ? prune(receiverType, this.subst) : undefined;
-    const forType = pruned?.kind === 'adt' ? pruned.name : null;
+    const forType = this.resolveDispatchTypeName(receiverType);
     let dispatched: WasmTraitMethodDispatch | undefined;
     if (forType) {
       const methodMap = this.traitDispatch.get(forType);
@@ -3345,7 +3504,11 @@ class WasmBuilder {
       const builtin = this.emitBuiltinCollectionMethod(forType, receiverExpr, methodName, args, location, expectedResultWasm);
       if (builtin) return builtin;
     }
-    this.reportUnsupported(`method call '${methodName}'`, location, 'WASM-TRAIT-001');
+    this.reportCodegenError(
+      `trait dispatch miss for method '${methodName}'${forType ? ` on '${forType}'` : ''}`,
+      location,
+      'WASM-TRAIT-001'
+    );
     return null;
   }
 
@@ -3704,9 +3867,11 @@ class WasmBuilder {
         return 'i64';
       }
       if (normalized === 'void') return null;
+      return 'i32';
     }
     if (pruned.kind === 'array') return 'i32';
     if (pruned.kind === 'promise') return 'i32';
+    if (pruned.kind === 'variable' || pruned.kind === 'row' || pruned.kind === 'hole') return 'i32';
     if (pruned.kind === 'adt' && pruned.name === 'Array') {
       return 'i32';
     }
@@ -3724,10 +3889,13 @@ class WasmBuilder {
       if (pruned.name === 'Option' || pruned.name === 'Result') {
         return 'i32';
       }
+      // Most ADT values are heap-backed handles in the current WASM backend.
+      // Treat unknown ADTs as opaque i32 pointers instead of hard-failing type mapping.
+      return 'i32';
     }
     if (pruned.kind === 'function') return 'i32';
-    this.reportUnsupported(`type '${this.formatType(pruned)}'`, location, 'WASM-TYPE-001');
-    return null;
+    this.reportCodegenError(`unhandled WASM type mapping for '${this.formatType(pruned)}'`, location, 'WASM-TYPE-001');
+    return 'i32';
   }
 
   private extractArrayTypeInfo(

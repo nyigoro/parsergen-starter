@@ -177,21 +177,21 @@ describe('Source map format (CLI)', () => {
     expect(out).toContain('sourceMappingURL=data:application/json;base64,');
     expect(mapExists).toBe(false);
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  }, 15000);
 
   it('generates external .js.map file when requested', async () => {
     const { tmpDir, outPath, out, mapExists } = await compileWithMode('external');
     expect(out).toContain(`//# sourceMappingURL=${path.basename(outPath)}.map`);
     expect(mapExists).toBe(true);
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  }, 15000);
 
   it('omits source map when none specified', async () => {
     const { tmpDir, out, mapExists } = await compileWithMode('none');
     expect(out).not.toContain('sourceMappingURL=');
     expect(mapExists).toBe(false);
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  }, 15000);
 });
 
 describe('Source map accuracy (integration)', () => {

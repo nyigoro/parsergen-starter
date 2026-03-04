@@ -864,10 +864,37 @@ export function callWASMFunction(
   runtime: WASMRuntime,
   funcName: string,
   ...args: number[]
-): number {
-  const fn = runtime.instance.exports[funcName] as (...params: number[]) => number;
+): number | bigint {
+  const fn = runtime.instance.exports[funcName] as ((...params: number[]) => number | bigint) | undefined;
   if (!fn) {
     throw new Error(`Function ${funcName} not found in WASM exports`);
   }
   return fn(...args);
+}
+
+export function isWASMPromiseHandle(handle: number): boolean {
+  if (!Number.isFinite(handle)) return false;
+  return wasmPromisePool.has(Math.trunc(handle));
+}
+
+export function resolveWASMPromiseHandle(handle: number): unknown {
+  const entry = promiseEntry(handle);
+  if (!entry || !entry.settled) return null;
+  return entry.value;
+}
+
+export async function awaitWASMPromiseHandle(
+  handle: number,
+  timeoutMs: number = 2000,
+  pollIntervalMs: number = 1
+): Promise<unknown> {
+  if (!isWASMPromiseHandle(handle)) return null;
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const entry = promiseEntry(handle);
+    if (!entry) return null;
+    if (entry.settled) return entry.value;
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+  return null;
 }

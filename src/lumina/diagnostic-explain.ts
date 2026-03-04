@@ -143,6 +143,17 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
       'Refactor deeply nested/destructuring pattern logic into explicit steps.',
     ],
   },
+  'WASM-IS-001': {
+    code: 'WASM-IS-001',
+    title: 'WASM target does not support `is` narrowing',
+    summary: 'The WASM backend currently rejects `is`-based runtime narrowing.',
+    why: 'WASM v1 lowering does not carry the runtime narrowing metadata required for sound `is` checks.',
+    howToFix: [
+      'Rewrite the logic using `match` on enum variants.',
+      'If you need target-independent behavior, prefer pattern matching over `is` checks.',
+      'Compile with JS backend for code that must keep `is` narrowing.',
+    ],
+  },
   'ARRAY-SIZE-MISMATCH': {
     code: 'ARRAY-SIZE-MISMATCH',
     title: 'Array literal length mismatch',

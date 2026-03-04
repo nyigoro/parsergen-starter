@@ -1290,6 +1290,387 @@ export const path = {
   },
 };
 
+type UrlRecord = {
+  href: string;
+  origin: string;
+  protocol: string;
+  host: string;
+  pathname: string;
+  search: string;
+  hash: string;
+};
+
+type UrlConfig = {
+  protocol?: unknown;
+  host?: unknown;
+  pathname?: unknown;
+  search?: unknown;
+  hash?: unknown;
+};
+
+const isUrlRecord = (value: unknown): value is UrlRecord =>
+  !!value &&
+  typeof value === 'object' &&
+  typeof (value as { href?: unknown }).href === 'string' &&
+  typeof (value as { origin?: unknown }).origin === 'string';
+
+const normalizeProtocol = (value: unknown): string => {
+  const base = String(value ?? '').trim();
+  if (!base) return '';
+  return base.endsWith(':') ? base : `${base}:`;
+};
+
+const toUrlRecord = (raw: URL): UrlRecord => ({
+  href: raw.href,
+  origin: raw.origin,
+  protocol: raw.protocol,
+  host: raw.host,
+  pathname: raw.pathname,
+  search: raw.search,
+  hash: raw.hash,
+});
+
+const emptyUrlRecord = (): UrlRecord => ({
+  href: '',
+  origin: '',
+  protocol: '',
+  host: '',
+  pathname: '',
+  search: '',
+  hash: '',
+});
+
+const coerceToUrl = (value: unknown): URL | null => {
+  if (typeof URL !== 'function') return null;
+  if (typeof value === 'string') {
+    try {
+      return new URL(value);
+    } catch {
+      return null;
+    }
+  }
+  if (isUrlRecord(value)) {
+    try {
+      return new URL(value.href);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+export const url = {
+  is_available: (): boolean => typeof URL === 'function',
+  parse: (raw: string) => {
+    if (typeof URL !== 'function') return Result.Err('URL API is not available in this runtime');
+    try {
+      return Result.Ok(toUrlRecord(new URL(String(raw))));
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  },
+  build: (config: UrlConfig) => {
+    if (typeof URL !== 'function') return Result.Err('URL API is not available in this runtime');
+    const protocol = normalizeProtocol(config?.protocol);
+    const host = String(config?.host ?? '').trim();
+    if (!protocol || !host) return Result.Err('URL build requires protocol and host');
+    try {
+      const built = new URL(`${protocol}//${host}`);
+      const pathname = config?.pathname;
+      const search = config?.search;
+      const hash = config?.hash;
+      if (pathname != null && pathname !== '') {
+        const text = String(pathname);
+        built.pathname = text.startsWith('/') ? text : `/${text}`;
+      }
+      if (search != null && search !== '') {
+        const text = String(search);
+        built.search = text.startsWith('?') ? text : `?${text}`;
+      }
+      if (hash != null && hash !== '') {
+        const text = String(hash);
+        built.hash = text.startsWith('#') ? text : `#${text}`;
+      }
+      return Result.Ok(built.href);
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  },
+  get_origin: (value: unknown): string => coerceToUrl(value)?.origin ?? '',
+  get_pathname: (value: unknown): string => coerceToUrl(value)?.pathname ?? '',
+  get_search: (value: unknown): string => coerceToUrl(value)?.search ?? '',
+  get_hash: (value: unknown): string => coerceToUrl(value)?.hash ?? '',
+  set_pathname: (value: unknown, pathname: string): UrlRecord => {
+    const next = coerceToUrl(value);
+    if (!next) return emptyUrlRecord();
+    const text = String(pathname ?? '');
+    next.pathname = text.startsWith('/') ? text : `/${text}`;
+    return toUrlRecord(next);
+  },
+  set_search: (value: unknown, search: string): UrlRecord => {
+    const next = coerceToUrl(value);
+    if (!next) return emptyUrlRecord();
+    const text = String(search ?? '');
+    next.search = !text ? '' : text.startsWith('?') ? text : `?${text}`;
+    return toUrlRecord(next);
+  },
+  append_param: (value: unknown, key: string, paramValue: string): UrlRecord => {
+    const next = coerceToUrl(value);
+    if (!next) return emptyUrlRecord();
+    next.searchParams.append(String(key), String(paramValue));
+    return toUrlRecord(next);
+  },
+};
+
+const webStorageLocalFallback = new Map<string, string>();
+const webStorageSessionFallback = new Map<string, string>();
+
+type StorageLike = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+  clear: () => void;
+  length: number;
+};
+
+const asStorageLike = (value: unknown): StorageLike | null => {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<StorageLike>;
+  if (
+    typeof candidate.getItem !== 'function' ||
+    typeof candidate.setItem !== 'function' ||
+    typeof candidate.removeItem !== 'function' ||
+    typeof candidate.clear !== 'function'
+  ) {
+    return null;
+  }
+  return candidate as StorageLike;
+};
+
+const browserLocalStorage = (): StorageLike | null =>
+  asStorageLike((globalThis as { localStorage?: unknown }).localStorage);
+const browserSessionStorage = (): StorageLike | null =>
+  asStorageLike((globalThis as { sessionStorage?: unknown }).sessionStorage);
+
+const webStorageGet = (scope: 'local' | 'session', key: string) => {
+  const storage = scope === 'local' ? browserLocalStorage() : browserSessionStorage();
+  if (storage) {
+    try {
+      const value = storage.getItem(String(key));
+      return value == null ? Option.None : Option.Some(value);
+    } catch {
+      return Option.None;
+    }
+  }
+  const fallback = scope === 'local' ? webStorageLocalFallback : webStorageSessionFallback;
+  return fallback.has(String(key)) ? Option.Some(fallback.get(String(key)) ?? '') : Option.None;
+};
+
+const webStorageSet = (scope: 'local' | 'session', key: string, value: string) => {
+  const storage = scope === 'local' ? browserLocalStorage() : browserSessionStorage();
+  if (storage) {
+    try {
+      storage.setItem(String(key), String(value));
+      return Result.Ok(undefined);
+    } catch (error) {
+      return Result.Err(error instanceof Error ? error.message : String(error));
+    }
+  }
+  const fallback = scope === 'local' ? webStorageLocalFallback : webStorageSessionFallback;
+  fallback.set(String(key), String(value));
+  return Result.Ok(undefined);
+};
+
+const webStorageRemove = (scope: 'local' | 'session', key: string): void => {
+  const storage = scope === 'local' ? browserLocalStorage() : browserSessionStorage();
+  if (storage) {
+    try {
+      storage.removeItem(String(key));
+      return;
+    } catch {
+      // fall through to fallback removal
+    }
+  }
+  const fallback = scope === 'local' ? webStorageLocalFallback : webStorageSessionFallback;
+  fallback.delete(String(key));
+};
+
+const webStorageClear = (scope: 'local' | 'session'): void => {
+  const storage = scope === 'local' ? browserLocalStorage() : browserSessionStorage();
+  if (storage) {
+    try {
+      storage.clear();
+      return;
+    } catch {
+      // fall through to fallback clear
+    }
+  }
+  const fallback = scope === 'local' ? webStorageLocalFallback : webStorageSessionFallback;
+  fallback.clear();
+};
+
+const webStorageLength = (scope: 'local' | 'session'): number => {
+  const storage = scope === 'local' ? browserLocalStorage() : browserSessionStorage();
+  if (storage) {
+    try {
+      return Math.trunc(storage.length);
+    } catch {
+      return 0;
+    }
+  }
+  const fallback = scope === 'local' ? webStorageLocalFallback : webStorageSessionFallback;
+  return fallback.size;
+};
+
+export const web_storage = {
+  is_available: (): boolean => browserLocalStorage() !== null && browserSessionStorage() !== null,
+  local_get: (key: string) => webStorageGet('local', key),
+  local_set: (key: string, value: string) => webStorageSet('local', key, value),
+  local_remove: (key: string): void => webStorageRemove('local', key),
+  local_clear: (): void => webStorageClear('local'),
+  local_length: (): number => webStorageLength('local'),
+  session_get: (key: string) => webStorageGet('session', key),
+  session_set: (key: string, value: string) => webStorageSet('session', key, value),
+  session_remove: (key: string): void => webStorageRemove('session', key),
+  session_clear: (): void => webStorageClear('session'),
+  session_length: (): number => webStorageLength('session'),
+};
+
+type DomElementRecord = object;
+type DomEventRecord = { element: EventTarget; event: string; listener: EventListener };
+
+let domNextHandle = 1;
+let domNextEventHandle = 1;
+const domElements = new Map<number, DomElementRecord>();
+const domElementHandles = new WeakMap<object, number>();
+const domEvents = new Map<number, DomEventRecord>();
+
+const getDocumentHandle = (): Document | null => {
+  const doc = (globalThis as { document?: Document }).document;
+  if (!doc || typeof doc.querySelector !== 'function') return null;
+  return doc;
+};
+
+const toDomHandle = (element: DomElementRecord | null | undefined): number => {
+  if (!element || typeof element !== 'object') return 0;
+  const existing = domElementHandles.get(element);
+  if (existing) return existing;
+  const next = domNextHandle++;
+  domElementHandles.set(element, next);
+  domElements.set(next, element);
+  return next;
+};
+
+const fromDomHandle = (handle: number): DomElementRecord | null =>
+  domElements.get(Math.trunc(handle)) ?? null;
+
+export const dom = {
+  is_available: (): boolean => getDocumentHandle() !== null,
+  query: (selector: string) => {
+    const doc = getDocumentHandle();
+    if (!doc) return Option.None;
+    const element = doc.querySelector(String(selector));
+    return element ? Option.Some(toDomHandle(element)) : Option.None;
+  },
+  query_all: (selector: string): number[] => {
+    const doc = getDocumentHandle();
+    if (!doc) return [];
+    return Array.from(doc.querySelectorAll(String(selector))).map((entry) => toDomHandle(entry));
+  },
+  create: (tag: string): number => {
+    const doc = getDocumentHandle();
+    if (!doc) return 0;
+    return toDomHandle(doc.createElement(String(tag)));
+  },
+  get_attr: (elementHandle: number, name: string) => {
+    const element = fromDomHandle(elementHandle) as { getAttribute?: (name: string) => string | null } | null;
+    if (!element || typeof element.getAttribute !== 'function') return Option.None;
+    const value = element.getAttribute(String(name));
+    return value == null ? Option.None : Option.Some(value);
+  },
+  set_attr: (elementHandle: number, name: string, value: string): void => {
+    const element = fromDomHandle(elementHandle) as { setAttribute?: (name: string, value: string) => void } | null;
+    if (!element || typeof element.setAttribute !== 'function') return;
+    element.setAttribute(String(name), String(value));
+  },
+  remove_attr: (elementHandle: number, name: string): void => {
+    const element = fromDomHandle(elementHandle) as { removeAttribute?: (name: string) => void } | null;
+    if (!element || typeof element.removeAttribute !== 'function') return;
+    element.removeAttribute(String(name));
+  },
+  get_text: (elementHandle: number): string => {
+    const element = fromDomHandle(elementHandle) as { textContent?: string | null } | null;
+    return element?.textContent ?? '';
+  },
+  set_text: (elementHandle: number, text: string): void => {
+    const element = fromDomHandle(elementHandle) as { textContent?: string | null } | null;
+    if (!element) return;
+    element.textContent = String(text);
+  },
+  get_html: (elementHandle: number): string => {
+    const element = fromDomHandle(elementHandle) as { innerHTML?: string } | null;
+    return element?.innerHTML ?? '';
+  },
+  set_html: (elementHandle: number, html: string): void => {
+    const element = fromDomHandle(elementHandle) as { innerHTML?: string } | null;
+    if (!element) return;
+    element.innerHTML = String(html);
+  },
+  append_child: (parentHandle: number, childHandle: number): void => {
+    const parent = fromDomHandle(parentHandle) as { appendChild?: (child: unknown) => void } | null;
+    const child = fromDomHandle(childHandle);
+    if (!parent || !child || typeof parent.appendChild !== 'function') return;
+    parent.appendChild(child);
+  },
+  remove_child: (parentHandle: number, childHandle: number): void => {
+    const parent = fromDomHandle(parentHandle) as { removeChild?: (child: unknown) => void } | null;
+    const child = fromDomHandle(childHandle);
+    if (!parent || !child || typeof parent.removeChild !== 'function') return;
+    try {
+      parent.removeChild(child);
+    } catch {
+      // ignore remove errors
+    }
+  },
+  add_event: (elementHandle: number, event: string, handler: unknown): number => {
+    const element = fromDomHandle(elementHandle) as EventTarget | null;
+    if (!element || typeof element.addEventListener !== 'function' || typeof handler !== 'function') return 0;
+    const listener: EventListener = () => {
+      try {
+        (handler as () => void)();
+      } catch {
+        // ignore user handler failures in runtime bridge
+      }
+    };
+    element.addEventListener(String(event), listener);
+    const handle = domNextEventHandle++;
+    domEvents.set(handle, { element, event: String(event), listener });
+    return handle;
+  },
+  remove_event: (eventHandle: number): void => {
+    const entry = domEvents.get(Math.trunc(eventHandle));
+    if (!entry) return;
+    if (typeof entry.element.removeEventListener === 'function') {
+      entry.element.removeEventListener(entry.event, entry.listener);
+    }
+    domEvents.delete(Math.trunc(eventHandle));
+  },
+  get_style: (elementHandle: number, prop: string): string => {
+    const element = fromDomHandle(elementHandle) as { style?: Record<string, unknown> } | null;
+    if (!element) return '';
+    const key = String(prop);
+    const styleObj = element.style as Record<string, unknown> | undefined;
+    if (!styleObj) return '';
+    const value = styleObj[key];
+    return typeof value === 'string' ? value : '';
+  },
+  set_style: (elementHandle: number, prop: string, value: string): void => {
+    const element = fromDomHandle(elementHandle) as { style?: Record<string, unknown> } | null;
+    if (!element || !element.style) return;
+    element.style[String(prop)] = String(value);
+  },
+};
+
 export const env = {
   var: (name: string) => {
     const nodeProcess = getNodeProcess();
@@ -3049,6 +3430,381 @@ export const thread = {
     throw new Error('Invalid thread handle');
   },
   join_worker: (handle: Thread): Promise<number> => handle.join(),
+};
+
+type WebWorkerRecord = {
+  id: number;
+  entry: ThreadWorker;
+  inlineUrl: string | null;
+};
+
+let webWorkerNextHandle = 1;
+const webWorkerHandles = new Map<number, WebWorkerRecord>();
+
+const toWorkerMessageString = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const getWebWorkerRecord = (handle: number): WebWorkerRecord | null =>
+  webWorkerHandles.get(Math.trunc(handle)) ?? null;
+
+const registerWebWorker = (entry: ThreadWorker, inlineUrl: string | null = null): number => {
+  const id = webWorkerNextHandle++;
+  webWorkerHandles.set(id, { id, entry, inlineUrl });
+  return id;
+};
+
+const createInlineWorker = async (source: string): Promise<{ worker: ThreadWorker; inlineUrl: string | null }> => {
+  if (isNodeRuntime()) {
+    try {
+      const nodeWorkers = await import('node:worker_threads');
+      const WorkerCtor = (nodeWorkers as {
+        Worker?: new (script: string, options?: { eval?: boolean }) => NodeWorkerLike;
+      }).Worker;
+      if (typeof WorkerCtor === 'function') {
+        return {
+          worker: { kind: 'node', worker: new WorkerCtor(String(source), { eval: true }) },
+          inlineUrl: null,
+        };
+      }
+    } catch {
+      // fall through to browser worker path
+    }
+  }
+  if (typeof Worker === 'function' && typeof Blob === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+    const blob = new Blob([String(source)], { type: 'application/javascript' });
+    const inlineUrl = URL.createObjectURL(blob);
+    const worker = new Worker(inlineUrl, { type: 'module' }) as unknown as WebWorkerLike;
+    return { worker: { kind: 'web', worker }, inlineUrl };
+  }
+  throw new Error('Worker API is not available in this environment');
+};
+
+const cleanupWebWorkerRecord = (record: WebWorkerRecord | null): void => {
+  if (!record) return;
+  webWorkerHandles.delete(record.id);
+  if (record.inlineUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+    try {
+      URL.revokeObjectURL(record.inlineUrl);
+    } catch {
+      // ignore revoke failures
+    }
+  }
+};
+
+const isWorkerContextBrowser = (): boolean =>
+  typeof WorkerGlobalScope !== 'undefined' &&
+  typeof self !== 'undefined' &&
+  self instanceof WorkerGlobalScope;
+
+const isWorkerContextNode = (): boolean => {
+  if (!isNodeRuntime()) return false;
+  const workerThreads = getNodeBuiltinModule('node:worker_threads') as { isMainThread?: unknown } | null;
+  return workerThreads != null && typeof workerThreads.isMainThread === 'boolean' ? !workerThreads.isMainThread : false;
+};
+
+export const web_worker = {
+  is_available: (): boolean => isNodeRuntime() || typeof Worker === 'function',
+  spawn: async (specifier: string): Promise<{ $tag: string; $payload?: unknown }> => {
+    const input = String(specifier ?? '').trim();
+    if (!input) return Result.Err('Worker specifier must be a non-empty string');
+    try {
+      const worker = await createThreadWorker(input);
+      return Result.Ok(registerWebWorker(worker));
+    } catch (error) {
+      return Result.Err(opfsError(error));
+    }
+  },
+  spawn_inline: async (source: string): Promise<{ $tag: string; $payload?: unknown }> => {
+    const input = String(source ?? '');
+    if (!input.trim()) return Result.Err('Inline worker source must be a non-empty string');
+    try {
+      const worker = await createInlineWorker(input);
+      return Result.Ok(registerWebWorker(worker.worker, worker.inlineUrl));
+    } catch (error) {
+      return Result.Err(opfsError(error));
+    }
+  },
+  post: (handle: number, msg: string): { $tag: string; $payload?: unknown } => {
+    const record = getWebWorkerRecord(handle);
+    if (!record) return Result.Err(`Unknown worker handle ${handle}`);
+    try {
+      record.entry.worker.postMessage(String(msg));
+      return Result.Ok(undefined);
+    } catch (error) {
+      return Result.Err(opfsError(error));
+    }
+  },
+  on_message: (handle: number, handler: unknown): void => {
+    const record = getWebWorkerRecord(handle);
+    if (!record || typeof handler !== 'function') return;
+    if (record.entry.kind === 'node') {
+      record.entry.worker.on('message', (value) => {
+        (handler as (msg: string) => void)(toWorkerMessageString(value));
+      });
+      return;
+    }
+    record.entry.worker.addEventListener('message', (event) => {
+      (handler as (msg: string) => void)(toWorkerMessageString(event.data));
+    });
+  },
+  on_error: (handle: number, handler: unknown): void => {
+    const record = getWebWorkerRecord(handle);
+    if (!record || typeof handler !== 'function') return;
+    if (record.entry.kind === 'node') {
+      record.entry.worker.on('error', (error) => {
+        (handler as (msg: string) => void)(error instanceof Error ? error.message : String(error));
+      });
+      return;
+    }
+    record.entry.worker.addEventListener('error', (event) => {
+      const error = event.error;
+      const message = error instanceof Error ? error.message : event.message || String(error ?? '');
+      (handler as (msg: string) => void)(message);
+    });
+  },
+  terminate: (handle: number): void => {
+    const record = getWebWorkerRecord(handle);
+    if (!record) return;
+    try {
+      if (record.entry.kind === 'node') {
+        void record.entry.worker.terminate();
+      } else {
+        record.entry.worker.terminate();
+      }
+    } finally {
+      cleanupWebWorkerRecord(record);
+    }
+  },
+  is_worker_context: (): boolean => isWorkerContextBrowser() || isWorkerContextNode(),
+  self_post: (msg: string): void => {
+    if (isWorkerContextBrowser() && typeof postMessage === 'function') {
+      postMessage(String(msg));
+      return;
+    }
+    if (isWorkerContextNode()) {
+      const workerThreads = getNodeBuiltinModule('node:worker_threads') as {
+        parentPort?: { postMessage?: (value: unknown) => void };
+      } | null;
+      if (typeof workerThreads?.parentPort?.postMessage === 'function') {
+        workerThreads.parentPort.postMessage(String(msg));
+      }
+    }
+  },
+  self_on_message: (handler: unknown): void => {
+    if (typeof handler !== 'function') return;
+    if (isWorkerContextBrowser() && typeof addEventListener === 'function') {
+      addEventListener('message', (event) => {
+        (handler as (msg: string) => void)(toWorkerMessageString((event as MessageEvent<unknown>).data));
+      });
+      return;
+    }
+    if (isWorkerContextNode()) {
+      const workerThreads = getNodeBuiltinModule('node:worker_threads') as {
+        parentPort?: { on?: (event: string, listener: (value: unknown) => void) => void };
+      } | null;
+      if (typeof workerThreads?.parentPort?.on === 'function') {
+        workerThreads.parentPort.on('message', (value) => {
+          (handler as (msg: string) => void)(toWorkerMessageString(value));
+        });
+      }
+    }
+  },
+};
+
+type RuntimeStreamBuffer = {
+  kind: 'buffer';
+  data: Uint8Array;
+  offset: number;
+  chunkSize: number;
+};
+
+type RuntimeStreamReader = {
+  kind: 'reader';
+  reader: {
+    read: () => Promise<{ done?: boolean; value?: unknown }>;
+    cancel?: () => Promise<void> | void;
+  };
+  done: boolean;
+};
+
+type RuntimeStreamPipe = {
+  kind: 'pipe';
+  sourceHandle: number;
+  transform: (chunk: number[]) => unknown;
+};
+
+type RuntimeStreamRecord = {
+  id: number;
+  state: RuntimeStreamBuffer | RuntimeStreamReader | RuntimeStreamPipe;
+};
+
+type StreamChunkRead =
+  | { ok: true; chunk: number[] | null }
+  | { ok: false; error: string };
+
+let runtimeStreamNextHandle = 1;
+const runtimeStreams = new Map<number, RuntimeStreamRecord>();
+const STREAM_DEFAULT_CHUNK_SIZE = 16 * 1024;
+
+const toByteNumber = (value: unknown): number => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(255, Math.trunc(num)));
+};
+
+const toByteArray = (value: unknown): Uint8Array => {
+  if (value instanceof Uint8Array) return value;
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+  }
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (Array.isArray(value)) return Uint8Array.from(value.map((entry) => toByteNumber(entry)));
+  if (value && typeof value === 'object') {
+    const iterator = (value as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
+    if (typeof iterator === 'function') {
+      return Uint8Array.from(Array.from(value as Iterable<unknown>).map((entry) => toByteNumber(entry)));
+    }
+  }
+  return new Uint8Array(0);
+};
+
+const registerRuntimeStream = (state: RuntimeStreamRecord['state']): number => {
+  const id = runtimeStreamNextHandle++;
+  runtimeStreams.set(id, { id, state });
+  return id;
+};
+
+const readChunkFromRuntimeStream = async (handle: number, seen: Set<number> = new Set()): Promise<StreamChunkRead> => {
+  const normalized = Math.trunc(handle);
+  if (seen.has(normalized)) {
+    return { ok: false, error: 'Detected cyclic stream pipeline' };
+  }
+  const record = runtimeStreams.get(normalized);
+  if (!record) return { ok: false, error: `Unknown stream handle ${handle}` };
+  if (record.state.kind === 'buffer') {
+    const state = record.state;
+    if (state.offset >= state.data.length) return { ok: true, chunk: null };
+    const nextEnd = Math.min(state.data.length, state.offset + state.chunkSize);
+    const chunk = Array.from(state.data.subarray(state.offset, nextEnd));
+    state.offset = nextEnd;
+    return { ok: true, chunk };
+  }
+  if (record.state.kind === 'reader') {
+    const state = record.state;
+    if (state.done) return { ok: true, chunk: null };
+    try {
+      const next = await state.reader.read();
+      if (next.done) {
+        state.done = true;
+        return { ok: true, chunk: null };
+      }
+      return { ok: true, chunk: Array.from(toByteArray(next.value)) };
+    } catch (error) {
+      return { ok: false, error: opfsError(error) };
+    }
+  }
+  const pipeState = record.state;
+  const nestedSeen = new Set(seen);
+  nestedSeen.add(normalized);
+  const source = await readChunkFromRuntimeStream(pipeState.sourceHandle, nestedSeen);
+  if (!source.ok) return source;
+  if (source.chunk == null) return source;
+  try {
+    return { ok: true, chunk: Array.from(toByteArray(pipeState.transform(source.chunk))) };
+  } catch (error) {
+    return { ok: false, error: opfsError(error) };
+  }
+};
+
+const decodeTextFromBytes = (bytes: number[]): string => {
+  const data = Uint8Array.from(bytes);
+  if (typeof TextDecoder === 'function') {
+    return new TextDecoder().decode(data);
+  }
+  return String.fromCharCode(...Array.from(data));
+};
+
+export const web_streams = {
+  is_available: (): boolean => typeof ReadableStream === 'function' || typeof fetch === 'function' || isNodeRuntime(),
+  from_fetch: async (url: string): Promise<{ $tag: string; $payload?: unknown }> => {
+    if (typeof fetch !== 'function') return Result.Err('Fetch API is not available in this environment');
+    try {
+      const response = await fetch(String(url));
+      const body = (response as { body?: { getReader?: () => unknown } }).body;
+      if (body && typeof body.getReader === 'function') {
+        const reader = body.getReader() as RuntimeStreamReader['reader'];
+        return Result.Ok(registerRuntimeStream({ kind: 'reader', reader, done: false }));
+      }
+      if (typeof response.arrayBuffer === 'function') {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return Result.Ok(registerRuntimeStream({ kind: 'buffer', data: bytes, offset: 0, chunkSize: STREAM_DEFAULT_CHUNK_SIZE }));
+      }
+      return Result.Err('Response body stream is not available');
+    } catch (error) {
+      return Result.Err(opfsError(error));
+    }
+  },
+  from_string: (source: string): number => {
+    const bytes = typeof TextEncoder === 'function' ? new TextEncoder().encode(String(source)) : Uint8Array.from(String(source).split('').map((ch) => ch.charCodeAt(0) & 0xff));
+    return registerRuntimeStream({ kind: 'buffer', data: bytes, offset: 0, chunkSize: STREAM_DEFAULT_CHUNK_SIZE });
+  },
+  from_bytes: (data: unknown): number =>
+    registerRuntimeStream({
+      kind: 'buffer',
+      data: toByteArray(data),
+      offset: 0,
+      chunkSize: STREAM_DEFAULT_CHUNK_SIZE,
+    }),
+  read_chunk: async (streamHandle: number): Promise<{ $tag: string; $payload?: unknown }> => {
+    const next = await readChunkFromRuntimeStream(streamHandle);
+    if (!next.ok) return Result.Err(next.error);
+    if (next.chunk == null) return Result.Ok(Option.None);
+    return Result.Ok(Option.Some(next.chunk));
+  },
+  read_all: async (streamHandle: number): Promise<{ $tag: string; $payload?: unknown }> => {
+    const all: number[] = [];
+    for (;;) {
+      const next = await readChunkFromRuntimeStream(streamHandle);
+      if (!next.ok) return Result.Err(next.error);
+      if (next.chunk == null) return Result.Ok(all);
+      all.push(...next.chunk);
+    }
+  },
+  read_text: async (streamHandle: number): Promise<{ $tag: string; $payload?: unknown }> => {
+    const all = await web_streams.read_all(streamHandle);
+    if (getEnumTag(all as LuminaEnumLike) === 'Err') return all;
+    const payload = getEnumPayload(all as LuminaEnumLike);
+    const bytes = Array.isArray(payload) ? payload.map((entry) => toByteNumber(entry)) : [];
+    return Result.Ok(decodeTextFromBytes(bytes));
+  },
+  pipe: (streamHandle: number, transform: unknown): number => {
+    const record = runtimeStreams.get(Math.trunc(streamHandle));
+    if (!record || typeof transform !== 'function') return 0;
+    return registerRuntimeStream({
+      kind: 'pipe',
+      sourceHandle: Math.trunc(streamHandle),
+      transform: transform as (chunk: number[]) => unknown,
+    });
+  },
+  cancel: (streamHandle: number): void => {
+    const normalized = Math.trunc(streamHandle);
+    const record = runtimeStreams.get(normalized);
+    if (!record) return;
+    if (record.state.kind === 'reader' && typeof record.state.reader.cancel === 'function') {
+      try {
+        void record.state.reader.cancel();
+      } catch {
+        // ignore cancellation failures
+      }
+    }
+    runtimeStreams.delete(normalized);
+  },
 };
 
 export class Mutex {

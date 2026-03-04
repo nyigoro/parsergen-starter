@@ -13,6 +13,11 @@ export type RegistryConfig = {
   token: string | null;
 };
 
+export type CdnConfig = {
+  lumina: string | null;
+  npm: string | null;
+};
+
 export type PackageManifest = {
   name: string;
   version: string;
@@ -23,6 +28,7 @@ export type PackageManifest = {
   dependencies: Map<string, string>;
   devDeps: Map<string, string>;
   registry: RegistryConfig | null;
+  cdn?: CdnConfig | null;
 };
 
 export type ValidationError = {
@@ -64,6 +70,7 @@ function parseTomlManifest(source: string): PackageManifest {
   const dependencies = new Map<string, string>();
   const devDeps = new Map<string, string>();
   const registryFields: Record<string, string> = {};
+  const cdnFields: Record<string, string> = {};
   const arrays: Record<string, string[]> = {};
   let section = '';
 
@@ -88,6 +95,8 @@ function parseTomlManifest(source: string): PackageManifest {
       devDeps.set(key, quoted);
     } else if (section === 'registry' && quoted !== null) {
       registryFields[key] = quoted;
+    } else if (section === 'cdn' && quoted !== null) {
+      cdnFields[key] = quoted;
     }
   }
 
@@ -96,6 +105,13 @@ function parseTomlManifest(source: string): PackageManifest {
       ? {
           url: registryFields.url ?? DEFAULT_REGISTRY_URL,
           token: registryFields.token ?? null,
+        }
+      : null;
+  const cdn =
+    cdnFields.lumina || cdnFields.npm
+      ? {
+          lumina: cdnFields.lumina ?? null,
+          npm: cdnFields.npm ?? null,
         }
       : null;
 
@@ -109,6 +125,7 @@ function parseTomlManifest(source: string): PackageManifest {
     dependencies,
     devDeps,
     registry,
+    cdn,
   };
 }
 
@@ -146,6 +163,7 @@ export async function readManifest(dir: string): Promise<PackageManifest> {
       dependencies: toDependencyMap(parsed.dependencies),
       devDeps: toDependencyMap(parsed.devDependencies),
       registry: null,
+      cdn: null,
     };
   }
   throw new Error(`Missing ${MANIFEST_FILENAME}`);
@@ -177,6 +195,15 @@ export async function writeManifest(dir: string, manifest: PackageManifest): Pro
     lines.push(`url = "${manifest.registry.url.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
     if (manifest.registry.token) {
       lines.push(`token = "${manifest.registry.token.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    }
+  }
+  if (manifest.cdn && (manifest.cdn.lumina || manifest.cdn.npm)) {
+    lines.push('', '[cdn]');
+    if (manifest.cdn.lumina) {
+      lines.push(`lumina = "${manifest.cdn.lumina.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    }
+    if (manifest.cdn.npm) {
+      lines.push(`npm = "${manifest.cdn.npm.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
     }
   }
   const content = `${lines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`;
@@ -219,6 +246,12 @@ export function validateManifest(manifest: PackageManifest, dir: string = proces
   }
   if (manifest.registry && manifest.registry.url.trim().length === 0) {
     errors.push({ field: 'registry.url', message: 'Registry URL cannot be empty.' });
+  }
+  if (manifest.cdn?.lumina && !/^https?:\/\//.test(manifest.cdn.lumina)) {
+    errors.push({ field: 'cdn.lumina', message: 'cdn.lumina must be an http(s) URL.' });
+  }
+  if (manifest.cdn?.npm && !/^https?:\/\//.test(manifest.cdn.npm)) {
+    errors.push({ field: 'cdn.npm', message: 'cdn.npm must be an http(s) URL.' });
   }
   return errors;
 }

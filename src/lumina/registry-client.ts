@@ -19,6 +19,10 @@ export type RegistryVersionInfo = {
   resolved: string;
   integrity: string;
   lumina?: string | Record<string, string>;
+  cdnUrl?: string | null;
+  npmCdnUrl?: string | null;
+  esm?: string | null;
+  wasm?: string | null;
   deps: Map<string, string>;
 };
 
@@ -36,6 +40,31 @@ export type SearchResult = {
 export type RegistryClientConfig = {
   url: string;
   token: string | null;
+};
+
+export type CdnProvider = 'lumina' | 'npm';
+
+export type CDNArtifact = {
+  name: string;
+  version: string;
+  kind: 'esm' | 'wasm' | 'source';
+  data: Buffer;
+  integrity: string;
+  filename: string;
+  provider: CdnProvider;
+};
+
+export type CDNResult = {
+  url: string;
+  integrity: string;
+  provider: CdnProvider;
+};
+
+export type SearchOptions = {
+  limit?: number;
+  offset?: number;
+  sort?: 'relevance' | 'downloads' | 'updated';
+  tags?: string[];
 };
 
 const parseVersion = (value: string): [number, number, number] | null => {
@@ -95,6 +124,22 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T
 const joinUrl = (baseUrl: string, relativePath: string): string =>
   `${baseUrl.replace(/\/+$/, '')}/${relativePath.replace(/^\/+/, '')}`;
 
+const normalizeIntegrity = (value: string): string =>
+  value.startsWith('sha256:') ? value : `sha256:${value}`;
+
+export const buildCdnUrl = (
+  provider: CdnProvider,
+  name: string,
+  version: string,
+  filename: string
+): string => {
+  const normalizedFile = String(filename).replace(/^\/+/, '');
+  if (provider === 'npm') {
+    return `https://cdn.jsdelivr.net/npm/${name}@${version}/${normalizedFile}`;
+  }
+  return `https://cdn.luminalang.dev/${name}@${version}/${normalizedFile}`;
+};
+
 const headersFor = (config: RegistryClientConfig, extra: HeadersInit = {}): HeadersInit => ({
   'user-agent': USER_AGENT,
   accept: 'application/json',
@@ -142,6 +187,10 @@ export async function getVersionInfo(name: string, version: string, config: Regi
     resolved: string;
     integrity: string;
     lumina?: string | Record<string, string>;
+    cdnUrl?: string | null;
+    npmCdnUrl?: string | null;
+    esm?: string | null;
+    wasm?: string | null;
     deps?: Record<string, string>;
   }>(joinUrl(config.url, `/packages/${encodedName}/${encodedVersion}`), config);
   return {
@@ -150,6 +199,10 @@ export async function getVersionInfo(name: string, version: string, config: Regi
     resolved: payload.resolved,
     integrity: payload.integrity,
     lumina: typeof payload.lumina === 'string' || typeof payload.lumina === 'object' ? payload.lumina : undefined,
+    cdnUrl: typeof payload.cdnUrl === 'string' ? payload.cdnUrl : null,
+    npmCdnUrl: typeof payload.npmCdnUrl === 'string' ? payload.npmCdnUrl : null,
+    esm: typeof payload.esm === 'string' ? payload.esm : null,
+    wasm: typeof payload.wasm === 'string' ? payload.wasm : null,
     deps: new Map(Object.entries(payload.deps ?? {})),
   };
 }
@@ -208,12 +261,72 @@ export async function publishPackage(
   });
 }
 
-export async function search(query: string, config: RegistryClientConfig): Promise<SearchResult> {
-  const encoded = encodeURIComponent(query);
+export async function publishCDNArtifact(
+  artifact: CDNArtifact,
+  config: RegistryClientConfig
+): Promise<CDNResult> {
+  const normalizedIntegrity = normalizeIntegrity(artifact.integrity);
+  if (artifact.provider === 'npm') {
+    return {
+      url: buildCdnUrl('npm', artifact.name, artifact.version, artifact.filename),
+      integrity: normalizedIntegrity,
+      provider: 'npm',
+    };
+  }
+  const fallbackUrl = buildCdnUrl('lumina', artifact.name, artifact.version, artifact.filename);
+  try {
+    const response = await requestJson<{ url?: string; integrity?: string }>(
+      joinUrl(config.url, '/packages/cdn/publish'),
+      config,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: artifact.name,
+          version: artifact.version,
+          kind: artifact.kind,
+          filename: artifact.filename,
+          integrity: normalizedIntegrity,
+          data: artifact.data.toString('base64'),
+        }),
+      }
+    );
+    return {
+      url: typeof response.url === 'string' && response.url.length > 0 ? response.url : fallbackUrl,
+      integrity:
+        typeof response.integrity === 'string' && response.integrity.length > 0
+          ? normalizeIntegrity(response.integrity)
+          : normalizedIntegrity,
+      provider: 'lumina',
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/404|501|not found|not implemented/i.test(message)) throw error;
+    return {
+      url: fallbackUrl,
+      integrity: normalizedIntegrity,
+      provider: 'lumina',
+    };
+  }
+}
+
+export async function search(
+  query: string,
+  config: RegistryClientConfig,
+  options: SearchOptions = {}
+): Promise<SearchResult> {
+  const params = new URLSearchParams();
+  params.set('q', query);
+  if (typeof options.limit === 'number') params.set('limit', String(Math.max(1, Math.trunc(options.limit))));
+  if (typeof options.offset === 'number') params.set('offset', String(Math.max(0, Math.trunc(options.offset))));
+  if (options.sort) params.set('sort', options.sort);
+  if (Array.isArray(options.tags) && options.tags.length > 0) {
+    for (const tag of options.tags) params.append('tag', tag);
+  }
   const payload = await requestJson<{
     total?: number;
     results?: Array<{ name: string; version: string; description?: string | null }>;
-  }>(joinUrl(config.url, `/search?q=${encoded}`), config);
+  }>(joinUrl(config.url, `/search?${params.toString()}`), config);
   return {
     total: typeof payload.total === 'number' ? payload.total : Array.isArray(payload.results) ? payload.results.length : 0,
     results: Array.isArray(payload.results)

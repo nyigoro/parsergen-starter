@@ -200,6 +200,31 @@ describe('WASM codegen (WAT)', () => {
     expect(result.diagnostics.some((d) => d.code === 'WASM-TRAIT-001')).toBe(false);
   });
 
+  it('registers trait default methods for impl dispatch in WASM', () => {
+    const source = `
+      trait Label {
+        fn label(self: Self) -> i32 {
+          return 7;
+        }
+      }
+
+      struct Node { id: i32 }
+
+      impl Label for Node {}
+
+      fn main() -> i32 {
+        let n = Node { id: 1 };
+        return n.label();
+      }
+    `.trim() + '\n';
+
+    const ast = parseProgram(source);
+    const result = generateWATFromAst(ast, { exportMain: true });
+    expect(result.wat).toContain('(func $Label_Node_label');
+    expect(result.wat).toContain('call $Label_Node_label');
+    expect(result.diagnostics.some((d) => d.code === 'WASM-TRAIT-001')).toBe(false);
+  });
+
   it('supports Result try-operator lowering with early return', () => {
     const source = `
       enum Result<T, E> {

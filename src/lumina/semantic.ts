@@ -584,6 +584,7 @@ export interface AnalyzeOptions {
   traitRegistry?: TraitRegistry;
   traitMethodResolutions?: Map<number, TraitMethodResolution>;
   stopOnUnresolvedMemberError?: boolean;
+  target?: 'cjs' | 'esm' | 'wasm';
 }
 
 class StopOnUnresolvedMemberError extends Error {}
@@ -6223,6 +6224,17 @@ function typeCheckExpr(
       return narrowed ?? hmType ?? sym.type ?? null;
     }
     if (expr.type === 'IsExpr') {
+      if (options?.target === 'wasm') {
+        diagnostics.push(
+          diagAt(
+            `'is' type narrowing is not supported in WASM target. Use pattern matching instead (for example: match value { ${expr.variant}(v) => ... }).`,
+            expr.location,
+            'error',
+            'WASM-IS-001'
+          )
+        );
+        return 'bool';
+      }
       const valueType = typeCheckExpr(expr.value, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
       if (!valueType) return 'bool';
       const parsed = parseTypeName(valueType);

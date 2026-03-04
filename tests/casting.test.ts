@@ -63,6 +63,22 @@ describe('Casting surface', () => {
     expect(js).toContain('__lumina_stringify');
   });
 
+  it('lowers `as string` casts to WASM stringification helpers', () => {
+    const source = `
+      fn show(x: i32) -> string {
+        return x as string;
+      }
+    `.trim() + '\n';
+    const ast = parseProgram(source);
+    const semantic = analyzeLumina(ast);
+    const hm = inferProgram(ast as never);
+    const wasm = generateWATFromAst(ast, { exportMain: false });
+    expect(semantic.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+    expect(hm.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+    expect(wasm.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+    expect(wasm.wat).toContain('call $str_from_int');
+  });
+
   it('validates cast::<T>(...) arity', () => {
     const source = `
       fn bad() {

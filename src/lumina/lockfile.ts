@@ -6,6 +6,7 @@ import type { PackageManifest } from './package-manifest.js';
 
 export const LOCKFILE_FILENAME = 'lumina.lock';
 export const LEGACY_LOCKFILE_FILENAME = 'lumina.lock.json';
+export const BROWSER_LOCKFILE_FILENAME = 'lumina.browser.lock';
 export const LOCKFILE_VERSION = 1;
 
 export type LockfileEntry = {
@@ -15,12 +16,30 @@ export type LockfileEntry = {
   path?: string;
   integrity: string;
   lumina?: string | Record<string, string>;
+  cdnUrl?: string | null;
+  npmCdnUrl?: string | null;
+  esm?: string | null;
+  wasm?: string | null;
   deps: Map<string, string>;
 };
 
 export type LockfileData = {
   version: number;
   packages: Map<string, LockfileEntry>;
+};
+
+export type BrowserLockEntry = {
+  name: string;
+  version: string;
+  esm: string | null;
+  wasm: string | null;
+  integrity: string;
+  deps: string[];
+};
+
+export type BrowserLock = {
+  version: number;
+  packages: Map<string, BrowserLockEntry>;
 };
 
 type LegacyLockfile = {
@@ -33,6 +52,10 @@ type LegacyLockfile = {
       path?: string;
       integrity?: string;
       lumina?: string | Record<string, string>;
+      cdnUrl?: string | null;
+      npmCdnUrl?: string | null;
+      esm?: string | null;
+      wasm?: string | null;
       deps?: Record<string, string>;
     }
   >;
@@ -96,6 +119,10 @@ const toSerializable = (data: LockfileData): {
       path?: string;
       integrity: string;
       lumina?: string | Record<string, string>;
+      cdnUrl?: string | null;
+      npmCdnUrl?: string | null;
+      esm?: string | null;
+      wasm?: string | null;
       deps: Record<string, string>;
     }
   >;
@@ -109,6 +136,10 @@ const toSerializable = (data: LockfileData): {
       path?: string;
       integrity: string;
       lumina?: string | Record<string, string>;
+      cdnUrl?: string | null;
+      npmCdnUrl?: string | null;
+      esm?: string | null;
+      wasm?: string | null;
       deps: Record<string, string>;
     }
   > = {};
@@ -120,6 +151,10 @@ const toSerializable = (data: LockfileData): {
       path: entry.path,
       integrity: normalizeIntegrity(entry.integrity),
       lumina: entry.lumina,
+      cdnUrl: entry.cdnUrl ?? null,
+      npmCdnUrl: entry.npmCdnUrl ?? null,
+      esm: entry.esm ?? null,
+      wasm: entry.wasm ?? null,
       deps: Object.fromEntries(entry.deps.entries()),
     };
   }
@@ -138,6 +173,10 @@ const parseModernLockfile = (raw: string): LockfileData => {
         path?: string;
         integrity?: string;
         lumina?: string | Record<string, string>;
+        cdnUrl?: string | null;
+        npmCdnUrl?: string | null;
+        esm?: string | null;
+        wasm?: string | null;
         deps?: Record<string, string>;
       }
     >;
@@ -154,6 +193,10 @@ const parseModernLockfile = (raw: string): LockfileData => {
       path: typeof value.path === 'string' ? value.path : undefined,
       integrity: normalizeIntegrity(value.integrity ?? 'sha256:'),
       lumina: typeof value.lumina === 'string' || typeof value.lumina === 'object' ? value.lumina : undefined,
+      cdnUrl: typeof value.cdnUrl === 'string' ? value.cdnUrl : null,
+      npmCdnUrl: typeof value.npmCdnUrl === 'string' ? value.npmCdnUrl : null,
+      esm: typeof value.esm === 'string' ? value.esm : null,
+      wasm: typeof value.wasm === 'string' ? value.wasm : null,
       deps: new Map(
         Object.entries(value.deps ?? {}).filter(([, depVersion]) => typeof depVersion === 'string') as Array<[string, string]>
       ),
@@ -174,6 +217,10 @@ const migrateLegacyLockfile = (legacy: LegacyLockfile): LockfileData => {
       path: typeof value.path === 'string' ? value.path : undefined,
       integrity: normalizeIntegrity(value.integrity ?? 'sha256:'),
       lumina: typeof value.lumina === 'string' || typeof value.lumina === 'object' ? value.lumina : undefined,
+      cdnUrl: typeof value.cdnUrl === 'string' ? value.cdnUrl : null,
+      npmCdnUrl: typeof value.npmCdnUrl === 'string' ? value.npmCdnUrl : null,
+      esm: typeof value.esm === 'string' ? value.esm : null,
+      wasm: typeof value.wasm === 'string' ? value.wasm : null,
       deps: new Map(Object.entries(value.deps ?? {})),
     });
   }
@@ -230,6 +277,10 @@ export function addEntry(data: LockfileData, entry: LockfileEntry): LockfileData
     path: entry.path,
     integrity: normalizeIntegrity(entry.integrity),
     lumina: entry.lumina,
+    cdnUrl: entry.cdnUrl ?? null,
+    npmCdnUrl: entry.npmCdnUrl ?? null,
+    esm: entry.esm ?? null,
+    wasm: entry.wasm ?? null,
     deps: new Map(entry.deps),
   });
   return { version: data.version || LOCKFILE_VERSION, packages };
@@ -260,4 +311,69 @@ export function isOutOfSync(manifest: PackageManifest, lockfile: LockfileData): 
     if (!match) mismatches.push(name);
   }
   return mismatches;
+}
+
+const parseBrowserLock = (raw: string): BrowserLock => {
+  const parsed = JSON.parse(raw) as {
+    version?: number;
+    packages?: Record<
+      string,
+      {
+        name?: string;
+        version?: string;
+        esm?: string | null;
+        wasm?: string | null;
+        integrity?: string;
+        deps?: string[];
+      }
+    >;
+  };
+  const packages = new Map<string, BrowserLockEntry>();
+  for (const [key, value] of Object.entries(parsed.packages ?? {})) {
+    if (!value || typeof value.name !== 'string' || typeof value.version !== 'string') continue;
+    packages.set(key, {
+      name: value.name,
+      version: value.version,
+      esm: typeof value.esm === 'string' ? value.esm : null,
+      wasm: typeof value.wasm === 'string' ? value.wasm : null,
+      integrity: normalizeIntegrity(value.integrity ?? 'sha256:'),
+      deps: Array.isArray(value.deps) ? value.deps.filter((dep) => typeof dep === 'string') : [],
+    });
+  }
+  return { version: parsed.version ?? LOCKFILE_VERSION, packages };
+};
+
+export function generateBrowserLock(data: LockfileData): BrowserLock {
+  const packages = new Map<string, BrowserLockEntry>();
+  for (const [key, entry] of data.packages.entries()) {
+    const base = entry.cdnUrl ?? entry.npmCdnUrl ?? null;
+    const esm = entry.esm ?? (base ? `${base.replace(/\/+$/, '')}/index.js` : null);
+    const wasm = entry.wasm ?? (base ? `${base.replace(/\/+$/, '')}/index.wasm` : null);
+    packages.set(key, {
+      name: entry.name,
+      version: entry.version,
+      esm,
+      wasm,
+      integrity: normalizeIntegrity(entry.integrity),
+      deps: Array.from(entry.deps.keys()).sort((a, b) => a.localeCompare(b)),
+    });
+  }
+  return { version: data.version || LOCKFILE_VERSION, packages };
+}
+
+export async function writeBrowserLockfile(dir: string, lock: BrowserLock): Promise<void> {
+  const payload = {
+    version: lock.version,
+    packages: Object.fromEntries(lock.packages.entries()),
+  };
+  await fs.writeFile(path.join(dir, BROWSER_LOCKFILE_FILENAME), `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+}
+
+export async function readBrowserLockfile(dir: string): Promise<BrowserLock> {
+  const filePath = path.join(dir, BROWSER_LOCKFILE_FILENAME);
+  if (!existsSync(filePath)) {
+    const base = await readLockfile(dir);
+    return generateBrowserLock(base);
+  }
+  return parseBrowserLock(await fs.readFile(filePath, 'utf-8'));
 }
