@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.5.0 - 2026-03-05
+
+- **Language/Type System:** Stabilized advanced features already in tree (function overloading, macro system hardening, ref/ref mut pattern support, GADT/HKT coverage, numeric API unification, and cast semantics hardening).
+- **Compiler:** Added module-graph topological multi-file compile path with dependency ordering, per-module cache invalidation, and `--topo-compile` CLI support.
+- **WASM backend:** Closed remaining production lowering gaps, fixed implicit return stack handling for expression-bodied functions, and kept `WASM-IS-001` as an intentional semantic target gate.
+- **Runtime/Web-native:** Stabilized browser stdlib modules (`opfs`, `url`, `web_storage`, `dom`, `web_worker`, `web_streams`), SAB typed channels, and WebGPU compute/render/resource/DSL surfaces with hardening tests.
+- **Tooling/Distribution:** Stabilized package and web distribution workflows (`lumina add/install/publish/search`, `bundle --target browser|wasm`, `importmap`, browser lock flow, optional CDN artifact publish).
+- **Quality/CI:** Expanded JS↔WASM parity matrix, browser smoke coverage, perf validation harnesses, publish/bundle/lowering tests, and hardened browser smoke CI reliability (wabt install + robust smoke harness checks).
+- **Docs:** Refreshed `docs/CAPABILITIES.md` to match implemented status (WASM codegen + topological multi-file compile reflected as implemented).
+
 ## 0.4.1 - 2026-02-15
 
 - **Security:** Added HTTP URL validation in runtime (`http`/`https` only), with blocks for localhost/loopback, metadata endpoints, and private IPv4 ranges.

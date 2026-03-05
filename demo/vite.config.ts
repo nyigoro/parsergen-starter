@@ -9,15 +9,15 @@ export default defineConfig({
   plugins: [
     react(),
   ],
-  root: 'demo',
+  root: '.',
   base: './',
   server: { open: true },
   // If you need to specify file extensions, use assetsInclude instead
   assetsInclude: ['**/*.peg'],
   resolve: {
     alias: {
-      'fs/promises': path.resolve(__dirname, 'demo/shims/fs-promises.ts'),
-      tty: path.resolve(__dirname, 'demo/shims/tty.ts'),
+      'fs/promises': path.resolve(__dirname, 'shims/fs-promises.ts'),
+      tty: path.resolve(__dirname, 'shims/tty.ts'),
     },
   },
   build: {

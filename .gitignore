@@ -14,6 +14,14 @@ pnpm-debug.log*
 /codegen.js
 /.parsergenrc
 .lumina-cache/
+/.tmp/
+/.tmp-wasm/
+/.tmp-wasm-perf/
+/tmp-*.lm
+/tmp.lm
+/demo.js
+/lumina-runtime.js
+/lumina.out.js
 examples/wasm-hello/*.wat
 examples/wasm-hello/*.wasm
 examples/wasm-hello/*.cjs

@@ -27,7 +27,6 @@
   "include": [
     "src/**/*",
     "cli/**/*",
-    "demo/**/*",
     "scripts/**/*.ts",
     "tests/**/*",
     "types/**/*",
@@ -35,8 +34,7 @@
     "*.config.ts",
     "jest.config.ts",
     "prettier.config.cjs",
-    "eslint.config.js",
-    "postcss.config.cjs"
+    "eslint.config.js"
   ],
   "exclude": [
     "node_modules",

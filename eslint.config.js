@@ -163,7 +163,7 @@ export default [
 
   // CLI and REPL
   {
-    files: ['src/bin/**/*.ts', 'src/repl.ts', 'demo/**/*.tsx'],
+    files: ['src/bin/**/*.ts', 'src/repl.ts'],
     languageOptions: {
       parser: typescriptParser,
       parserOptions: {
@@ -236,6 +236,7 @@ export default [
       'coverage/',
       '.nyc_output',
       'tmp/',
+      'demo/**',
       '.tmp/**',
       'temp/',
       '.vscode/',
