@@ -5,12 +5,18 @@ import { startSmokeServer } from '../fixtures/serve';
 const runSmoke = process.env.LUMINA_BROWSER_SMOKE === '1';
 
 test.describe('Browser CDN consumption smoke', () => {
-  test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
-
   test('loads ESM from URL and resolves bare specifier through import map', async ({ page }) => {
+    test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
     const server = await startSmokeServer();
     try {
-      await page.goto(`${server.baseUrl}/cdn/harness`);
+      const response = await page.goto(`${server.baseUrl}/cdn/harness`);
+      if (!response) {
+        throw new Error('No response when loading CDN harness');
+      }
+      if (response.status() >= 400) {
+        const body = await response.text();
+        throw new Error(`CDN harness load failed (${response.status()}): ${body}`);
+      }
       const supportsImportMap = await page.evaluate(
         () =>
           typeof HTMLScriptElement !== 'undefined' &&
