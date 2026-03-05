@@ -2875,7 +2875,7 @@ class WasmBuilder {
       case 'StructLiteral':
         return this.emitStructLiteral(expr);
       default:
-        this.reportCodegenError(`unhandled expression '${expr.type}'`, expr.location, 'WASM-EXPR-001');
+        this.reportCodegenError('unhandled expression', (expr as LuminaExpr).location, 'WASM-EXPR-001');
         return ['i32.const 0'];
     }
   }
@@ -3362,7 +3362,7 @@ class WasmBuilder {
   }
 
   private emitVecRangeIndex(expr: Extract<LuminaExpr, { type: 'Index' }>): string[] {
-    const range = expr.index;
+    const range = expr.index as Extract<LuminaExpr, { type: 'Range' }>;
     const lines: string[] = [];
     lines.push(...this.emitExpr(expr.object));
     lines.push('local.set $__slice_obj');
@@ -3415,7 +3415,7 @@ class WasmBuilder {
     expr: Extract<LuminaExpr, { type: 'Index' }>,
     arrayInfo: { length: number | null; elementSize: number; elementWasm: WasmValType; dataOffset: number }
   ): string[] {
-    const range = expr.index;
+    const range = expr.index as Extract<LuminaExpr, { type: 'Range' }>;
     const sliceId = this.matchCounter++;
     const doneLabel = `$arr_slice_done_${sliceId}`;
     const loopLabel = `$arr_slice_loop_${sliceId}`;
