@@ -89,11 +89,12 @@ ${script}
 
 export async function startSmokeServer(): Promise<SmokeServer> {
   const wasmBinaries = new Map<string, Buffer>();
+  let serverBaseUrl = 'http://127.0.0.1';
 
   const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
     const pathname = requestUrl.pathname;
-    const origin = `${requestUrl.protocol}//${requestUrl.host}`;
+    const origin = serverBaseUrl;
 
     try {
       if (pathname === '/health') {
@@ -302,6 +303,7 @@ outEl.textContent = JSON.stringify(window.__luminaSmokeResult);
   }
 
   const baseUrl = `http://127.0.0.1:${address.port}`;
+  serverBaseUrl = baseUrl;
   return {
     baseUrl,
     close: () =>
