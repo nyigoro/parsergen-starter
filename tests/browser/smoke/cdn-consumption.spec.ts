@@ -11,13 +11,34 @@ test.describe('Browser CDN consumption smoke', () => {
     const server = await startSmokeServer();
     try {
       await page.goto(`${server.baseUrl}/cdn/harness`);
+      const supportsImportMap = await page.evaluate(
+        () =>
+          typeof HTMLScriptElement !== 'undefined' &&
+          typeof (HTMLScriptElement as { supports?: (feature: string) => boolean }).supports === 'function' &&
+          Boolean((HTMLScriptElement as { supports?: (feature: string) => boolean }).supports?.('importmap'))
+      );
+      test.skip(!supportsImportMap, 'Import maps are not supported in this browser context');
+      await page.waitForFunction(
+        () =>
+          Boolean((window as Record<string, unknown>).__luminaCdnResult) ||
+          typeof (window as Record<string, unknown>).__luminaCdnError === 'string'
+      );
 
-      const result = await page.evaluate(() => (window as Record<string, unknown>).__luminaCdnResult as {
-        marker: string;
-        value: number;
-        url: string;
-        integrity: string;
-      });
+      const state = await page.evaluate(() => ({
+        result: (window as Record<string, unknown>).__luminaCdnResult as
+          | {
+              marker: string;
+              value: number;
+              url: string;
+              integrity: string;
+            }
+          | null,
+        error: (window as Record<string, unknown>).__luminaCdnError as string | null,
+      }));
+      expect(state.error).toBeNull();
+      const result = state.result;
+      expect(result).toBeTruthy();
+      if (!result) return;
 
       expect(result.marker).toBe('demo-pkg');
       expect(result.value).toBe(7);

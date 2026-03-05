@@ -135,14 +135,23 @@ export async function startSmokeServer(): Promise<SmokeServer> {
         };
         const script = `
 window.__luminaImportMap = ${JSON.stringify(map)};
-const { run, marker } = await import('demo-pkg');
-window.__luminaCdnResult = {
-  marker,
-  value: run(5),
-  url: ${JSON.stringify(url)},
-  integrity: window.__luminaImportMap.integrity[${JSON.stringify(url)}]
-};
-document.getElementById('out').textContent = JSON.stringify(window.__luminaCdnResult);
+window.__luminaCdnResult = null;
+window.__luminaCdnError = null;
+try {
+  const { run, marker } = await import('demo-pkg');
+  window.__luminaCdnResult = {
+    marker,
+    value: run(5),
+    url: ${JSON.stringify(url)},
+    integrity: window.__luminaImportMap.integrity[${JSON.stringify(url)}]
+  };
+} catch (err) {
+  window.__luminaCdnError = err instanceof Error ? err.message : String(err);
+}
+document.getElementById('out').textContent = JSON.stringify({
+  result: window.__luminaCdnResult,
+  error: window.__luminaCdnError
+});
 `;
         const html = `<!doctype html>
 <html>

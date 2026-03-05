@@ -1,10 +1,20 @@
 import { test, expect } from '@playwright/test';
+import { execSync } from 'node:child_process';
 import { startSmokeServer } from '../fixtures/serve';
 
 const runSmoke = process.env.LUMINA_BROWSER_SMOKE === '1';
+const hasWat2Wasm = (() => {
+  try {
+    execSync('wat2wasm --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 test.describe('WASM load smoke', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
+  test.skip(!hasWat2Wasm, 'wat2wasm is required for browser wasm smoke');
 
   test('compiles, loads, and executes a WASM main function', async ({ page }) => {
     const server = await startSmokeServer();
