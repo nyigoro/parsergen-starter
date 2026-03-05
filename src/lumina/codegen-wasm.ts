@@ -1504,7 +1504,8 @@ class WasmBuilder {
       this.localLambdaBindings = new Map(savedLambdas);
     }
     const lines: string[] = [];
-    for (const stmt of statements) {
+    for (let idx = 0; idx < statements.length; idx += 1) {
+      const stmt = statements[idx];
       switch (stmt.type) {
         case 'Let': {
           const exprLines = this.emitExpr(stmt.value);
@@ -1598,7 +1599,9 @@ class WasmBuilder {
         case 'ExprStmt': {
           const exprLines = this.emitExpr(stmt.expr);
           lines.push(...exprLines);
-          if (this.exprReturnsValue(stmt.expr)) {
+          const isLast = idx === statements.length - 1;
+          const isImplicitReturn = !scoped && isLast && this.currentFunctionReturn !== null;
+          if (this.exprReturnsValue(stmt.expr) && !isImplicitReturn) {
             lines.push('drop');
           }
           break;
