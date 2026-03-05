@@ -5,6 +5,15 @@
   "version": "0.3.0",
   "publisher": "nyigoro",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nyigoro/lumina-lang.git",
+    "directory": "vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/nyigoro/lumina-lang/issues"
+  },
+  "homepage": "https://github.com/nyigoro/lumina-lang/tree/main/vscode-extension",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -222,4 +231,3 @@
     "vscode-languageclient": "^9.0.1"
   }
 }
-
