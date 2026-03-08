@@ -1,4 +1,5 @@
 import { type Location } from '../utils/index.js';
+import type { LuminaProgram } from '../lumina/ast.js';
 import { type SymbolInfo } from '../lumina/semantic.js';
 import { ProjectContext, type SourceDocument } from '../project/context.js';
 
@@ -10,7 +11,7 @@ export interface ModuleInfo {
   uri: string;
   imports: ImportDeclaration[];
   exports: ExportedSymbol[];
-  ast?: unknown;
+  ast?: LuminaProgram;
 }
 
 export interface ImportDeclaration {

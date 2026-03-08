@@ -5,7 +5,18 @@ import {
   type Range,
   type WorkspaceEdit,
 } from 'vscode-languageserver/node';
-import { addEdit, isDependencyUri, sortWorkspaceEdits } from './rename.js';
+import type { LuminaFnDecl, LuminaProgram } from '../lumina/ast.js';
+import {
+  addEdit,
+  collectCallExpressions,
+  findFnDeclAtPosition,
+  offsetAt,
+  positionAt,
+  rangeOfParams,
+  typeExprToString,
+  sortWorkspaceEdits,
+} from './ast-utils.js';
+import { isDependencyUri } from './rename.js';
 
 type ParamInfo = {
   name: string;
@@ -24,6 +35,7 @@ export interface ChangeSignatureRequest {
   uri: string;
   position: Position;
   allFiles: Map<string, string>;
+  allPrograms?: Map<string, LuminaProgram>;
 }
 
 export type ParamChange =
@@ -50,20 +62,12 @@ type FunctionSignatureInfo = {
   bodyEnd: number;
 };
 
-function getOffsetAt(text: string, pos: Position): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
-
-function positionAt(text: string, offset: number): Position {
-  const clamped = Math.max(0, Math.min(offset, text.length));
-  const prefix = text.slice(0, clamped);
-  const line = prefix.split('\n').length - 1;
-  const lineStart = prefix.lastIndexOf('\n') + 1;
-  return { line, character: clamped - lineStart };
-}
+type CallSite = {
+  uri: string;
+  text: string;
+  argsStart: number;
+  argsEnd: number;
+};
 
 function splitTopLevel(value: string): string[] {
   const parts: string[] = [];
@@ -71,7 +75,24 @@ function splitTopLevel(value: string): string[] {
   let depthAngle = 0;
   let depthBrace = 0;
   let current = '';
-  for (const ch of value) {
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i];
+    if (quote) {
+      current += ch;
+      if (ch === '\\') {
+        current += value[i + 1] ?? '';
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
     if (ch === ',' && depthParen === 0 && depthAngle === 0 && depthBrace === 0) {
       if (current.trim()) parts.push(current.trim());
       current = '';
@@ -113,9 +134,33 @@ function formatParams(params: ParamInfo[]): string {
     .join(', ');
 }
 
+function functionInfoFromAst(fn: LuminaFnDecl, text: string): FunctionSignatureInfo {
+  const paramRange = rangeOfParams(fn, text);
+  const paramsStart = offsetAt(text, paramRange.start);
+  const paramsEnd = offsetAt(text, paramRange.end);
+  const params = fn.params.map((param) => {
+    const type = typeExprToString(param.typeName);
+    return {
+      name: param.name,
+      type,
+      raw: type ? `${param.name}: ${type}` : param.name,
+    };
+  });
+  const bodyStart = fn.body.location?.start.offset ?? offsetAt(text, positionAt(text, paramsEnd));
+  const bodyEnd = fn.body.location?.end.offset ?? text.length;
+  return {
+    name: fn.name,
+    params,
+    paramsStart,
+    paramsEnd,
+    bodyStart,
+    bodyEnd,
+  };
+}
+
 function findMatchingBrace(text: string, openIndex: number): number {
   let depth = 0;
-  for (let cursor = openIndex; cursor < text.length; cursor++) {
+  for (let cursor = openIndex; cursor < text.length; cursor += 1) {
     const ch = text[cursor];
     if (ch === '{') depth += 1;
     if (ch === '}') depth -= 1;
@@ -124,8 +169,8 @@ function findMatchingBrace(text: string, openIndex: number): number {
   return text.length;
 }
 
-function findFunctionAtPosition(text: string, position: Position): FunctionSignatureInfo | null {
-  const offset = getOffsetAt(text, position);
+function findFunctionAtPositionFallback(text: string, position: Position): FunctionSignatureInfo | null {
+  const offset = offsetAt(text, position);
   const re = /(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^>]*>\s*)?\(/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(text)) !== null) {
@@ -134,7 +179,7 @@ function findFunctionAtPosition(text: string, position: Position): FunctionSigna
     if (openParen < 0) continue;
     let depth = 0;
     let closeParen = -1;
-    for (let cursor = openParen; cursor < text.length; cursor++) {
+    for (let cursor = openParen; cursor < text.length; cursor += 1) {
       const ch = text[cursor];
       if (ch === '(') depth += 1;
       if (ch === ')') depth -= 1;
@@ -161,6 +206,16 @@ function findFunctionAtPosition(text: string, position: Position): FunctionSigna
   return null;
 }
 
+function findFunctionAtPosition(
+  text: string,
+  position: Position,
+  program?: LuminaProgram
+): FunctionSignatureInfo | null {
+  const fn = program ? findFnDeclAtPosition(program, position, text) : null;
+  if (fn) return functionInfoFromAst(fn, text);
+  return findFunctionAtPositionFallback(text, position);
+}
+
 function applyParamChangesToParams(params: ParamInfo[], changes: ParamChange[]): ParamInfo[] {
   const next = [...params];
   for (const change of changes) {
@@ -175,7 +230,11 @@ function applyParamChangesToParams(params: ParamInfo[], changes: ParamChange[]):
         break;
       }
       case 'add':
-        next.splice(change.index, 0, { name: change.name, type: change.type, raw: `${change.name}: ${change.type}` });
+        next.splice(change.index, 0, {
+          name: change.name,
+          type: change.type,
+          raw: `${change.name}: ${change.type}`,
+        });
         break;
       case 'remove':
         if (change.index >= 0 && change.index < next.length) next.splice(change.index, 1);
@@ -246,7 +305,74 @@ function addBodyRenameEdits(
   }
 }
 
-function findCallSites(text: string, fnName: string): Array<{ argsStart: number; argsEnd: number }> {
+function findCallArgumentRange(text: string, start: number, end: number, calleeEndHint?: number): { argsStart: number; argsEnd: number } | null {
+  const searchStart = Math.max(start, Math.min(calleeEndHint ?? start, end));
+  let openParen = -1;
+  for (let i = searchStart; i < end && i < text.length; i += 1) {
+    if (text[i] === '(') {
+      openParen = i;
+      break;
+    }
+  }
+  if (openParen < 0) {
+    for (let i = start; i < end && i < text.length; i += 1) {
+      if (text[i] === '(') {
+        openParen = i;
+        break;
+      }
+    }
+  }
+  if (openParen < 0) return null;
+  let depth = 0;
+  let quote: '"' | "'" | null = null;
+  for (let i = openParen; i < end && i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === '\\') {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (depth === 0) {
+      return { argsStart: openParen + 1, argsEnd: i };
+    }
+  }
+  return null;
+}
+
+function collectAstCallSites(
+  files: Map<string, string>,
+  programs: Map<string, LuminaProgram>,
+  fnName: string
+): CallSite[] {
+  const sites: CallSite[] = [];
+  for (const [uri, program] of programs.entries()) {
+    if (isDependencyUri(uri)) continue;
+    const text = files.get(uri);
+    if (!text) continue;
+    for (const call of collectCallExpressions(program, (candidate) => candidate.callee.name === fnName && !candidate.receiver && !candidate.enumName)) {
+      const location = call.location;
+      if (!location) continue;
+      const start = location.start.offset ?? offsetAt(text, { line: location.start.line - 1, character: location.start.column - 1 });
+      const end = location.end.offset ?? offsetAt(text, { line: location.end.line - 1, character: location.end.column - 1 });
+      const calleeEnd = call.callee.location?.end.offset;
+      const argsRange = findCallArgumentRange(text, start, end, calleeEnd);
+      if (!argsRange) continue;
+      sites.push({ uri, text, ...argsRange });
+    }
+  }
+  return sites;
+}
+
+function findCallSitesFallback(text: string, fnName: string): Array<{ argsStart: number; argsEnd: number }> {
   const sites: Array<{ argsStart: number; argsEnd: number }> = [];
   const regex = new RegExp(`\\b${fnName}\\s*\\(`, 'g');
   let match: RegExpExecArray | null;
@@ -258,7 +384,7 @@ function findCallSites(text: string, fnName: string): Array<{ argsStart: number;
     const openParen = text.indexOf('(', start);
     if (openParen < 0) continue;
     let depth = 0;
-    for (let cursor = openParen; cursor < text.length; cursor++) {
+    for (let cursor = openParen; cursor < text.length; cursor += 1) {
       const ch = text[cursor];
       if (ch === '(') depth += 1;
       if (ch === ')') depth -= 1;
@@ -273,12 +399,16 @@ function findCallSites(text: string, fnName: string): Array<{ argsStart: number;
 
 function collectCallSitePreview(
   files: Map<string, string>,
-  fnName: string
-): Array<{ uri: string; argsStart: number; argsEnd: number; text: string }> {
-  const sites: Array<{ uri: string; argsStart: number; argsEnd: number; text: string }> = [];
+  fnName: string,
+  programs?: Map<string, LuminaProgram>
+): CallSite[] {
+  if (programs && programs.size > 0) {
+    return collectAstCallSites(files, programs, fnName);
+  }
+  const sites: CallSite[] = [];
   for (const [uri, text] of files.entries()) {
     if (isDependencyUri(uri)) continue;
-    for (const site of findCallSites(text, fnName)) {
+    for (const site of findCallSitesFallback(text, fnName)) {
       sites.push({ uri, text, ...site });
     }
   }
@@ -292,7 +422,11 @@ export function previewChangeSignature(
   if (isDependencyUri(request.uri)) {
     return { error: 'Cannot change signatures in dependency packages.' };
   }
-  const fn = findFunctionAtPosition(request.text, request.position);
+  const fn = findFunctionAtPosition(
+    request.text,
+    request.position,
+    request.allPrograms?.get(request.uri)
+  );
   if (!fn) {
     return { error: 'No function declaration found at the requested position.' };
   }
@@ -302,7 +436,7 @@ export function previewChangeSignature(
 
   const files = new Map(request.allFiles);
   if (!files.has(request.uri)) files.set(request.uri, request.text);
-  const sites = collectCallSitePreview(files, fn.name);
+  const sites = collectCallSitePreview(files, fn.name, request.allPrograms);
   const warnings: string[] = [];
   const fileUris = new Set<string>();
 
@@ -326,8 +460,13 @@ export function previewChangeSignature(
   };
 }
 
-export function buildChangeSignatureCodeAction(text: string, uri: string, range: Range): CodeAction | null {
-  const fn = findFunctionAtPosition(text, range.start);
+export function buildChangeSignatureCodeAction(
+  text: string,
+  uri: string,
+  range: Range,
+  program?: LuminaProgram
+): CodeAction | null {
+  const fn = findFunctionAtPosition(text, range.start, program);
   if (!fn) return null;
   return {
     title: `Change signature of '${fn.name}'`,
@@ -341,6 +480,7 @@ export function buildChangeSignatureCodeAction(text: string, uri: string, range:
           position: range.start,
           name: fn.name,
           params: fn.params.map((param) => ({ name: param.name, type: param.type })),
+          kind: 'function',
         },
       ],
     },
@@ -354,7 +494,11 @@ export function applyChangeSignature(
   if (isDependencyUri(request.uri)) {
     return { ok: false, error: 'Cannot change signatures in dependency packages.' };
   }
-  const fn = findFunctionAtPosition(request.text, request.position);
+  const fn = findFunctionAtPosition(
+    request.text,
+    request.position,
+    request.allPrograms?.get(request.uri)
+  );
   if (!fn) return { ok: false, error: 'No function declaration found at the requested position.' };
   if (fn.params.some((param) => param.raw.includes('...'))) {
     return { ok: false, error: 'Variadic signatures are not supported.' };
@@ -382,36 +526,32 @@ export function applyChangeSignature(
       edit,
       request.uri,
       request.text,
-      { start: fn.bodyStart + 1, end: fn.bodyEnd },
+      { start: fn.bodyStart + 1, end: Math.max(fn.bodyStart + 1, fn.bodyEnd - 1) },
       renames
     );
   }
 
   const files = new Map(request.allFiles);
   if (!files.has(request.uri)) files.set(request.uri, request.text);
-  for (const [uri, text] of files.entries()) {
-    if (isDependencyUri(uri)) continue;
-    const sites = findCallSites(text, fn.name);
-    for (const site of sites) {
-      callSiteCount += 1;
-      const argsText = text.slice(site.argsStart, site.argsEnd);
-      if (argsText.includes('...')) {
-        warnings.push(`Skipped spread call site in ${uri}`);
-        continue;
-      }
-      const args = argsText.trim() ? splitTopLevel(argsText) : [];
-      const rewrittenArgs = applyParamChangesToArgs(args, newParams).join(', ');
-      touchedFiles.add(uri);
-      addEdit(
-        edit,
-        uri,
-        {
-          start: positionAt(text, site.argsStart),
-          end: positionAt(text, site.argsEnd),
-        },
-        rewrittenArgs
-      );
+  for (const site of collectCallSitePreview(files, fn.name, request.allPrograms)) {
+    callSiteCount += 1;
+    const argsText = site.text.slice(site.argsStart, site.argsEnd);
+    if (argsText.includes('...')) {
+      warnings.push(`Skipped spread call site in ${site.uri}`);
+      continue;
     }
+    const args = argsText.trim() ? splitTopLevel(argsText) : [];
+    const rewrittenArgs = applyParamChangesToArgs(args, newParams).join(', ');
+    touchedFiles.add(site.uri);
+    addEdit(
+      edit,
+      site.uri,
+      {
+        start: positionAt(site.text, site.argsStart),
+        end: positionAt(site.text, site.argsEnd),
+      },
+      rewrittenArgs
+    );
   }
 
   sortWorkspaceEdits(edit);

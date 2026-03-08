@@ -2,6 +2,7 @@ import { InlayHintKind, type InlayHint, type Range } from 'vscode-languageserver
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import type { ModuleExport } from '../lumina/module-registry.js';
 import type { SymbolInfo } from '../lumina/semantic.js';
+import type { LuminaProgram } from '../lumina/ast.js';
 
 type AstNode = {
   type?: string;
@@ -34,7 +35,7 @@ type AstNode = {
 
 export type InlayHintContext = {
   doc: TextDocument;
-  ast?: unknown;
+  ast?: LuminaProgram;
   range?: Range;
   symbols?: { get(name: string): SymbolInfo | undefined };
   moduleBindings?: Map<string, ModuleExport>;
@@ -160,7 +161,7 @@ function argStartsWithName(arg: unknown, name: string): boolean {
 
 export function buildInlayHints(ctx: InlayHintContext): InlayHint[] {
   const hints: InlayHint[] = [];
-  const program = ctx.ast as { type?: string; body?: unknown[] } | undefined;
+  const program = ctx.ast;
   if (!program || program.type !== 'Program' || !Array.isArray(program.body)) return hints;
 
   const visitExpr = (expr: unknown) => {

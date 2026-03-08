@@ -1,23 +1,9 @@
 import { CodeAction, CodeActionKind, TextEdit, type Range, type WorkspaceEdit } from 'vscode-languageserver/node';
+import { offsetAt, positionAt } from './ast-utils.js';
 
 export interface InlineEligibility {
   eligible: boolean;
   reason?: string;
-}
-
-function getOffsetAt(text: string, pos: { line: number; character: number }): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
-
-function positionAt(text: string, offset: number): { line: number; character: number } {
-  const clamped = Math.max(0, Math.min(offset, text.length));
-  const prefix = text.slice(0, clamped);
-  const line = prefix.split('\n').length - 1;
-  const lineStart = prefix.lastIndexOf('\n') + 1;
-  return { line, character: clamped - lineStart };
 }
 
 function isPureInitializer(initializer: string): boolean {
@@ -37,7 +23,7 @@ function findBinding(text: string, name: string): { line: number; start: number;
   for (let i = 0; i < lines.length; i++) {
     const m = pattern.exec(lines[i]);
     if (!m) continue;
-    const lineStart = getOffsetAt(text, { line: i, character: 0 });
+    const lineStart = offsetAt(text, { line: i, character: 0 });
     return {
       line: i,
       start: lineStart,
@@ -70,7 +56,7 @@ export function canInlineVariable(text: string, name: string): InlineEligibility
 }
 
 export function buildInlineVariableCodeAction(text: string, uri: string, range: Range): CodeAction | null {
-  const selected = text.slice(getOffsetAt(text, range.start), getOffsetAt(text, range.end)).trim();
+  const selected = text.slice(offsetAt(text, range.start), offsetAt(text, range.end)).trim();
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(selected)) return null;
   const binding = findBinding(text, selected);
   if (!binding) return null;

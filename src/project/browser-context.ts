@@ -5,7 +5,7 @@ import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lu
 import { type CompiledGrammar } from '../grammar/index.js';
 import { type Location } from '../utils/index.js';
 import { type Diagnostic } from '../parser/index.js';
-import { type LuminaType } from '../lumina/ast.js';
+import { type LuminaProgram, type LuminaType } from '../lumina/ast.js';
 import { createStdModuleRegistry, type ModuleRegistry } from '../lumina/module-registry.js';
 import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
 import { resolveModuleBindings, type ModuleExport, type ModuleNamespace } from '../lumina/module-registry.js';
@@ -21,7 +21,7 @@ export interface BrowserSourceDocument {
   importNameMap?: Map<string, ImportBinding>;
   diagnostics: Diagnostic[];
   symbols?: LuminaSymbolTable;
-  ast?: unknown;
+  ast?: LuminaProgram;
   importedNames?: Set<string>;
   moduleBindings?: Map<string, ModuleExport>;
   signatures?: Map<string, string>;
@@ -54,8 +54,8 @@ type BareResolveResult =
   | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004'; message: string } };
 
 const defaultLocation: Location = {
-  start: { line: 1, column: 1 },
-  end: { line: 1, column: 1 },
+  start: { line: 1, column: 1, offset: 0 },
+  end: { line: 1, column: 1, offset: 0 },
 };
 
 export class BrowserProjectContext {
@@ -140,7 +140,7 @@ export class BrowserProjectContext {
     return this.documents.get(this.toVirtualUri(uri))?.symbols;
   }
 
-  getDocumentAst(uri: string): unknown | undefined {
+  getDocumentAst(uri: string): LuminaProgram | undefined {
     return this.documents.get(this.toVirtualUri(uri))?.ast;
   }
 
@@ -159,7 +159,7 @@ export class BrowserProjectContext {
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
       payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
-        doc.ast = payload;
+        doc.ast = payload as LuminaProgram;
         const nextHashes = collectFunctionBodyHashes(payload as never, doc.text);
         const prevHashes = doc.functionHashes ?? new Map<string, string>();
         const skipBodies = new Set<string>();

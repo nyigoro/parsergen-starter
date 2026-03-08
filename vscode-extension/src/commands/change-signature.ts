@@ -20,6 +20,8 @@ type ChangeSignatureActionArg = {
   position: { line: number; character: number };
   name?: string;
   params?: Array<{ name: string; type: string | null }>;
+  kind?: 'function' | 'trait-method';
+  traitName?: string;
 };
 
 type EditorLike = {
@@ -79,10 +81,11 @@ function toPanelParams(params: Array<{ name: string; type: string | null }> | un
 async function previewChangeSignature(
   client: LanguageClientLike,
   request: { uri: string; position: { line: number; character: number } },
-  changes: ParamChange[]
+  changes: ParamChange[],
+  command: 'lumina.previewChangeSignature' | 'lumina.previewChangeTraitSignature'
 ): Promise<ChangeSignaturePreviewInfo> {
   const result = await client.sendRequest<ChangeSignaturePreviewInfo & { error?: string }>('workspace/executeCommand', {
-    command: 'lumina.previewChangeSignature',
+    command,
     arguments: [request, changes],
   });
   if (!result || result.error) {
@@ -94,10 +97,11 @@ async function previewChangeSignature(
 async function applyChangeSignature(
   client: LanguageClientLike,
   request: { uri: string; position: { line: number; character: number } },
-  changes: ParamChange[]
+  changes: ParamChange[],
+  command: 'lumina.applyChangeSignature' | 'lumina.applyChangeTraitSignature'
 ): Promise<{ success: boolean; message: string }> {
   const result = await client.sendRequest<ChangeSignatureResult>('workspace/executeCommand', {
-    command: 'lumina.applyChangeSignature',
+    command,
     arguments: [request, changes],
   });
   if (!result?.ok) {
@@ -130,10 +134,25 @@ export async function registerChangeSignatureCommand(
         return;
       }
 
-      ChangeSignaturePanel.createOrShow(context, actionArg.name ?? 'function', toPanelParams(actionArg.params), {
-        onPreview: (changes) => previewChangeSignature(client, { uri: actionArg.uri, position: actionArg.position }, changes),
+      const previewCommand =
+        actionArg.kind === 'trait-method' ? 'lumina.previewChangeTraitSignature' : 'lumina.previewChangeSignature';
+      const applyCommand =
+        actionArg.kind === 'trait-method' ? 'lumina.applyChangeTraitSignature' : 'lumina.applyChangeSignature';
+      const panelTitle =
+        actionArg.kind === 'trait-method' && actionArg.traitName
+          ? `${actionArg.traitName}.${actionArg.name ?? 'method'}`
+          : actionArg.name ?? 'function';
+
+      ChangeSignaturePanel.createOrShow(context, panelTitle, toPanelParams(actionArg.params), {
+        onPreview: (changes) =>
+          previewChangeSignature(client, { uri: actionArg.uri, position: actionArg.position }, changes, previewCommand),
         onConfirm: async (changes) => {
-          const result = await applyChangeSignature(client, { uri: actionArg.uri, position: actionArg.position }, changes);
+          const result = await applyChangeSignature(
+            client,
+            { uri: actionArg.uri, position: actionArg.position },
+            changes,
+            applyCommand
+          );
           if (result.success) {
             void vscode.window.showInformationMessage(result.message);
           }

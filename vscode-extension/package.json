@@ -32,7 +32,9 @@
     "onCommand:lumina.formatCurrentFile",
     "onCommand:lumina.doctor",
     "onCommand:lumina.moveSymbol",
-    "onCommand:lumina.changeSignature"
+    "onCommand:lumina.changeSignature",
+    "onCommand:lumina.changeReturnType",
+    "onCommand:lumina.extractModule"
   ],
   "contributes": {
     "languages": [
@@ -97,6 +99,16 @@
         "command": "lumina.changeSignature",
         "title": "Lumina: Change Function Signature",
         "category": "Lumina"
+      },
+      {
+        "command": "lumina.changeReturnType",
+        "title": "Lumina: Change Function Return Type",
+        "category": "Lumina"
+      },
+      {
+        "command": "lumina.extractModule",
+        "title": "Lumina: Extract Module",
+        "category": "Lumina"
       }
     ],
     "menus": {
@@ -120,6 +132,16 @@
         },
         {
           "command": "lumina.changeSignature",
+          "when": "editorLangId == lumina",
+          "group": "1_modification"
+        },
+        {
+          "command": "lumina.changeReturnType",
+          "when": "editorLangId == lumina",
+          "group": "1_modification"
+        },
+        {
+          "command": "lumina.extractModule",
           "when": "editorLangId == lumina",
           "group": "1_modification"
         }
@@ -148,6 +170,12 @@
         },
         {
           "command": "lumina.changeSignature"
+        },
+        {
+          "command": "lumina.changeReturnType"
+        },
+        {
+          "command": "lumina.extractModule"
         }
       ]
     },

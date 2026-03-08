@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 - **Compiler:** Switched the CLI and worker/watch compile default to the module-graph topological path; `--bundled-compile` now opts into the legacy bundled pipeline while `--topo-compile` remains accepted for compatibility.
 - **Watch mode:** Replaced per-file `fs.watch` usage with chokidar-backed directory watching, batched rebuild scheduling, content-hash filtering, and export-aware incremental invalidation.
 - **Borrow safety:** Added dedicated borrow/move regression coverage, field-aware borrow conflict tracking, loop move diagnostics, and statement-scoped release for temporary ref-parameter borrows.
+- **LSP refactors:** Added typed AST plumbing in the LSP/module graph, shared AST edit utilities, and upgraded refactor rewrite precision away from ad-hoc text scanning for signature and symbol-move flows.
+- **IDE tooling:** Added change-return-type, trait-method signature propagation across impls, and extract-module refactors, plus VS Code command flows for change-return-type and extract-module.
 
 ## 0.5.0 - 2026-03-05
 

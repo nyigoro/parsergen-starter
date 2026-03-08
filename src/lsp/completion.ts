@@ -19,6 +19,7 @@ import {
   type LuminaStatement,
 } from '../lumina/ast.js';
 import { ProjectContext } from '../project/context.js';
+import { typeExprToString } from './ast-utils.js';
 
 type Position = { line: number; character: number };
 type ImportContext =
@@ -44,7 +45,7 @@ export type CompletionOptions = {
   doc: TextDocument;
   position: Position;
   symbols?: SymbolTable;
-  ast?: unknown;
+  ast?: LuminaProgram;
   moduleBindings?: Map<string, ModuleExport>;
   hmExprTypes?: Map<number, string>;
   preludeExportMap?: Map<string, ModuleExport>;
@@ -328,7 +329,7 @@ function moduleExportToCompletion(label: string, exp: ModuleExport, sortPrefix: 
 }
 
 function symbolToCompletion(sym: SymbolInfo, label = sym.name, sortPrefix = '0'): CompletionItem {
-  let kind = CompletionItemKind.Variable;
+  let kind: CompletionItemKind = CompletionItemKind.Variable;
   if (sym.kind === 'function') kind = CompletionItemKind.Function;
   else if (sym.kind === 'type') kind = CompletionItemKind.Class;
   return {
@@ -402,7 +403,7 @@ function collectVisibleLocals(program: LuminaProgram | null, position: Position)
           collected.push({
             name: stmt.name,
             kind: CompletionItemKind.Variable,
-            detail: stmt.typeName ?? undefined,
+            detail: typeExprToString(stmt.typeName) ?? undefined,
           });
           break;
         case 'LetTuple':
@@ -463,7 +464,7 @@ function collectVisibleLocals(program: LuminaProgram | null, position: Position)
         collected.push({
           name: param.name,
           kind: CompletionItemKind.Variable,
-          detail: param.typeName ?? undefined,
+          detail: typeExprToString(param.typeName) ?? undefined,
         });
       }
       collectStatements(stmt.body.body);
@@ -518,7 +519,7 @@ function findLocalBindingType(
   options: CompletionOptions,
   name: string
 ): string | null {
-  const local = collectVisibleLocals(options.ast as LuminaProgram | null, options.position).find((binding) => binding.name === name);
+  const local = collectVisibleLocals(options.ast ?? null, options.position).find((binding) => binding.name === name);
   if (local?.detail) return local.detail;
   const sym = options.symbols?.get(name);
   if (sym?.type) return sym.type;
@@ -650,7 +651,7 @@ function collectNamespaceItems(base: string, options: CompletionOptions): Comple
 
 function collectScopeItems(options: CompletionOptions): CompletionItem[] {
   const items: CompletionItem[] = [];
-  const locals = collectVisibleLocals(options.ast as LuminaProgram | null, options.position);
+  const locals = collectVisibleLocals(options.ast ?? null, options.position);
 
   for (const local of locals) {
     items.push({

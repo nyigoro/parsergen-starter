@@ -66,6 +66,17 @@ import {
   type ParamChange,
 } from './refactor-change-signature.js';
 import { applyMoveSymbol, buildMoveSymbolCodeAction } from './refactor-move-symbol.js';
+import {
+  applyChangeReturnType,
+  buildChangeReturnTypeCodeAction,
+  previewChangeReturnType,
+} from './refactor-change-return-type.js';
+import {
+  applyChangeTraitSignature,
+  buildChangeTraitSignatureCodeAction,
+  previewChangeTraitSignature,
+} from './refactor-change-trait-signature.js';
+import { applyExtractModule, buildExtractModuleCodeAction } from './refactor-extract-module.js';
 import { buildSemanticTokens, semanticTokensLegend } from './semantic-tokens.js';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -131,9 +142,22 @@ function collectAllFileTexts(currentUri?: string, currentText?: string): Map<str
   return files;
 }
 
+function collectAllPrograms(currentUri?: string): Map<string, NonNullable<ReturnType<ProjectContext['getDocumentAst']>>> {
+  const programs = new Map<string, NonNullable<ReturnType<ProjectContext['getDocumentAst']>>>();
+  for (const doc of project?.listDocuments() ?? []) {
+    const ast = project?.getDocumentAst(doc.uri);
+    if (ast) programs.set(doc.uri, ast);
+  }
+  if (currentUri) {
+    const ast = project?.getDocumentAst(currentUri);
+    if (ast) programs.set(currentUri, ast);
+  }
+  return programs;
+}
+
 function findImportedSymbolInfo(name: string, uri: string) {
-  if (!project) return null;
-  if (!project.hasImportNameInDoc(name, uri)) return null;
+  if (!project) return undefined;
+  if (!project.hasImportNameInDoc(name, uri)) return undefined;
   const resolved = project.resolveImportedSymbol(name, uri);
   if (resolved) return resolved;
   const deps = project.getDependencies(uri);
@@ -144,7 +168,7 @@ function findImportedSymbolInfo(name: string, uri: string) {
     if (sym.visibility === 'private' && dep !== uri) continue;
     return sym;
   }
-  return null;
+  return undefined;
 }
 
 function publishDiagnostics(uri: string) {
@@ -286,7 +310,16 @@ connection.onInitialize((params: InitializeParams) => {
         full: true,
       },
       executeCommandProvider: {
-        commands: ['lumina.previewChangeSignature', 'lumina.applyChangeSignature', 'lumina.applyMoveSymbol'],
+        commands: [
+          'lumina.previewChangeSignature',
+          'lumina.applyChangeSignature',
+          'lumina.applyMoveSymbol',
+          'lumina.previewChangeReturnType',
+          'lumina.applyChangeReturnType',
+          'lumina.previewChangeTraitSignature',
+          'lumina.applyChangeTraitSignature',
+          'lumina.applyExtractModule',
+        ],
       },
     },
   };
@@ -543,6 +576,7 @@ connection.onCodeAction((params): CodeAction[] => {
   if (inline) actions.push(inline);
   const extractType = buildExtractTypeAliasCodeAction(text, params.textDocument.uri, params.range);
   if (extractType) actions.push(extractType);
+  const program = project?.getDocumentAst(params.textDocument.uri);
   const refactors = [
     buildExtractVariableCodeAction(text, params.textDocument.uri, params.range),
     buildPromoteToRefCodeAction(text, params.textDocument.uri, params.range),
@@ -554,8 +588,11 @@ connection.onCodeAction((params): CodeAction[] => {
     buildIfLetToMatchCodeAction(text, params.textDocument.uri, params.range),
     buildMatchToIfLetCodeAction(text, params.textDocument.uri, params.range),
     buildWrapReturnResultCodeAction(text, params.textDocument.uri, params.range),
-    buildChangeSignatureCodeAction(text, params.textDocument.uri, params.range),
-    buildMoveSymbolCodeAction(text, params.textDocument.uri, params.range),
+    buildChangeSignatureCodeAction(text, params.textDocument.uri, params.range, program),
+    buildMoveSymbolCodeAction(text, params.textDocument.uri, params.range, program),
+    buildChangeReturnTypeCodeAction(text, params.textDocument.uri, params.range, program),
+    buildChangeTraitSignatureCodeAction(text, params.textDocument.uri, params.range, program),
+    buildExtractModuleCodeAction(text, params.textDocument.uri, params.range, program),
   ].filter((action): action is CodeAction => action !== null);
   actions.push(...refactors);
 
@@ -589,6 +626,7 @@ connection.onExecuteCommand(async (params) => {
         uri: requestArg.uri,
         position: requestArg.position,
         allFiles: collectAllFileTexts(requestArg.uri, text),
+        allPrograms: collectAllPrograms(requestArg.uri),
       },
       changes
     );
@@ -615,6 +653,7 @@ connection.onExecuteCommand(async (params) => {
         uri: requestArg.uri,
         position: requestArg.position,
         allFiles: collectAllFileTexts(requestArg.uri, text),
+        allPrograms: collectAllPrograms(requestArg.uri),
       },
       changes
     );
@@ -645,7 +684,148 @@ connection.onExecuteCommand(async (params) => {
       position: requestArg.position,
       targetUri: requestArg.targetUri,
       allFiles: collectAllFileTexts(requestArg.uri, text),
+      allPrograms: collectAllPrograms(requestArg.uri),
       newName: requestArg.newName,
+    });
+    if (result.edit) {
+      await connection.workspace.applyEdit(result.edit);
+    }
+    return result;
+  }
+
+  if (params.command === 'lumina.previewChangeReturnType') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      position?: { line: number; character: number };
+      text?: string;
+    };
+    const newReturnType = String(params.arguments?.[1] ?? '').trim();
+    if (!requestArg.uri || !requestArg.position || !newReturnType) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    return previewChangeReturnType(
+      {
+        text,
+        uri: requestArg.uri,
+        position: requestArg.position,
+        allFiles: collectAllFileTexts(requestArg.uri, text),
+        allPrograms: collectAllPrograms(requestArg.uri),
+      },
+      newReturnType
+    );
+  }
+
+  if (params.command === 'lumina.applyChangeReturnType') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      position?: { line: number; character: number };
+      text?: string;
+    };
+    const newReturnType = String(params.arguments?.[1] ?? '').trim();
+    if (!requestArg.uri || !requestArg.position || !newReturnType) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    const result = applyChangeReturnType(
+      {
+        text,
+        uri: requestArg.uri,
+        position: requestArg.position,
+        allFiles: collectAllFileTexts(requestArg.uri, text),
+        allPrograms: collectAllPrograms(requestArg.uri),
+      },
+      newReturnType
+    );
+    if (result.edit) {
+      await connection.workspace.applyEdit(result.edit);
+    }
+    return result;
+  }
+
+  if (params.command === 'lumina.previewChangeTraitSignature') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      position?: { line: number; character: number };
+      text?: string;
+    };
+    const changes = (params.arguments?.[1] as ParamChange[] | undefined) ?? [];
+    if (!requestArg.uri || !requestArg.position) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    return previewChangeTraitSignature(
+      {
+        text,
+        uri: requestArg.uri,
+        position: requestArg.position,
+        allFiles: collectAllFileTexts(requestArg.uri, text),
+        allPrograms: collectAllPrograms(requestArg.uri),
+      },
+      changes
+    );
+  }
+
+  if (params.command === 'lumina.applyChangeTraitSignature') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      position?: { line: number; character: number };
+      text?: string;
+    };
+    const changes = (params.arguments?.[1] as ParamChange[] | undefined) ?? [];
+    if (!requestArg.uri || !requestArg.position) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    const result = applyChangeTraitSignature(
+      {
+        text,
+        uri: requestArg.uri,
+        position: requestArg.position,
+        allFiles: collectAllFileTexts(requestArg.uri, text),
+        allPrograms: collectAllPrograms(requestArg.uri),
+      },
+      changes
+    );
+    if (result.edit) {
+      await connection.workspace.applyEdit(result.edit);
+    }
+    return result;
+  }
+
+  if (params.command === 'lumina.applyExtractModule') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      range?: Range;
+      targetUri?: string;
+      text?: string;
+    };
+    if (!requestArg.uri || !requestArg.range || !requestArg.targetUri) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    const result = applyExtractModule({
+      text,
+      uri: requestArg.uri,
+      range: requestArg.range,
+      targetUri: requestArg.targetUri,
+      allFiles: collectAllFileTexts(requestArg.uri, text),
+      allPrograms: collectAllPrograms(requestArg.uri),
     });
     if (result.edit) {
       await connection.workspace.applyEdit(result.edit);

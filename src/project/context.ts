@@ -8,7 +8,7 @@ import { parseInput, ParserUtils, type Diagnostic } from '../parser/index.js';
 import { type Location } from '../utils/index.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { analyzeLumina, type SymbolTable as LuminaSymbolTable, type SymbolInfo } from '../lumina/semantic.js';
-import { type LuminaType } from '../lumina/ast.js';
+import { type LuminaProgram, type LuminaType } from '../lumina/ast.js';
 import { createStdModuleRegistry, resolveModuleBindings, type ModuleExport, type ModuleNamespace, type ModuleRegistry } from '../lumina/module-registry.js';
 import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
 
@@ -45,7 +45,7 @@ export interface SourceDocument {
   importNameMap?: Map<string, ImportBinding>;
   diagnostics: Diagnostic[];
   symbols?: LuminaSymbolTable;
-  ast?: unknown;
+  ast?: LuminaProgram;
   references?: Map<string, Location[]>;
   importedNames?: Set<string>;
   moduleBindings?: Map<string, ModuleExport>;
@@ -235,7 +235,7 @@ export class ProjectContext {
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
       payload = (result.result as { result: unknown }).result ?? result.result;
       if (payload && typeof payload === 'object' && 'type' in (payload as object)) {
-        doc.ast = payload;
+        doc.ast = payload as LuminaProgram;
         const nextFunctionHashes = collectFunctionBodyHashes(payload as never, doc.text);
         const prevFunctionHashes = doc.functionHashes ?? new Map<string, string>();
         const skipFunctionBodies = new Set<string>();
@@ -426,7 +426,7 @@ export class ProjectContext {
     return { ...sym, name: member } as SymbolInfo;
   }
 
-  getDocumentAst(uri: string): unknown | undefined {
+  getDocumentAst(uri: string): LuminaProgram | undefined {
     const normalized = this.toUri(this.toFsPath(uri));
     return this.documents.get(normalized)?.ast;
   }
@@ -460,7 +460,7 @@ export class ProjectContext {
     }
     const payload = (result.result as { result: unknown }).result ?? result.result;
     if (!payload || typeof payload !== 'object' || !('type' in (payload as object))) return;
-    doc.ast = payload;
+    doc.ast = payload as LuminaProgram;
     const importInfo = collectImportBindings(payload as never);
     const importedNames = new Set<string>(importInfo.locals);
     for (const name of this.preludeNames) {

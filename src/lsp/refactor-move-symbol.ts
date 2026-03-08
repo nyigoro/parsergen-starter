@@ -6,7 +6,25 @@ import {
 } from 'vscode-languageserver/node';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { addEdit, isDependencyUri, sortWorkspaceEdits } from './rename.js';
+import type {
+  LuminaFnDecl,
+  LuminaImportSpec,
+  LuminaProgram,
+  LuminaStatement,
+  LuminaStructDecl,
+  LuminaEnumDecl,
+  LuminaTypeDecl,
+} from '../lumina/ast.js';
+import {
+  addEdit,
+  findImportDeclarations,
+  findTopLevelDeclAtPosition,
+  positionAt,
+  rangeOfNode,
+  textOfNode,
+  sortWorkspaceEdits,
+} from './ast-utils.js';
+import { isDependencyUri } from './rename.js';
 
 type DeclInfo = {
   name: string;
@@ -24,6 +42,7 @@ export interface MoveSymbolRequest {
   position: Position;
   targetUri: string;
   allFiles: Map<string, string>;
+  allPrograms?: Map<string, LuminaProgram>;
   newName?: string;
 }
 
@@ -36,24 +55,16 @@ export interface MoveSymbolResult {
   newName?: string;
 }
 
-function getOffsetAt(text: string, pos: Position): number {
+function offsetAt(text: string, pos: Position): number {
   const lines = text.split(/\r?\n/);
   let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
+  for (let i = 0; i < pos.line; i += 1) offset += (lines[i] ?? '').length + 1;
   return offset + pos.character;
-}
-
-function positionAt(text: string, offset: number): Position {
-  const clamped = Math.max(0, Math.min(offset, text.length));
-  const prefix = text.slice(0, clamped);
-  const line = prefix.split('\n').length - 1;
-  const lineStart = prefix.lastIndexOf('\n') + 1;
-  return { line, character: clamped - lineStart };
 }
 
 function findMatchingBrace(text: string, openIndex: number): number {
   let depth = 0;
-  for (let cursor = openIndex; cursor < text.length; cursor++) {
+  for (let cursor = openIndex; cursor < text.length; cursor += 1) {
     const ch = text[cursor];
     if (ch === '{') depth += 1;
     if (ch === '}') depth -= 1;
@@ -62,8 +73,52 @@ function findMatchingBrace(text: string, openIndex: number): number {
   return text.length;
 }
 
-function findTopLevelDeclarationAtPosition(text: string, position: Position): DeclInfo | null {
-  const offset = getOffsetAt(text, position);
+function headerEndForDeclaration(text: string, start: number, end: number): number {
+  const slice = text.slice(start, end);
+  const brace = slice.indexOf('{');
+  if (brace >= 0) return start + brace;
+  const semi = slice.indexOf(';');
+  if (semi >= 0) return start + semi;
+  const newline = slice.indexOf('\n');
+  return newline >= 0 ? start + newline : end;
+}
+
+type SupportedTopLevelDecl = LuminaFnDecl | LuminaStructDecl | LuminaEnumDecl | LuminaTypeDecl;
+
+function isSupportedTopLevelDecl(stmt: LuminaStatement): stmt is SupportedTopLevelDecl {
+  return stmt.type === 'FnDecl' || stmt.type === 'StructDecl' || stmt.type === 'EnumDecl' || stmt.type === 'TypeDecl';
+}
+
+function declInfoFromAst(stmt: SupportedTopLevelDecl, text: string): DeclInfo | null {
+  if (!stmt.location) return null;
+  const start = stmt.location.start.offset ?? offsetAt(text, { line: stmt.location.start.line - 1, character: stmt.location.start.column - 1 });
+  const end = stmt.location.end.offset ?? offsetAt(text, { line: stmt.location.end.line - 1, character: stmt.location.end.column - 1 });
+  const kind =
+    stmt.type === 'FnDecl'
+      ? 'fn'
+      : stmt.type === 'StructDecl'
+        ? 'struct'
+        : stmt.type === 'EnumDecl'
+          ? 'enum'
+          : 'type';
+  return {
+    name: stmt.name,
+    kind,
+    public: stmt.visibility === 'public',
+    start,
+    headerEnd: headerEndForDeclaration(text, start, end),
+    end,
+    text: textOfNode(stmt, text).trimEnd(),
+  };
+}
+
+function findTopLevelDeclarationAtPosition(text: string, position: Position, program?: LuminaProgram): DeclInfo | null {
+  const stmt = program ? findTopLevelDeclAtPosition(program, position) : null;
+  if (stmt && isSupportedTopLevelDecl(stmt)) {
+    return declInfoFromAst(stmt, text);
+  }
+
+  const offset = offsetAt(text, position);
   const regex = /^(pub\s+)?(?:(async)\s+)?(fn|struct|enum|type|const)\s+([A-Za-z_][A-Za-z0-9_]*)/gm;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
@@ -88,22 +143,21 @@ function findTopLevelDeclarationAtPosition(text: string, position: Position): De
         end,
         text: text.slice(start, end).trimEnd(),
       };
-    } else {
-      const semi = text.indexOf(';', start);
-      if (semi > start) end = semi + 1;
-      const headerEnd = end;
-      while (end < text.length && text[end] === '\n') end += 1;
-      if (offset < start || offset > end) continue;
-      return {
-        name,
-        kind,
-        public: Boolean(match[1]),
-        start,
-        headerEnd,
-        end,
-        text: text.slice(start, end).trimEnd(),
-      };
     }
+    const semi = text.indexOf(';', start);
+    if (semi > start) end = semi + 1;
+    const headerEnd = end;
+    while (end < text.length && text[end] === '\n') end += 1;
+    if (offset < start || offset > end) continue;
+    return {
+      name,
+      kind,
+      public: Boolean(match[1]),
+      start,
+      headerEnd,
+      end,
+      text: text.slice(start, end).trimEnd(),
+    };
   }
   return null;
 }
@@ -148,7 +202,79 @@ function detectSimpleCycle(allFiles: Map<string, string>, sourceUri: string, tar
   return sourceText.includes(`from "${sourceToTarget}"`) || targetText.includes(`from "${targetToSource}"`);
 }
 
-function updateImportEdits(
+function importBindingLabel(binding: string | LuminaImportSpec): string {
+  if (typeof binding === 'string') return binding;
+  const local = binding.alias ?? binding.name;
+  return binding.name === local ? local : `${binding.name} as ${local}`;
+}
+
+function importBindingLocal(binding: string | LuminaImportSpec): string {
+  if (typeof binding === 'string') return binding;
+  return binding.alias ?? binding.name;
+}
+
+function renderImportStatement(specs: Array<string | LuminaImportSpec>, source: string): string {
+  const rendered = specs.map(importBindingLabel).join(', ');
+  return `import { ${rendered} } from "${source}";`;
+}
+
+function updateImportEditsAst(
+  edit: WorkspaceEdit,
+  importerUri: string,
+  importerText: string,
+  sourceUri: string,
+  targetUri: string,
+  symbolName: string,
+  movedName: string,
+  program: LuminaProgram
+): boolean {
+  const sourceSpecifier = moduleSpecifier(importerUri, sourceUri);
+  const targetSpecifier = moduleSpecifier(importerUri, targetUri);
+  const imports = findImportDeclarations(program);
+  let addedTargetImport = false;
+  let changed = false;
+  const importedName = formatImportedName(movedName, symbolName);
+  const targetImport = imports.find((item) => item.source.value === targetSpecifier);
+
+  for (const imp of imports) {
+    const resolved = resolveImportSource(importerUri, imp.source.value);
+    if (resolved === targetUri && Array.isArray(imp.spec)) {
+      const existing = imp.spec.map(importBindingLabel);
+      if (existing.includes(importedName)) addedTargetImport = true;
+    }
+    if (resolved !== sourceUri) continue;
+    if (!Array.isArray(imp.spec)) continue;
+    const nextSpecs = imp.spec.filter((item) => importBindingLocal(item) !== symbolName);
+    if (nextSpecs.length === imp.spec.length) continue;
+    changed = true;
+    addEdit(edit, importerUri, rangeOfNode(imp, importerText), nextSpecs.length > 0 ? renderImportStatement(nextSpecs, sourceSpecifier) : '');
+    if (!addedTargetImport) {
+      if (targetImport && Array.isArray(targetImport.spec)) {
+        const nextTarget = [...targetImport.spec];
+        if (!nextTarget.map(importBindingLabel).includes(importedName)) {
+          nextTarget.push(movedName === symbolName ? movedName : { name: movedName, alias: symbolName });
+          addEdit(
+            edit,
+            importerUri,
+            rangeOfNode(targetImport, importerText),
+            renderImportStatement(nextTarget, targetSpecifier)
+          );
+        }
+      } else {
+        addEdit(
+          edit,
+          importerUri,
+          { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          `import { ${importedName} } from "${targetSpecifier}";\n`
+        );
+      }
+      addedTargetImport = true;
+    }
+  }
+  return changed;
+}
+
+function updateImportEditsFallback(
   edit: WorkspaceEdit,
   importerUri: string,
   importerText: string,
@@ -241,10 +367,15 @@ function updateImportEdits(
   }
 }
 
-export function buildMoveSymbolCodeAction(text: string, uri: string, range: Range): CodeAction | null {
-  const decl = findTopLevelDeclarationAtPosition(text, range.start);
+export function buildMoveSymbolCodeAction(
+  text: string,
+  uri: string,
+  range: Range,
+  program?: LuminaProgram
+): CodeAction | null {
+  const decl = findTopLevelDeclarationAtPosition(text, range.start, program);
   if (!decl) return null;
-  const offset = getOffsetAt(text, range.start);
+  const offset = offsetAt(text, range.start);
   if (offset > decl.headerEnd) return null;
   return {
     title: `Move symbol '${decl.name}'`,
@@ -271,7 +402,11 @@ export function applyMoveSymbol(request: MoveSymbolRequest): MoveSymbolResult {
   if (detectSimpleCycle(allFiles, request.uri, request.targetUri)) {
     return { ok: false, error: 'MODULE-CYCLE-001: moving this symbol would introduce a module cycle.' };
   }
-  const decl = findTopLevelDeclarationAtPosition(request.text, request.position);
+  const decl = findTopLevelDeclarationAtPosition(
+    request.text,
+    request.position,
+    request.allPrograms?.get(request.uri)
+  );
   if (!decl) return { ok: false, error: 'Only top-level symbols can be moved.' };
   const movedName = request.newName?.trim() || decl.name;
 
@@ -293,9 +428,7 @@ export function applyMoveSymbol(request: MoveSymbolRequest): MoveSymbolResult {
     ''
   );
 
-  const insertionText = `${
-    targetText.endsWith('\n') || targetText.length === 0 ? '' : '\n'
-  }${rewriteDeclarationName(decl.text, decl.name, movedName)}\n`;
+  const insertionText = `${targetText.endsWith('\n') || targetText.length === 0 ? '' : '\n'}${rewriteDeclarationName(decl.text, decl.name, movedName)}\n`;
   addEdit(
     edit,
     request.targetUri,
@@ -308,7 +441,12 @@ export function applyMoveSymbol(request: MoveSymbolRequest): MoveSymbolResult {
 
   for (const [uri, text] of allFiles.entries()) {
     if (uri === request.uri || uri === request.targetUri || isDependencyUri(uri)) continue;
-    updateImportEdits(edit, uri, text, request.uri, request.targetUri, decl.name, movedName);
+    const program = request.allPrograms?.get(uri);
+    if (program) {
+      updateImportEditsAst(edit, uri, text, request.uri, request.targetUri, decl.name, movedName, program);
+      continue;
+    }
+    updateImportEditsFallback(edit, uri, text, request.uri, request.targetUri, decl.name, movedName);
   }
 
   sortWorkspaceEdits(edit);

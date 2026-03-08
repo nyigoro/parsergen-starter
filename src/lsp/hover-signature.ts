@@ -6,6 +6,7 @@ import {
 } from '../lumina/module-registry.js';
 import { type Type, type TypeScheme } from '../lumina/types.js';
 import { type SymbolInfo } from '../lumina/semantic.js';
+import type { LuminaProgram } from '../lumina/ast.js';
 
 export type SignatureData = { label: string; parameters: string[] };
 export type SignatureHelpData = {
@@ -23,7 +24,7 @@ export type HoverSignatureContext = {
   preludeExportMap?: Map<string, ModuleExport>;
   resolveImportedSymbol?: (name: string) => SymbolInfo | undefined;
   resolveImportedMember?: (base: string, member: string) => SymbolInfo | undefined;
-  ast?: unknown;
+  ast?: LuminaProgram;
   hmCallSignatures?: Map<number, { args: string[]; returnType: string }>;
   hmExprTypes?: Map<number, string>;
 };
@@ -295,7 +296,7 @@ function findNodeAtPosition(program: unknown, position: { line: number; characte
         node.body?.body?.forEach(visitStmt);
         return;
       case 'Block':
-        node.body?.forEach(visitStmt);
+        (node.body as unknown[] | undefined)?.forEach(visitStmt);
         return;
       case 'Let':
         visitExpr(node.value);
@@ -332,7 +333,7 @@ function findNodeAtPosition(program: unknown, position: { line: number; characte
   if (prog.type === 'Program' && Array.isArray(prog.body)) {
     prog.body.forEach(visitStmt);
   }
-  return best?.node ?? null;
+  return best ? best.node : null;
 }
 
 type CallNode = {
