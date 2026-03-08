@@ -384,6 +384,13 @@ const defaultLocation: Location = {
   end: { line: 1, column: 1, offset: 0 },
 };
 
+const locationOrder = (location?: Location): number =>
+  location?.start.offset ??
+  (((location?.start.line ?? 0) * 1_000_000) + (location?.start.column ?? 0));
+
+const isLocationBefore = (left: Location | undefined, right: Location | undefined): boolean =>
+  locationOrder(left) < locationOrder(right);
+
 const ERROR_TYPE: LuminaType = '__error__';
 
 const isErrorTypeName = (typeName: string | null | undefined): boolean =>
@@ -583,8 +590,9 @@ function applyRefPatternBorrowChecks(
     return;
   }
 
+  const borrowPath = getBorrowPath(sourceExpr);
   const baseName = getLValueBaseName(sourceExpr);
-  if (!baseName) {
+  if (!borrowPath || !baseName) {
     for (const binding of refBindings) {
       diagnostics.push(
         diagAt(
@@ -612,12 +620,12 @@ function applyRefPatternBorrowChecks(
     }
     if (scope) {
       const ok = binding.mutable
-        ? scope.borrowMutLocal(baseName, binding.location ?? location)
-        : scope.borrowSharedLocal(baseName, binding.location ?? location);
+        ? scope.borrowMutLocal(borrowPath, binding.location ?? location)
+        : scope.borrowSharedLocal(borrowPath, binding.location ?? location);
       if (!ok) {
         diagnostics.push(
           diagAt(
-            `Cannot borrow '${baseName}'${binding.mutable ? ' mutably' : ''} while it is already borrowed`,
+            `Cannot borrow '${borrowPath}'${binding.mutable ? ' mutably' : ''} while it is already borrowed`,
             binding.location ?? location,
             'error',
             'BORROW_CONFLICT'
@@ -642,8 +650,16 @@ const getMovePath = (expr: LuminaExpr): string | null => {
   return segments.join('.');
 };
 
+const getBorrowPath = (expr: LuminaExpr): string | null => {
+  if (!isLValueExpr(expr)) return null;
+  return getMovePath(expr);
+};
+
 const isMovePrefix = (prefix: string, path: string): boolean =>
   path === prefix || path.startsWith(`${prefix}.`);
+
+const pathsConflict = (left: string, right: string): boolean =>
+  isMovePrefix(left, right) || isMovePrefix(right, left);
 
 const formatMoveConflictMessage = (
   action: 'use' | 'move' | 'access',
@@ -3084,8 +3100,9 @@ function typeCheckStatement(
             )
           );
         } else {
+          const borrowPath = getBorrowPath(stmt.value);
           const baseName = getLValueBaseName(stmt.value);
-          if (!baseName) {
+          if (!borrowPath || !baseName) {
             diagnostics.push(
               diagAt(
                 `ref binding '${stmt.name}' requires an lvalue source`,
@@ -3108,12 +3125,12 @@ function typeCheckStatement(
             }
             if (scope) {
               const ok = stmt.refMut
-                ? scope.borrowMutLocal(baseName, stmt.location ?? stmt.value.location)
-                : scope.borrowSharedLocal(baseName, stmt.location ?? stmt.value.location);
+                ? scope.borrowMutLocal(borrowPath, stmt.location ?? stmt.value.location)
+                : scope.borrowSharedLocal(borrowPath, stmt.location ?? stmt.value.location);
               if (!ok) {
                 diagnostics.push(
                   diagAt(
-                    `Cannot borrow '${baseName}'${stmt.refMut ? ' mutably' : ''} while it is already borrowed`,
+                    `Cannot borrow '${borrowPath}'${stmt.refMut ? ' mutably' : ''} while it is already borrowed`,
                     stmt.location ?? stmt.value.location,
                     'error',
                     'BORROW_CONFLICT'
@@ -3565,6 +3582,11 @@ function typeCheckStatement(
       }
       const bodyMoves = snapshotMoves(scope);
       const bodyBorrows = snapshotBorrows(scope);
+      reportLoopMoveEscapes(
+        stmt.location,
+        collectLoopEscapedMoves(baseMoves, bodyMoves),
+        diagnostics
+      );
       reportLoopBorrowEscapes(
         stmt.location,
         collectLoopEscapedBorrows(baseBorrows, bodyBorrows),
@@ -3653,6 +3675,11 @@ function typeCheckStatement(
       const bodyMoves = snapshotMoves(scope);
       const bodyBorrows = snapshotBorrows(scope);
       const loopBodyBorrows = snapshotBorrows(loopScope);
+      reportLoopMoveEscapes(
+        stmt.location,
+        collectLoopEscapedMoves(baseMoves, bodyMoves),
+        diagnostics
+      );
       reportLoopBorrowEscapes(
         stmt.location,
         collectLoopEscapedBorrows(loopBaseBorrows, loopBodyBorrows),
@@ -3757,6 +3784,11 @@ function typeCheckStatement(
       const bodyMoves = snapshotMoves(scope);
       const bodyBorrows = snapshotBorrows(scope);
       const loopBodyBorrows = snapshotBorrows(loopScope);
+      reportLoopMoveEscapes(
+        stmt.location,
+        collectLoopEscapedMoves(baseMoves, bodyMoves),
+        diagnostics
+      );
       reportLoopBorrowEscapes(
         stmt.location,
         collectLoopEscapedBorrows(loopBaseBorrows, loopBodyBorrows),
@@ -6064,8 +6096,8 @@ function typeCheckExpr(
       return null;
     }
     const baseName = path.split('.')[0];
-    scope?.read(baseName);
-    if (scope?.isBorrowed(baseName)) {
+    scope?.read(baseName, expr.location ?? expr.target.location);
+    if (scope?.isBorrowed(path)) {
       diagnostics.push(
         diagAt(
           `Cannot move '${path}' while it is borrowed`,
@@ -6245,6 +6277,8 @@ function typeCheckExpr(
         diagnostics.push(diagAt(`Pipe target must be a function call`, expr.location));
         return null;
       }
+      const tempBorrowSnapshot = snapshotTempBorrows(scope);
+      try {
       const callExpr = expr.right;
       const piped = typeCheckExpr(
         expr.left,
@@ -6272,8 +6306,9 @@ function typeCheckExpr(
               )
             );
           } else {
+            const borrowPath = getBorrowPath(expr.left);
             const baseName = getLValueBaseName(expr.left);
-            if (baseName) {
+            if (borrowPath && baseName) {
               const baseSym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
               const requiresMut = calleeSym.paramRefMuts?.[0] ?? false;
               if (requiresMut && baseSym?.kind === 'variable' && baseSym.mutable === false && !baseSym.refMutable) {
@@ -6288,12 +6323,12 @@ function typeCheckExpr(
               }
               if (scope) {
                 const ok = requiresMut
-                  ? scope.borrowMut(baseName, expr.left.location ?? expr.location)
-                  : scope.borrowShared(baseName, expr.left.location ?? expr.location);
+                  ? scope.borrowMut(borrowPath, expr.left.location ?? expr.location)
+                  : scope.borrowShared(borrowPath, expr.left.location ?? expr.location);
                 if (!ok) {
                   diagnostics.push(
                     diagAt(
-                      `Cannot borrow '${baseName}'${requiresMut ? ' mutably' : ''} while it is already borrowed`,
+                      `Cannot borrow '${borrowPath}'${requiresMut ? ' mutably' : ''} while it is already borrowed`,
                       expr.left.location ?? expr.location,
                       'error',
                       'BORROW_CONFLICT'
@@ -6319,6 +6354,9 @@ function typeCheckExpr(
         piped ?? undefined
       );
       return callType;
+      } finally {
+        restoreTempBorrows(tempBorrowSnapshot);
+      }
     }
     const left = typeCheckExpr(expr.left, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
     const right = typeCheckExpr(expr.right, symbols, diagnostics, scope, options, undefined, resolving, pendingDeps, currentFunction, di);
@@ -6387,7 +6425,7 @@ function typeCheckExpr(
     }
     if (expr.type === 'Identifier') {
       const name = expr.name;
-      scope?.read(name);
+      scope?.read(name, expr.location);
       if (!skipMoveChecks) {
         const movedAt = scope?.findMoveConflictInfo(
           name,
@@ -6934,7 +6972,7 @@ function typeCheckExpr(
         return directModuleFn.returnType;
       }
 
-      scope?.read(callee);
+      scope?.read(callee, expr.location);
       const sym = symbols.get(callee) ?? options?.externSymbols?.(callee);
       if (!sym || sym.kind !== 'function') {
         const enumVariant = findEnumVariant(symbols, callee, options);
@@ -7074,6 +7112,8 @@ function typeCheckExpr(
       });
     }
 
+    const tempBorrowSnapshot = snapshotTempBorrows(scope);
+    try {
     const paramTypes = sym.paramTypes ?? [];
     const paramRefs = sym.paramRefs ?? [];
     const paramRefMuts = sym.paramRefMuts ?? [];
@@ -7098,8 +7138,9 @@ function typeCheckExpr(
             )
           );
         } else if (argExpr) {
+          const borrowPath = getBorrowPath(argExpr);
           const baseName = getLValueBaseName(argExpr);
-          if (baseName) {
+          if (borrowPath && baseName) {
             const baseSym = symbols.get(baseName) ?? options?.externSymbols?.(baseName);
             if (refMutable && baseSym?.kind === 'variable' && baseSym.mutable === false && !baseSym.refMutable) {
               diagnostics.push(
@@ -7113,12 +7154,12 @@ function typeCheckExpr(
             }
             if (scope) {
               const ok = refMutable
-                ? scope.borrowMut(baseName, argExpr.location ?? expr.location)
-                : scope.borrowShared(baseName, argExpr.location ?? expr.location);
+                ? scope.borrowMut(borrowPath, argExpr.location ?? expr.location)
+                : scope.borrowShared(borrowPath, argExpr.location ?? expr.location);
               if (!ok) {
                 diagnostics.push(
                   diagAt(
-                    `Cannot borrow '${baseName}'${refMutable ? ' mutably' : ''} while it is already borrowed`,
+                    `Cannot borrow '${borrowPath}'${refMutable ? ' mutably' : ''} while it is already borrowed`,
                     argExpr.location ?? expr.location,
                     'error',
                     'BORROW_CONFLICT'
@@ -7288,6 +7329,9 @@ function typeCheckExpr(
 
     const returnType = substituteTypeParams(sym.type ?? 'any', mapping);
     return returnType;
+    } finally {
+      restoreTempBorrows(tempBorrowSnapshot);
+    }
   }
   if (expr.type === 'StructLiteral') {
     const structSym = symbols.get(expr.name);
@@ -7394,6 +7438,9 @@ function typeCheckExpr(
     }
 
     const movePath = getMovePath(expr);
+    if (movePath) {
+      scope?.read(movePath, expr.location);
+    }
     if (!skipMoveChecks && movePath) {
       const movedAt = scope?.findMoveConflictInfo(movePath, 'overlap');
       if (movedAt) {
@@ -7912,6 +7959,24 @@ function restoreBorrows(snapshot: Map<Scope, BorrowState>) {
   }
 }
 
+function snapshotTempBorrows(scope?: Scope): Map<Scope, BorrowState> {
+  const snapshot = new Map<Scope, BorrowState>();
+  for (let current = scope; current; current = current.parent) {
+    snapshot.set(current, {
+      mut: new Map(current.tempBorrowedMut),
+      shared: new Map(current.tempBorrowedShared),
+    });
+  }
+  return snapshot;
+}
+
+function restoreTempBorrows(snapshot: Map<Scope, BorrowState>) {
+  for (const [scope, borrowState] of snapshot) {
+    scope.tempBorrowedMut = new Map(borrowState.mut);
+    scope.tempBorrowedShared = new Map(borrowState.shared);
+  }
+}
+
 function mergeMoves(
   scope: Scope | undefined,
   branches: Array<Map<Scope, Map<string, Location | undefined>>>
@@ -7986,6 +8051,22 @@ function collectLoopEscapedBorrows(
   return Array.from(escaped.entries()).map(([name, location]) => ({ name, location }));
 }
 
+function collectLoopEscapedMoves(
+  base: Map<Scope, Map<string, Location | undefined>>,
+  body: Map<Scope, Map<string, Location | undefined>>,
+): Array<{ path: string; location?: Location }> {
+  const escaped = new Map<string, Location | undefined>();
+  for (const [scope, bodyState] of body) {
+    const baseState = base.get(scope) ?? new Map<string, Location | undefined>();
+    for (const [path, location] of bodyState) {
+      if (!baseState.has(path) && !escaped.has(path)) {
+        escaped.set(path, location);
+      }
+    }
+  }
+  return Array.from(escaped.entries()).map(([path, location]) => ({ path, location }));
+}
+
 function reportLoopBorrowEscapes(
   stmtLocation: Location | undefined,
   escaped: Array<{ name: string; location?: Location }>,
@@ -8011,6 +8092,31 @@ function reportLoopBorrowEscapes(
   }
 }
 
+function reportLoopMoveEscapes(
+  stmtLocation: Location | undefined,
+  escaped: Array<{ path: string; location?: Location }>,
+  diagnostics: Diagnostic[],
+) {
+  for (const escape of escaped) {
+    diagnostics.push(
+      diagAt(
+        `Cannot move '${escape.path}' on a later loop iteration because it was already moved`,
+        stmtLocation ?? escape.location,
+        'error',
+        'USE_AFTER_MOVE',
+        escape.location
+          ? [
+              {
+                location: escape.location,
+                message: `Moved here`,
+              },
+            ]
+          : undefined
+      )
+    );
+  }
+}
+
 function hasBorrowInAncestor(scope: Scope, name: string): { scope: Scope; location?: Location } | null {
   let current = scope.parent;
   while (current) {
@@ -8018,13 +8124,15 @@ function hasBorrowInAncestor(scope: Scope, name: string): { scope: Scope; locati
       // Shadowing boundary: borrows above this point refer to a different binding.
       return null;
     }
-    const mut = current.borrowedMut.get(name);
-    if (mut !== undefined || current.borrowedMut.has(name)) {
-      return { scope: current, location: mut };
+    for (const [borrowedPath, location] of current.borrowedMut) {
+      if (pathsConflict(borrowedPath, name)) {
+        return { scope: current, location };
+      }
     }
-    const shared = current.borrowedShared.get(name);
-    if (shared !== undefined || current.borrowedShared.has(name)) {
-      return { scope: current, location: shared };
+    for (const [borrowedPath, location] of current.borrowedShared) {
+      if (pathsConflict(borrowedPath, name)) {
+        return { scope: current, location };
+      }
     }
     current = current.parent;
   }
@@ -8061,10 +8169,13 @@ class Scope {
     parent?: Scope;
     locals = new Map<string, Location | undefined>();
     reads = new Set<string>();
+    lastReads = new Map<string, Location | undefined>();
     writes = new Set<string>();
     narrowed = new Map<string, LuminaType>();
     borrowedMut = new Map<string, Location | undefined>();
     borrowedShared = new Map<string, Location | undefined>();
+    tempBorrowedMut = new Map<string, Location | undefined>();
+    tempBorrowedShared = new Map<string, Location | undefined>();
     moved = new Map<string, Location | undefined>();
     children: Scope[] = [];
 
@@ -8078,15 +8189,24 @@ class Scope {
     this.clearMovedPath(name, true);
   }
 
-  read(name: string) {
+  private noteRead(name: string, location?: Location) {
+    const previous = this.lastReads.get(name);
+    if (!previous || isLocationBefore(previous, location)) {
+      this.lastReads.set(name, location);
+    }
+  }
+
+  read(name: string, location?: Location) {
     if (this.locals.has(name)) {
       this.reads.add(name);
+      this.noteRead(name, location);
       return;
     }
     if (this.parent) {
       // Track free-variable reads on this scope (used for closure capture analysis).
       this.reads.add(name);
-      this.parent.read(name);
+      this.noteRead(name, location);
+      this.parent.read(name, location);
     }
   }
 
@@ -8119,49 +8239,78 @@ class Scope {
       return this;
     }
 
-    canBorrowMut(name: string): boolean {
-      if (this.borrowedMut.has(name) || this.borrowedShared.has(name)) return false;
-      return this.parent ? this.parent.canBorrowMut(name) : true;
+    private hasConflictInMap(
+      map: Map<string, Location | undefined>,
+      path: string,
+    ): boolean {
+      for (const existingPath of map.keys()) {
+        if (pathsConflict(existingPath, path)) return true;
+      }
+      return false;
     }
 
-  canBorrowShared(name: string): boolean {
-    if (this.borrowedMut.has(name)) return false;
-    return this.parent ? this.parent.canBorrowShared(name) : true;
+    canBorrowMut(path: string): boolean {
+      if (
+        this.hasConflictInMap(this.borrowedMut, path) ||
+        this.hasConflictInMap(this.borrowedShared, path) ||
+        this.hasConflictInMap(this.tempBorrowedMut, path) ||
+        this.hasConflictInMap(this.tempBorrowedShared, path)
+      ) {
+        return false;
+      }
+      return this.parent ? this.parent.canBorrowMut(path) : true;
+    }
+
+    canBorrowShared(path: string): boolean {
+      if (
+        this.hasConflictInMap(this.borrowedMut, path) ||
+        this.hasConflictInMap(this.tempBorrowedMut, path)
+      ) {
+        return false;
+      }
+      return this.parent ? this.parent.canBorrowShared(path) : true;
+    }
+
+  isBorrowed(path: string): boolean {
+    if (
+      this.hasConflictInMap(this.borrowedMut, path) ||
+      this.hasConflictInMap(this.borrowedShared, path) ||
+      this.hasConflictInMap(this.tempBorrowedMut, path) ||
+      this.hasConflictInMap(this.tempBorrowedShared, path)
+    ) {
+      return true;
+    }
+    return this.parent ? this.parent.isBorrowed(path) : false;
   }
 
-  isBorrowed(name: string): boolean {
-    if (this.borrowedMut.has(name) || this.borrowedShared.has(name)) return true;
-    return this.parent ? this.parent.isBorrowed(name) : false;
-  }
-
-  borrowMut(name: string, location?: Location): boolean {
-      const root = this.resolveBorrowRoot(name);
-      if (!root.canBorrowMut(name)) return false;
-      root.borrowedMut.set(name, location);
-      root.borrowedShared.delete(name);
+  borrowMut(path: string, location?: Location): boolean {
+      const root = this.resolveBorrowRoot(path.split('.')[0]);
+      if (!root.canBorrowMut(path)) return false;
+      root.tempBorrowedMut.set(path, location);
+      root.tempBorrowedShared.delete(path);
       return true;
     }
 
-    borrowMutLocal(name: string, location?: Location): boolean {
-      if (!this.canBorrowMut(name)) return false;
-      this.borrowedMut.set(name, location);
-      this.borrowedShared.delete(name);
+    borrowMutLocal(path: string, location?: Location): boolean {
+      if (!this.canBorrowMut(path)) return false;
+      this.borrowedMut.set(path, location);
+      this.borrowedShared.delete(path);
       return true;
     }
 
-    borrowShared(name: string, location?: Location): boolean {
-      const root = this.resolveBorrowRoot(name);
-      if (!root.canBorrowShared(name)) return false;
-      if (!root.borrowedMut.has(name)) {
-        root.borrowedShared.set(name, location);
+    borrowShared(path: string, location?: Location): boolean {
+      const root = this.resolveBorrowRoot(path.split('.')[0]);
+      if (!root.canBorrowShared(path)) return false;
+      if (!root.hasConflictInMap(root.borrowedMut, path) && !root.hasConflictInMap(root.tempBorrowedMut, path)) {
+        root.tempBorrowedShared.set(path, location);
       }
       return true;
     }
 
-    borrowSharedLocal(name: string, location?: Location): boolean {
-      if (!this.canBorrowShared(name)) return false;
-      if (!this.borrowedMut.has(name)) {
-        this.borrowedShared.set(name, location);
+    borrowSharedLocal(path: string, location?: Location): boolean {
+      if (!this.canBorrowShared(path)) return false;
+      if (!this.hasConflictInMap(this.borrowedMut, path) && !this.hasConflictInMap(this.tempBorrowedMut, path)) {
+        this.borrowedShared.set(path, location);
       }
       return true;
     }
@@ -8218,6 +8367,8 @@ class Scope {
     clearBorrows() {
       this.borrowedMut.clear();
       this.borrowedShared.clear();
+      this.tempBorrowedMut.clear();
+      this.tempBorrowedShared.clear();
     }
   }
 

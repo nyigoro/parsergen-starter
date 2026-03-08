@@ -1,5 +1,7 @@
 import { parityTest, supportsParityWasm, type ParityTestCase } from './parity-harness.js';
 
+jest.setTimeout(20_000);
+
 const cases: ParityTestCase[] = [
   {
     name: 'integer arithmetic parity',

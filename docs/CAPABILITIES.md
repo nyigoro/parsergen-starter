@@ -22,8 +22,8 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Pattern matching | Stable | Exhaustiveness checks in HM + semantic |
 | Member access / namespace access | Stable | Module/struct/enum/trait resolution order covered by regressions |
 | Pipe operator (`|>`) | Stable | Lowered in semantic / HM |
-| `ref` / `ref mut` | Stable | Parameter + pattern binding support (`let ref`, match/if-let/while-let ref bindings) with semantic borrow checks |
-| Move expressions (`move x`) | Stable | **Partial moves** supported with path tracking + tests |
+| `ref` / `ref mut` | Stable | Parameter + pattern binding support (`let ref`, match/if-let/while-let ref bindings) with semantic borrow checks, conflict diagnostics, and scoped borrow release |
+| Move expressions (`move x`) | Stable | **Partial moves** supported with path tracking, field-aware borrow conflicts, loop move diagnostics, and use-after-move coverage |
 | Type holes (`_`) in annotations | Stable | **HM validation** + LUMâ€‘010 |
 | Async/await | Stable | `async fn`, `await`, Promise<T> |
 | Error handling (`?`) | Stable | Rust-style Result propagation |

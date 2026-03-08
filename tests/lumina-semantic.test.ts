@@ -462,7 +462,7 @@ describe('Lumina semantic analysis', () => {
     expect(moveError).toBeTruthy();
   });
 
-  test('keeps borrow active across statements within the same scope', () => {
+  test('releases temporary ref-param borrows after the statement completes', () => {
     const program = `
       fn borrow(ref x: int) -> int { return x; }
       fn main() {
@@ -476,7 +476,7 @@ describe('Lumina semantic analysis', () => {
     const result = parser.parse(program) as { type: string };
     const analysis = analyzeLumina(result as never);
     const moveError = analysis.diagnostics.find(d => d.code === 'MOVE_WHILE_BORROWED');
-    expect(moveError).toBeTruthy();
+    expect(moveError).toBeFalsy();
   });
 
   test('releases borrows when the source scope exits', () => {
@@ -499,7 +499,7 @@ describe('Lumina semantic analysis', () => {
     expect(loopError).toBeFalsy();
   });
 
-  test('keeps borrows active after branch merge when only one branch borrows', () => {
+  test('releases temporary borrows created in only one branch before merge', () => {
     const program = `
       fn borrow(ref x: int) -> int { return x; }
       fn main() {
@@ -517,7 +517,7 @@ describe('Lumina semantic analysis', () => {
     const result = parser.parse(program) as { type: string };
     const analysis = analyzeLumina(result as never);
     const moveError = analysis.diagnostics.find(d => d.code === 'MOVE_WHILE_BORROWED');
-    expect(moveError).toBeTruthy();
+    expect(moveError).toBeFalsy();
   });
 
   test('does not retain branch-local borrows after merge when both branch scopes end', () => {
@@ -569,14 +569,14 @@ describe('Lumina semantic analysis', () => {
     expect(loopError).toBeFalsy();
   });
 
-  test('reports BORROW_ESCAPES_LOOP when a borrow remains active at loop back-edge', () => {
+  test('does not report BORROW_ESCAPES_LOOP for temporary ref-param borrows in loop bodies', () => {
     const program = `
       fn borrow(ref x: int) -> int { return x; }
       fn main() {
         let mut i: int = 0;
         let mut x: int = 1;
         while (i < 1) {
-          let _held = borrow(x);
+          let held = borrow(x);
           i = i + 1;
         }
         return i;
@@ -586,7 +586,7 @@ describe('Lumina semantic analysis', () => {
     const result = parser.parse(program) as { type: string };
     const analysis = analyzeLumina(result as never);
     const loopError = analysis.diagnostics.find(d => d.code === 'BORROW_ESCAPES_LOOP');
-    expect(loopError).toBeTruthy();
+    expect(loopError).toBeFalsy();
   });
 
   test('requires move closure for thread.spawn when capturing variables', () => {
