@@ -13,6 +13,12 @@ type ParamInfo = {
   raw: string;
 };
 
+export type ChangeSignaturePreview = {
+  callSiteCount: number;
+  fileCount: number;
+  warnings: string[];
+};
+
 export interface ChangeSignatureRequest {
   text: string;
   uri: string;
@@ -30,6 +36,9 @@ export interface ChangeSignatureResult {
   ok: boolean;
   error?: string;
   edit?: WorkspaceEdit;
+  callSiteCount?: number;
+  fileCount?: number;
+  warnings?: string[];
 }
 
 type FunctionSignatureInfo = {
@@ -262,6 +271,61 @@ function findCallSites(text: string, fnName: string): Array<{ argsStart: number;
   return sites;
 }
 
+function collectCallSitePreview(
+  files: Map<string, string>,
+  fnName: string
+): Array<{ uri: string; argsStart: number; argsEnd: number; text: string }> {
+  const sites: Array<{ uri: string; argsStart: number; argsEnd: number; text: string }> = [];
+  for (const [uri, text] of files.entries()) {
+    if (isDependencyUri(uri)) continue;
+    for (const site of findCallSites(text, fnName)) {
+      sites.push({ uri, text, ...site });
+    }
+  }
+  return sites;
+}
+
+export function previewChangeSignature(
+  request: ChangeSignatureRequest,
+  changes: ParamChange[] = []
+): ChangeSignaturePreview | { error: string } {
+  if (isDependencyUri(request.uri)) {
+    return { error: 'Cannot change signatures in dependency packages.' };
+  }
+  const fn = findFunctionAtPosition(request.text, request.position);
+  if (!fn) {
+    return { error: 'No function declaration found at the requested position.' };
+  }
+  if (fn.params.some((param) => param.raw.includes('...'))) {
+    return { error: 'Variadic signatures are not supported.' };
+  }
+
+  const files = new Map(request.allFiles);
+  if (!files.has(request.uri)) files.set(request.uri, request.text);
+  const sites = collectCallSitePreview(files, fn.name);
+  const warnings: string[] = [];
+  const fileUris = new Set<string>();
+
+  for (const site of sites) {
+    const argsText = site.text.slice(site.argsStart, site.argsEnd);
+    if (argsText.includes('...')) {
+      warnings.push(`Skipped spread call site in ${site.uri}`);
+      continue;
+    }
+    const args = argsText.trim() ? splitTopLevel(argsText) : [];
+    const rewrittenArgs = applyParamChangesToArgs(args, changes);
+    if (rewrittenArgs.length !== args.length || argsText.trim().length > 0 || changes.length > 0) {
+      fileUris.add(site.uri);
+    }
+  }
+
+  return {
+    callSiteCount: sites.length,
+    fileCount: fileUris.size,
+    warnings,
+  };
+}
+
 export function buildChangeSignatureCodeAction(text: string, uri: string, range: Range): CodeAction | null {
   const fn = findFunctionAtPosition(text, range.start);
   if (!fn) return null;
@@ -275,6 +339,7 @@ export function buildChangeSignatureCodeAction(text: string, uri: string, range:
         {
           uri,
           position: range.start,
+          name: fn.name,
           params: fn.params.map((param) => ({ name: param.name, type: param.type })),
         },
       ],
@@ -298,6 +363,9 @@ export function applyChangeSignature(
   const updatedParams = applyParamChangesToParams(fn.params, newParams);
   const renames = collectRenameChanges(newParams);
   const edit: WorkspaceEdit = { changes: {} };
+  const warnings: string[] = [];
+  let callSiteCount = 0;
+  const touchedFiles = new Set<string>();
 
   addEdit(
     edit,
@@ -325,10 +393,15 @@ export function applyChangeSignature(
     if (isDependencyUri(uri)) continue;
     const sites = findCallSites(text, fn.name);
     for (const site of sites) {
+      callSiteCount += 1;
       const argsText = text.slice(site.argsStart, site.argsEnd);
-      if (argsText.includes('...')) continue;
+      if (argsText.includes('...')) {
+        warnings.push(`Skipped spread call site in ${uri}`);
+        continue;
+      }
       const args = argsText.trim() ? splitTopLevel(argsText) : [];
       const rewrittenArgs = applyParamChangesToArgs(args, newParams).join(', ');
+      touchedFiles.add(uri);
       addEdit(
         edit,
         uri,
@@ -342,5 +415,11 @@ export function applyChangeSignature(
   }
 
   sortWorkspaceEdits(edit);
-  return { ok: true, edit };
+  return {
+    ok: true,
+    edit,
+    callSiteCount,
+    fileCount: touchedFiles.size,
+    warnings,
+  };
 }

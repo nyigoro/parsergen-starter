@@ -24,12 +24,16 @@ export interface MoveSymbolRequest {
   position: Position;
   targetUri: string;
   allFiles: Map<string, string>;
+  newName?: string;
 }
 
 export interface MoveSymbolResult {
   ok: boolean;
   error?: string;
   edit?: WorkspaceEdit;
+  symbolName?: string;
+  targetUri?: string;
+  newName?: string;
 }
 
 function getOffsetAt(text: string, pos: Position): number {
@@ -127,6 +131,15 @@ function resolveImportSource(importerUri: string, source: string): string | null
   return normalizeRelativeSpecifier(importerUri, source);
 }
 
+function rewriteDeclarationName(text: string, oldName: string, newName: string): string {
+  if (oldName === newName) return text;
+  return text.replace(new RegExp(`\\b${oldName}\\b`), newName);
+}
+
+function formatImportedName(exportedName: string, localName: string): string {
+  return exportedName === localName ? exportedName : `${exportedName} as ${localName}`;
+}
+
 function detectSimpleCycle(allFiles: Map<string, string>, sourceUri: string, targetUri: string): boolean {
   const sourceText = allFiles.get(sourceUri) ?? '';
   const targetText = allFiles.get(targetUri) ?? '';
@@ -141,19 +154,27 @@ function updateImportEdits(
   importerText: string,
   sourceUri: string,
   targetUri: string,
-  symbolName: string
+  symbolName: string,
+  movedName: string
 ) {
   const lines = findImportLines(importerText);
   const sourceSpecifier = moduleSpecifier(importerUri, sourceUri);
   const targetSpecifier = moduleSpecifier(importerUri, targetUri);
   let addedTargetImport = false;
+  const importedName = formatImportedName(movedName, symbolName);
 
   for (const { lineIndex, line } of lines) {
     const match = /^\s*import\s+\{\s*([^}]+)\s*\}\s+from\s+"([^"]+)";\s*$/.exec(line);
     if (!match) continue;
     const resolved = resolveImportSource(importerUri, match[2]);
     if (!resolved) continue;
-    if (resolved === targetUri && match[1].split(',').map((item) => item.trim()).includes(symbolName)) {
+    if (
+      resolved === targetUri &&
+      match[1]
+        .split(',')
+        .map((item) => item.trim())
+        .includes(importedName)
+    ) {
       addedTargetImport = true;
     }
     if (resolved !== sourceUri) continue;
@@ -196,7 +217,7 @@ function updateImportEdits(
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean) ?? [];
-        if (!existingNames.includes(symbolName)) {
+        if (!existingNames.includes(importedName)) {
           addEdit(
             edit,
             importerUri,
@@ -204,11 +225,16 @@ function updateImportEdits(
               start: { line: existingTarget.lineIndex, character: 0 },
               end: { line: existingTarget.lineIndex, character: existingTarget.line.length },
             },
-            `import { ${[...existingNames, symbolName].join(', ')} } from "${targetSpecifier}";`
+            `import { ${[...existingNames, importedName].join(', ')} } from "${targetSpecifier}";`
           );
         }
       } else {
-        addEdit(edit, importerUri, { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, `import { ${symbolName} } from "${targetSpecifier}";\n`);
+        addEdit(
+          edit,
+          importerUri,
+          { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          `import { ${importedName} } from "${targetSpecifier}";\n`
+        );
       }
       addedTargetImport = true;
     }
@@ -247,10 +273,13 @@ export function applyMoveSymbol(request: MoveSymbolRequest): MoveSymbolResult {
   }
   const decl = findTopLevelDeclarationAtPosition(request.text, request.position);
   if (!decl) return { ok: false, error: 'Only top-level symbols can be moved.' };
+  const movedName = request.newName?.trim() || decl.name;
 
   const targetText = allFiles.get(request.targetUri) ?? '';
-  if (new RegExp(`^(?:pub\\s+)?(?:async\\s+)?(?:fn|struct|enum|type|const)\\s+${decl.name}\\b`, 'm').test(targetText)) {
-    return { ok: false, error: `Target file already defines '${decl.name}'.` };
+  if (
+    new RegExp(`^(?:pub\\s+)?(?:async\\s+)?(?:fn|struct|enum|type|const)\\s+${movedName}\\b`, 'm').test(targetText)
+  ) {
+    return { ok: false, error: `Target file already defines '${movedName}'.` };
   }
 
   const edit: WorkspaceEdit = { changes: {} };
@@ -264,7 +293,9 @@ export function applyMoveSymbol(request: MoveSymbolRequest): MoveSymbolResult {
     ''
   );
 
-  const insertionText = `${targetText.endsWith('\n') || targetText.length === 0 ? '' : '\n'}${decl.text}\n`;
+  const insertionText = `${
+    targetText.endsWith('\n') || targetText.length === 0 ? '' : '\n'
+  }${rewriteDeclarationName(decl.text, decl.name, movedName)}\n`;
   addEdit(
     edit,
     request.targetUri,
@@ -277,9 +308,15 @@ export function applyMoveSymbol(request: MoveSymbolRequest): MoveSymbolResult {
 
   for (const [uri, text] of allFiles.entries()) {
     if (uri === request.uri || uri === request.targetUri || isDependencyUri(uri)) continue;
-    updateImportEdits(edit, uri, text, request.uri, request.targetUri, decl.name);
+    updateImportEdits(edit, uri, text, request.uri, request.targetUri, decl.name, movedName);
   }
 
   sortWorkspaceEdits(edit);
-  return { ok: true, edit };
+  return {
+    ok: true,
+    edit,
+    symbolName: decl.name,
+    targetUri: request.targetUri,
+    newName: movedName,
+  };
 }

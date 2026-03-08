@@ -97,6 +97,33 @@ describe('LSP move symbol refactor', () => {
     expect(depMove.error).toContain('package boundaries');
   });
 
+  test('can move with a new symbol name when the target collides', () => {
+    const sourceUri = makeUri('rename-source.lm');
+    const targetUri = makeUri('rename-target.lm');
+    const mainUri = makeUri('rename-main.lm');
+    const source = 'pub fn helper() -> int { return 1; }\n';
+    const target = 'pub fn helper2() -> int { return 0; }\n';
+    const main = 'import { helper } from "./rename-source.lm";\nfn main() { return helper(); }\n';
+
+    const result = applyMoveSymbol({
+      text: source,
+      uri: sourceUri,
+      position: positionAt(source, 'helper'),
+      targetUri,
+      newName: 'helper3',
+      allFiles: new Map([
+        [sourceUri, source],
+        [targetUri, target],
+        [mainUri, main],
+      ]),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.newName).toBe('helper3');
+    expect(result.edit?.changes?.[targetUri]?.some((edit) => edit.newText.includes('pub fn helper3()'))).toBe(true);
+    expect(result.edit?.changes?.[mainUri]?.some((edit) => edit.newText.includes('{ helper3 as helper }'))).toBe(true);
+  });
+
   test('does not offer move for non-top-level symbols', () => {
     const source = 'fn main() {\n  let helper = 1;\n  return helper;\n}\n';
     const pos = positionAt(source, 'helper =');

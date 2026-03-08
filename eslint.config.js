@@ -268,6 +268,7 @@ export default [
       'test-lumina-pkg/**',
       'examples/wasm-hello/benchmark.ts',
       'vscode-extension/dist/**',
+      'vscode-extension/src/**/*.test.ts',
     ],
   },
 ];

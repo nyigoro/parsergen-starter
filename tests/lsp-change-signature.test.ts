@@ -1,6 +1,11 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildChangeSignatureCodeAction, applyChangeSignature, type ParamChange } from '../src/lsp/refactor-change-signature.js';
+import {
+  buildChangeSignatureCodeAction,
+  applyChangeSignature,
+  previewChangeSignature,
+  type ParamChange,
+} from '../src/lsp/refactor-change-signature.js';
 
 function makeUri(name: string): string {
   return pathToFileURL(path.join(__dirname, 'fixtures', 'lsp-change-signature', name)).toString();
@@ -45,6 +50,35 @@ describe('LSP change signature refactor', () => {
     expect(result.edit?.changes?.[utilsUri]?.some((edit) => edit.newText.includes('left: int, y: int'))).toBe(true);
     expect(result.edit?.changes?.[utilsUri]?.some((edit) => edit.newText === 'left')).toBe(true);
     expect(result.edit?.changes?.[mainUri]?.some((edit) => edit.newText.includes('left: 1'))).toBe(true);
+  });
+
+  test('previews call-site impact across files', () => {
+    const utilsUri = makeUri('utils-preview.lm');
+    const mainUri = makeUri('main-preview.lm');
+    const extraUri = makeUri('extra-preview.lm');
+    const utils = 'pub fn compute(x: int, y: int) -> int { return x + y; }\n';
+    const main = 'import { compute } from "./utils-preview.lm";\nfn main() { return compute(1, 2); }\n';
+    const extra = 'import { compute } from "./utils-preview.lm";\nfn extra() { return compute(3, 4); }\n';
+
+    const preview = previewChangeSignature(
+      {
+        text: utils,
+        uri: utilsUri,
+        position: positionAt(utils, 'compute'),
+        allFiles: new Map([
+          [utilsUri, utils],
+          [mainUri, main],
+          [extraUri, extra],
+        ]),
+      },
+      [{ kind: 'reorder', fromIndex: 0, toIndex: 1 }]
+    );
+
+    expect('error' in preview).toBe(false);
+    if ('error' in preview) return;
+    expect(preview.callSiteCount).toBe(2);
+    expect(preview.fileCount).toBe(2);
+    expect(preview.warnings).toEqual([]);
   });
 
   test('reorders positional arguments across files', () => {

@@ -59,7 +59,12 @@ import { buildConvertToAsyncCodeAction } from './refactor-async-convert.js';
 import { buildFlipIfElseCodeAction } from './refactor-flip-if.js';
 import { buildIfLetToMatchCodeAction, buildMatchToIfLetCodeAction } from './refactor-if-let-match.js';
 import { buildWrapReturnResultCodeAction } from './refactor-wrap-result.js';
-import { applyChangeSignature, buildChangeSignatureCodeAction, type ParamChange } from './refactor-change-signature.js';
+import {
+  applyChangeSignature,
+  buildChangeSignatureCodeAction,
+  previewChangeSignature,
+  type ParamChange,
+} from './refactor-change-signature.js';
 import { applyMoveSymbol, buildMoveSymbolCodeAction } from './refactor-move-symbol.js';
 import { buildSemanticTokens, semanticTokensLegend } from './semantic-tokens.js';
 
@@ -281,7 +286,7 @@ connection.onInitialize((params: InitializeParams) => {
         full: true,
       },
       executeCommandProvider: {
-        commands: ['lumina.changeSignature', 'lumina.moveSymbol'],
+        commands: ['lumina.previewChangeSignature', 'lumina.applyChangeSignature', 'lumina.applyMoveSymbol'],
       },
     },
   };
@@ -564,7 +569,33 @@ connection.onCodeAction((params): CodeAction[] => {
 });
 
 connection.onExecuteCommand(async (params) => {
-  if (params.command === 'lumina.changeSignature') {
+  if (params.command === 'lumina.previewChangeSignature') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      position?: { line: number; character: number };
+      text?: string;
+    };
+    const changes = (params.arguments?.[1] as ParamChange[] | undefined) ?? [];
+    if (!requestArg.uri || !requestArg.position) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    const result = previewChangeSignature(
+      {
+        text,
+        uri: requestArg.uri,
+        position: requestArg.position,
+        allFiles: collectAllFileTexts(requestArg.uri, text),
+      },
+      changes
+    );
+    return result;
+  }
+
+  if (params.command === 'lumina.applyChangeSignature') {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -590,15 +621,16 @@ connection.onExecuteCommand(async (params) => {
     if (result.edit) {
       await connection.workspace.applyEdit(result.edit);
     }
-    return;
+    return result;
   }
 
-  if (params.command === 'lumina.moveSymbol') {
+  if (params.command === 'lumina.applyMoveSymbol') {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
       targetUri?: string;
       text?: string;
+      newName?: string;
     };
     if (!requestArg.uri || !requestArg.position || !requestArg.targetUri) return;
     const doc = documents.get(requestArg.uri);
@@ -613,10 +645,12 @@ connection.onExecuteCommand(async (params) => {
       position: requestArg.position,
       targetUri: requestArg.targetUri,
       allFiles: collectAllFileTexts(requestArg.uri, text),
+      newName: requestArg.newName,
     });
     if (result.edit) {
       await connection.workspace.applyEdit(result.edit);
     }
+    return result;
   }
 });
 

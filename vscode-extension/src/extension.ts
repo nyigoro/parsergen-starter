@@ -9,6 +9,8 @@ import {
   State,
   TransportKind,
 } from 'vscode-languageclient/node';
+import { registerMoveSymbolCommand } from './commands/move-symbol.js';
+import { registerChangeSignatureCommand } from './commands/change-signature.js';
 
 type ResolvedExecutable = {
   command: string;
@@ -107,6 +109,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     })
   );
+
+  await registerMoveSymbolCommand(context, () => client);
+  await registerChangeSignatureCommand(context, () => client);
 
   await startLanguageServer(context);
 }

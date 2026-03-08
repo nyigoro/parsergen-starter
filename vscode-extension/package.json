@@ -30,7 +30,9 @@
     "onCommand:lumina.compileCurrentFile",
     "onCommand:lumina.runCurrentFile",
     "onCommand:lumina.formatCurrentFile",
-    "onCommand:lumina.doctor"
+    "onCommand:lumina.doctor",
+    "onCommand:lumina.moveSymbol",
+    "onCommand:lumina.changeSignature"
   ],
   "contributes": {
     "languages": [
@@ -85,6 +87,16 @@
         "command": "lumina.doctor",
         "title": "Lumina: Doctor",
         "category": "Lumina"
+      },
+      {
+        "command": "lumina.moveSymbol",
+        "title": "Lumina: Move Symbol to File",
+        "category": "Lumina"
+      },
+      {
+        "command": "lumina.changeSignature",
+        "title": "Lumina: Change Function Signature",
+        "category": "Lumina"
       }
     ],
     "menus": {
@@ -98,6 +110,18 @@
           "command": "lumina.compileCurrentFile",
           "group": "navigation@11",
           "when": "resourceLangId == lumina"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "lumina.moveSymbol",
+          "when": "editorLangId == lumina",
+          "group": "1_modification"
+        },
+        {
+          "command": "lumina.changeSignature",
+          "when": "editorLangId == lumina",
+          "group": "1_modification"
         }
       ],
       "commandPalette": [
@@ -118,9 +142,23 @@
         },
         {
           "command": "lumina.doctor"
+        },
+        {
+          "command": "lumina.moveSymbol"
+        },
+        {
+          "command": "lumina.changeSignature"
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "lumina.changeSignature",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorLangId == lumina"
+      }
+    ],
     "snippets": [
       {
         "language": "lumina",
