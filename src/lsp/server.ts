@@ -50,6 +50,15 @@ import { findReferencesAtPosition } from './references.js';
 import { applyRename } from './rename.js';
 import { buildInlineVariableCodeAction } from './refactor-inline.js';
 import { buildExtractTypeAliasCodeAction } from './refactor-extract-type.js';
+import { buildExtractVariableCodeAction } from './refactor-extract-variable.js';
+import { buildPromoteToRefCodeAction } from './refactor-promote-ref.js';
+import { buildSplitVariableCodeAction } from './refactor-split-variable.js';
+import { buildTraitStubsCodeAction } from './refactor-trait-stubs.js';
+import { buildExtractFunctionCodeAction } from './refactor-extract-function.js';
+import { buildConvertToAsyncCodeAction } from './refactor-async-convert.js';
+import { buildFlipIfElseCodeAction } from './refactor-flip-if.js';
+import { buildIfLetToMatchCodeAction, buildMatchToIfLetCodeAction } from './refactor-if-let-match.js';
+import { buildWrapReturnResultCodeAction } from './refactor-wrap-result.js';
 import { buildSemanticTokens, semanticTokensLegend } from './semantic-tokens.js';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -515,7 +524,27 @@ connection.onCodeAction((params): CodeAction[] => {
   if (inline) actions.push(inline);
   const extractType = buildExtractTypeAliasCodeAction(text, params.textDocument.uri, params.range);
   if (extractType) actions.push(extractType);
-  return actions;
+  const refactors = [
+    buildExtractVariableCodeAction(text, params.textDocument.uri, params.range),
+    buildPromoteToRefCodeAction(text, params.textDocument.uri, params.range),
+    buildSplitVariableCodeAction(text, params.textDocument.uri, params.range),
+    buildTraitStubsCodeAction(text, params.textDocument.uri, params.range),
+    buildExtractFunctionCodeAction(text, params.textDocument.uri, params.range),
+    buildConvertToAsyncCodeAction(text, params.textDocument.uri, params.range),
+    buildFlipIfElseCodeAction(text, params.textDocument.uri, params.range),
+    buildIfLetToMatchCodeAction(text, params.textDocument.uri, params.range),
+    buildMatchToIfLetCodeAction(text, params.textDocument.uri, params.range),
+    buildWrapReturnResultCodeAction(text, params.textDocument.uri, params.range),
+  ].filter((action): action is CodeAction => action !== null);
+  actions.push(...refactors);
+
+  const seen = new Set<string>();
+  return actions.filter((action) => {
+    const key = `${action.kind ?? ''}|${action.title}|${JSON.stringify(action.edit ?? null)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 });
 
 connection.languages.inlayHint.on((params): InlayHint[] => {

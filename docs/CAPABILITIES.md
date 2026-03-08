@@ -68,7 +68,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Canonical module IDs + alias‑aware hover | Stable | Cross‑file hover & definition via module graph |
 | LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010 with precise `_` replacement ranges for nested generic types |
 | LSP inlay hints | Stable | Type hints for inferred lets + parameter hints |
-| LSP refactor code actions | Stable | Extract local/type alias, inline variable, collection call style rewrites |
+| LSP refactor code actions | Stable | Extract local/type alias/function, inline variable, promote-to-ref, split variable, trait stubs, async/result rewrites, if/else↔match transforms, and collection call style rewrites |
 | LSP document/workspace symbols | Stable | Symbol kinds + workspace query coverage across multi-file projects |
 | LSP semantic tokens | Stable | Keyword/literal/type/value tokenization with stable output across non-semantic edits |
 | Diagnostic deduplication | Stable | HM + semantic merged |
@@ -133,6 +133,6 @@ This document tracks the current state of the Lumina language/tooling and near�
 2. **WASM backend polish** (opt-in boundaries like `WASM-IS-001`, diagnostics UX, perf/memory tuning beyond baseline)
 3. **GPU CI coverage** (dedicated GPU-capable runner for `LUMINA_WEBGPU_SMOKE=1` specs)
 4. **Registry ecosystem/discovery depth** (search ranking/pagination, package quality metadata, adoption workflows)
-5. **Borrow safety polish + advanced IDE refactors** (remaining semantic refinements and higher-order refactor transforms)
+5. **Cross-file refactor depth + registry polish** (broader semantic-aware LSP transforms, package metadata quality, and higher-order workflow refinements)
 
 Reference: `docs/WEB_NATIVE_ROADMAP.md`

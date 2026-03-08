@@ -6,6 +6,8 @@ import {
   WorkspaceEdit,
 } from 'vscode-languageserver/node';
 import { formatDiagnosticExplanation } from '../lumina/diagnostic-explain.js';
+import { buildExtractVariableCodeAction } from './refactor-extract-variable.js';
+import { buildPromoteToRefCodeAction } from './refactor-promote-ref.js';
 
 function extractHoleType(diagnostic: { relatedInformation?: Array<{ message: string }> }): string | null {
   const info = diagnostic.relatedInformation?.find((rel) => rel.message.startsWith('Hole type:'));
@@ -136,6 +138,15 @@ export function getCodeActionsForDiagnostics(
       if (rewrite) {
         rewrite.diagnostics = [diag];
         actions.push(rewrite);
+      }
+    }
+
+    if (diagCode === 'REF_LVALUE_REQUIRED') {
+      const promote = buildPromoteToRefCodeAction(text, uri, diag.range);
+      if (promote) {
+        promote.kind = CodeActionKind.QuickFix;
+        promote.diagnostics = [diag];
+        actions.push(promote);
       }
     }
 
@@ -321,54 +332,13 @@ function getRefactorActions(text: string, uri: string, range?: Range): CodeActio
   const trimmed = selected.trim();
   if (!trimmed) return actions;
 
-  const extract = buildExtractVariableAction(text, uri, range, selected);
+  const extract = buildExtractVariableCodeAction(text, uri, range);
   if (extract) actions.push(extract);
 
   const rewrites = buildCollectionRewriteActions(uri, range, trimmed);
   actions.push(...rewrites);
 
   return actions;
-}
-
-function findUniqueName(text: string, base: string): string {
-  const hasName = (name: string) => new RegExp(`\\b${name}\\b`).test(text);
-  if (!hasName(base)) return base;
-  let idx = 1;
-  while (hasName(`${base}${idx}`)) idx += 1;
-  return `${base}${idx}`;
-}
-
-function buildExtractVariableAction(
-  text: string,
-  uri: string,
-  range: Range,
-  selected: string
-): CodeAction | null {
-  const trimmed = selected.trim();
-  if (!trimmed) return null;
-  if (trimmed.includes('\n')) return null;
-  if (/^\s*(let|fn|struct|enum|type|import)\b/.test(trimmed)) return null;
-
-  const lines = text.split(/\r?\n/);
-  const lineText = lines[range.start.line] ?? '';
-  const indent = (/^\s*/.exec(lineText)?.[0]) ?? '';
-  const varName = findUniqueName(text, 'extracted');
-  const declaration = `${indent}let ${varName} = ${trimmed};\n`;
-
-  const edit: WorkspaceEdit = {
-    changes: {
-      [uri]: [
-        TextEdit.insert({ line: range.start.line, character: 0 }, declaration),
-        TextEdit.replace(range, varName),
-      ],
-    },
-  };
-
-  return {
-    title: `Extract to local '${varName}'`,
-    kind: CodeActionKind.RefactorExtract,
-    edit,
-  };
 }
 
 function buildCollectionRewriteActions(uri: string, range: Range, snippet: string): CodeAction[] {

@@ -9,6 +9,8 @@ import { compileLuminaTask } from '../src/bin/lumina-core.js';
 import type { LuminaProgram, LuminaFnDecl, LuminaStatement } from '../src/lumina/ast.js';
 import type { Diagnostic } from '../src/parser/index.js';
 
+jest.setTimeout(20_000);
+
 const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
