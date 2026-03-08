@@ -59,6 +59,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 |---|---|---|
 | Structured diagnostics | Stable | Error / warning severity |
 | HM type formatting | Stable | Pretty formatting for errors |
+| LSP completion | Stable | Context-aware completion for in-scope symbols, member access, namespace access, import paths/names, and keyword fallback |
 | LSP hover (HM‑backed) | Stable | Uses HM inferred types + cross‑file source info |
 | LSP signature help | Stable | Cursor-aware nested call resolution, overload candidate lists, active parameter tracking, HM-instantiated call-site labels |
 | LSP cross‑file definition | Stable | Aliases + namespace imports supported |

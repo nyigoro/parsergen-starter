@@ -35,7 +35,7 @@ import { URI } from 'vscode-uri';
 import { compileGrammar } from '../grammar/index.js';
 import { ProjectContext } from '../project/context.js';
 import { defaultSettings, type LuminaLspSettings } from './config.js';
-import { buildCompletionItems } from './completion.js';
+import { resolveCompletions } from './completion.js';
 import {
   createStdModuleRegistry,
   getPreludeExports,
@@ -243,7 +243,10 @@ connection.onInitialize((params: InitializeParams) => {
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
-      completionProvider: { resolveProvider: false },
+      completionProvider: {
+        resolveProvider: false,
+        triggerCharacters: ['.', ':', '"', '{'],
+      },
       documentSymbolProvider: true,
       workspaceSymbolProvider: true,
       definitionProvider: true,
@@ -389,13 +392,23 @@ connection.onSignatureHelp((params): SignatureHelp | null => {
 connection.onCompletion((params) => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  return buildCompletionItems({
+  return resolveCompletions({
     doc,
     position: params.position,
     symbols: project?.getSymbols(params.textDocument.uri),
     ast: project?.getDocumentAst(params.textDocument.uri),
+    moduleBindings: project?.getModuleBindings(params.textDocument.uri) ?? new Map<string, ModuleExport>(),
+    hmExprTypes: project?.getHmExprTypes(params.textDocument.uri),
+    preludeExportMap,
+    moduleRegistry,
+    project: project ?? undefined,
+    uri: params.textDocument.uri,
+    resolveImportedSymbol: (name) => findImportedSymbolInfo(name, params.textDocument.uri) ?? undefined,
+    resolveImportedMember: (base, member) => project?.resolveImportedMember(base, member, params.textDocument.uri),
   });
 });
+
+connection.onCompletionResolve((item) => item);
 
 connection.onDefinition((params: DefinitionParams): Location[] => {
   if (!project) return [];

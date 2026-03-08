@@ -26,6 +26,30 @@ let extensionContextRef: vscode.ExtensionContext | undefined;
 
 const SERVER_COMMAND = 'lumina-lsp';
 const CLI_COMMAND = 'lumina';
+const FALLBACK_KEYWORDS = [
+  'fn',
+  'let',
+  'mut',
+  'match',
+  'if',
+  'else',
+  'while',
+  'for',
+  'return',
+  'async',
+  'await',
+  'struct',
+  'enum',
+  'trait',
+  'impl',
+  'type',
+  'pub',
+  'use',
+  'import',
+  'comptime',
+  'ref',
+  'move',
+];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   extensionContextRef = context;
@@ -57,6 +81,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('lumina.doctor', async () => {
       await showDoctorReport();
     }),
+    vscode.languages.registerCompletionItemProvider(
+      { language: 'lumina' },
+      {
+        provideCompletionItems(document, position) {
+          if (client?.state === State.Running) return undefined;
+          const range = document.getWordRangeAtPosition(position);
+          const prefix = range ? document.getText(range.with(range.start, position)) : '';
+          return FALLBACK_KEYWORDS
+            .filter((keyword) => !prefix || keyword.startsWith(prefix))
+            .map((keyword) => new vscode.CompletionItem(keyword, vscode.CompletionItemKind.Keyword));
+        },
+      },
+      '.',
+      ':',
+      '"',
+      '{'
+    ),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (
         event.affectsConfiguration('lumina.server.path') ||
