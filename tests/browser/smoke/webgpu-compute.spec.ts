@@ -6,7 +6,12 @@ const runWebGpuSmoke = process.env.LUMINA_WEBGPU_SMOKE === '1';
 
 test.describe('WebGPU compute smoke', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
-  test.skip(!runWebGpuSmoke, 'Set LUMINA_WEBGPU_SMOKE=1 on a GPU-capable runner');
+  test.skip(
+    !runWebGpuSmoke,
+    'WebGPU smoke is skipped in standard CI (no GPU runner). ' +
+      'To run locally: set LUMINA_BROWSER_SMOKE=1 LUMINA_WEBGPU_SMOKE=1 and use npm run test:webgpu. ' +
+      'See docs/WEBGPU_TESTING.md for prerequisites and setup.'
+  );
 
   test('requests adapter/device and creates a compute pipeline when available', async ({ page }) => {
     const server = await startSmokeServer();

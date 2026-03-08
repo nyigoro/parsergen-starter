@@ -144,8 +144,8 @@ function resolveGrammarPath(arg?: string): string {
 }
 
 function parseArgs(argv: string[]) {
-  const [command, file] = argv;
   const args = new Map<string, string | boolean>();
+  const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = argv[i + 1];
@@ -156,9 +156,12 @@ function parseArgs(argv: string[]) {
       } else {
         args.set(a, true);
       }
+      continue;
     }
+    positional.push(a);
   }
-  return { command, file, args };
+  const [command, file] = positional;
+  return { command, file, positional, args };
 }
 
 function parseBooleanFlag(args: Map<string, string | boolean>, key: string): boolean {
@@ -167,6 +170,32 @@ function parseBooleanFlag(args: Map<string, string | boolean>, key: string): boo
   if (value === true) return true;
   if (typeof value === 'string') return value === 'true' || value === '1' || value === 'yes';
   return false;
+}
+
+function formatRelativeDate(iso: string): string {
+  const time = new Date(iso).getTime();
+  if (!Number.isFinite(time)) return iso;
+  const diff = Math.max(0, Date.now() - time);
+  const days = Math.floor(diff / 86_400_000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
+function buildNextPageCmd(
+  query: string,
+  nextOffset: number,
+  sort: string | boolean | undefined,
+  limit: string | boolean | undefined,
+  tags: string | boolean | undefined
+): string {
+  const parts = [`lumina search "${query}"`, `--offset ${nextOffset}`];
+  if (typeof limit === 'string' && limit.length > 0) parts.push(`--limit ${limit}`);
+  if (typeof sort === 'string' && sort.length > 0) parts.push(`--sort ${sort}`);
+  if (typeof tags === 'string' && tags.length > 0) parts.push(`--tags ${tags}`);
+  return parts.join(' ');
 }
 
 function resolveTarget(value: string | undefined): Target | null {
@@ -2494,10 +2523,7 @@ async function runDocCommand(
 }
 
 export async function runLumina(argv: string[] = process.argv.slice(2)) {
-  const positional = argv.filter((arg) => !arg.startsWith('--'));
-  const command = positional[0];
-  const file = positional[1];
-  const { args } = parseArgs(argv);
+  const { command, file, positional, args } = parseArgs(argv);
   const positionalArgs = positional.slice(1);
   if (!command || command === '--help' || command === '-h') {
     printHelp();
@@ -2536,7 +2562,10 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   if (command === 'search') {
     const query = positionalArgs.join(' ').trim();
     if (query.length === 0) {
-      throw new Error('Missing <query> for search');
+      console.log('Usage: lumina search <query>');
+      console.log('       lumina search <query> --sort downloads');
+      console.log('       lumina search <query> --limit 20 --offset 0');
+      return;
     }
     const manifest = await readManifest(process.cwd()).catch(() => ({
       name: '',
@@ -2579,9 +2608,32 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       console.log(JSON.stringify(result, null, 2));
       return;
     }
-    console.log(`Found ${result.total} package(s):`);
+    if (result.total === 0) {
+      console.log('Found 0 package(s).');
+      return;
+    }
+    const offsetValue = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset ?? 0)) : 0;
+    const rangeEnd = offsetValue + result.results.length;
+    console.log(`\nFound ${result.total} package(s) - showing ${offsetValue + 1}-${rangeEnd}:\n`);
     for (const entry of result.results) {
-      console.log(`- ${entry.name}@${entry.version}${entry.description ? ` - ${entry.description}` : ''}`);
+      const tagSuffix = entry.tags.length > 0 ? `  [${entry.tags.join(', ')}]` : '';
+      console.log(`  ${entry.name}@${entry.version}${tagSuffix}`);
+      if (entry.description) {
+        console.log(`    ${entry.description}`);
+      }
+      const meta: string[] = [];
+      if (entry.downloads !== null) meta.push(`↓ ${entry.downloads.toLocaleString()}`);
+      if (entry.dependents !== null) meta.push(`${entry.dependents.toLocaleString()} dependents`);
+      if (entry.updatedAt) meta.push(`updated ${formatRelativeDate(entry.updatedAt)}`);
+      if (meta.length > 0) {
+        console.log(`    ${meta.join('  ·  ')}`);
+      }
+      console.log('');
+    }
+    if (result.hasMore && result.nextOffset !== null) {
+      console.log(
+        `  -> More results: ${buildNextPageCmd(query, result.nextOffset, sortRaw, limitRaw, tagsRaw)}\n`
+      );
     }
     return;
   }

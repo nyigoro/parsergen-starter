@@ -30,10 +30,16 @@ export type SearchResultEntry = {
   name: string;
   version: string;
   description: string | null;
+  downloads: number | null;
+  dependents: number | null;
+  updatedAt: string | null;
+  tags: string[];
 };
 
 export type SearchResult = {
   total: number;
+  hasMore: boolean;
+  nextOffset: number | null;
   results: SearchResultEntry[];
 };
 
@@ -325,17 +331,35 @@ export async function search(
   }
   const payload = await requestJson<{
     total?: number;
-    results?: Array<{ name: string; version: string; description?: string | null }>;
+    results?: Array<{
+      name: string;
+      version: string;
+      description?: string | null;
+      downloads?: number | null;
+      dependents?: number | null;
+      updatedAt?: string | null;
+      tags?: string[];
+    }>;
   }>(joinUrl(config.url, `/search?${params.toString()}`), config);
+  const results = Array.isArray(payload.results)
+    ? payload.results.map((entry) => ({
+        name: entry.name,
+        version: entry.version,
+        description: entry.description ?? null,
+        downloads: typeof entry.downloads === 'number' ? entry.downloads : null,
+        dependents: typeof entry.dependents === 'number' ? entry.dependents : null,
+        updatedAt: entry.updatedAt ?? null,
+        tags: Array.isArray(entry.tags) ? entry.tags : [],
+      }))
+    : [];
+  const total = typeof payload.total === 'number' ? payload.total : results.length;
+  const offset = typeof options.offset === 'number' ? Math.max(0, Math.trunc(options.offset)) : 0;
+  const hasMore = total > offset + results.length;
   return {
-    total: typeof payload.total === 'number' ? payload.total : Array.isArray(payload.results) ? payload.results.length : 0,
-    results: Array.isArray(payload.results)
-      ? payload.results.map((entry) => ({
-          name: entry.name,
-          version: entry.version,
-          description: entry.description ?? null,
-        }))
-      : [],
+    total,
+    hasMore,
+    nextOffset: hasMore ? offset + results.length : null,
+    results,
   };
 }
 
