@@ -81,22 +81,22 @@ const reservedKeywords = new Set([
   'const',
 ]);
 
-function isValidIdentifier(name: string): boolean {
+export function isValidIdentifier(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 }
 
-function locationToRange(location: Location): Range {
+export function locationToRange(location: Location): Range {
   return {
     start: { line: location.start.line - 1, character: location.start.column - 1 },
     end: { line: location.end.line - 1, character: location.end.column - 1 },
   };
 }
 
-function isDependencyUri(uri: string): boolean {
+export function isDependencyUri(uri: string): boolean {
   return uri.includes('/.lumina/packages/') || uri.includes('\\.lumina\\packages\\');
 }
 
-function addEdit(edit: WorkspaceEdit, uri: string, range: Range, newText: string): void {
+export function addEdit(edit: WorkspaceEdit, uri: string, range: Range, newText: string): void {
   const list = (edit.changes ??= {});
   const edits = (list[uri] ??= []);
   const key = `${range.start.line}:${range.start.character}:${range.end.line}:${range.end.character}:${newText}`;
@@ -106,7 +106,7 @@ function addEdit(edit: WorkspaceEdit, uri: string, range: Range, newText: string
   edits.push({ range, newText });
 }
 
-function sortWorkspaceEdits(edit: WorkspaceEdit): void {
+export function sortWorkspaceEdits(edit: WorkspaceEdit): void {
   if (!edit.changes) return;
   for (const [uri, edits] of Object.entries(edit.changes)) {
     edits.sort((a, b) => {

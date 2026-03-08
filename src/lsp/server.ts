@@ -59,6 +59,8 @@ import { buildConvertToAsyncCodeAction } from './refactor-async-convert.js';
 import { buildFlipIfElseCodeAction } from './refactor-flip-if.js';
 import { buildIfLetToMatchCodeAction, buildMatchToIfLetCodeAction } from './refactor-if-let-match.js';
 import { buildWrapReturnResultCodeAction } from './refactor-wrap-result.js';
+import { applyChangeSignature, buildChangeSignatureCodeAction, type ParamChange } from './refactor-change-signature.js';
+import { applyMoveSymbol, buildMoveSymbolCodeAction } from './refactor-move-symbol.js';
 import { buildSemanticTokens, semanticTokensLegend } from './semantic-tokens.js';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -113,6 +115,15 @@ function summarizeWorkspaceEdit(edit: WorkspaceEdit): { files: number; edits: nu
     edits += changes[uri]?.length ?? 0;
   }
   return { files: fileUris.length, edits };
+}
+
+function collectAllFileTexts(currentUri?: string, currentText?: string): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const doc of project?.listDocuments() ?? []) {
+    files.set(doc.uri, doc.text);
+  }
+  if (currentUri && currentText !== undefined) files.set(currentUri, currentText);
+  return files;
 }
 
 function findImportedSymbolInfo(name: string, uri: string) {
@@ -268,6 +279,9 @@ connection.onInitialize((params: InitializeParams) => {
       semanticTokensProvider: {
         legend: semanticTokensLegend,
         full: true,
+      },
+      executeCommandProvider: {
+        commands: ['lumina.changeSignature', 'lumina.moveSymbol'],
       },
     },
   };
@@ -535,6 +549,8 @@ connection.onCodeAction((params): CodeAction[] => {
     buildIfLetToMatchCodeAction(text, params.textDocument.uri, params.range),
     buildMatchToIfLetCodeAction(text, params.textDocument.uri, params.range),
     buildWrapReturnResultCodeAction(text, params.textDocument.uri, params.range),
+    buildChangeSignatureCodeAction(text, params.textDocument.uri, params.range),
+    buildMoveSymbolCodeAction(text, params.textDocument.uri, params.range),
   ].filter((action): action is CodeAction => action !== null);
   actions.push(...refactors);
 
@@ -545,6 +561,63 @@ connection.onCodeAction((params): CodeAction[] => {
     seen.add(key);
     return true;
   });
+});
+
+connection.onExecuteCommand(async (params) => {
+  if (params.command === 'lumina.changeSignature') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      position?: { line: number; character: number };
+      text?: string;
+    };
+    const changes = (params.arguments?.[1] as ParamChange[] | undefined) ?? [];
+    if (!requestArg.uri || !requestArg.position) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    const result = applyChangeSignature(
+      {
+        text,
+        uri: requestArg.uri,
+        position: requestArg.position,
+        allFiles: collectAllFileTexts(requestArg.uri, text),
+      },
+      changes
+    );
+    if (result.edit) {
+      await connection.workspace.applyEdit(result.edit);
+    }
+    return;
+  }
+
+  if (params.command === 'lumina.moveSymbol') {
+    const requestArg = (params.arguments?.[0] ?? {}) as {
+      uri?: string;
+      position?: { line: number; character: number };
+      targetUri?: string;
+      text?: string;
+    };
+    if (!requestArg.uri || !requestArg.position || !requestArg.targetUri) return;
+    const doc = documents.get(requestArg.uri);
+    const text =
+      requestArg.text ??
+      doc?.getText() ??
+      project?.listDocuments().find((item) => item.uri === requestArg.uri)?.text;
+    if (!text) return;
+    const result = applyMoveSymbol({
+      text,
+      uri: requestArg.uri,
+      position: requestArg.position,
+      targetUri: requestArg.targetUri,
+      allFiles: collectAllFileTexts(requestArg.uri, text),
+    });
+    if (result.edit) {
+      await connection.workspace.applyEdit(result.edit);
+    }
+  }
 });
 
 connection.languages.inlayHint.on((params): InlayHint[] => {

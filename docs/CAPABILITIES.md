@@ -68,7 +68,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Canonical module IDs + alias‑aware hover | Stable | Cross‑file hover & definition via module graph |
 | LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010 with precise `_` replacement ranges for nested generic types |
 | LSP inlay hints | Stable | Type hints for inferred lets + parameter hints |
-| LSP refactor code actions | Stable | Extract local/type alias/function, inline variable, promote-to-ref, split variable, trait stubs, async/result rewrites, if/else↔match transforms, and collection call style rewrites |
+| LSP refactor code actions | Stable | Extract local/type alias/function, inline variable, promote-to-ref, split variable, trait stubs, change signature, move symbol, async/result rewrites, if/else↔match transforms, and collection call style rewrites |
 | LSP document/workspace symbols | Stable | Symbol kinds + workspace query coverage across multi-file projects |
 | LSP semantic tokens | Stable | Keyword/literal/type/value tokenization with stable output across non-semantic edits |
 | Diagnostic deduplication | Stable | HM + semantic merged |
