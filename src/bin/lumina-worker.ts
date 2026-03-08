@@ -26,6 +26,7 @@ type CompileMessage = {
     noComptime?: boolean;
     sourceMap?: boolean;
     inlineSourceMap?: boolean;
+    useBundledCompile?: boolean;
   };
 };
 

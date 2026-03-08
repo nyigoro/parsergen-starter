@@ -14,6 +14,7 @@ pnpm-debug.log*
 /codegen.js
 /.parsergenrc
 .lumina-cache/
+.lumina/
 /.tmp/
 /.tmp-wasm/
 /.tmp-wasm-perf/

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- **Compiler:** Switched the CLI and worker/watch compile default to the module-graph topological path; `--bundled-compile` now opts into the legacy bundled pipeline while `--topo-compile` remains accepted for compatibility.
+- **Watch mode:** Replaced per-file `fs.watch` usage with chokidar-backed directory watching, batched rebuild scheduling, content-hash filtering, and export-aware incremental invalidation.
+
 ## 0.5.0 - 2026-03-05
 
 - **Language/Type System:** Stabilized advanced features already in tree (function overloading, macro system hardening, ref/ref mut pattern support, GADT/HKT coverage, numeric API unification, and cast semantics hardening).

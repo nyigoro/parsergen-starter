@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { existsSync, watch, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fg from 'fast-glob';
@@ -25,7 +25,14 @@ import {
 import { inlinePass } from '../lumina/inline.js';
 import { comptimePass } from '../lumina/comptime.js';
 import { fuseVecPipelines } from '../lumina/stream-fusion.js';
-import { buildModuleGraph, clearModuleGraphCache, compileInOrder, type ExportEnv } from '../lumina/module-graph.js';
+import {
+  buildModuleGraph,
+  clearModuleGraphCache,
+  compileInOrder,
+  recompileAffected,
+  type ExportEnv,
+  type ModuleGraph,
+} from '../lumina/module-graph.js';
 import { loadWASM, callWASMFunction } from '../wasm-runtime.js';
 import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
@@ -492,14 +499,6 @@ function resolveBareImport(
   }
   const absolute = path.resolve(pkgRoot, entry);
   return ensureExtension(absolute, extensions);
-}
-
-function getDependents(graph: Map<string, string[]>, target: string): string[] {
-  const results: string[] = [];
-  for (const [file, deps] of graph.entries()) {
-    if (deps.includes(target)) results.push(file);
-  }
-  return results;
 }
 
 function buildDepGraph(): Map<string, string[]> {
@@ -1081,6 +1080,41 @@ function collectModuleExportEnv(program: unknown): ExportEnv {
   return { symbols, types };
 }
 
+function createModuleGraphCompileNode(
+  parser: ReturnType<typeof compileGrammar>,
+  useRecovery: boolean
+) {
+  return async ({ node }: { node: { path: string | null } }) => {
+    if (!node.path) return { skipCacheWrite: true };
+    const nodeSource = await fs.readFile(node.path, 'utf-8');
+    const { ast, diagnostics, parseError } = parseSource(nodeSource, parser, useRecovery);
+    if (parseError || !ast) {
+      if (diagnostics.length > 0) {
+        formatDiagnosticsWithSnippet(nodeSource, diagnostics);
+      }
+      return {
+        diagnostics,
+        ast: null,
+        exportEnv: null,
+        skipCacheWrite: true,
+      };
+    }
+    return {
+      ast: ast as never,
+      exportEnv: collectModuleExportEnv(ast),
+      diagnostics,
+    };
+  };
+}
+
+function formatModuleGraphDiagnostics(result: { diagnostics: Map<string, Diagnostic[]> }): void {
+  for (const [nodeKey, diagnostics] of result.diagnostics.entries()) {
+    const first = diagnostics.find((diag) => diag.severity === 'error');
+    if (!first) continue;
+    console.error(`[${first.code ?? 'DIAG'}] ${first.message} (${nodeKey})`);
+  }
+}
+
 function programUsesAstOnlySyntax(program: unknown): boolean {
   const visitExpr = (expr: unknown): boolean => {
     if (!expr || typeof expr !== 'object') return false;
@@ -1233,35 +1267,11 @@ async function compileLuminaTopologically(
   }
 
   const topoResult = await compileInOrder(graph, {
-    compileNode: async ({ node }) => {
-      if (!node.path) return { skipCacheWrite: true };
-      const nodeSource = await fs.readFile(node.path, 'utf-8');
-      const { ast, diagnostics, parseError } = parseSource(nodeSource, parser, useRecovery);
-      if (parseError || !ast) {
-        if (diagnostics.length > 0) {
-          formatDiagnosticsWithSnippet(nodeSource, diagnostics);
-        }
-        return {
-          diagnostics,
-          ast: null,
-          exportEnv: null,
-          skipCacheWrite: true,
-        };
-      }
-      return {
-        ast: ast as never,
-        exportEnv: collectModuleExportEnv(ast),
-        diagnostics,
-      };
-    },
+    compileNode: createModuleGraphCompileNode(parser, useRecovery),
   });
 
   if (!topoResult.success) {
-    for (const [nodeKey, diagnostics] of topoResult.diagnostics.entries()) {
-      const first = diagnostics.find((diag) => diag.severity === 'error');
-      if (!first) continue;
-      console.error(`[${first.code ?? 'DIAG'}] ${first.message} (${nodeKey})`);
-    }
+    formatModuleGraphDiagnostics(topoResult);
     return { ok: false, map: undefined, ir: undefined };
   }
 
@@ -1736,6 +1746,55 @@ async function checkLumina(
   return { ok: true };
 }
 
+async function compileLuminaWithStrategy(
+  sourcePath: string,
+  outPath: string,
+  target: Target,
+  grammarPath: string,
+  useRecovery: boolean,
+  diCfg: boolean,
+  useAstJs: boolean,
+  noOptimize: boolean,
+  noInline: boolean,
+  noComptime: boolean,
+  sourceMap: boolean,
+  inlineSourceMap: boolean,
+  stopOnUnresolvedMemberError: boolean,
+  useBundledCompile: boolean
+) {
+  return useBundledCompile
+    ? compileLumina(
+        sourcePath,
+        outPath,
+        target,
+        grammarPath,
+        useRecovery,
+        diCfg,
+        useAstJs,
+        noOptimize,
+        noInline,
+        noComptime,
+        sourceMap,
+        inlineSourceMap,
+        stopOnUnresolvedMemberError
+      )
+    : compileLuminaTopologically(
+        sourcePath,
+        outPath,
+        target,
+        grammarPath,
+        useRecovery,
+        diCfg,
+        useAstJs,
+        noOptimize,
+        noInline,
+        noComptime,
+        sourceMap,
+        inlineSourceMap,
+        stopOnUnresolvedMemberError
+      );
+}
+
 export async function compileLuminaTask(payload: {
   sourcePath: string;
   outPath: string;
@@ -1750,8 +1809,9 @@ export async function compileLuminaTask(payload: {
   sourceMap?: boolean;
   inlineSourceMap?: boolean;
   stopOnUnresolvedMemberError?: boolean;
+  useBundledCompile?: boolean;
 }) {
-  return compileLumina(
+  return compileLuminaWithStrategy(
     payload.sourcePath,
     payload.outPath,
     payload.target,
@@ -1764,7 +1824,8 @@ export async function compileLuminaTask(payload: {
     payload.noComptime ?? false,
     payload.sourceMap ?? false,
     payload.inlineSourceMap ?? false,
-    payload.stopOnUnresolvedMemberError ?? false
+    payload.stopOnUnresolvedMemberError ?? false,
+    payload.useBundledCompile ?? false
   );
 }
 
@@ -1790,6 +1851,102 @@ async function runRepl(grammarPath: string) {
   runREPLWithParser(parser, grammarText);
 }
 
+type WatchSession = {
+  dirtyPaths: Set<string>;
+  pendingPaths: Set<string>;
+  rebuildScheduled: NodeJS.Timeout | null;
+  buildInFlight: boolean;
+  rerunRequested: boolean;
+  lastSeenHashes: Map<string, string>;
+};
+
+export function createWatchSessionController(options: {
+  runIncrementalBuild: (changedPaths: string[]) => Promise<void>;
+  delay?: number;
+  hashFile?: (filePath: string) => Promise<string | null>;
+}) {
+  const delay = options.delay ?? 100;
+  const hashFile =
+    options.hashFile ??
+    (async (filePath: string): Promise<string | null> => {
+      try {
+        const raw = await fs.readFile(filePath, 'utf-8');
+        return hashText(raw);
+      } catch {
+        return null;
+      }
+    });
+
+  const session: WatchSession = {
+    dirtyPaths: new Set<string>(),
+    pendingPaths: new Set<string>(),
+    rebuildScheduled: null,
+    buildInFlight: false,
+    rerunRequested: false,
+    lastSeenHashes: new Map<string, string>(),
+  };
+
+  const runIncrementalBuild = async () => {
+    if (session.buildInFlight) {
+      session.rerunRequested = true;
+      return;
+    }
+    session.buildInFlight = true;
+    const changed = Array.from(session.dirtyPaths);
+    session.pendingPaths = new Set(changed);
+    session.dirtyPaths.clear();
+    try {
+      if (changed.length > 0) {
+        await options.runIncrementalBuild(changed);
+      }
+    } finally {
+      session.pendingPaths.clear();
+      session.buildInFlight = false;
+      if (session.rerunRequested || session.dirtyPaths.size > 0) {
+        session.rerunRequested = false;
+        scheduleRebuild(0);
+      }
+    }
+  };
+
+  const scheduleRebuild = (nextDelay: number = delay) => {
+    if (session.rebuildScheduled) clearTimeout(session.rebuildScheduled);
+    session.rebuildScheduled = setTimeout(() => {
+      session.rebuildScheduled = null;
+      void runIncrementalBuild();
+    }, nextDelay);
+  };
+
+  const report = async (filePath: string) => {
+    const resolved = path.resolve(filePath);
+    const nextHash = await hashFile(resolved);
+    if (nextHash !== null) {
+      if (session.lastSeenHashes.get(resolved) === nextHash) return;
+      session.lastSeenHashes.set(resolved, nextHash);
+    } else {
+      const hadPreviousValue = session.lastSeenHashes.delete(resolved);
+      if (!hadPreviousValue && !session.pendingPaths.has(resolved) && !session.dirtyPaths.has(resolved)) {
+        session.dirtyPaths.add(resolved);
+        scheduleRebuild();
+        return;
+      }
+    }
+    session.dirtyPaths.add(resolved);
+    scheduleRebuild();
+  };
+
+  const seedHash = (filePath: string, hash: string) => {
+    session.lastSeenHashes.set(path.resolve(filePath), hash);
+  };
+
+  const dispose = () => {
+    if (session.rebuildScheduled) clearTimeout(session.rebuildScheduled);
+    session.rebuildScheduled = null;
+  };
+
+  return { session, report, scheduleRebuild, seedHash, dispose };
+}
+
 async function watchLumina(
   sources: string[],
   outDir: string | undefined,
@@ -1804,20 +1961,32 @@ async function watchLumina(
   useAstJs: boolean = false,
   sourceMap: boolean = false,
   inlineSourceMap: boolean = false,
-  stopOnUnresolvedMemberError: boolean = false
+  stopOnUnresolvedMemberError: boolean = false,
+  useBundledCompile: boolean = false
 ) {
   const resolvedSources = sources.map((s) => path.resolve(s));
   const globbed = await fg(resolvedSources, { onlyFiles: true, unique: true, dot: false });
   const expandedSources = globbed.length > 0 ? globbed : resolvedSources;
+  const resolvedGrammarPath = path.resolve(grammarPath);
+  const watchRoots = Array.from(
+    new Set([...expandedSources.map((sourcePath) => path.dirname(sourcePath)), path.dirname(resolvedGrammarPath)])
+  );
   const worker = createWorkerRunner({
     fileExtensions: configFileExtensions,
     stdPath: configStdPath,
     cacheDir: buildCache.cacheDir,
   });
+  const entryGraphs = new Map<string, ModuleGraph>();
+  const graphOptionsFor = (entryPath: string) => ({
+    stdPath: configStdPath,
+    fileExtensions: configFileExtensions,
+    lockfileRoot: findLockfileRoot(entryPath),
+    grammarPath: resolvedGrammarPath,
+  });
 
   const runCompile = async (filePath: string, outPath: string) => {
     if (!worker) {
-      await compileLumina(
+      return compileLuminaWithStrategy(
         filePath,
         outPath,
         target,
@@ -1830,9 +1999,9 @@ async function watchLumina(
         noComptime,
         sourceMap,
         inlineSourceMap,
-        stopOnUnresolvedMemberError
+        stopOnUnresolvedMemberError,
+        useBundledCompile
       );
-      return;
     }
     const result = await worker.compile({
       sourcePath: filePath,
@@ -1848,54 +2017,144 @@ async function watchLumina(
       sourceMap,
       inlineSourceMap,
       stopOnUnresolvedMemberError,
+      useBundledCompile,
     });
     if (!result.ok && result.error) {
       console.error(`Lumina worker error: ${result.error}`);
     }
+    return { ok: result.ok };
   };
-  const onChange = async (filePath: string) => {
-    try {
-      const outPath = resolveOutPath(filePath, outPathArg, outDir, target);
-      await runCompile(filePath, outPath);
-      const graph = buildDepGraph();
-      const dependents = getDependents(graph, filePath);
-      for (const dep of dependents) {
-        const depOut = resolveOutPath(dep, outPathArg, outDir, target);
-        await runCompile(dep, depOut);
+
+  const syncGraphHashes = (graph: ModuleGraph, controller: ReturnType<typeof createWatchSessionController>) => {
+    for (const node of graph.nodes.values()) {
+      if (node.path && node.contentHash) {
+        controller.seedHash(node.path, node.contentHash);
       }
-    } catch (err) {
-      console.error(`Lumina watch error: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
-  for (const sourcePath of expandedSources) {
+  const graphContainsAnyPath = (graph: ModuleGraph, changedPaths: string[]) => {
+    const paths = new Set<string>();
+    for (const node of graph.nodes.values()) {
+      if (node.path) paths.add(path.resolve(node.path));
+    }
+    return changedPaths.some((changedPath) => paths.has(changedPath));
+  };
+
+  const refreshEntryGraph = async (sourcePath: string) => {
+    const graph = await buildModuleGraph(sourcePath, graphOptionsFor(sourcePath));
+    entryGraphs.set(sourcePath, graph);
+    return graph;
+  };
+
+  const compileEntry = async (sourcePath: string) => {
     const outPath = resolveOutPath(sourcePath, outPathArg, outDir, target);
-    await runCompile(sourcePath, outPath);
-  }
-
-  const debounce = new Map<string, NodeJS.Timeout>();
-  const schedule = (filePath: string) => {
-    const key = filePath;
-    const existing = debounce.get(key);
-    if (existing) clearTimeout(existing);
-    debounce.set(
-      key,
-      setTimeout(() => {
-        debounce.delete(key);
-        onChange(filePath);
-      }, 150)
-    );
+    const result = await runCompile(sourcePath, outPath);
+    await refreshEntryGraph(sourcePath);
+    return result;
   };
 
-  console.log(`Watching ${expandedSources.length} file(s)...`);
+  const controller = createWatchSessionController({
+    delay: 100,
+    runIncrementalBuild: async (changedPaths) => {
+      try {
+        const grammarChanged = changedPaths.includes(resolvedGrammarPath);
+        if (grammarChanged) {
+          buildCache.grammarHash = null;
+          buildCache.grammarText = null;
+          buildCache.parser = null;
+          buildCache.files.clear();
+          buildCache.stats.invalidations += 1;
+          await clearModuleGraphCache();
+        }
+
+        const parser = await loadGrammar(resolvedGrammarPath);
+        const compileNode = createModuleGraphCompileNode(parser, useRecovery);
+
+        for (const sourcePath of expandedSources) {
+          let graph = entryGraphs.get(sourcePath);
+          if (!graph) {
+            graph = await refreshEntryGraph(sourcePath);
+          }
+          if (!grammarChanged && !graphContainsAnyPath(graph, changedPaths)) {
+            continue;
+          }
+          if (grammarChanged) {
+            graph = await refreshEntryGraph(sourcePath);
+          }
+
+          if (graph.cycleErrors.length > 0) {
+            for (const cycle of graph.cycleErrors) {
+              console.error(`[MODULE-CYCLE-001] ${cycle.message}`);
+            }
+            continue;
+          }
+
+          const topoResult = grammarChanged
+            ? await compileInOrder(graph, { compileNode })
+            : await recompileAffected(graph, changedPaths, { compileNode });
+
+          if (!topoResult.success) {
+            formatModuleGraphDiagnostics(topoResult);
+            syncGraphHashes(graph, controller);
+            continue;
+          }
+
+          const result = await runCompile(sourcePath, resolveOutPath(sourcePath, outPathArg, outDir, target));
+          if (result?.ok) {
+            await refreshEntryGraph(sourcePath);
+          }
+          const nextGraph = entryGraphs.get(sourcePath);
+          if (nextGraph) syncGraphHashes(nextGraph, controller);
+        }
+      } catch (err) {
+        console.error(`Lumina watch error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  });
+
   for (const sourcePath of expandedSources) {
-    watch(sourcePath, () => schedule(sourcePath));
-  }
-  watch(grammarPath, () => {
-    buildCache.grammarHash = null;
-    for (const sourcePath of expandedSources) {
-      schedule(sourcePath);
+    const result = await compileEntry(sourcePath);
+    const graph = entryGraphs.get(sourcePath);
+    if (graph) syncGraphHashes(graph, controller);
+    if (!result?.ok) {
+      console.error(`Initial watch compile failed: ${sourcePath}`);
     }
+  }
+  try {
+    controller.seedHash(resolvedGrammarPath, hashText(await fs.readFile(resolvedGrammarPath, 'utf-8')));
+  } catch {
+    // ignore missing grammar hash seed
+  }
+
+  const { default: chokidar } = await import('chokidar');
+  const watcher = chokidar.watch(watchRoots, {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
+    ignored: (watchedPath, stats) => {
+      const resolved = path.resolve(String(watchedPath));
+      if (resolved.includes(`${path.sep}node_modules${path.sep}`)) return true;
+      if (resolved.includes(`${path.sep}.lumina${path.sep}cache${path.sep}`)) return true;
+      if (resolved === resolvedGrammarPath) return false;
+      const ext = path.extname(resolved);
+      if (!stats?.isFile() && ext.length === 0) return false;
+      return ext !== '.lm' && ext !== '.lumina';
+    },
+    persistent: true,
+  });
+
+  console.log(`Watching ${watchRoots.length} root(s)...`);
+  watcher.on('change', (filePath) => {
+    void controller.report(filePath);
+  });
+  watcher.on('add', (filePath) => {
+    void controller.report(filePath);
+  });
+  watcher.on('unlink', (filePath) => {
+    void controller.report(filePath);
+  });
+  watcher.on('error', (err) => {
+    console.error(`Watch error: ${err instanceof Error ? err.message : String(err)}`);
   });
 }
 
@@ -1918,6 +2177,7 @@ type WorkerRequest =
         sourceMap?: boolean;
         inlineSourceMap?: boolean;
         stopOnUnresolvedMemberError?: boolean;
+        useBundledCompile?: boolean;
       };
     };
 
@@ -1950,7 +2210,7 @@ function createWorkerRunner(config: BuildConfig) {
   worker.postMessage({ type: 'init', payload: config } satisfies WorkerRequest);
 
   return {
-    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; noInline?: boolean; noComptime?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean; stopOnUnresolvedMemberError?: boolean }) {
+    async compile(payload: { sourcePath: string; outPath: string; target: Target; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; noInline?: boolean; noComptime?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean; stopOnUnresolvedMemberError?: boolean; useBundledCompile?: boolean }) {
       const id = requestId++;
       return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         pending.set(id, { resolve });
@@ -2010,7 +2270,8 @@ Options:
   --inline-sourcemap   Embed base64 source map (legacy)
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
-  --topo-compile       Enable module-graph/topological compile path
+  --bundled-compile    Use legacy bundled compile path (default: topological)
+  --topo-compile       Accepted for compatibility; topological compile is now default
   --clear-cache        Clear module-graph cache before running command
   --ast-js             Emit JS directly from AST (no IR)
   --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
@@ -2383,7 +2644,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const noOptimize = parseBooleanFlag(args, '--no-optimize');
   const noInline = parseBooleanFlag(args, '--no-inline');
   const noComptime = parseBooleanFlag(args, '--no-comptime');
-  const topoCompile = parseBooleanFlag(args, '--topo-compile');
+  const bundledCompile = parseBooleanFlag(args, '--bundled-compile');
+  parseBooleanFlag(args, '--topo-compile');
   const clearModuleCache = parseBooleanFlag(args, '--clear-cache');
   const stopOnUnresolvedMemberError = parseBooleanFlag(args, '--stop-on-unresolved');
   const listConfig = parseBooleanFlag(args, '--list-config');
@@ -2490,37 +2752,22 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         );
         if (!result.ok) process.exit(1);
       } else {
-        const compileResult = topoCompile
-          ? await compileLuminaTopologically(
-              sourcePath,
-              outPath,
-              target,
-              grammarPath,
-              useRecovery,
-              diCfg,
-              useAstJs,
-              noOptimize,
-              noInline,
-              noComptime,
-              sourceMap,
-              inlineSourceMap,
-              stopOnUnresolvedMemberError
-            )
-          : await compileLumina(
-              sourcePath,
-              outPath,
-              target,
-              grammarPath,
-              useRecovery,
-              diCfg,
-              useAstJs,
-              noOptimize,
-              noInline,
-              noComptime,
-              sourceMap,
-              inlineSourceMap,
-              stopOnUnresolvedMemberError
-            );
+        const compileResult = await compileLuminaWithStrategy(
+          sourcePath,
+          outPath,
+          target,
+          grammarPath,
+          useRecovery,
+          diCfg,
+          useAstJs,
+          noOptimize,
+          noInline,
+          noComptime,
+          sourceMap,
+          inlineSourceMap,
+          stopOnUnresolvedMemberError,
+          bundledCompile
+        );
         if (!compileResult.ok) process.exit(1);
         if (debugIr && compileResult.ir) {
           const dotPath = outPath + '.dot';
@@ -2607,7 +2854,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       useAstJs,
       sourceMap,
       inlineSourceMap,
-      stopOnUnresolvedMemberError
+      stopOnUnresolvedMemberError,
+      bundledCompile
     );
     return;
   }

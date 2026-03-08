@@ -54,7 +54,8 @@ export type ModuleNode = {
   ast: LuminaProgram | null;
   ir: IRProgram | null;
   exportEnv: ExportEnv | null;
-  hash: string | null;
+  contentHash: string | null;
+  exportHash: string | null;
   cacheKey: string | null;
   status: ModuleStatus;
   diagnostics: Diagnostic[];
@@ -71,6 +72,7 @@ export type ModuleGraph = {
   entryKey: string;
   grammarHash: string;
   cycleErrors: CycleError[];
+  buildOptions: BuildModuleGraphOptions;
 };
 
 type LockfilePackage = {
@@ -117,7 +119,8 @@ export type CacheEntry = {
   cacheKey: string;
   ast: LuminaProgram | null;
   exportEnv: ExportEnv | null;
-  hash: string | null;
+  contentHash: string | null;
+  exportHash: string | null;
   imports: string[];
   resolvedDeps: string[];
   diagnostics: Diagnostic[];
@@ -168,8 +171,22 @@ export type CompileResult = {
   };
 };
 
+export type TopoCompileResult = CompileResult;
+
 const hashText = (value: string): string => crypto.createHash('sha256').update(value).digest('hex');
 const toPosix = (value: string): string => value.replace(/\\/g, '/');
+
+export function computeExportHash(exportEnv: ExportEnv): string {
+  const payload = {
+    symbols: Array.from(exportEnv.symbols.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, info]) => [name, { name: info.name, kind: info.kind }]),
+    types: Array.from(exportEnv.types.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, info]) => [name, { name: info.name }]),
+  };
+  return hashText(JSON.stringify(payload));
+}
 
 const ensureExtension = (resolved: string, extensions: string[]): string => {
   if (path.extname(resolved)) return resolved;
@@ -364,16 +381,22 @@ export async function getCacheEntry(cacheKey: string, cacheDir: string = DEFAULT
       cacheKey: string;
       ast?: LuminaProgram | null;
       exportEnv?: { symbols?: Array<[string, SymbolInfo]>; types?: Array<[string, TypeInfo]> } | null;
+      contentHash?: string | null;
+      exportHash?: string | null;
       hash?: string | null;
       imports?: string[];
       resolvedDeps?: string[];
       diagnostics?: Diagnostic[];
     };
+    const exportEnv = deserializeExportEnv(parsed.exportEnv);
     return {
       cacheKey: parsed.cacheKey,
       ast: parsed.ast ?? null,
-      exportEnv: deserializeExportEnv(parsed.exportEnv),
-      hash: parsed.hash ?? null,
+      exportEnv,
+      contentHash: parsed.contentHash ?? parsed.hash ?? null,
+      exportHash:
+        parsed.exportHash ??
+        (exportEnv ? computeExportHash(exportEnv) : null),
       imports: Array.isArray(parsed.imports) ? parsed.imports : [],
       resolvedDeps: Array.isArray(parsed.resolvedDeps) ? parsed.resolvedDeps : [],
       diagnostics: Array.isArray(parsed.diagnostics) ? parsed.diagnostics : [],
@@ -391,7 +414,8 @@ export async function setCacheEntry(cacheKey: string, entry: CacheEntry, cacheDi
     cacheKey,
     ast: entry.ast,
     exportEnv: serializeExportEnv(entry.exportEnv),
-    hash: entry.hash,
+    contentHash: entry.contentHash,
+    exportHash: entry.exportHash,
     imports: entry.imports,
     resolvedDeps: entry.resolvedDeps,
     diagnostics: entry.diagnostics,
@@ -417,7 +441,8 @@ const createNode = (key: string, kind: ModuleKind, nodePath: string | null): Mod
   ast: null,
   ir: null,
   exportEnv: null,
-  hash: null,
+  contentHash: null,
+  exportHash: null,
   cacheKey: null,
   status: EXTERNAL_NODE_KINDS.has(kind) ? 'external' : 'pending',
   diagnostics: [],
@@ -478,15 +503,17 @@ const walkNode = async (
     }
 
     const source = await fs.readFile(node.path, 'utf-8');
-    node.hash = hashText(source);
+    node.contentHash = hashText(source);
     const packageSeed =
-      node.kind === 'package' && node.packageIntegrity ? node.packageIntegrity : node.hash;
+      node.kind === 'package' && node.packageIntegrity ? node.packageIntegrity : node.contentHash;
     node.cacheKey = hashText(`${packageSeed}:${ctx.compilerVersion}:${ctx.grammarHash}:${CACHE_VERSION}`);
 
     const cached = node.cacheKey ? await getCacheEntry(node.cacheKey, ctx.cacheDir) : null;
     if (cached) {
       node.ast = cached.ast;
       node.exportEnv = cached.exportEnv;
+      node.contentHash = cached.contentHash ?? node.contentHash;
+      node.exportHash = cached.exportHash ?? (cached.exportEnv ? computeExportHash(cached.exportEnv) : null);
       node.imports = cached.imports;
       node.resolvedDeps = cached.resolvedDeps;
       node.diagnostics = cached.diagnostics;
@@ -542,6 +569,9 @@ const walkNode = async (
 
     if (node.status === 'cached' && !node.exportEnv && node.ast) {
       node.exportEnv = parseExportEnv(node.ast);
+      node.exportHash = computeExportHash(node.exportEnv);
+    } else if (node.exportEnv && !node.exportHash) {
+      node.exportHash = computeExportHash(node.exportEnv);
     }
   } catch (error) {
     node.status = 'error';
@@ -658,6 +688,7 @@ export async function buildModuleGraph(entryPath: string, options: BuildModuleGr
     entryKey: absoluteEntry,
     grammarHash,
     cycleErrors: [],
+    buildOptions: { ...options, lockfileRoot, cacheDir, compilerVersion, maxImportDepth: maxDepth },
   };
 
   const ctx: BuildContext = {
@@ -673,6 +704,51 @@ export async function buildModuleGraph(entryPath: string, options: BuildModuleGr
   graph.cycleErrors = detectCycles(graph);
   graph.order = topoSort(graph);
   return graph;
+}
+
+function replaceGraphState(target: ModuleGraph, source: ModuleGraph): void {
+  target.nodes = source.nodes;
+  target.order = source.order;
+  target.entryKey = source.entryKey;
+  target.grammarHash = source.grammarHash;
+  target.cycleErrors = source.cycleErrors;
+  target.buildOptions = source.buildOptions;
+}
+
+function collectErrorDiagnostics(graph: ModuleGraph): Map<string, Diagnostic[]> {
+  const diagnostics = new Map<string, Diagnostic[]>();
+  for (const [key, node] of graph.nodes.entries()) {
+    if (node.diagnostics.some((diag) => diag.severity === 'error')) {
+      diagnostics.set(key, [...node.diagnostics]);
+    }
+  }
+  return diagnostics;
+}
+
+async function writeNodeCache(node: ModuleNode, cacheDir: string, skipCacheWrite?: boolean): Promise<void> {
+  if (skipCacheWrite || !node.cacheKey) return;
+  await setCacheEntry(
+    node.cacheKey,
+    {
+      cacheKey: node.cacheKey,
+      ast: node.ast,
+      exportEnv: node.exportEnv,
+      contentHash: node.contentHash,
+      exportHash: node.exportHash,
+      imports: node.imports,
+      resolvedDeps: node.resolvedDeps,
+      diagnostics: node.diagnostics,
+    },
+    cacheDir
+  );
+}
+
+function applyCompileNodeResult(node: ModuleNode, compileResult: CompileNodeResult): void {
+  if (compileResult.ast !== undefined) node.ast = compileResult.ast;
+  if (compileResult.ir !== undefined) node.ir = compileResult.ir;
+  if (compileResult.exportEnv !== undefined) node.exportEnv = compileResult.exportEnv;
+  if (!node.exportEnv && node.ast) node.exportEnv = parseExportEnv(node.ast);
+  node.exportHash = node.exportEnv ? computeExportHash(node.exportEnv) : null;
 }
 
 export function invalidate(graph: ModuleGraph, changedPaths: string[]): string[] {
@@ -692,6 +768,7 @@ export function invalidate(graph: ModuleGraph, changedPaths: string[]): string[]
     node.ast = null;
     node.ir = null;
     node.exportEnv = null;
+    node.exportHash = null;
     for (const dependent of node.importedBy) {
       if (visited.has(dependent)) continue;
       visited.add(dependent);
@@ -736,31 +813,114 @@ export async function compileInOrder(graph: ModuleGraph, options: CompileInOrder
       continue;
     }
 
-    if (compileResult.ast !== undefined) node.ast = compileResult.ast;
-    if (compileResult.ir !== undefined) node.ir = compileResult.ir;
-    if (compileResult.exportEnv !== undefined) node.exportEnv = compileResult.exportEnv;
-    if (!node.exportEnv && node.ast) node.exportEnv = parseExportEnv(node.ast);
+    applyCompileNodeResult(node, compileResult);
     if (compileResult.output !== undefined) outputs.set(node.key, compileResult.output);
     node.status = 'compiled';
     stats.compiled += 1;
 
-    if (!compileResult.skipCacheWrite && node.cacheKey) {
-      await setCacheEntry(
-        node.cacheKey,
-        {
-          cacheKey: node.cacheKey,
-          ast: node.ast,
-          exportEnv: node.exportEnv,
-          hash: node.hash,
-          imports: node.imports,
-          resolvedDeps: node.resolvedDeps,
-          diagnostics: node.diagnostics,
-        },
-        cacheDir
-      );
+    await writeNodeCache(node, cacheDir, compileResult.skipCacheWrite);
+  }
+
+  return { success: stats.errors === 0, outputs, diagnostics, stats };
+}
+
+export async function recompileAffected(
+  graph: ModuleGraph,
+  changedPaths: string[],
+  options: CompileInOrderOptions = {}
+): Promise<TopoCompileResult> {
+  const cacheDir = options.cacheDir ?? graph.buildOptions.cacheDir ?? DEFAULT_CACHE_DIR;
+  const nextGraph = await buildModuleGraph(graph.entryKey, { ...graph.buildOptions, cacheDir });
+  const outputs = new Map<string, string>();
+  const diagnostics = collectErrorDiagnostics(nextGraph);
+  const stats = { compiled: 0, cached: 0, skipped: 0, errors: diagnostics.size };
+
+  if (nextGraph.cycleErrors.length > 0 || diagnostics.size > 0) {
+    replaceGraphState(graph, nextGraph);
+    return { success: false, outputs, diagnostics, stats };
+  }
+
+  const normalizedChanged = new Set(changedPaths.map((value) => path.resolve(value)));
+  const oldByPath = new Map<string, ModuleNode>();
+  for (const node of graph.nodes.values()) {
+    if (node.path) oldByPath.set(path.resolve(node.path), node);
+  }
+
+  const pending = new Set<string>();
+  for (const node of nextGraph.nodes.values()) {
+    if (EXTERNAL_NODE_KINDS.has(node.kind)) continue;
+    const resolvedPath = node.path ? path.resolve(node.path) : null;
+    const oldNode = graph.nodes.get(node.key) ?? (resolvedPath ? oldByPath.get(resolvedPath) ?? null : null);
+    if (!oldNode) {
+      pending.add(node.key);
+      continue;
+    }
+    if (resolvedPath && normalizedChanged.has(resolvedPath) && oldNode.contentHash !== node.contentHash) {
+      pending.add(node.key);
     }
   }
 
+  for (const changedPath of normalizedChanged) {
+    const oldNode = oldByPath.get(changedPath);
+    const nextNode = Array.from(nextGraph.nodes.values()).find(
+      (candidate) => candidate.path && path.resolve(candidate.path) === changedPath
+    );
+    if (!oldNode || nextNode) continue;
+    for (const dependent of oldNode.importedBy) {
+      if (nextGraph.nodes.has(dependent)) pending.add(dependent);
+    }
+  }
+
+  for (const key of nextGraph.order) {
+    const node = nextGraph.nodes.get(key);
+    if (!node) continue;
+    if (EXTERNAL_NODE_KINDS.has(node.kind)) {
+      node.status = 'external';
+      stats.skipped += 1;
+      continue;
+    }
+    if (node.status === 'error') {
+      stats.errors += 1;
+      diagnostics.set(node.key, [...node.diagnostics]);
+      continue;
+    }
+
+    const oldNode = graph.nodes.get(node.key) ?? (node.path ? oldByPath.get(path.resolve(node.path)) ?? null : null);
+    const changedOnDisk = !oldNode || oldNode.contentHash !== node.contentHash;
+    const newlyDiscovered = !oldNode;
+    const needsCompile = pending.has(node.key) || changedOnDisk || newlyDiscovered || node.status !== 'cached';
+
+    if (!needsCompile) {
+      if (node.exportHash !== (oldNode?.exportHash ?? null)) {
+        for (const dependent of node.importedBy) pending.add(dependent);
+      }
+      stats.cached += 1;
+      continue;
+    }
+
+    const importEnv = mergeExportEnvs(node.resolvedDeps.map((depKey) => nextGraph.nodes.get(depKey)?.exportEnv ?? null));
+    const compileResult = options.compileNode ? await options.compileNode({ node, graph: nextGraph, importEnv }) : {};
+    const nodeDiagnostics = compileResult.diagnostics ?? [];
+    node.diagnostics = [...node.diagnostics, ...nodeDiagnostics];
+    if (node.diagnostics.some((diag) => diag.severity === 'error')) {
+      node.status = 'error';
+      stats.errors += 1;
+      diagnostics.set(node.key, [...node.diagnostics]);
+      continue;
+    }
+
+    applyCompileNodeResult(node, compileResult);
+    if (compileResult.output !== undefined) outputs.set(node.key, compileResult.output);
+    node.status = 'compiled';
+    stats.compiled += 1;
+    await writeNodeCache(node, cacheDir, compileResult.skipCacheWrite);
+
+    if (node.exportHash !== (oldNode?.exportHash ?? null)) {
+      for (const dependent of node.importedBy) pending.add(dependent);
+    }
+  }
+
+  replaceGraphState(graph, nextGraph);
   return { success: stats.errors === 0, outputs, diagnostics, stats };
 }
 
