@@ -200,13 +200,15 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
   },
   'WASM-IS-001': {
     code: 'WASM-IS-001',
-    title: 'WASM target does not support `is` narrowing',
-    summary: 'The WASM backend currently rejects `is`-based runtime narrowing.',
-    why: 'WASM v1 lowering does not carry the runtime narrowing metadata required for sound `is` checks.',
+    title: '`is` narrowing is not supported in the WASM target',
+    summary: 'The `is` operator performs runtime type narrowing, which the WASM backend cannot lower. Use `match` instead.',
+    why: 'The WASM backend lowers enum checks to explicit pattern matches. It does not preserve the runtime information needed for `is` narrowing, so `match` is the supported form.',
     howToFix: [
-      'Rewrite the logic using `match` on enum variants.',
-      'If you need target-independent behavior, prefer pattern matching over `is` checks.',
-      'Compile with JS backend for code that must keep `is` narrowing.',
+      'Replace `x is Foo` with a match expression.',
+      'Before: if x is Foo { ... }',
+      'After:  match x { Foo(_) => { ... }, _ => {} }',
+      'For boolean checks: match x { Foo(_) => true, _ => false }',
+      'If you need `is` narrowing, compile with the JS or ESM target instead of WASM.',
     ],
   },
   'ARRAY-SIZE-MISMATCH': {

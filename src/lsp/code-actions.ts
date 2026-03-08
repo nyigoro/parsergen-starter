@@ -53,6 +53,45 @@ function narrowHoleRange(text: string, range: Range): Range {
   return range;
 }
 
+function getTextInRange(text: string, range: Range): string {
+  const lines = text.split(/\r?\n/);
+  if (range.start.line > range.end.line) return '';
+  if (range.start.line === range.end.line) {
+    const line = lines[range.start.line] ?? '';
+    return line.slice(range.start.character, range.end.character);
+  }
+  const chunks: string[] = [];
+  for (let i = range.start.line; i <= range.end.line; i++) {
+    const line = lines[i] ?? '';
+    if (i === range.start.line) {
+      chunks.push(line.slice(range.start.character));
+    } else if (i === range.end.line) {
+      chunks.push(line.slice(0, range.end.character));
+    } else {
+      chunks.push(line);
+    }
+  }
+  return chunks.join('\n');
+}
+
+function buildIsToMatchAction(text: string, uri: string, range: Range): CodeAction | null {
+  const snippet = getTextInRange(text, range).trim();
+  const match = /^(?<value>[\s\S]+?)\s+is\s+(?<variant>(?:[A-Za-z_][\w]*\.)?[A-Za-z_][\w]*)$/.exec(snippet);
+  if (!match?.groups) return null;
+  const value = match.groups.value.trim();
+  const variant = match.groups.variant.trim();
+  if (!value || !variant) return null;
+  return {
+    title: 'Rewrite as match expression',
+    kind: CodeActionKind.QuickFix,
+    edit: {
+      changes: {
+        [uri]: [TextEdit.replace(range, `match ${value} { ${variant}(_) => true, _ => false }`)],
+      },
+    },
+  };
+}
+
 export function getCodeActionsForDiagnostics(
   text: string,
   uri: string,
@@ -90,6 +129,14 @@ export function getCodeActionsForDiagnostics(
           },
         },
       });
+    }
+
+    if (diagCode === 'WASM-IS-001') {
+      const rewrite = buildIsToMatchAction(text, uri, diag.range);
+      if (rewrite) {
+        rewrite.diagnostics = [diag];
+        actions.push(rewrite);
+      }
     }
 
     const unknownIdMatch = /Unknown identifier '([^']+)'/.exec(diag.message);
@@ -281,27 +328,6 @@ function getRefactorActions(text: string, uri: string, range?: Range): CodeActio
   actions.push(...rewrites);
 
   return actions;
-}
-
-function getTextInRange(text: string, range: Range): string {
-  const lines = text.split(/\r?\n/);
-  if (range.start.line > range.end.line) return '';
-  if (range.start.line === range.end.line) {
-    const line = lines[range.start.line] ?? '';
-    return line.slice(range.start.character, range.end.character);
-  }
-  const chunks: string[] = [];
-  for (let i = range.start.line; i <= range.end.line; i++) {
-    const line = lines[i] ?? '';
-    if (i === range.start.line) {
-      chunks.push(line.slice(range.start.character));
-    } else if (i === range.end.line) {
-      chunks.push(line.slice(0, range.end.character));
-    } else {
-      chunks.push(line);
-    }
-  }
-  return chunks.join('\n');
 }
 
 function findUniqueName(text: string, base: string): string {

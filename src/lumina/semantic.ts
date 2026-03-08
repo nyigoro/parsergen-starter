@@ -6457,9 +6457,11 @@ function typeCheckExpr(
     }
     if (expr.type === 'IsExpr') {
       if (options?.target === 'wasm') {
+        const checkedVariant = expr.enumName ? `${expr.enumName}.${expr.variant}` : expr.variant;
+        const valueName = expr.value.type === 'Identifier' ? expr.value.name : 'value';
         diagnostics.push(
           diagAt(
-            `'is' type narrowing is not supported in WASM target. Use pattern matching instead (for example: match value { ${expr.variant}(v) => ... }).`,
+            `'is' narrowing to '${checkedVariant}' is not supported in the WASM target. Rewrite as: match ${valueName} { ${checkedVariant}(_) => true, _ => false }.`,
             expr.location,
             'error',
             'WASM-IS-001'
