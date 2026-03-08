@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { LuminaCommands, type ExtractModuleActionArg, type ExtractModuleResult } from 'lumina-language-client';
 import { getVscode } from '../vscode-shim.js';
 
 type ExtensionContextLike = {
@@ -7,12 +8,6 @@ type ExtensionContextLike = {
 
 type LanguageClientLike = {
   sendRequest<T>(method: string, params: unknown): Promise<T>;
-};
-
-type ExtractModuleActionArg = {
-  uri: string;
-  range: { start: { line: number; character: number }; end: { line: number; character: number } };
-  symbols?: string[];
 };
 
 type EditorLike = {
@@ -49,7 +44,7 @@ async function findExtractModuleArg(
   );
   for (const item of actions ?? []) {
     const command = extractCodeActionCommand(item);
-    if (command?.command !== 'lumina.extractModule') continue;
+    if (command?.command !== LuminaCommands.extractModule) continue;
     const arg = command.arguments?.[0] as ExtractModuleActionArg | undefined;
     if (arg?.uri && arg?.range) return arg;
   }
@@ -67,7 +62,7 @@ export async function registerExtractModuleCommand(
 ): Promise<void> {
   const vscode = getVscode();
   context.subscriptions.push(
-    vscode.commands.registerCommand('lumina.extractModule', async (...args: unknown[]) => {
+    vscode.commands.registerCommand(LuminaCommands.extractModule, async (...args: unknown[]) => {
       const arg = args[0] as ExtractModuleActionArg | undefined;
       const client = getClient();
       const editor = vscode.window.activeTextEditor as EditorLike | undefined;
@@ -92,10 +87,10 @@ export async function registerExtractModuleCommand(
       const targetFsPath = resolveTargetPath(currentFsPath, rawTarget.trim());
       const targetUri = vscode.Uri.file(targetFsPath).toString();
 
-      const result = await client.sendRequest<{ ok?: boolean; error?: string; movedSymbols?: string[]; targetUri?: string }>(
+      const result = await client.sendRequest<ExtractModuleResult>(
         'workspace/executeCommand',
         {
-          command: 'lumina.applyExtractModule',
+          command: LuminaCommands.applyExtractModule,
           arguments: [{ uri: actionArg.uri, range: actionArg.range, targetUri }],
         }
       );

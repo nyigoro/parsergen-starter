@@ -1,3 +1,9 @@
+import {
+  LuminaCommands,
+  type ChangeSignatureActionArg,
+  type ChangeSignaturePreview,
+  type ChangeSignatureResult,
+} from 'lumina-language-client';
 import { getVscode } from '../vscode-shim.js';
 import {
   ChangeSignaturePanel,
@@ -15,29 +21,12 @@ type LanguageClientLike = {
   sendRequest<T>(method: string, params: unknown): Promise<T>;
 };
 
-type ChangeSignatureActionArg = {
-  uri: string;
-  position: { line: number; character: number };
-  name?: string;
-  params?: Array<{ name: string; type: string | null }>;
-  kind?: 'function' | 'trait-method';
-  traitName?: string;
-};
-
 type EditorLike = {
   document: {
     uri: { toString(): string };
     languageId: string;
   };
   selection: { active: unknown };
-};
-
-type ChangeSignatureResult = {
-  ok?: boolean;
-  error?: string;
-  callSiteCount?: number;
-  fileCount?: number;
-  warnings?: string[];
 };
 
 function extractCodeActionCommand(item: unknown): { command?: string; arguments?: unknown[] } | null {
@@ -67,7 +56,7 @@ async function findChangeSignatureArg(
   );
   for (const item of actions ?? []) {
     const command = extractCodeActionCommand(item);
-    if (command?.command !== 'lumina.changeSignature') continue;
+    if (command?.command !== LuminaCommands.changeSignature) continue;
     const arg = command.arguments?.[0] as ChangeSignatureActionArg | undefined;
     if (arg?.uri && arg?.position) return arg;
   }
@@ -82,9 +71,9 @@ async function previewChangeSignature(
   client: LanguageClientLike,
   request: { uri: string; position: { line: number; character: number } },
   changes: ParamChange[],
-  command: 'lumina.previewChangeSignature' | 'lumina.previewChangeTraitSignature'
+  command: typeof LuminaCommands.previewChangeSignature | typeof LuminaCommands.previewChangeTraitSignature
 ): Promise<ChangeSignaturePreviewInfo> {
-  const result = await client.sendRequest<ChangeSignaturePreviewInfo & { error?: string }>('workspace/executeCommand', {
+  const result = await client.sendRequest<ChangeSignaturePreview>('workspace/executeCommand', {
     command,
     arguments: [request, changes],
   });
@@ -98,7 +87,7 @@ async function applyChangeSignature(
   client: LanguageClientLike,
   request: { uri: string; position: { line: number; character: number } },
   changes: ParamChange[],
-  command: 'lumina.applyChangeSignature' | 'lumina.applyChangeTraitSignature'
+  command: typeof LuminaCommands.applyChangeSignature | typeof LuminaCommands.applyChangeTraitSignature
 ): Promise<{ success: boolean; message: string }> {
   const result = await client.sendRequest<ChangeSignatureResult>('workspace/executeCommand', {
     command,
@@ -119,7 +108,7 @@ export async function registerChangeSignatureCommand(
 ): Promise<void> {
   const vscode = getVscode();
   context.subscriptions.push(
-    vscode.commands.registerCommand('lumina.changeSignature', async (...args: unknown[]) => {
+    vscode.commands.registerCommand(LuminaCommands.changeSignature, async (...args: unknown[]) => {
       const arg = args[0] as ChangeSignatureActionArg | undefined;
       const client = getClient();
       const editor = vscode.window.activeTextEditor as EditorLike | undefined;
@@ -135,9 +124,9 @@ export async function registerChangeSignatureCommand(
       }
 
       const previewCommand =
-        actionArg.kind === 'trait-method' ? 'lumina.previewChangeTraitSignature' : 'lumina.previewChangeSignature';
+        actionArg.kind === 'trait-method' ? LuminaCommands.previewChangeTraitSignature : LuminaCommands.previewChangeSignature;
       const applyCommand =
-        actionArg.kind === 'trait-method' ? 'lumina.applyChangeTraitSignature' : 'lumina.applyChangeSignature';
+        actionArg.kind === 'trait-method' ? LuminaCommands.applyChangeTraitSignature : LuminaCommands.applyChangeSignature;
       const panelTitle =
         actionArg.kind === 'trait-method' && actionArg.traitName
           ? `${actionArg.traitName}.${actionArg.name ?? 'method'}`

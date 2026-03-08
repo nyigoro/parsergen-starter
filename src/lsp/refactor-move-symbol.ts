@@ -4,6 +4,7 @@ import {
   type Range,
   type WorkspaceEdit,
 } from 'vscode-languageserver/node';
+import { LuminaCommands } from 'lumina-language-client';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import type {
@@ -382,7 +383,7 @@ export function buildMoveSymbolCodeAction(
     kind: 'refactor.move',
     command: {
       title: `Move symbol '${decl.name}'`,
-      command: 'lumina.moveSymbol',
+      command: LuminaCommands.moveSymbol,
       arguments: [{ uri, position: range.start, symbol: decl.name }],
     },
   };

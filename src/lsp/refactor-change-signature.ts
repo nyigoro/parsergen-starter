@@ -5,6 +5,7 @@ import {
   type Range,
   type WorkspaceEdit,
 } from 'vscode-languageserver/node';
+import { LuminaCommands, type ParamChange } from 'lumina-language-client';
 import type { LuminaFnDecl, LuminaProgram } from '../lumina/ast.js';
 import {
   addEdit,
@@ -17,6 +18,8 @@ import {
   sortWorkspaceEdits,
 } from './ast-utils.js';
 import { isDependencyUri } from './rename.js';
+
+export type { ParamChange } from 'lumina-language-client';
 
 type ParamInfo = {
   name: string;
@@ -37,12 +40,6 @@ export interface ChangeSignatureRequest {
   allFiles: Map<string, string>;
   allPrograms?: Map<string, LuminaProgram>;
 }
-
-export type ParamChange =
-  | { kind: 'rename'; index: number; oldName: string; newName: string }
-  | { kind: 'reorder'; fromIndex: number; toIndex: number }
-  | { kind: 'add'; index: number; name: string; type: string; defaultValue?: string }
-  | { kind: 'remove'; index: number };
 
 export interface ChangeSignatureResult {
   ok: boolean;
@@ -473,7 +470,7 @@ export function buildChangeSignatureCodeAction(
     kind: CodeActionKind.RefactorRewrite,
     command: {
       title: `Change signature of '${fn.name}'`,
-      command: 'lumina.changeSignature',
+      command: LuminaCommands.changeSignature,
       arguments: [
         {
           uri,

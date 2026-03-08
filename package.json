@@ -98,6 +98,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-formatter-compact": "^9.0.1",
     "jest": "^30.2.0",
+    "lumina-language-client": "file:./packages/lumina-language-client",
     "npm": "^11.9.0",
     "peggy": "^5.0.6",
     "prettier": "^3.8.1",

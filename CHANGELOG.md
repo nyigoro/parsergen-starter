@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - **Borrow safety:** Added dedicated borrow/move regression coverage, field-aware borrow conflict tracking, loop move diagnostics, and statement-scoped release for temporary ref-parameter borrows.
 - **LSP refactors:** Added typed AST plumbing in the LSP/module graph, shared AST edit utilities, and upgraded refactor rewrite precision away from ad-hoc text scanning for signature and symbol-move flows.
 - **IDE tooling:** Added change-return-type, trait-method signature propagation across impls, and extract-module refactors, plus VS Code command flows for change-return-type and extract-module.
+- **Editor integration:** Added the `lumina-language-client` protocol package plus editor integration docs for VS Code, Neovim, Helix, and Zed so advanced refactors can be driven outside VS Code.
 
 ## 0.5.0 - 2026-03-05
 

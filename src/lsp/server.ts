@@ -31,6 +31,7 @@ import {
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
+import { LuminaCommands } from 'lumina-language-client';
 
 import { compileGrammar } from '../grammar/index.js';
 import { ProjectContext } from '../project/context.js';
@@ -310,16 +311,16 @@ connection.onInitialize((params: InitializeParams) => {
         full: true,
       },
       executeCommandProvider: {
-        commands: [
-          'lumina.previewChangeSignature',
-          'lumina.applyChangeSignature',
-          'lumina.applyMoveSymbol',
-          'lumina.previewChangeReturnType',
-          'lumina.applyChangeReturnType',
-          'lumina.previewChangeTraitSignature',
-          'lumina.applyChangeTraitSignature',
-          'lumina.applyExtractModule',
-        ],
+      commands: [
+        LuminaCommands.previewChangeSignature,
+        LuminaCommands.applyChangeSignature,
+        LuminaCommands.applyMoveSymbol,
+        LuminaCommands.previewChangeReturnType,
+        LuminaCommands.applyChangeReturnType,
+        LuminaCommands.previewChangeTraitSignature,
+        LuminaCommands.applyChangeTraitSignature,
+        LuminaCommands.applyExtractModule,
+      ],
       },
     },
   };
@@ -606,7 +607,7 @@ connection.onCodeAction((params): CodeAction[] => {
 });
 
 connection.onExecuteCommand(async (params) => {
-  if (params.command === 'lumina.previewChangeSignature') {
+  if (params.command === LuminaCommands.previewChangeSignature) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -633,7 +634,7 @@ connection.onExecuteCommand(async (params) => {
     return result;
   }
 
-  if (params.command === 'lumina.applyChangeSignature') {
+  if (params.command === LuminaCommands.applyChangeSignature) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -663,7 +664,7 @@ connection.onExecuteCommand(async (params) => {
     return result;
   }
 
-  if (params.command === 'lumina.applyMoveSymbol') {
+  if (params.command === LuminaCommands.applyMoveSymbol) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -693,7 +694,7 @@ connection.onExecuteCommand(async (params) => {
     return result;
   }
 
-  if (params.command === 'lumina.previewChangeReturnType') {
+  if (params.command === LuminaCommands.previewChangeReturnType) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -719,7 +720,7 @@ connection.onExecuteCommand(async (params) => {
     );
   }
 
-  if (params.command === 'lumina.applyChangeReturnType') {
+  if (params.command === LuminaCommands.applyChangeReturnType) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -749,7 +750,7 @@ connection.onExecuteCommand(async (params) => {
     return result;
   }
 
-  if (params.command === 'lumina.previewChangeTraitSignature') {
+  if (params.command === LuminaCommands.previewChangeTraitSignature) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -775,7 +776,7 @@ connection.onExecuteCommand(async (params) => {
     );
   }
 
-  if (params.command === 'lumina.applyChangeTraitSignature') {
+  if (params.command === LuminaCommands.applyChangeTraitSignature) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       position?: { line: number; character: number };
@@ -805,7 +806,7 @@ connection.onExecuteCommand(async (params) => {
     return result;
   }
 
-  if (params.command === 'lumina.applyExtractModule') {
+  if (params.command === LuminaCommands.applyExtractModule) {
     const requestArg = (params.arguments?.[0] ?? {}) as {
       uri?: string;
       range?: Range;

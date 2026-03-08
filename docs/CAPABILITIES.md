@@ -68,7 +68,7 @@ This document tracks the current state of the Lumina language/tooling and near�
 | Canonical module IDs + alias‑aware hover | Stable | Cross‑file hover & definition via module graph |
 | LSP quick‑fixes for type holes | Stable | Uses HM LUM‑010 with precise `_` replacement ranges for nested generic types |
 | LSP inlay hints | Stable | Type hints for inferred lets + parameter hints |
-| LSP refactor code actions | Stable | AST-backed rewrite substrate for refactors plus extract local/type alias/function/module, inline variable, promote-to-ref, split variable, trait stubs, change signature, change return type, change trait signature across impls, move symbol, async/result rewrites, if/else↔match transforms, and collection call style rewrites; VS Code extension exposes move-symbol target picking, a webview-backed change-signature editor, and commands for change-return-type/extract-module |
+| LSP refactor code actions | Stable | AST-backed rewrite substrate for refactors plus extract local/type alias/function/module, inline variable, promote-to-ref, split variable, trait stubs, change signature, change return type, change trait signature across impls, move symbol, async/result rewrites, if/else↔match transforms, and collection call style rewrites; Lumina now exposes a shared editor-agnostic command protocol package (`lumina-language-client`) and VS Code layers editor UI on top of it |
 | LSP document/workspace symbols | Stable | Symbol kinds + workspace query coverage across multi-file projects |
 | LSP semantic tokens | Stable | Keyword/literal/type/value tokenization with stable output across non-semantic edits |
 | Diagnostic deduplication | Stable | HM + semantic merged |

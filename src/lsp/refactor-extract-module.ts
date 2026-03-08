@@ -1,4 +1,5 @@
 import { CodeAction, CodeActionKind, type Range, type WorkspaceEdit } from 'vscode-languageserver/node';
+import { LuminaCommands } from 'lumina-language-client';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import type { LuminaProgram, LuminaStatement } from '../lumina/ast.js';
@@ -122,7 +123,7 @@ export function buildExtractModuleCodeAction(
     kind: CodeActionKind.RefactorExtract,
     command: {
       title: `Extract ${decls.length} declarations to module`,
-      command: 'lumina.extractModule',
+      command: LuminaCommands.extractModule,
       arguments: [
         {
           uri,

@@ -1,4 +1,7 @@
+import type { ChangeSignaturePreview, ParamChange } from 'lumina-language-client';
 import { getVscode } from '../vscode-shim.js';
+
+export type { ParamChange } from 'lumina-language-client';
 
 type ExtensionContextLike = {
   extensionUri: unknown;
@@ -22,12 +25,6 @@ export type ParamInfo = {
   name: string;
   type: string | null;
 };
-
-export type ParamChange =
-  | { kind: 'rename'; index: number; oldName: string; newName: string }
-  | { kind: 'reorder'; fromIndex: number; toIndex: number }
-  | { kind: 'add'; index: number; name: string; type: string; defaultValue?: string }
-  | { kind: 'remove'; index: number };
 
 export type ChangeSignaturePreviewInfo = {
   callSiteCount: number;
@@ -109,7 +106,7 @@ export function buildParamChanges(originalParams: ParamInfo[], currentParams: Pa
 }
 
 type PanelHandlers = {
-  onPreview: (changes: ParamChange[]) => Promise<ChangeSignaturePreviewInfo>;
+  onPreview: (changes: ParamChange[]) => Promise<ChangeSignaturePreviewInfo | ChangeSignaturePreview>;
   onConfirm: (changes: ParamChange[]) => Promise<{ success: boolean; message: string }>;
 };
 

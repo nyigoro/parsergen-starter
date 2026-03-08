@@ -5,6 +5,7 @@ import {
   type Range,
   type WorkspaceEdit,
 } from 'vscode-languageserver/node';
+import { LuminaCommands } from 'lumina-language-client';
 import type { LuminaBlock, LuminaCall, LuminaExpr, LuminaFnDecl, LuminaProgram, LuminaStatement } from '../lumina/ast.js';
 import {
   addEdit,
@@ -274,7 +275,7 @@ export function buildChangeReturnTypeCodeAction(
     kind: CodeActionKind.RefactorRewrite,
     command: {
       title: `Change return type of '${info.fn.name}'`,
-      command: 'lumina.changeReturnType',
+      command: LuminaCommands.changeReturnType,
       arguments: [
         {
           uri,

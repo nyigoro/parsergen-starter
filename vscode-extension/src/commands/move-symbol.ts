@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LuminaCommands, type MoveSymbolActionArg, type MoveSymbolResult } from 'lumina-language-client';
 import { getVscode, type VscodeLike } from '../vscode-shim.js';
 
 type ExtensionContextLike = {
@@ -10,26 +11,12 @@ type LanguageClientLike = {
   sendRequest<T>(method: string, params: unknown): Promise<T>;
 };
 
-type MoveSymbolActionArg = {
-  uri: string;
-  position: { line: number; character: number };
-  symbol?: string;
-};
-
 type EditorLike = {
   document: {
     uri: { toString(): string };
     languageId: string;
   };
   selection: { active: unknown };
-};
-
-type ApplyMoveSymbolResult = {
-  ok: boolean;
-  error?: string;
-  symbolName?: string;
-  targetUri?: string;
-  newName?: string;
 };
 
 function directoryDistance(fromFile: string, toFile: string): number {
@@ -89,7 +76,7 @@ async function findMoveActionArg(editor: EditorLike, explicit?: MoveSymbolAction
   );
   for (const item of actions ?? []) {
     const command = extractCodeActionCommand(item);
-    if (command?.command !== 'lumina.moveSymbol') continue;
+    if (command?.command !== LuminaCommands.moveSymbol) continue;
     const arg = command.arguments?.[0] as MoveSymbolActionArg | undefined;
     if (arg?.uri && arg?.position) return arg;
   }
@@ -99,9 +86,9 @@ async function findMoveActionArg(editor: EditorLike, explicit?: MoveSymbolAction
 async function applyMoveSymbol(
   client: LanguageClientLike,
   request: MoveSymbolActionArg & { targetUri: string; newName?: string }
-): Promise<ApplyMoveSymbolResult> {
-  const result = await client.sendRequest<ApplyMoveSymbolResult>('workspace/executeCommand', {
-    command: 'lumina.applyMoveSymbol',
+): Promise<MoveSymbolResult> {
+  const result = await client.sendRequest<MoveSymbolResult>('workspace/executeCommand', {
+    command: LuminaCommands.applyMoveSymbol,
     arguments: [request],
   });
   return result ?? { ok: false, error: 'Move symbol did not return a result.' };
@@ -192,7 +179,7 @@ export async function registerMoveSymbolCommand(
 ): Promise<void> {
   const vscode = getVscode();
   context.subscriptions.push(
-    vscode.commands.registerCommand('lumina.moveSymbol', async (...args: unknown[]) => {
+    vscode.commands.registerCommand(LuminaCommands.moveSymbol, async (...args: unknown[]) => {
       const arg = args[0] as MoveSymbolActionArg | undefined;
       const client = getClient();
       const editor = vscode.window.activeTextEditor as EditorLike | undefined;

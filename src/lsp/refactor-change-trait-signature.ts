@@ -5,6 +5,7 @@ import {
   type Range,
   type WorkspaceEdit,
 } from 'vscode-languageserver/node';
+import { LuminaCommands, type ParamChange } from 'lumina-language-client';
 import type { LuminaCall, LuminaFnDecl, LuminaProgram, LuminaTraitMethod } from '../lumina/ast.js';
 import {
   addEdit,
@@ -16,7 +17,6 @@ import {
   typeExprToString,
   sortWorkspaceEdits,
 } from './ast-utils.js';
-import { type ParamChange } from './refactor-change-signature.js';
 import { isDependencyUri } from './rename.js';
 
 export interface ChangeTraitSignatureRequest {
@@ -278,7 +278,7 @@ export function buildChangeTraitSignatureCodeAction(
     kind: CodeActionKind.RefactorRewrite,
     command: {
       title: `Change trait method signature of '${info.methodName}'`,
-      command: 'lumina.changeSignature',
+      command: LuminaCommands.changeSignature,
       arguments: [
         {
           uri,

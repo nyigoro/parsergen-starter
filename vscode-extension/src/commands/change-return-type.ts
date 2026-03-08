@@ -1,3 +1,9 @@
+import {
+  LuminaCommands,
+  type ChangeReturnTypeActionArg,
+  type ChangeReturnTypePreview,
+  type ChangeReturnTypeResult,
+} from 'lumina-language-client';
 import { getVscode } from '../vscode-shim.js';
 
 type ExtensionContextLike = {
@@ -6,13 +12,6 @@ type ExtensionContextLike = {
 
 type LanguageClientLike = {
   sendRequest<T>(method: string, params: unknown): Promise<T>;
-};
-
-type ChangeReturnTypeActionArg = {
-  uri: string;
-  position: { line: number; character: number };
-  name?: string;
-  currentReturnType?: string;
 };
 
 type EditorLike = {
@@ -50,7 +49,7 @@ async function findChangeReturnTypeArg(
   );
   for (const item of actions ?? []) {
     const command = extractCodeActionCommand(item);
-    if (command?.command !== 'lumina.changeReturnType') continue;
+    if (command?.command !== LuminaCommands.changeReturnType) continue;
     const arg = command.arguments?.[0] as ChangeReturnTypeActionArg | undefined;
     if (arg?.uri && arg?.position) return arg;
   }
@@ -63,7 +62,7 @@ export async function registerChangeReturnTypeCommand(
 ): Promise<void> {
   const vscode = getVscode();
   context.subscriptions.push(
-    vscode.commands.registerCommand('lumina.changeReturnType', async (...args: unknown[]) => {
+    vscode.commands.registerCommand(LuminaCommands.changeReturnType, async (...args: unknown[]) => {
       const arg = args[0] as ChangeReturnTypeActionArg | undefined;
       const client = getClient();
       const editor = vscode.window.activeTextEditor as EditorLike | undefined;
@@ -85,10 +84,10 @@ export async function registerChangeReturnTypeCommand(
       });
       if (!newReturnType || !newReturnType.trim()) return;
 
-      const preview = await client.sendRequest<{ callSiteCount: number; fileCount: number; warnings: string[]; error?: string }>(
+      const preview = await client.sendRequest<ChangeReturnTypePreview>(
         'workspace/executeCommand',
         {
-          command: 'lumina.previewChangeReturnType',
+          command: LuminaCommands.previewChangeReturnType,
           arguments: [{ uri: actionArg.uri, position: actionArg.position }, newReturnType.trim()],
         }
       );
@@ -102,10 +101,10 @@ export async function registerChangeReturnTypeCommand(
       const choice = await vscode.window.showInformationMessage(`${summary}${detail}`, 'Apply');
       if (choice !== 'Apply') return;
 
-      const result = await client.sendRequest<{ ok?: boolean; error?: string; callSiteCount?: number; fileCount?: number }>(
+      const result = await client.sendRequest<ChangeReturnTypeResult>(
         'workspace/executeCommand',
         {
-          command: 'lumina.applyChangeReturnType',
+          command: LuminaCommands.applyChangeReturnType,
           arguments: [{ uri: actionArg.uri, position: actionArg.position }, newReturnType.trim()],
         }
       );

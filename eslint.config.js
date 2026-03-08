@@ -222,6 +222,37 @@ export default [
     },
   },
 
+  // Shared language-client package
+  {
+    files: ['packages/lumina-language-client/src/**/*.ts'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: 2021,
+        sourceType: 'module',
+        project: './packages/lumina-language-client/tsconfig.json',
+      },
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: {
+      ...typescript.configs.recommended.rules,
+      'no-console': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-expressions': 'warn',
+      'no-undef': 'off',
+    },
+  },
+
   // Ignore specific files/folders
   {
     ignores: [
@@ -268,6 +299,7 @@ export default [
       'test-lumina-pkg/**',
       'examples/wasm-hello/benchmark.ts',
       'vscode-extension/dist/**',
+      'packages/lumina-language-client/dist/**',
       'vscode-extension/src/**/*.test.ts',
     ],
   },
