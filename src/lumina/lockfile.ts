@@ -62,9 +62,39 @@ type LegacyLockfile = {
 };
 
 const MIGRATION_NOTICE = new Set<string>();
+const MISSING_INTEGRITY = 'sha256:';
 
 const normalizeIntegrity = (value: string): string =>
   value.startsWith('sha256:') ? value : `sha256:${value}`;
+
+const isMissingIntegrity = (value: string | undefined | null): boolean => {
+  if (typeof value !== 'string') return true;
+  return normalizeIntegrity(value.trim()) === MISSING_INTEGRITY;
+};
+
+type IntegrityWriter = Pick<NodeJS.WriteStream, 'write'>;
+
+export function parseIntegrity(
+  value: string | undefined | null,
+  key: string,
+  stderr: IntegrityWriter = process.stderr
+): string {
+  if (isMissingIntegrity(value)) {
+    stderr.write(`Warning: missing integrity for ${key}; package verification will fail until the lockfile is refreshed.\n`);
+    return MISSING_INTEGRITY;
+  }
+  return normalizeIntegrity(value.trim());
+}
+
+export function integrityStatus(
+  tarballBuffer: Buffer,
+  expectedHash: string
+): 'ok' | 'missing' | 'mismatch' {
+  if (isMissingIntegrity(expectedHash)) return 'missing';
+  const normalized = normalizeIntegrity(expectedHash);
+  const actual = createHash('sha256').update(tarballBuffer).digest('hex');
+  return normalized === `sha256:${actual}` ? 'ok' : 'mismatch';
+}
 
 const parseVersion = (value: string): [number, number, number] | null => {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(value);
@@ -149,7 +179,7 @@ const toSerializable = (data: LockfileData): {
       version: entry.version,
       resolved: entry.resolved,
       path: entry.path,
-      integrity: normalizeIntegrity(entry.integrity),
+      integrity: isMissingIntegrity(entry.integrity) ? MISSING_INTEGRITY : normalizeIntegrity(entry.integrity),
       lumina: entry.lumina,
       cdnUrl: entry.cdnUrl ?? null,
       npmCdnUrl: entry.npmCdnUrl ?? null,
@@ -191,7 +221,7 @@ const parseModernLockfile = (raw: string): LockfileData => {
       version: value.version,
       resolved: value.resolved,
       path: typeof value.path === 'string' ? value.path : undefined,
-      integrity: normalizeIntegrity(value.integrity ?? 'sha256:'),
+      integrity: parseIntegrity(value.integrity, key),
       lumina: typeof value.lumina === 'string' || typeof value.lumina === 'object' ? value.lumina : undefined,
       cdnUrl: typeof value.cdnUrl === 'string' ? value.cdnUrl : null,
       npmCdnUrl: typeof value.npmCdnUrl === 'string' ? value.npmCdnUrl : null,
@@ -215,7 +245,7 @@ const migrateLegacyLockfile = (legacy: LegacyLockfile): LockfileData => {
       version: value.version,
       resolved: value.resolved,
       path: typeof value.path === 'string' ? value.path : undefined,
-      integrity: normalizeIntegrity(value.integrity ?? 'sha256:'),
+      integrity: parseIntegrity(value.integrity, key),
       lumina: typeof value.lumina === 'string' || typeof value.lumina === 'object' ? value.lumina : undefined,
       cdnUrl: typeof value.cdnUrl === 'string' ? value.cdnUrl : null,
       npmCdnUrl: typeof value.npmCdnUrl === 'string' ? value.npmCdnUrl : null,
@@ -275,7 +305,7 @@ export function addEntry(data: LockfileData, entry: LockfileEntry): LockfileData
   packages.set(key, {
     ...entry,
     path: entry.path,
-    integrity: normalizeIntegrity(entry.integrity),
+    integrity: isMissingIntegrity(entry.integrity) ? MISSING_INTEGRITY : normalizeIntegrity(entry.integrity),
     lumina: entry.lumina,
     cdnUrl: entry.cdnUrl ?? null,
     npmCdnUrl: entry.npmCdnUrl ?? null,
@@ -287,10 +317,7 @@ export function addEntry(data: LockfileData, entry: LockfileEntry): LockfileData
 }
 
 export function verifyIntegrity(tarballBuffer: Buffer, expectedHash: string): boolean {
-  if (!expectedHash || typeof expectedHash !== 'string') return false;
-  const normalized = normalizeIntegrity(expectedHash);
-  const actual = createHash('sha256').update(tarballBuffer).digest('hex');
-  return normalized === `sha256:${actual}`;
+  return integrityStatus(tarballBuffer, expectedHash) === 'ok';
 }
 
 export function isOutOfSync(manifest: PackageManifest, lockfile: LockfileData): string[] {
@@ -336,7 +363,7 @@ const parseBrowserLock = (raw: string): BrowserLock => {
       version: value.version,
       esm: typeof value.esm === 'string' ? value.esm : null,
       wasm: typeof value.wasm === 'string' ? value.wasm : null,
-      integrity: normalizeIntegrity(value.integrity ?? 'sha256:'),
+      integrity: parseIntegrity(value.integrity, key),
       deps: Array.isArray(value.deps) ? value.deps.filter((dep) => typeof dep === 'string') : [],
     });
   }

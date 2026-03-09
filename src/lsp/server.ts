@@ -79,6 +79,7 @@ import {
 } from './refactor-change-trait-signature.js';
 import { applyExtractModule, buildExtractModuleCodeAction } from './refactor-extract-module.js';
 import { buildSemanticTokens, semanticTokensLegend } from './semantic-tokens.js';
+import { buildVaultRegistry } from './vault-registry.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -90,9 +91,21 @@ let project: ProjectContext | null = null;
 let moduleGraph: ModuleGraph | null = null;
 const diagnosticsDebounce = new Map<string, NodeJS.Timeout>();
 const debounceMs = 120;
-const moduleRegistry = createStdModuleRegistry();
-const preludeExports = getPreludeExports(moduleRegistry);
-const preludeExportMap = new Map<string, ModuleExport>(preludeExports.map((exp) => [exp.name, exp]));
+let moduleRegistry = createStdModuleRegistry();
+let preludeExportMap = new Map<string, ModuleExport>(
+  getPreludeExports(moduleRegistry).map((exp) => [exp.name, exp])
+);
+
+function getPrimaryWorkspaceRoot(): string | null {
+  return workspaceRoots[0] ?? workspaceRoot;
+}
+
+function rebuildVaultModuleRegistry() {
+  moduleRegistry = buildVaultRegistry(getPrimaryWorkspaceRoot(), createStdModuleRegistry());
+  preludeExportMap = new Map<string, ModuleExport>(
+    getPreludeExports(moduleRegistry).map((exp) => [exp.name, exp])
+  );
+}
 
 function resolveGrammarPath(): string {
   if (settings.grammarPath) return path.resolve(settings.grammarPath);
@@ -108,11 +121,13 @@ function resolveGrammarPath(): string {
 }
 
 function initProjectContext() {
+  rebuildVaultModuleRegistry();
   const grammarPath = resolveGrammarPath();
   const grammarText = fs.readFileSync(grammarPath, 'utf-8');
   const parser = compileGrammar(grammarText);
   project = new ProjectContext(parser, undefined, undefined, {
     useHmDiagnostics: settings.useHmDiagnostics ?? false,
+    moduleRegistry,
   });
   moduleGraph = null;
   connection.console.info(`Lumina grammar loaded: ${grammarPath}`);
@@ -332,7 +347,7 @@ connection.onInitialized(() => {
   const sanitized = extensions.map((ext) => ext.replace(/^\./, '')).filter(Boolean);
   const globPattern = sanitized.length > 0 ? `**/*.{${sanitized.join(',')}}` : '**/*.lum';
   connection.client.register(DidChangeWatchedFilesNotification.type, {
-    watchers: [{ globPattern }],
+    watchers: [{ globPattern }, { globPattern: '**/lumina.lock' }, { globPattern: '**/lumina.browser.lock' }],
   });
   indexWorkspaceFiles();
 });
@@ -861,6 +876,17 @@ connection.languages.semanticTokens.on((params) => {
 
 connection.onDidChangeWatchedFiles((change) => {
   for (const c of change.changes) {
+    const baseName = path.basename(uriToFsPath(c.uri));
+    if (baseName === 'lumina.lock' || baseName === 'lumina.browser.lock') {
+      initProjectContext();
+      documents.all().forEach((doc) => {
+        project?.addOrUpdateDocument(doc.uri, doc.getText(), doc.version);
+        publishDiagnostics(doc.uri);
+      });
+      indexWorkspaceFiles();
+      rebuildModuleGraph();
+      continue;
+    }
     if (c.type === FileChangeType.Deleted) {
       project?.removeDocument(c.uri);
       connection.sendDiagnostics({ uri: c.uri, diagnostics: [] });

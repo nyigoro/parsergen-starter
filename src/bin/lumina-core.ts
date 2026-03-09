@@ -55,8 +55,10 @@ import { runLuminaImportmap } from './lumina-importmap.js';
 import { readManifest } from '../lumina/package-manifest.js';
 import { resolveRegistryConfig, search as searchRegistry } from '../lumina/registry-client.js';
 import { readLockfileSync } from '../lumina/lockfile.js';
+import { scanDirectory } from '../lumina/secret-scan.js';
+import { generateExportsMap } from '../lumina/dual-output.js';
 
-type Target = 'cjs' | 'esm' | 'wasm';
+type Target = 'cjs' | 'esm' | 'wasm' | 'dual';
 
 const DEFAULT_GRAMMAR_PATHS = [
   path.resolve('src/grammar/lumina.peg'),
@@ -95,8 +97,8 @@ function validateConfig(raw: LuminaConfig): LuminaConfig {
     else errors.push('outDir must be a string');
   }
   if (raw.target !== undefined) {
-    if (raw.target === 'cjs' || raw.target === 'esm' || raw.target === 'wasm') normalized.target = raw.target;
-    else errors.push('target must be "cjs", "esm", or "wasm"');
+    if (raw.target === 'cjs' || raw.target === 'esm' || raw.target === 'wasm' || raw.target === 'dual') normalized.target = raw.target;
+    else errors.push('target must be "cjs", "esm", "wasm", or "dual"');
   }
 
   const normalizeList = (value: unknown, key: string): string[] | undefined => {
@@ -200,7 +202,7 @@ function buildNextPageCmd(
 
 function resolveTarget(value: string | undefined): Target | null {
   if (!value) return null;
-  return value === 'cjs' || value === 'esm' || value === 'wasm' ? value : null;
+  return value === 'cjs' || value === 'esm' || value === 'wasm' || value === 'dual' ? value : null;
 }
 
 const blockedOutputRoots = [
@@ -279,6 +281,11 @@ function resolveOutPath(
   outDir: string | undefined,
   target?: Target
 ): string {
+  if (target === 'dual') {
+    if (outPathArg) return validateOutputPath(outPathArg);
+    if (outDir) return validateOutputPath(path.resolve(outDir, path.basename(sourcePath, path.extname(sourcePath))));
+    return validateOutputPath(path.resolve('dist'));
+  }
   if (outPathArg) return validateOutputPath(outPathArg);
   const ext = target === 'wasm' ? '.wat' : '.js';
   const base = path.basename(sourcePath, path.extname(sourcePath)) + ext;
@@ -1338,6 +1345,49 @@ async function compileLumina(
   inlineSourceMap: boolean,
   stopOnUnresolvedMemberError: boolean
 ) {
+  if (target === 'dual') {
+    const outDir = validateOutputPath(outPath);
+    const esmOut = path.join(outDir, 'esm', 'index.js');
+    const cjsOut = path.join(outDir, 'cjs', 'index.cjs');
+    await fs.mkdir(path.dirname(esmOut), { recursive: true });
+    await fs.mkdir(path.dirname(cjsOut), { recursive: true });
+    const esmResult = await compileLumina(
+      sourcePath,
+      esmOut,
+      'esm',
+      grammarPath,
+      useRecovery,
+      diCfg,
+      useAstJs,
+      noOptimize,
+      noInline,
+      noComptime,
+      sourceMap,
+      inlineSourceMap,
+      stopOnUnresolvedMemberError
+    );
+    if (!esmResult.ok) return esmResult;
+    const cjsResult = await compileLumina(
+      sourcePath,
+      cjsOut,
+      'cjs',
+      grammarPath,
+      useRecovery,
+      diCfg,
+      useAstJs,
+      noOptimize,
+      noInline,
+      noComptime,
+      sourceMap,
+      inlineSourceMap,
+      stopOnUnresolvedMemberError
+    );
+    if (!cjsResult.ok) return cjsResult;
+    await fs.mkdir(outDir, { recursive: true });
+    await fs.writeFile(path.join(outDir, 'package.json'), generateExportsMap(), 'utf-8');
+    console.log(`built ESM + CJS -> ${outDir} with exports map`);
+    return { ok: true, map: undefined, ir: cjsResult.ir ?? esmResult.ir };
+  }
   const parser = await loadGrammar(grammarPath);
   const source = await fs.readFile(sourcePath, 'utf-8');
   let warnedLambdaFallback = false;
@@ -2280,15 +2330,17 @@ Commands:
   bundle <file>    Bundle Lumina source for browser/wasm distribution
   importmap        Generate browser import map from lock data
   search <query>   Search Lumina package registry
+  secret-scan [d]  Scan a directory for likely secrets
 
 Options:
   --out <file>         Output JS file (default: lumina.out.js)
-  --target <cjs|esm|wasm>   Output module format (default: esm)
+  --target <cjs|esm|wasm|dual>   Output module format (default: esm)
   --loader-out <file>  Loader output path for wasm bundle target
   --import-map <file>  Emit browser import-map.json during bundle
   --minify             Minify browser bundle output
   --cdn                Upload browser/wasm CDN artifacts on publish
   --cdn-provider <p>   CDN provider: lumina | npm | both
+  --allow-secrets      Allow publish to continue when secret scan finds matches
   --grammar <path>     Override grammar path
   --dry-run            Parse and analyze only (compile command)
   --recovery           Enable resilient parsing (panic mode)
@@ -2328,6 +2380,7 @@ Commands:
   bundle               Bundle browser/wasm artifacts
   importmap            Generate browser import map
   search <query>       Search package registry
+  secret-scan [dir]    Scan directory for likely secrets
   remove <pkg...>      Remove dependency
   list                 List Lumina-resolvable packages from lumina.lock.json
 `);
@@ -2522,6 +2575,20 @@ async function runDocCommand(
   return true;
 }
 
+async function runSecretScanCommand(dir: string | undefined): Promise<boolean> {
+  const targetDir = path.resolve(dir ?? process.cwd());
+  const result = await scanDirectory(targetDir);
+  if (result.findings.length === 0) {
+    console.log(`Secret scan clean: ${targetDir} (${result.scanned} file(s) scanned).`);
+    return true;
+  }
+  console.error(`Secret scan found ${result.findings.length} issue(s) in ${targetDir}:`);
+  for (const finding of result.findings) {
+    console.error(`${finding.file}:${finding.line}:${finding.column} [${finding.kind}] ${finding.preview}`);
+  }
+  return false;
+}
+
 export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const { command, file, positional, args } = parseArgs(argv);
   const positionalArgs = positional.slice(1);
@@ -2551,6 +2618,14 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
 
   if (command === 'publish') {
     await runLuminaPublish(argv.slice(1));
+    return;
+  }
+
+  if (command === 'secret-scan') {
+    const ok = await runSecretScanCommand(file || positionalArgs[0]);
+    if (!ok) {
+      throw new Error('Secret scan found one or more findings.');
+    }
     return;
   }
 

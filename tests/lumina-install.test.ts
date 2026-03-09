@@ -79,11 +79,60 @@ describe('lumina install', () => {
           downloads += 1;
           return Buffer.from('tarball');
         },
-        verifyIntegrity: () => true,
+        integrityStatus: () => 'ok',
       },
       stdout: { log: () => {} },
     });
     expect(downloads).toBe(0);
+  });
+
+  it('fails cleanly when lockfile entry is missing integrity', async () => {
+    const cwd = createTempDir();
+    await expect(
+      runLuminaInstall([], {
+        cwd,
+        deps: {
+          readManifest: async () => makeManifest(),
+          readLockfile: async () => ({
+            version: 1,
+            packages: new Map([
+              [
+                'json-utils@1.2.3',
+                {
+                  name: 'json-utils',
+                  version: '1.2.3',
+                  resolved: 'https://registry.example.dev/json-utils-1.2.3.tgz',
+                  path: '.lumina/packages/json-utils@1.2.3',
+                  integrity: 'sha256:',
+                  deps: new Map(),
+                },
+              ],
+            ]),
+          }),
+          isOutOfSync: () => [],
+          resolveRegistryConfig: () => ({ url: 'https://registry.example.dev', token: null }),
+          downloadTarball: async () => Buffer.from('tarball'),
+          integrityStatus: () => 'missing',
+        },
+      })
+    ).rejects.toThrow(/missing integrity/i);
+  });
+
+  it('fails cleanly when lockfile entry integrity mismatches', async () => {
+    const cwd = createTempDir();
+    await expect(
+      runLuminaInstall([], {
+        cwd,
+        deps: {
+          readManifest: async () => makeManifest(),
+          readLockfile: async () => lockfileWithJsonUtils(),
+          isOutOfSync: () => [],
+          resolveRegistryConfig: () => ({ url: 'https://registry.example.dev', token: null }),
+          downloadTarball: async () => Buffer.from('tarball'),
+          integrityStatus: () => 'mismatch',
+        },
+      })
+    ).rejects.toThrow(/integrity check failed/i);
   });
 
   it('migrates legacy lockfile through readLockfile dependency path', async () => {
@@ -118,7 +167,7 @@ describe('lumina install', () => {
       cwd,
       deps: {
         downloadTarball: async () => Buffer.from('tarball'),
-        verifyIntegrity: () => true,
+        integrityStatus: () => 'ok',
       },
       stdout: { log: () => {} },
     });

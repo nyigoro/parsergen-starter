@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { readManifest } from '../lumina/package-manifest.js';
-import { isOutOfSync, readLockfile, verifyIntegrity, type LockfileData } from '../lumina/lockfile.js';
+import { integrityStatus, isOutOfSync, readLockfile, type LockfileData } from '../lumina/lockfile.js';
 import { downloadTarball, resolveRegistryConfig, type RegistryClientConfig } from '../lumina/registry-client.js';
 
 type InstallDependencies = {
@@ -11,7 +11,7 @@ type InstallDependencies = {
   readLockfile: typeof readLockfile;
   isOutOfSync: typeof isOutOfSync;
   downloadTarball: typeof downloadTarball;
-  verifyIntegrity: typeof verifyIntegrity;
+  integrityStatus: typeof integrityStatus;
   resolveRegistryConfig: typeof resolveRegistryConfig;
 };
 
@@ -20,7 +20,7 @@ const DEFAULT_DEPENDENCIES: InstallDependencies = {
   readLockfile,
   isOutOfSync,
   downloadTarball,
-  verifyIntegrity,
+  integrityStatus,
   resolveRegistryConfig,
 };
 
@@ -118,7 +118,11 @@ export async function runLuminaInstall(argv: string[], options: InstallOptions =
       return;
     }
     const tarball = await dependencies.downloadTarball(entry.resolved, config);
-    if (!dependencies.verifyIntegrity(tarball, entry.integrity)) {
+    const status = dependencies.integrityStatus(tarball, entry.integrity);
+    if (status === 'missing') {
+      throw new Error(`SECURITY: missing integrity for ${entry.name}@${entry.version}`);
+    }
+    if (status === 'mismatch') {
       throw new Error(`SECURITY: integrity check failed for ${entry.name}@${entry.version}`);
     }
     const result = await materializePackage(installDir, entry.name, entry.version, tarball, force);

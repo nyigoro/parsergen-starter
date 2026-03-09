@@ -24,13 +24,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -116,6 +116,21 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
     builder.append('\n');
     builder.append(
       `const crypto = { isAvailable: async () => false, sha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), hmacSha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomBytes: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomInt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmEncrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmDecrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }) };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const iter = { map_vec: (values) => values, filter_vec: (values) => values, filter_option: (value) => value, zip_vec: (left) => left, enumerate_vec: (values) => values, flatten_vec: (values) => values, flat_map_vec: (values) => values, chunk_vec: (values) => values, window_vec: (values) => values, partition_vec: (values) => [values, values], take_vec: (values) => values, skip_vec: (values) => values, any_vec: () => false, all_vec: () => false, find_vec: () => ({ $tag: "None" }), count_vec: (values) => Array.isArray(values) ? values.length : 0, sum_vec: () => 0, sum_vec_f64: () => 0, unique_vec: (values) => values, reverse_vec: (values) => values, sort_vec: (values) => values, sort_by_vec: (values) => values, sort_by_desc_vec: (values) => values, group_by_vec: () => ({}), intersperse_vec: (values) => values, join_vec: (left) => left };`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const map_vec = iter.map_vec, filter_vec = iter.filter_vec, filter_option = iter.filter_option, zip_vec = iter.zip_vec, enumerate_vec = iter.enumerate_vec, flatten_vec = iter.flatten_vec, flat_map_vec = iter.flat_map_vec, chunk_vec = iter.chunk_vec, window_vec = iter.window_vec, partition_vec = iter.partition_vec, take_vec = iter.take_vec, skip_vec = iter.skip_vec, any_vec = iter.any_vec, all_vec = iter.all_vec, find_vec = iter.find_vec, count_vec = iter.count_vec, sum_vec = iter.sum_vec, sum_vec_f64 = iter.sum_vec_f64, unique_vec = iter.unique_vec, reverse_vec = iter.reverse_vec, sort_vec = iter.sort_vec, sort_by_vec = iter.sort_by_vec, sort_by_desc_vec = iter.sort_by_desc_vec, group_by_vec = iter.group_by_vec, intersperse_vec = iter.intersperse_vec, join_vec = iter.join_vec;`,
+      'Runtime'
+    );
+    builder.append('\n');
+    builder.append(
+      `const query = (items) => ({ items }), where_q = (q) => q, select_q = (q) => q, order_by_q = (q) => q, order_by_desc_q = (q) => q, limit_q = (q) => q, offset_q = (q) => q, group_by_q = () => ({}), count_q = (q) => Array.isArray(q?.items) ? q.items.length : 0, first_q = () => ({ $tag: "None" }), to_vec_q = (q) => q?.items ?? [], join_q = (left) => ({ items: left?.items ?? [] });`,
       'Runtime'
     );
     builder.append('\n');

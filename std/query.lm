@@ -1,0 +1,56 @@
+import { iter, vec } from "@std";
+
+pub type Query<T> = { items: Vec<T> };
+
+pub fn query<T>(items: Vec<T>) -> Query<T> {
+  Query { items: items }
+}
+
+pub fn where_q<T>(q: Query<T>, pred: fn(T) -> bool) -> Query<T> {
+  Query { items: iter.filter_vec(q.items, pred) }
+}
+
+pub fn select_q<T, U>(q: Query<T>, mapper: fn(T) -> U) -> Query<U> {
+  Query { items: iter.map_vec(q.items, mapper) }
+}
+
+pub fn order_by_q<T, K>(q: Query<T>, key: fn(T) -> K) -> Query<T> {
+  Query { items: iter.sort_by_vec(q.items, key) }
+}
+
+pub fn order_by_desc_q<T, K>(q: Query<T>, key: fn(T) -> K) -> Query<T> {
+  Query { items: iter.sort_by_desc_vec(q.items, key) }
+}
+
+pub fn limit_q<T>(q: Query<T>, n: int) -> Query<T> {
+  Query { items: iter.take_vec(q.items, n) }
+}
+
+pub fn offset_q<T>(q: Query<T>, n: int) -> Query<T> {
+  Query { items: iter.skip_vec(q.items, n) }
+}
+
+pub fn group_by_q<T, K>(q: Query<T>, key: fn(T) -> K) -> HashMap<K, Vec<T>> {
+  iter.group_by_vec(q.items, key)
+}
+
+pub fn count_q<T>(q: Query<T>) -> int {
+  iter.count_vec(q.items)
+}
+
+pub fn first_q<T>(q: Query<T>) -> Option<T> {
+  vec.get(q.items, 0)
+}
+
+pub fn to_vec_q<T>(q: Query<T>) -> Vec<T> {
+  q.items
+}
+
+pub fn join_q<T, U, K>(
+  left: Query<T>,
+  right: Query<U>,
+  left_key: fn(T) -> K,
+  right_key: fn(U) -> K
+) -> Query<Tuple<T, U>> {
+  Query { items: iter.join_vec(left.items, right.items, left_key, right_key) }
+}

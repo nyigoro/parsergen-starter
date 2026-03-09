@@ -1,0 +1,110 @@
+import { iter } from "@std";
+
+pub fn map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> B) -> Vec<B> {
+  iter.map_vec(values, mapper)
+}
+
+pub fn filter_vec<A>(values: Vec<A>, pred: fn(A) -> bool) -> Vec<A> {
+  iter.filter_vec(values, pred)
+}
+
+pub fn filter_option<A>(value: Option<A>, pred: fn(A) -> bool) -> Option<A> {
+  iter.filter_option(value, pred)
+}
+
+pub fn zip_vec<A, B>(left: Vec<A>, right: Vec<B>) -> Vec<Tuple<A, B>> {
+  iter.zip_vec(left, right)
+}
+
+pub fn enumerate_vec<A>(values: Vec<A>) -> Vec<Tuple<int, A>> {
+  iter.enumerate_vec(values)
+}
+
+pub fn flatten_vec<A>(values: Vec<Vec<A>>) -> Vec<A> {
+  iter.flatten_vec(values)
+}
+
+pub fn flat_map_vec<A, B>(values: Vec<A>, mapper: fn(A) -> Vec<B>) -> Vec<B> {
+  iter.flat_map_vec(values, mapper)
+}
+
+pub fn chunk_vec<A>(values: Vec<A>, size: int) -> Vec<Vec<A>> {
+  iter.chunk_vec(values, size)
+}
+
+pub fn window_vec<A>(values: Vec<A>, size: int) -> Vec<Vec<A>> {
+  iter.window_vec(values, size)
+}
+
+pub fn partition_vec<A>(values: Vec<A>, pred: fn(A) -> bool) -> Tuple<Vec<A>, Vec<A>> {
+  iter.partition_vec(values, pred)
+}
+
+pub fn take_vec<A>(values: Vec<A>, n: int) -> Vec<A> {
+  iter.take_vec(values, n)
+}
+
+pub fn skip_vec<A>(values: Vec<A>, n: int) -> Vec<A> {
+  iter.skip_vec(values, n)
+}
+
+pub fn any_vec<A>(values: Vec<A>, pred: fn(A) -> bool) -> bool {
+  iter.any_vec(values, pred)
+}
+
+pub fn all_vec<A>(values: Vec<A>, pred: fn(A) -> bool) -> bool {
+  iter.all_vec(values, pred)
+}
+
+pub fn find_vec<A>(values: Vec<A>, pred: fn(A) -> bool) -> Option<A> {
+  iter.find_vec(values, pred)
+}
+
+pub fn count_vec<A>(values: Vec<A>) -> int {
+  iter.count_vec(values)
+}
+
+pub fn sum_vec(values: Vec<int>) -> int {
+  iter.sum_vec(values)
+}
+
+pub fn sum_vec_f64(values: Vec<f64>) -> f64 {
+  iter.sum_vec_f64(values)
+}
+
+pub fn unique_vec<A>(values: Vec<A>) -> Vec<A> {
+  iter.unique_vec(values)
+}
+
+pub fn reverse_vec<A>(values: Vec<A>) -> Vec<A> {
+  iter.reverse_vec(values)
+}
+
+pub fn sort_vec<A>(values: Vec<A>, cmp: fn(A, A) -> int) -> Vec<A> {
+  iter.sort_vec(values, cmp)
+}
+
+pub fn sort_by_vec<A, K>(values: Vec<A>, key: fn(A) -> K) -> Vec<A> {
+  iter.sort_by_vec(values, key)
+}
+
+pub fn sort_by_desc_vec<A, K>(values: Vec<A>, key: fn(A) -> K) -> Vec<A> {
+  iter.sort_by_desc_vec(values, key)
+}
+
+pub fn group_by_vec<A, K>(values: Vec<A>, key: fn(A) -> K) -> HashMap<K, Vec<A>> {
+  iter.group_by_vec(values, key)
+}
+
+pub fn intersperse_vec<A>(values: Vec<A>, sep: A) -> Vec<A> {
+  iter.intersperse_vec(values, sep)
+}
+
+pub fn join_vec<A, B, K>(
+  left: Vec<A>,
+  right: Vec<B>,
+  left_key: fn(A) -> K,
+  right_key: fn(B) -> K
+) -> Vec<Tuple<A, B>> {
+  iter.join_vec(left, right, left_key, right_key)
+}

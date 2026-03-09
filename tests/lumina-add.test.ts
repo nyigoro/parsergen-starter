@@ -32,6 +32,42 @@ afterEach(() => {
 });
 
 describe('lumina add', () => {
+  it('aborts on missing integrity before extraction', async () => {
+    const cwd = createTempDir();
+    fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, 'src', 'main.lm'), 'fn main() { }\n', 'utf-8');
+    const writes: string[] = [];
+    await expect(
+      runLuminaAdd(['json-utils@^1.2.0'], {
+        cwd,
+        stderr: { error: () => {} },
+        deps: {
+          readManifest: async () => makeManifest(),
+          writeManifest: async () => {
+            writes.push('manifest');
+          },
+          readLockfile: async () => ({ version: 1, packages: new Map() }),
+          writeLockfile: async () => {
+            writes.push('lockfile');
+          },
+          resolveRegistryConfig: () => ({ url: 'https://registry.example.dev', token: 'token' }),
+          resolveVersion: async () => '1.2.3',
+          getVersionInfo: async () => ({
+            name: 'json-utils',
+            version: '1.2.3',
+            resolved: 'https://registry.example.dev/json-utils-1.2.3.tgz',
+            integrity: 'sha256:',
+            lumina: './src/lib.lm',
+            deps: new Map(),
+          }),
+          downloadTarball: async () => Buffer.from('tarball'),
+          integrityStatus: () => 'missing',
+        },
+      })
+    ).rejects.toThrow(/Missing integrity/);
+    expect(writes).toHaveLength(0);
+  });
+
   it('aborts on integrity mismatch before extraction', async () => {
     const cwd = createTempDir();
     fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
@@ -61,7 +97,7 @@ describe('lumina add', () => {
             deps: new Map(),
           }),
           downloadTarball: async () => Buffer.from('tarball'),
-          verifyIntegrity: () => false,
+          integrityStatus: () => 'mismatch',
         },
       })
     ).rejects.toThrow(/Integrity mismatch/);
@@ -97,7 +133,7 @@ describe('lumina add', () => {
           deps: new Map([['tiny-vec', '0.1.0']]),
         }),
         downloadTarball: async () => Buffer.from('tarball'),
-        verifyIntegrity: () => true,
+        integrityStatus: () => 'ok',
       },
       stdout: { log: () => {} },
     });
@@ -129,7 +165,7 @@ describe('lumina add', () => {
             throw new Error('unreachable');
           },
           downloadTarball: async () => Buffer.from(''),
-          verifyIntegrity: () => true,
+          integrityStatus: () => 'ok',
         },
       })
     ).rejects.toThrow('Package not found: missing-pkg');
@@ -156,7 +192,7 @@ describe('lumina add', () => {
             throw new Error('unreachable');
           },
           downloadTarball: async () => Buffer.from(''),
-          verifyIntegrity: () => true,
+          integrityStatus: () => 'ok',
         },
       })
     ).rejects.toThrow('No matching version for json-utils@9.9.9');
@@ -194,7 +230,7 @@ describe('lumina add', () => {
             }),
             'utf-8'
           ),
-        verifyIntegrity: () => true,
+        integrityStatus: () => 'ok',
       },
       stdout: { log: () => {} },
     });

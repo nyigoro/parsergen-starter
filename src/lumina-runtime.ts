@@ -2361,6 +2361,214 @@ export const vec = {
   },
 };
 
+const compareOrder = (left: unknown, right: unknown): number => {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+};
+
+const normalizeCount = (value: number): number => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0);
+
+type QueryRecord<T> = { items: Vec<T> };
+
+export const iter = {
+  map_vec: <A, B>(values: Vec<A>, mapper: (value: A) => B): Vec<B> => vec.map(values, mapper),
+  filter_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): Vec<A> => vec.filter(values, pred),
+  filter_option: <A>(value: unknown, pred: (input: A) => boolean): unknown => {
+    const tag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
+    if (tag !== 'Some') return Option.None;
+    const payload = getEnumPayload(value) as A;
+    return pred(payload) ? Option.Some(payload) : Option.None;
+  },
+  zip_vec: <A, B>(left: Vec<A>, right: Vec<B>): Vec<[A, B]> => vec.zip(left, right),
+  enumerate_vec: <A>(values: Vec<A>): Vec<[number, A]> => vec.enumerate(values),
+  flatten_vec: <A>(values: Vec<Vec<A>>): Vec<A> => {
+    const out = Vec.new<A>();
+    for (const inner of values) {
+      if (!(inner instanceof Vec)) continue;
+      for (const value of inner) out.push(value);
+    }
+    return out;
+  },
+  flat_map_vec: <A, B>(values: Vec<A>, mapper: (input: A) => Vec<B>): Vec<B> => {
+    const out = Vec.new<B>();
+    for (const value of values) {
+      const mapped = mapper(value);
+      if (!(mapped instanceof Vec)) continue;
+      for (const inner of mapped) out.push(inner);
+    }
+    return out;
+  },
+  chunk_vec: <A>(values: Vec<A>, size: number): Vec<Vec<A>> => {
+    const out = Vec.new<Vec<A>>();
+    const chunkSize = normalizeCount(size);
+    if (chunkSize <= 0) return out;
+    let current = Vec.new<A>();
+    let count = 0;
+    for (const value of values) {
+      current.push(value);
+      count += 1;
+      if (count >= chunkSize) {
+        out.push(current);
+        current = Vec.new<A>();
+        count = 0;
+      }
+    }
+    if (current.len() > 0) out.push(current);
+    return out;
+  },
+  window_vec: <A>(values: Vec<A>, size: number): Vec<Vec<A>> => {
+    const out = Vec.new<Vec<A>>();
+    const windowSize = normalizeCount(size);
+    if (windowSize <= 0 || windowSize > values.len()) return out;
+    const source = Array.from(values);
+    for (let start = 0; start <= values.len() - windowSize; start += 1) {
+      const window = Vec.new<A>();
+      for (let offset = 0; offset < windowSize; offset += 1) {
+        window.push(source[start + offset] as A);
+      }
+      out.push(window);
+    }
+    return out;
+  },
+  partition_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): [Vec<A>, Vec<A>] => {
+    const pass = Vec.new<A>();
+    const fail = Vec.new<A>();
+    for (const value of values) {
+      if (pred(value)) pass.push(value);
+      else fail.push(value);
+    }
+    return [pass, fail];
+  },
+  take_vec: <A>(values: Vec<A>, n: number): Vec<A> => vec.take(values, n),
+  skip_vec: <A>(values: Vec<A>, n: number): Vec<A> => vec.skip(values, n),
+  any_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): boolean => vec.any(values, pred),
+  all_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): boolean => vec.all(values, pred),
+  find_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): unknown => vec.find(values, pred),
+  count_vec: <A>(values: Vec<A>): number => vec.len(values),
+  sum_vec: (values: Vec<number>): number => vec.fold(values, 0, (acc, value) => acc + value),
+  sum_vec_f64: (values: Vec<number>): number => vec.fold(values, 0, (acc, value) => acc + value),
+  unique_vec: <A>(values: Vec<A>): Vec<A> => {
+    const out = Vec.new<A>();
+    for (const value of values) {
+      let seen = false;
+      for (const existing of out) {
+        if (runtimeEquals(existing, value)) {
+          seen = true;
+          break;
+        }
+      }
+      if (!seen) out.push(value);
+    }
+    return out;
+  },
+  reverse_vec: <A>(values: Vec<A>): Vec<A> => Vec.from(Array.from(values).reverse()),
+  sort_vec: <A>(values: Vec<A>, cmp: (left: A, right: A) => number): Vec<A> =>
+    Vec.from(Array.from(values).sort((left, right) => cmp(left, right))),
+  sort_by_vec: <A, K>(values: Vec<A>, key: (value: A) => K): Vec<A> =>
+    Vec.from(Array.from(values).sort((left, right) => compareOrder(key(left), key(right)))),
+  sort_by_desc_vec: <A, K>(values: Vec<A>, key: (value: A) => K): Vec<A> =>
+    Vec.from(Array.from(values).sort((left, right) => compareOrder(key(right), key(left)))),
+  group_by_vec: <A, K>(values: Vec<A>, key: (value: A) => K): HashMap<K, Vec<A>> => {
+    const out = HashMap.new<K, Vec<A>>();
+    for (const value of values) {
+      const groupKey = key(value);
+      const existing = out.get(groupKey);
+      if (existing === Option.None) {
+        const bucket = Vec.new<A>();
+        bucket.push(value);
+        out.insert(groupKey, bucket);
+        continue;
+      }
+      const bucket = getEnumPayload(existing) as Vec<A>;
+      bucket.push(value);
+    }
+    return out;
+  },
+  intersperse_vec: <A>(values: Vec<A>, sep: A): Vec<A> => {
+    const out = Vec.new<A>();
+    let first = true;
+    for (const value of values) {
+      if (!first) out.push(sep);
+      out.push(value);
+      first = false;
+    }
+    return out;
+  },
+  join_vec: <A, B, K>(
+    left: Vec<A>,
+    right: Vec<B>,
+    left_key: (value: A) => K,
+    right_key: (value: B) => K
+  ): Vec<[A, B]> => {
+    const out = Vec.new<[A, B]>();
+    for (const leftValue of left) {
+      const leftKey = left_key(leftValue);
+      for (const rightValue of right) {
+        if (runtimeEquals(leftKey, right_key(rightValue))) {
+          out.push([leftValue, rightValue]);
+        }
+      }
+    }
+    return out;
+  },
+};
+
+export const map_vec = iter.map_vec;
+export const filter_vec = iter.filter_vec;
+export const filter_option = iter.filter_option;
+export const zip_vec = iter.zip_vec;
+export const enumerate_vec = iter.enumerate_vec;
+export const flatten_vec = iter.flatten_vec;
+export const flat_map_vec = iter.flat_map_vec;
+export const chunk_vec = iter.chunk_vec;
+export const window_vec = iter.window_vec;
+export const partition_vec = iter.partition_vec;
+export const take_vec = iter.take_vec;
+export const skip_vec = iter.skip_vec;
+export const any_vec = iter.any_vec;
+export const all_vec = iter.all_vec;
+export const find_vec = iter.find_vec;
+export const count_vec = iter.count_vec;
+export const sum_vec = iter.sum_vec;
+export const sum_vec_f64 = iter.sum_vec_f64;
+export const unique_vec = iter.unique_vec;
+export const reverse_vec = iter.reverse_vec;
+export const sort_vec = iter.sort_vec;
+export const sort_by_vec = iter.sort_by_vec;
+export const sort_by_desc_vec = iter.sort_by_desc_vec;
+export const group_by_vec = iter.group_by_vec;
+export const intersperse_vec = iter.intersperse_vec;
+export const join_vec = iter.join_vec;
+
+export const query = <T>(items: Vec<T>): QueryRecord<T> => ({ items });
+export const where_q = <T>(q: QueryRecord<T>, pred: (value: T) => boolean): QueryRecord<T> => ({
+  items: iter.filter_vec(q.items, pred),
+});
+export const select_q = <T, U>(q: QueryRecord<T>, mapper: (value: T) => U): QueryRecord<U> => ({
+  items: iter.map_vec(q.items, mapper),
+});
+export const order_by_q = <T, K>(q: QueryRecord<T>, key: (value: T) => K): QueryRecord<T> => ({
+  items: iter.sort_by_vec(q.items, key),
+});
+export const order_by_desc_q = <T, K>(q: QueryRecord<T>, key: (value: T) => K): QueryRecord<T> => ({
+  items: iter.sort_by_desc_vec(q.items, key),
+});
+export const limit_q = <T>(q: QueryRecord<T>, n: number): QueryRecord<T> => ({ items: iter.take_vec(q.items, n) });
+export const offset_q = <T>(q: QueryRecord<T>, n: number): QueryRecord<T> => ({ items: iter.skip_vec(q.items, n) });
+export const group_by_q = <T, K>(q: QueryRecord<T>, key: (value: T) => K): HashMap<K, Vec<T>> =>
+  iter.group_by_vec(q.items, key);
+export const count_q = <T>(q: QueryRecord<T>): number => iter.count_vec(q.items);
+export const first_q = <T>(q: QueryRecord<T>): unknown => vec.get(q.items, 0);
+export const to_vec_q = <T>(q: QueryRecord<T>): Vec<T> => q.items;
+export const join_q = <T, U, K>(
+  left: QueryRecord<T>,
+  right: QueryRecord<U>,
+  left_key: (value: T) => K,
+  right_key: (value: U) => K
+): QueryRecord<[T, U]> => ({
+  items: iter.join_vec(left.items, right.items, left_key, right_key),
+});
+
 export class HashMap<K, V> {
   private buckets: Map<string, Array<{ key: K; value: V }>>;
   private sizeValue: number;

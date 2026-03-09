@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { addDependency, readManifest, writeManifest, type PackageManifest } from '../lumina/package-manifest.js';
-import { addEntry, readLockfile, verifyIntegrity, writeLockfile, type LockfileData } from '../lumina/lockfile.js';
+import { addEntry, integrityStatus, readLockfile, writeLockfile, type LockfileData } from '../lumina/lockfile.js';
 import {
   downloadTarball,
   getVersionInfo,
@@ -22,7 +22,7 @@ type AddDependencies = {
   resolveVersion: typeof resolveVersion;
   getVersionInfo: typeof getVersionInfo;
   downloadTarball: typeof downloadTarball;
-  verifyIntegrity: typeof verifyIntegrity;
+  integrityStatus: typeof integrityStatus;
 };
 
 const DEFAULT_DEPENDENCIES: AddDependencies = {
@@ -34,7 +34,7 @@ const DEFAULT_DEPENDENCIES: AddDependencies = {
   resolveVersion,
   getVersionInfo,
   downloadTarball,
-  verifyIntegrity,
+  integrityStatus,
 };
 
 type AddOptions = {
@@ -182,8 +182,12 @@ export async function runLuminaAdd(argv: string[], options: AddOptions = {}): Pr
     const resolvedVersion = await dependencies.resolveVersion(name, constraint, config);
     const info = await dependencies.getVersionInfo(name, resolvedVersion, config);
     const tarball = await dependencies.downloadTarball(info.resolved, config);
-    const integrityOk = dependencies.verifyIntegrity(tarball, info.integrity);
-    if (!integrityOk) {
+    const status = dependencies.integrityStatus(tarball, info.integrity);
+    if (status !== 'ok') {
+      if (status === 'missing') {
+        stderr.error(`SECURITY: missing integrity for ${name}@${resolvedVersion}`);
+        throw new Error(`Missing integrity for ${name}@${resolvedVersion}`);
+      }
       stderr.error(`SECURITY: integrity check failed for ${name}@${resolvedVersion}`);
       throw new Error(`Integrity mismatch for ${name}@${resolvedVersion}`);
     }

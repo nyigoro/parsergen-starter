@@ -21,6 +21,7 @@ import {
   type CDNResult,
   type CdnProvider,
 } from '../lumina/registry-client.js';
+import { scanDirectory, type SecretFinding } from '../lumina/secret-scan.js';
 
 type PublishDependencies = {
   readManifest: typeof readManifest;
@@ -30,6 +31,7 @@ type PublishDependencies = {
   getPackageInfo: typeof getPackageInfo;
   publishPackage: typeof publishPackage;
   publishCDNArtifact: typeof publishCDNArtifact;
+  scanDirectory: typeof scanDirectory;
 };
 
 const DEFAULT_DEPENDENCIES: PublishDependencies = {
@@ -40,12 +42,14 @@ const DEFAULT_DEPENDENCIES: PublishDependencies = {
   getPackageInfo,
   publishPackage,
   publishCDNArtifact,
+  scanDirectory,
 };
 
 type PublishOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   stdout?: Pick<Console, 'log'>;
+  stderr?: Pick<Console, 'error' | 'warn'>;
   deps?: Partial<PublishDependencies>;
   runCompileCheck?: (cwd: string, entry: string) => Promise<void>;
   runBundleStep?: (
@@ -77,6 +81,13 @@ const parseCdnProviders = (argv: string[]): CdnProvider[] => {
   if (raw === 'lumina') return ['lumina'];
   if (raw === 'npm') return ['npm'];
   return ['lumina', 'npm'];
+};
+
+const printSecretFindings = (stderr: Pick<Console, 'error' | 'warn'>, findings: SecretFinding[], warnOnly: boolean): void => {
+  const printer = warnOnly ? stderr.warn.bind(stderr) : stderr.error.bind(stderr);
+  for (const finding of findings) {
+    printer(`${finding.file}:${finding.line}:${finding.column} [${finding.kind}] ${finding.preview}`);
+  }
 };
 
 const runBundle = async (
@@ -166,6 +177,7 @@ export async function runLuminaPublish(argv: string[], options: PublishOptions =
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const env = options.env ?? process.env;
   const stdout = options.stdout ?? console;
+  const stderr = options.stderr ?? console;
   const dependencies: PublishDependencies = { ...DEFAULT_DEPENDENCIES, ...(options.deps ?? {}) };
   const compileCheck = options.runCompileCheck ?? runCompileDryRun;
   const bundleStep = options.runBundleStep ?? runBundle;
@@ -174,6 +186,7 @@ export async function runLuminaPublish(argv: string[], options: PublishOptions =
     return;
   }
   const useCdn = hasFlag(argv, '--cdn');
+  const allowSecrets = hasFlag(argv, '--allow-secrets');
   const cdnProviders = parseCdnProviders(argv);
 
   const manifest = await dependencies.readManifest(cwd);
@@ -188,6 +201,18 @@ export async function runLuminaPublish(argv: string[], options: PublishOptions =
   }
 
   await compileCheck(cwd, manifest.entry);
+
+  const secretScan = await dependencies.scanDirectory(cwd);
+  if (secretScan.findings.length > 0) {
+    if (allowSecrets) {
+      stderr.warn(`SECURITY: ${secretScan.findings.length} secret finding(s) detected; continuing because --allow-secrets was set.`);
+      printSecretFindings(stderr, secretScan.findings, true);
+    } else {
+      stderr.error(`SECURITY: ${secretScan.findings.length} secret finding(s) detected. Refusing to publish.`);
+      printSecretFindings(stderr, secretScan.findings, false);
+      throw new Error('Secret scan failed. Re-run with --allow-secrets to override.');
+    }
+  }
 
   const ignorePatterns = [...DEFAULT_IGNORE, ...(await readIgnorePatterns(cwd))];
   const files = await fg(['**/*.lm', 'lumina.toml'], {

@@ -2,13 +2,25 @@
   "name": "lumina-language-client",
   "version": "0.5.0",
   "description": "Lumina LSP command protocol — editor-agnostic types and constants",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/esm/index.d.ts"
+    }
+  },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p ./tsconfig.json",
+    "build": "npm run build:clean && npm run build:esm && npm run build:cjs && npm run build:mark-esm",
+    "build:clean": "node ./scripts/clean-dist.cjs",
+    "build:esm": "tsc -p ./tsconfig.esm.json",
+    "build:cjs": "tsc -p ./tsconfig.cjs.json",
+    "build:mark-esm": "node ./scripts/mark-esm.cjs",
     "prepare": "npm run build"
   },
   "devDependencies": {
