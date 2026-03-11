@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.5.1)'
+        required: true
+        default: 'v0.5.1'
 
 jobs:
   verify:
@@ -27,6 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -36,9 +43,20 @@ jobs:
 
       - run: npm ci
 
+      - name: Resolve tag
+        id: release_tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "TAG=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Get version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          TAG="${{ steps.release_tag.outputs.TAG }}"
+          echo "VERSION=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Verify version match
         run: |
@@ -71,7 +89,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check lumina-lang version
+        id: lumina_lang_exists
+        run: |
+          if npm view lumina-lang@${{ steps.version.outputs.VERSION }} version >/dev/null 2>&1; then
+            echo "exists=1" >> $GITHUB_OUTPUT
+          else
+            echo "exists=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip lumina-lang publish (already exists)
+        if: steps.lumina_lang_exists.outputs.exists == '1'
+        run: echo "lumina-lang@${{ steps.version.outputs.VERSION }} already published; skipping."
+
       - name: Publish lumina-lang
+        if: steps.lumina_lang_exists.outputs.exists != '1'
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
