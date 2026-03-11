@@ -2,7 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [Unreleased]
+
+## [0.5.1] - 2026-03-11
 
 - **Package security:** Tightened lockfile integrity handling so missing hashes are reported explicitly, installs/adds fail with distinct missing-vs-mismatch errors, and added `lumina secret-scan` plus publish-time secret scanning with `.luminaignore` support.
 - **JS distribution:** Added dual ESM/CJS output generation (`--target dual`) and dual-package metadata for `lumina-language-client`.
@@ -10,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - **Stdlib collections:** Added `@std/iter` helpers (`filter`, `zip`, `enumerate`, `flatten`, `chunk`, `window`, `group_by`, etc.) plus eager `@std/query` pipelines that compose with `|>` for in-memory query-style transforms.
 - **Language:** Added list comprehensions (`[expr for x in xs if cond]` and two-generator form) with Vec-only sources and clear diagnostics (`COMP-001/002`).
 - **Language:** Added named arguments + default parameter values with call-site reordering and explicit diagnostics.
+- **Language:** Made semicolons optional for all statement forms, including simple type aliases.
 - **Compiler:** Switched the CLI and worker/watch compile default to the module-graph topological path; `--bundled-compile` now opts into the legacy bundled pipeline while `--topo-compile` remains accepted for compatibility.
 - **Watch mode:** Replaced per-file `fs.watch` usage with chokidar-backed directory watching, batched rebuild scheduling, content-hash filtering, and export-aware incremental invalidation.
 - **Borrow safety:** Added dedicated borrow/move regression coverage, field-aware borrow conflict tracking, loop move diagnostics, and statement-scoped release for temporary ref-parameter borrows.

@@ -1,6 +1,29 @@
 # Lumina Language Milestones
 
-## v0.3.0 - Multi-File Projects (Current)
+## v0.5.1 - Web-Native Tooling Maturity (Current)
+
+**Date:** March 2026
+
+**Major Features:**
+- ✅ List comprehensions + named/default arguments
+- ✅ `@std/iter` helpers and `@std/query` pipelines
+- ✅ Advanced LSP refactors with cross-editor protocol package
+- ✅ Dual ESM/CJS output (`--target dual`) with exports map
+- ✅ Lockfile integrity hardening and publish-time secret scanning
+- ✅ Topological compile default + watch-mode hardening
+- ✅ Vault-aware import completions in LSP
+
+**Proven Capabilities:**
+- Strong language core (HM inference, GADT/HKT support, traits, macros)
+- Browser-first runtime with WebGPU, OPFS, streams, and workers
+- Cross-file tooling: hover/rename/references across module graph
+- Mature package workflows (add/install/publish/search)
+
+**What's Next:** Registry discovery depth, GPU CI coverage, and further IDE refactors
+
+---
+
+## v0.3.0 - Multi-File Projects
 
 **Date:** February 2026
 

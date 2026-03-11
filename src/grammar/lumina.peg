@@ -208,7 +208,7 @@ NamespaceImport
   = "*" _ "as" _ alias:IdName { return { name: alias.name, namespace: true, location: alias.location }; }
 
 TypeDecl
-  = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ aliasType:TypeName _ ";" {
+  = visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ aliasType:TypeName !(_ ("|" / "(")) _ ";"? {
       return createNode("TypeDecl", { name: node.name, body: [], aliasType, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location }, location);
     }
   / visibility:Visibility? _ "type" _ node:IdName _ tparams:TypeParams? _ "=" _ body:TypeBody _ ";"? {

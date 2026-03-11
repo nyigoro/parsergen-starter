@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint:check
+      - run: npm test
+
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Verify version match
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION=${{ steps.version.outputs.VERSION }}
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: package.json=$PKG_VERSION tag=$TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Extract release notes
+        run: |
+          node -e "
+            const fs = require('fs');
+            const changelog = fs.readFileSync('CHANGELOG.md', 'utf-8');
+            const version = '${{ steps.version.outputs.VERSION }}';
+            const regex = new RegExp('## \\\\[' + version.replace(/\\./g, '\\\\.') + '\\\\].*?\\n([\\\\s\\\\S]*?)(?=\\n## \\\\[|$)');
+            const match = regex.exec(changelog);
+            const notes = match ? match[1].trim() : 'See CHANGELOG.md for details.';
+            fs.writeFileSync('RELEASE_NOTES_EXTRACTED.md', notes);
+          "
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Lumina v${{ steps.version.outputs.VERSION }}"
+          body_path: RELEASE_NOTES_EXTRACTED.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish lumina-lang
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build lumina-language-client
+        run: |
+          cd packages/lumina-language-client
+          npm ci
+          npm run build
+
+      - name: Publish lumina-language-client
+        run: |
+          cd packages/lumina-language-client
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish VS Code extension
+        run: |
+          npm --prefix vscode-extension ci
+          npm --prefix vscode-extension run build
+          npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

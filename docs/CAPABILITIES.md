@@ -1,6 +1,7 @@
 # Lumina Capabilities Matrix
 
 This document tracks the current state of the Lumina language/tooling and nearâ€‘term priorities.
+Last updated for v0.5.1.
 
 ## Strategic Focus
 - **Primary identity**: Web-native systems language (WASM + browser runtime first).
@@ -17,6 +18,7 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | Feature | Status | Notes |
 |---|---|---|
 | Functions, let bindings, blocks | Stable | Core syntax supported |
+| Optional semicolons | Stable | Semicolons are optional across all statement forms |
 | Numeric types | Stable | i8-i128, u8-u128, f32, f64 with literal suffixes |
 | Structs / Enums / ADTs | Stable | Includes ADT sugar |
 | Pattern matching | Stable | Exhaustiveness checks in HM + semantic |
