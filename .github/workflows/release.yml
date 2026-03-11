@@ -114,7 +114,21 @@ jobs:
           npm ci
           npm run build
 
+      - name: Check lumina-language-client version
+        id: lumina_client_exists
+        run: |
+          if npm view lumina-language-client@${{ steps.version.outputs.VERSION }} version >/dev/null 2>&1; then
+            echo "exists=1" >> $GITHUB_OUTPUT
+          else
+            echo "exists=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip lumina-language-client publish (already exists)
+        if: steps.lumina_client_exists.outputs.exists == '1'
+        run: echo "lumina-language-client@${{ steps.version.outputs.VERSION }} already published; skipping."
+
       - name: Publish lumina-language-client
+        if: steps.lumina_client_exists.outputs.exists != '1'
         run: |
           cd packages/lumina-language-client
           npm publish --access public
@@ -123,8 +137,9 @@ jobs:
 
       - name: Publish VS Code extension
         run: |
-          npm --prefix vscode-extension ci
-          npm --prefix vscode-extension run build
-          npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+          cd vscode-extension
+          npm ci
+          npm run build
+          npx @vscode/vsce publish --pat ${{ secrets.VSCE_PAT }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
