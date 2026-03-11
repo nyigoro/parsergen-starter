@@ -138,8 +138,12 @@ jobs:
       - name: Publish VS Code extension
         run: |
           cd vscode-extension
-          npm ci
+          npm pkg set dependencies.lumina-language-client="0.5.1"
+          npm ci --workspaces=false
           npm run build
           npx @vscode/vsce publish --pat ${{ secrets.VSCE_PAT }}
         env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          NPM_CONFIG_WORKSPACES: "false"
+          NPM_CONFIG_INSTALL_LINKS: "false"
