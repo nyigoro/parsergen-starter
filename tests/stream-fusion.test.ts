@@ -146,7 +146,7 @@ describe('stream fusion', () => {
     expect(ret.callee.name).toBe('fused_pipeline');
     expect(ret.args).toHaveLength(4);
 
-    const stageArray = ret.args[1];
+    const stageArray = ret.args[1]?.value;
     expect(stageArray?.type).toBe('ArrayLiteral');
     if (!stageArray || stageArray.type !== 'ArrayLiteral') return;
     expect(stageArray.elements).toHaveLength(3);

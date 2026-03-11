@@ -13,6 +13,7 @@ import {
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { prune, type Type, type ConstExpr as TypeConstExpr, normalizePrimitiveName, HKT_APPLY_TYPE_NAME } from './types.js';
+import { desugarListComprehensions } from './comprehension.js';
 
 const normalizeTargetTypeName = (name: string): string => {
   if (name === 'int') return 'i32';
@@ -148,6 +149,7 @@ export function generateWATFromAst(
   program: LuminaProgram,
   options: WasmCodegenOptions = {}
 ): WasmCodegenResult {
+  program = desugarListComprehensions(program);
   const infer = inferProgram(program);
   const diagnostics = [...infer.diagnostics];
 
@@ -765,7 +767,7 @@ class WasmBuilder {
           return;
         case 'Call':
           if (expr.receiver) visitExpr(expr.receiver, scope);
-          for (const arg of expr.args ?? []) visitExpr(arg, scope);
+          for (const arg of expr.args ?? []) visitExpr(arg.value, scope);
           return;
         case 'Member':
           visitExpr(expr.object, scope);
@@ -1350,7 +1352,7 @@ class WasmBuilder {
           return;
         case 'Call':
           if (expr.receiver) walkExpr(expr.receiver);
-          for (const arg of expr.args ?? []) walkExpr(arg);
+          for (const arg of expr.args ?? []) walkExpr(arg.value);
           return;
         case 'Member':
           walkExpr(expr.object);
@@ -3591,6 +3593,7 @@ class WasmBuilder {
   private emitCall(expr: Extract<LuminaExpr, { type: 'Call' }>): string[] {
     const expectedResultWasm =
       typeof expr.id === 'number' ? this.typeToWasm(this.exprTypes.get(expr.id), expr.location) : null;
+    const argValues = expr.args.map((arg) => arg.value);
 
     if (expr.callee.name === '__invalid__' || expr.callee.name === '__invalid') {
       this.reportCodegenError(
@@ -3601,15 +3604,15 @@ class WasmBuilder {
       return ['i32.const 0'];
     }
 
-    if (!expr.enumName && !expr.receiver && expr.callee.name === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && (expr.args?.length ?? 0) === 1) {
+    if (!expr.enumName && !expr.receiver && expr.callee.name === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && argValues.length === 1) {
       const targetArg = expr.typeArgs?.[0];
       const targetType = normalizeTargetTypeName(typeof targetArg === 'string' ? targetArg : 'any');
       if (targetType === 'string') {
-        return this.emitStringifiedExpr(expr.args[0]);
+        return this.emitStringifiedExpr(argValues[0]);
       }
       return this.emitExpr({
         type: 'Cast',
-        expr: expr.args[0],
+        expr: argValues[0],
         targetType,
         location: expr.location,
       });
@@ -3618,7 +3621,7 @@ class WasmBuilder {
     if (expr.enumName) {
       const variantInfo = this.resolveEnumVariantInfo(expr.enumName, expr.callee.name);
       if (variantInfo) {
-        const argCount = expr.args?.length ?? 0;
+        const argCount = argValues.length;
         if (variantInfo.arity !== argCount) {
           this.reportCodegenError(
             `enum constructor '${expr.enumName}.${expr.callee.name}' arity mismatch in WASM backend`,
@@ -3633,26 +3636,26 @@ class WasmBuilder {
           }
           return [`i32.const ${variantInfo.tag}`];
         }
-        return this.emitEnumAlloc(expr.enumName, variantInfo, expr.args ?? [], expr.location);
+        return this.emitEnumAlloc(expr.enumName, variantInfo, argValues, expr.location);
       }
       if (this.currentLocalTypes.has(expr.enumName)) {
         const dispatched = this.emitReceiverDispatch(
           { type: 'Identifier', name: expr.enumName, location: expr.location },
           expr.callee.name,
-          expr.args ?? [],
+          argValues,
           expr.location,
           expectedResultWasm
         );
         if (dispatched) return dispatched;
       }
-      return this.emitNamespacedCall(expr.enumName, expr.callee.name, expr.args ?? [], expr.location, expectedResultWasm);
+      return this.emitNamespacedCall(expr.enumName, expr.callee.name, argValues, expr.location, expectedResultWasm);
     }
 
     if (expr.receiver) {
       const dispatched = this.emitReceiverDispatch(
         expr.receiver,
         expr.callee.name,
-        expr.args ?? [],
+        argValues,
         expr.location,
         expectedResultWasm
       );
@@ -3662,11 +3665,11 @@ class WasmBuilder {
 
     const boundLambda = this.localLambdaBindings.get(expr.callee.name);
     if (boundLambda) {
-      return this.emitClosureInvoke(expr.callee.name, boundLambda, expr.args ?? []);
+      return this.emitClosureInvoke(expr.callee.name, boundLambda, argValues);
     }
 
     const args: string[] = [];
-    for (const arg of expr.args ?? []) {
+    for (const arg of argValues) {
       args.push(...this.emitExpr(arg));
     }
     args.push(`call $${sanitizeWasmIdent(expr.callee.name)}`);

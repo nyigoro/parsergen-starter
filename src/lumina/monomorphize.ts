@@ -591,7 +591,7 @@ const visitExpr = (
         if (signature) recordInstantiation(ctx, calleeName, signature);
       }
       if (expr.receiver) visitExpr(expr.receiver, ctx, genericFns, hm);
-      for (const arg of expr.args) visitExpr(arg, ctx, genericFns, hm);
+      for (const arg of expr.args) visitExpr(arg.value, ctx, genericFns, hm);
       return;
     }
     case 'ArrayLiteral':
@@ -852,7 +852,7 @@ const substituteTypesInExpr = (
     case 'Call':
       substituteTypeArgs(expr.typeArgs, mapping, constBindings, evaluator);
       if (expr.receiver) substituteTypesInExpr(expr.receiver, mapping, constBindings, evaluator);
-      expr.args.forEach((arg) => substituteTypesInExpr(arg, mapping, constBindings, evaluator));
+      expr.args.forEach((arg) => substituteTypesInExpr(arg.value, mapping, constBindings, evaluator));
       return;
     case 'ArrayLiteral':
       expr.elements.forEach((element) => substituteTypesInExpr(element, mapping, constBindings, evaluator));
@@ -1179,9 +1179,9 @@ const collectConstStructTypeRefs = (
         if (expr.typeArgs && expr.typeArgs.length > 0 && structDecls.has(expr.callee.name)) {
           addRef(expr.callee.name, expr.typeArgs.map((arg) => typeArgToText(arg as unknown as string | LuminaConstExpr)).join('|'));
         }
-        if (expr.receiver) visitExpr(expr.receiver);
-        for (const arg of expr.args) visitExpr(arg);
-        return;
+      if (expr.receiver) visitExpr(expr.receiver);
+      for (const arg of expr.args) visitExpr(arg.value);
+      return;
       case 'StructLiteral':
         if (expr.typeArgs && expr.typeArgs.length > 0) {
           addRef(expr.name, expr.typeArgs.map((arg) => typeArgToText(arg as unknown as string | LuminaConstExpr)).join('|'));
@@ -1447,9 +1447,9 @@ const collectConstGenericFnTypeArgs = (
             expr.typeArgs.map((arg) => typeArgToText(arg as unknown as string | LuminaConstExpr))
           );
         }
-        if (expr.receiver) visitExpr(expr.receiver);
-        for (const arg of expr.args) visitExpr(arg);
-        return;
+      if (expr.receiver) visitExpr(expr.receiver);
+      for (const arg of expr.args) visitExpr(arg.value);
+      return;
       case 'ArrayLiteral':
         for (const element of expr.elements) visitExpr(element);
         return;
@@ -1704,7 +1704,7 @@ export function rewriteCallSites(
           }
         }
         if (expr.receiver) visitExprForRewrite(expr.receiver);
-        expr.args.forEach(visitExprForRewrite);
+        expr.args.forEach((arg) => visitExprForRewrite(arg.value));
         return;
       }
       case 'ArrayLiteral':

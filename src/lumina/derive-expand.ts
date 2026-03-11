@@ -152,7 +152,11 @@ const makeReturnMethod = (
         value: {
           type: 'Call',
           callee: { type: 'Identifier', name: helperName, location },
-          args: params.map((param) => makeIdentifier(param.name, location)),
+          args: params.map((param) => ({
+            named: false,
+            value: makeIdentifier(param.name, location),
+            location,
+          })),
           typeArgs: [],
           location,
         },

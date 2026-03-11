@@ -49,6 +49,53 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
       'Check index constraints in enum variant result types.',
     ],
   },
+  'NAMED-ARG-001': {
+    code: 'NAMED-ARG-001',
+    title: 'Unknown parameter name',
+    summary: 'A named argument does not match any parameter in the function signature.',
+    why: 'Named arguments must exactly match declared parameter names.',
+    howToFix: [
+      'Check the function signature for the correct parameter names.',
+      'Use go-to-definition on the function to see its parameters.',
+    ],
+  },
+  'NAMED-ARG-002': {
+    code: 'NAMED-ARG-002',
+    title: 'Parameter provided twice',
+    summary: 'A parameter is supplied both positionally and by name.',
+    why: 'Each parameter can only receive one argument.',
+    howToFix: ['Remove either the positional or the named argument.'],
+  },
+  'NAMED-ARG-003': {
+    code: 'NAMED-ARG-003',
+    title: 'Missing required argument',
+    summary: 'A required parameter has no argument and no default value.',
+    why: 'Parameters without default values must always be provided.',
+    howToFix: [
+      'Provide the missing argument.',
+      'Add a default value to the parameter declaration if optional.',
+    ],
+  },
+  'NAMED-ARG-004': {
+    code: 'NAMED-ARG-004',
+    title: 'Positional argument after named argument',
+    summary: 'Positional arguments cannot appear after named arguments.',
+    why: 'Named arguments fix parameter positions; mixing later positional arguments is ambiguous.',
+    howToFix: [
+      'Move positional arguments before the first named argument.',
+      'Or convert the remaining arguments to named form.',
+    ],
+  },
+  'DEFAULT-ARG-001': {
+    code: 'DEFAULT-ARG-001',
+    title: 'Default value type mismatch',
+    summary: 'The default value does not match the declared parameter type.',
+    why: 'Default values must be assignable to the parameter type.',
+    howToFix: [
+      'Change the default value to match the parameter type.',
+      'Update the parameter type annotation to match the default.',
+    ],
+  },
   'HKT-001': {
     code: 'HKT-001',
     title: 'Kind mismatch',
@@ -209,6 +256,26 @@ const EXPLANATIONS: Record<string, DiagnosticExplanation> = {
       'After:  match x { Foo(_) => { ... }, _ => {} }',
       'For boolean checks: match x { Foo(_) => true, _ => false }',
       'If you need `is` narrowing, compile with the JS or ESM target instead of WASM.',
+    ],
+  },
+  'COMP-001': {
+    code: 'COMP-001',
+    title: 'Comprehension source must be a Vec',
+    summary: 'The `in` expression in a list comprehension must have type Vec<T>.',
+    why: 'List comprehensions iterate over Vec elements in the current backend model.',
+    howToFix: [
+      'Ensure the source expression is a Vec<T>.',
+      'If you have another collection type, convert it to a Vec first.',
+    ],
+  },
+  'COMP-002': {
+    code: 'COMP-002',
+    title: 'Comprehension filter must return bool',
+    summary: 'The optional `if` condition in a list comprehension must have type bool.',
+    why: 'The filter determines which elements are included in the result.',
+    howToFix: [
+      'Return a bool from the filter expression.',
+      'Example: `[x for x in xs if x > 0]`',
     ],
   },
   'ARRAY-SIZE-MISMATCH': {

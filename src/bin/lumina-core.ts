@@ -1155,13 +1155,14 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
   const visitExpr = (expr: unknown): boolean => {
     if (!expr || typeof expr !== 'object') return false;
     const node = expr as { type?: string; [key: string]: unknown };
-    if (
-      node.type === 'Lambda' ||
-      node.type === 'ArrayLiteral' ||
-      node.type === 'TupleLiteral' ||
-      node.type === 'SelectExpr'
-    ) {
-      return true;
+	    if (
+	      node.type === 'Lambda' ||
+	      node.type === 'ListComprehension' ||
+	      node.type === 'ArrayLiteral' ||
+	      node.type === 'TupleLiteral' ||
+	      node.type === 'SelectExpr'
+	    ) {
+	      return true;
     }
     switch (node.type) {
       case 'Binary':

@@ -1093,7 +1093,10 @@ const expandExpr = (
       return expr;
     case 'Call':
       if (expr.receiver) expr.receiver = expandExpr(expr.receiver, scope, diagnostics, stack, maxDepth);
-      expr.args = expr.args.map((arg) => expandExpr(arg, scope, diagnostics, stack, maxDepth));
+      expr.args = expr.args.map((arg) => ({
+        ...arg,
+        value: expandExpr(arg.value, scope, diagnostics, stack, maxDepth),
+      }));
       return expr;
     case 'Move':
       expr.target = expandExpr(expr.target, scope, diagnostics, stack, maxDepth) as never;
@@ -1127,6 +1130,19 @@ const expandExpr = (
     case 'TupleLiteral':
       expr.elements = expr.elements.map((element) => expandExpr(element, scope, diagnostics, stack, maxDepth));
       return expr;
+    case 'ListComprehension': {
+      const comp = expr as unknown as {
+        body: LuminaExpr;
+        source: LuminaExpr;
+        filter: LuminaExpr | null;
+        source2?: LuminaExpr;
+      };
+      comp.source = expandExpr(comp.source, scope, diagnostics, stack, maxDepth);
+      if (comp.source2) comp.source2 = expandExpr(comp.source2, scope, diagnostics, stack, maxDepth);
+      if (comp.filter) comp.filter = expandExpr(comp.filter, scope, diagnostics, stack, maxDepth);
+      comp.body = expandExpr(comp.body, scope, diagnostics, stack, maxDepth);
+      return expr;
+    }
     case 'Index':
       expr.object = expandExpr(expr.object, scope, diagnostics, stack, maxDepth);
       expr.index = expandExpr(expr.index, scope, diagnostics, stack, maxDepth);

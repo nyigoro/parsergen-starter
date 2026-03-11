@@ -31,7 +31,9 @@ This document tracks the current state of the Lumina language/tooling and nearâ€
 | String slicing | Stable | `s[0..5]`, `s[..5]`, `s[5..]`, `s[..]` |
 | Raw + multiline strings | Stable | `r"..."`, `"""..."""` |
 | Array literals + indexing | Stable | `[1,2,3]`, `v[0]` |
+| List comprehensions | Beta | `[expr for x in xs if cond]` (Vec-only source) |
 | Lambda expressions | Stable | `|x| x + 1` |
+| Named + default arguments | Stable | Named call syntax (`f(x: 1)`) + default parameter values |
 | Collection method syntax | Stable | `v.push(1)` style lowering to stdlib calls |
 | Function overloading | Stable | Trait-based + ad-hoc stdlib overload resolution with `OVERLOAD_NO_MATCH`/`OVERLOAD_AMBIGUOUS` diagnostics |
 | Macros | Stable | Expansion phase with lexical scoping, `![]`/`!()`/`!{}` calls, structured diagnostics (`MACRO-001..005`), multi-var + nested (depth<=2) repetition support, and deterministic recursion/cycle handling |

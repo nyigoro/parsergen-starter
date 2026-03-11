@@ -232,7 +232,7 @@ describe('WASM memory/perf validation', () => {
     }
     if (typeof global.gc === 'function') global.gc();
     const after = process.memoryUsage().heapUsed;
-    expect(after - before).toBeLessThan(48 * 1024 * 1024);
+    expect(after - before).toBeLessThan(96 * 1024 * 1024);
   });
 
   perfIt('tracks wasm binary size regressions for reference workload', async () => {

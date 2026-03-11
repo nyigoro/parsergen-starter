@@ -71,6 +71,7 @@ export interface SymbolInfo {
   constWhereClauses?: TypeConstExpr[];
   paramTypes?: LuminaType[];
   paramNames?: string[];
+  paramDefaults?: Array<LuminaExpr | null>;
   paramRefs?: boolean[];
   paramRefMuts?: boolean[];
   externModule?: string | null;
@@ -892,6 +893,7 @@ export function analyzeLumina(program: LuminaProgram, options?: AnalyzeOptions) 
         constWhereClauses,
         paramTypes: stmt.params.map((p, idx) => resolveTypeExpr(p.typeName) ?? hmParamTypes?.[idx] ?? 'any'),
         paramNames: stmt.params.map((p) => p.name),
+        paramDefaults: stmt.params.map((p) => p.defaultValue ?? null),
         paramRefs: stmt.params.map((p) => !!p.ref),
         paramRefMuts: stmt.params.map((p) => !!p.refMut),
         externModule: stmt.externModule ?? null,
@@ -2121,7 +2123,7 @@ function validateComptimeFunctionBindings(
           }
         }
         if (expr.receiver) visitExpr(expr.receiver, scope);
-        for (const arg of expr.args ?? []) visitExpr(arg, scope);
+        for (const arg of expr.args ?? []) visitExpr(arg.value, scope);
         return;
       }
       case 'Await':
@@ -2350,6 +2352,7 @@ function resolveFunctionBody(
   }
   const fnScope = new Scope(parentScope);
   const hmParamTypes = options?.hmInferred?.fnParams.get(stmt.name);
+  const scopedOptions = { ...options, typeParams, typeParamBounds };
   stmt.params.forEach((param, idx) => {
     warnOnImportedShadow(param.name, param.location ?? stmt.location, diagnostics, options);
     const inferredParam = resolveTypeExpr(param.typeName) ?? hmParamTypes?.[idx] ?? null;
@@ -2357,6 +2360,29 @@ function resolveFunctionBody(
       diagnostics.push(diagAt(`Missing type annotation for parameter '${param.name}'`, param.location ?? stmt.location));
     }
     const paramType = inferredParam ?? 'any';
+    if (param.defaultValue) {
+      const defaultType = typeCheckExpr(
+        param.defaultValue,
+        local,
+        diagnostics,
+        fnScope,
+        scopedOptions,
+        paramType,
+        resolving,
+        pendingDeps,
+        stmt.name
+      );
+      if (param.typeName && defaultType && !isTypeAssignable(defaultType, paramType, symbols, options?.typeParams)) {
+        diagnostics.push(
+          diagAt(
+            `Default value for parameter '${param.name}' does not match '${formatTypeForDiagnostic(paramType)}'`,
+            param.defaultValue.location ?? param.location ?? stmt.location,
+            'error',
+            'DEFAULT-ARG-001'
+          )
+        );
+      }
+    }
     if (param.typeName) {
       const known = ensureKnownType(param.typeName, symbols, new Set(typeParams.keys()), diagnostics, param.location ?? stmt.location);
       if (known === 'unknown') {
@@ -4449,6 +4475,19 @@ function typeCheckExpr(
           visitExprNode(node.value);
           visitExprNode(node.count);
           return;
+        case 'ListComprehension': {
+          const comp = node as unknown as {
+            body: LuminaExpr;
+            source: LuminaExpr;
+            source2?: LuminaExpr;
+            filter: LuminaExpr | null;
+          };
+          visitExprNode(comp.source);
+          if (comp.source2) visitExprNode(comp.source2);
+          if (comp.filter) visitExprNode(comp.filter);
+          visitExprNode(comp.body);
+          return;
+        }
         case 'MacroInvoke':
           for (const arg of node.args) visitExprNode(arg);
           return;
@@ -5456,8 +5495,268 @@ function typeCheckExpr(
 
     return null;
   };
+
+  const resolveCallArgs = (
+    callArgs: LuminaArg[],
+    paramNames: string[] | undefined,
+    paramDefaults: Array<LuminaExpr | null> | undefined,
+    callLocation: Location | undefined
+  ): {
+    args: Array<LuminaExpr | null>;
+    locations: Array<Location | undefined>;
+    missingRequired: boolean;
+    tooMany: boolean;
+    hasNamed: boolean;
+    normalized: LuminaArg[] | null;
+  } => {
+    const hasNamed = callArgs.some((arg) => arg.named);
+    let seenNamed = false;
+    let positionalAfterNamed = false;
+    for (const arg of callArgs) {
+      if (arg.named) {
+        seenNamed = true;
+      } else if (seenNamed) {
+        positionalAfterNamed = true;
+      }
+    }
+    if (positionalAfterNamed) {
+      diagnostics.push(
+        diagAt(
+          'Positional arguments cannot follow named arguments',
+          callLocation,
+          'error',
+          'NAMED-ARG-004'
+        )
+      );
+    }
+    if (!paramNames || paramNames.length === 0) {
+      if (hasNamed) {
+        for (const arg of callArgs) {
+          if (!arg.named) continue;
+          diagnostics.push(
+            diagAt(
+              `Unknown parameter name '${arg.name ?? 'unknown'}'`,
+              arg.location ?? callLocation,
+              'error',
+              'NAMED-ARG-001'
+            )
+          );
+        }
+      }
+      return {
+        args: callArgs.map((arg) => arg.value),
+        locations: callArgs.map((arg) => arg.location ?? arg.value.location),
+        missingRequired: false,
+        tooMany: false,
+        hasNamed,
+        normalized: null,
+      };
+    }
+    const resolved: Array<LuminaExpr | null> = Array(paramNames.length).fill(null);
+    const locations: Array<Location | undefined> = Array(paramNames.length).fill(undefined);
+    let positionalIndex = 0;
+    let tooMany = false;
+    for (const arg of callArgs) {
+      if (arg.named) continue;
+      if (positionalIndex >= paramNames.length) {
+        tooMany = true;
+        continue;
+      }
+      resolved[positionalIndex] = arg.value;
+      locations[positionalIndex] = arg.location ?? arg.value.location;
+      positionalIndex += 1;
+    }
+    for (const arg of callArgs) {
+      if (!arg.named) continue;
+      const idx = paramNames.indexOf(arg.name ?? '');
+      if (idx < 0) {
+        diagnostics.push(
+          diagAt(
+            `Unknown parameter name '${arg.name ?? 'unknown'}'`,
+            arg.location ?? callLocation,
+            'error',
+            'NAMED-ARG-001'
+          )
+        );
+        continue;
+      }
+      if (resolved[idx] != null) {
+        diagnostics.push(
+          diagAt(
+            `Parameter '${arg.name}' is already provided`,
+            arg.location ?? callLocation,
+            'error',
+            'NAMED-ARG-002'
+          )
+        );
+        continue;
+      }
+      resolved[idx] = arg.value;
+      locations[idx] = arg.location ?? arg.value.location;
+    }
+    let missingRequired = false;
+    for (let i = 0; i < paramNames.length; i++) {
+      if (resolved[i] != null) continue;
+      const fallback = paramDefaults?.[i] ?? null;
+      if (fallback) {
+        resolved[i] = fallback;
+        locations[i] = fallback.location ?? callLocation;
+      } else {
+        missingRequired = true;
+        diagnostics.push(
+          diagAt(
+            `Missing argument for parameter '${paramNames[i]}'`,
+            callLocation,
+            'error',
+            'NAMED-ARG-003'
+          )
+        );
+      }
+    }
+    const normalized =
+      missingRequired || resolved.some((value) => value == null)
+        ? null
+        : resolved.map((value, idx) => ({
+            named: false,
+            value: value as LuminaExpr,
+            location: locations[idx],
+          }));
+    return { args: resolved, locations, missingRequired, tooMany, hasNamed, normalized };
+  };
   if (expr.type === 'Number') return inferNumberType(expr);
   if (expr.type === 'Boolean') return 'bool';
+  if (expr.type === 'ListComprehension') {
+    const sourceType = typeCheckExpr(
+      expr.source,
+      symbols,
+      diagnostics,
+      scope,
+      options,
+      undefined,
+      resolving,
+      pendingDeps,
+      currentFunction,
+      di,
+      pipedArgType,
+      allowPartialMoveBase,
+      skipMoveChecks
+    );
+
+    const parsedSource = sourceType ? parseTypeName(sourceType) : null;
+    let elemType: LuminaType = 'any';
+    if (!parsedSource || parsedSource.base !== 'Vec' || parsedSource.args.length < 1) {
+      diagnostics.push(
+        diagAt(
+          `Comprehension source must be a Vec<T>, found '${formatTypeForDiagnostic(sourceType ?? 'any')}'`,
+          expr.source.location ?? expr.location,
+          'error',
+          'COMP-001'
+        )
+      );
+    } else {
+      elemType = parsedSource.args[0] ?? 'any';
+    }
+
+    const compSymbols = cloneSymbolTable(symbols);
+    const compScope = scope ? new Scope(scope) : undefined;
+    const compDi = di ? di.clone() : undefined;
+
+    const defineBinding = (name: string, type: LuminaType) => {
+      compSymbols.define({
+        name,
+        kind: 'variable',
+        type,
+        location: expr.location,
+        mutable: false,
+        ref: false,
+        refMutable: false,
+      });
+      if (compScope) compScope.define(name, expr.location);
+      if (compScope && compDi) compDi.define(compScope, name, true);
+    };
+
+    defineBinding(expr.binding, elemType);
+
+    if (expr.source2 && expr.binding2) {
+      const source2Type = typeCheckExpr(
+        expr.source2,
+        compSymbols,
+        diagnostics,
+        compScope ?? scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        compDi ?? di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      );
+      const parsed2 = source2Type ? parseTypeName(source2Type) : null;
+      let elem2: LuminaType = 'any';
+      if (!parsed2 || parsed2.base !== 'Vec' || parsed2.args.length < 1) {
+        diagnostics.push(
+          diagAt(
+            `Comprehension source must be a Vec<T>, found '${formatTypeForDiagnostic(source2Type ?? 'any')}'`,
+            expr.source2.location ?? expr.location,
+            'error',
+            'COMP-001'
+          )
+        );
+      } else {
+        elem2 = parsed2.args[0] ?? 'any';
+      }
+      defineBinding(expr.binding2, elem2);
+    }
+
+    if (expr.filter) {
+      const filterType = typeCheckExpr(
+        expr.filter,
+        compSymbols,
+        diagnostics,
+        compScope ?? scope,
+        options,
+        'bool',
+        resolving,
+        pendingDeps,
+        currentFunction,
+        compDi ?? di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      );
+      if (filterType && filterType !== 'any' && !isErrorTypeName(filterType) && !areTypesEquivalent(filterType, 'bool')) {
+        diagnostics.push(
+          diagAt(
+            `Comprehension filter must be bool, found '${formatTypeForDiagnostic(filterType)}'`,
+            expr.filter.location ?? expr.location,
+            'error',
+            'COMP-002'
+          )
+        );
+      }
+    }
+
+    const bodyType =
+      typeCheckExpr(
+        expr.body,
+        compSymbols,
+        diagnostics,
+        compScope ?? scope,
+        options,
+        undefined,
+        resolving,
+        pendingDeps,
+        currentFunction,
+        compDi ?? di,
+        pipedArgType,
+        allowPartialMoveBase,
+        skipMoveChecks
+      ) ?? 'any';
+
+    return `Vec<${bodyType}>`;
+  }
   if (expr.type === 'ArrayLiteral') {
     const expectedParsed = expectedType ? parseTypeName(expectedType) : null;
     const expectsFixedArray = expectedParsed?.base === 'Array' && expectedParsed.args.length >= 2;
@@ -6540,9 +6839,12 @@ function typeCheckExpr(
     if (expr.type === 'Call') {
       const callee = expr.callee.name;
       const isLValue = (value: LuminaExpr) => value.type === 'Identifier' || value.type === 'Member';
+      const rawArgs = expr.args ?? [];
+      const argValues = rawArgs.map((arg) => arg.value);
+      const argLocations = rawArgs.map((arg) => arg.location ?? arg.value.location);
 
       if (!expr.receiver && !expr.enumName && callee === 'cast') {
-        if ((expr.typeArgs?.length ?? 0) !== 1 || expr.args.length !== 1) {
+        if ((expr.typeArgs?.length ?? 0) !== 1 || argValues.length !== 1) {
           diagnostics.push(
             diagAt(
               `cast requires exactly one type argument and one value argument (for example: cast::<i32>(value))`,
@@ -6556,7 +6858,7 @@ function typeCheckExpr(
         const targetType = typeArgToText(expr.typeArgs?.[0] as string | import('./ast.js').LuminaConstExpr);
         const syntheticCast: LuminaExpr = {
           type: 'Cast',
-          expr: expr.args[0],
+          expr: argValues[0],
           targetType,
           location: expr.location,
         };
@@ -6594,7 +6896,7 @@ function typeCheckExpr(
         if (isErrorTypeName(receiverType)) return ERROR_TYPE;
 
         if (canResolveTraitMethodCall(receiverType, callee)) {
-          return resolveTraitMethodCall(receiverType, expr.args, expr.location, expr.id, callee);
+          return resolveTraitMethodCall(receiverType, argValues, expr.location, expr.id, callee);
         }
 
         if (expr.receiver.type === 'Identifier') {
@@ -6602,9 +6904,9 @@ function typeCheckExpr(
           const moduleCandidates = resolveModuleFunctionCandidates(moduleBinding, callee);
           if (moduleCandidates.length > 0) {
             const argTypes: Array<LuminaType | null> = [];
-            for (let i = 0; i < expr.args.length; i++) {
+            for (let i = 0; i < argValues.length; i++) {
               const argType = typeCheckExpr(
-                expr.args[i],
+                argValues[i],
                 symbols,
                 diagnostics,
                 scope,
@@ -6625,7 +6927,7 @@ function typeCheckExpr(
               expr.location
             );
             if (!moduleFn) return ERROR_TYPE;
-            if (moduleFn.paramTypes.length !== expr.args.length) {
+            if (moduleFn.paramTypes.length !== argValues.length) {
               diagnostics.push(
                 diagAt(
                   `Argument count mismatch for '${expr.receiver.name}.${callee}'`,
@@ -6636,7 +6938,7 @@ function typeCheckExpr(
               );
               return moduleFn.returnType;
             }
-            for (let i = 0; i < expr.args.length; i++) {
+            for (let i = 0; i < argValues.length; i++) {
               const argType = argTypes[i];
               const expected = moduleFn.paramTypes[i];
               if (argType && !isTypeAssignable(argType, expected, symbols, options?.typeParams)) {
@@ -6645,7 +6947,7 @@ function typeCheckExpr(
                   i,
                   expected,
                   argType,
-                  expr.args[i]?.location ?? expr.location,
+                  argLocations[i] ?? expr.location,
                   moduleFn.paramNames?.[i] ?? null
                 );
               }
@@ -6654,13 +6956,13 @@ function typeCheckExpr(
               diagnostics.push(diagAt(moduleFn.deprecatedMessage, expr.location, 'warning', 'DEPRECATED'));
             }
             if (expr.receiver.name === 'thread' && callee === 'spawn') {
-              validateThreadSpawnCall(expr.args, argTypes);
+              validateThreadSpawnCall(argValues, argTypes);
             }
             return moduleFn.returnType;
           }
         }
 
-        const builtinMethodType = resolveBuiltinMethodCall(receiverType, expr.args, expr.location, callee);
+        const builtinMethodType = resolveBuiltinMethodCall(receiverType, argValues, expr.location, callee);
         if (builtinMethodType) return builtinMethodType;
 
         diagnostics.push(
@@ -6678,14 +6980,14 @@ function typeCheckExpr(
         const receiverSym = symbols.get(expr.enumName);
         const variableShadow = receiverSym?.kind === 'variable';
         const moduleBinding = options?.moduleBindings?.get(expr.enumName);
-        const moduleArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+        const moduleArgCount = argValues.length + (pipedArgType ? 1 : 0);
         const moduleArgTypes: Array<LuminaType | null> = [];
         for (let i = 0; i < moduleArgCount; i++) {
           const argType =
             pipedArgType && i === 0
               ? pipedArgType
               : typeCheckExpr(
-                  expr.args[pipedArgType ? i - 1 : i],
+                  argValues[pipedArgType ? i - 1 : i],
                   symbols,
                   diagnostics,
                   scope,
@@ -6735,16 +7037,16 @@ function typeCheckExpr(
                 i,
                 expected,
                 argType,
-                expr.args[pipedArgType ? i - 1 : i]?.location ?? expr.location,
-                moduleFn.paramNames?.[i] ?? null
-              );
+                  argLocations[pipedArgType ? i - 1 : i] ?? expr.location,
+                  moduleFn.paramNames?.[i] ?? null
+                );
+              }
             }
-          }
           if (moduleFn.deprecatedMessage) {
             diagnostics.push(diagAt(moduleFn.deprecatedMessage, expr.location, 'warning', 'DEPRECATED'));
           }
           if (expr.enumName === 'thread' && callee === 'spawn' && !pipedArgType) {
-            validateThreadSpawnCall(expr.args, moduleArgTypes);
+            validateThreadSpawnCall(argValues, moduleArgTypes);
           }
           return moduleFn.returnType;
         }
@@ -6796,9 +7098,9 @@ function typeCheckExpr(
           if (!receiverType) return null;
           if (isErrorTypeName(receiverType)) return ERROR_TYPE;
           if (canResolveTraitMethodCall(receiverType, callee)) {
-            return resolveTraitMethodCall(receiverType, expr.args, expr.location, expr.id, callee);
+            return resolveTraitMethodCall(receiverType, argValues, expr.location, expr.id, callee);
           }
-          const builtinMethodType = resolveBuiltinMethodCall(receiverType, expr.args, expr.location, callee);
+          const builtinMethodType = resolveBuiltinMethodCall(receiverType, argValues, expr.location, callee);
           if (builtinMethodType) return builtinMethodType;
           diagnostics.push(
             diagAt(
@@ -6819,7 +7121,7 @@ function typeCheckExpr(
         const enumSym = symbols.get(enumVariant.enumName);
         const typeParamDefs = enumSym?.typeParams ?? [];
         const mapping = new Map<string, LuminaType>();
-        const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+        const effectiveArgCount = argValues.length + (pipedArgType ? 1 : 0);
         seedTypeParamsFromExpected(expr.enumName, mapping, typeParamDefs);
         if (enumVariant.params.length !== effectiveArgCount) {
           diagnostics.push(diagAt(`Argument count mismatch for '${expr.enumName}.${callee}'`, expr.location));
@@ -6830,7 +7132,7 @@ function typeCheckExpr(
             pipedArgType && i === 0
               ? pipedArgType
               : typeCheckExpr(
-                  expr.args[pipedArgType ? i - 1 : i],
+                  argValues[pipedArgType ? i - 1 : i],
                   symbols,
                   diagnostics,
                   scope,
@@ -6851,7 +7153,7 @@ function typeCheckExpr(
                 i,
                 resolvedExpected,
                 argType,
-                expr.args[pipedArgType ? i - 1 : i]?.location ?? expr.location,
+                argLocations[pipedArgType ? i - 1 : i] ?? expr.location,
                 null
               );
             }
@@ -6920,14 +7222,14 @@ function typeCheckExpr(
       const directModuleCandidates =
         directModuleBinding ? resolveModuleFunctionCandidates(directModuleBinding, undefined) : [];
       if (directModuleCandidates.length > 0) {
-        const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+        const effectiveArgCount = argValues.length + (pipedArgType ? 1 : 0);
         const argTypes: Array<LuminaType | null> = [];
         for (let i = 0; i < effectiveArgCount; i++) {
           const argType =
             pipedArgType && i === 0
               ? pipedArgType
               : typeCheckExpr(
-                  expr.args[pipedArgType ? i - 1 : i],
+                  argValues[pipedArgType ? i - 1 : i],
                   symbols,
                   diagnostics,
                   scope,
@@ -6961,7 +7263,7 @@ function typeCheckExpr(
               i,
               expected,
               argType,
-              expr.args[pipedArgType ? i - 1 : i]?.location ?? expr.location,
+              argLocations[pipedArgType ? i - 1 : i] ?? expr.location,
               directModuleFn.paramNames?.[i] ?? null
             );
           }
@@ -6980,7 +7282,7 @@ function typeCheckExpr(
           const enumSym = symbols.get(enumVariant.enumName);
           const typeParamDefs = enumSym?.typeParams ?? [];
           const mapping = new Map<string, LuminaType>();
-          const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
+          const effectiveArgCount = argValues.length + (pipedArgType ? 1 : 0);
           seedTypeParamsFromExpected(enumVariant.enumName, mapping, typeParamDefs);
           if (enumVariant.params.length !== effectiveArgCount) {
             diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
@@ -6991,7 +7293,7 @@ function typeCheckExpr(
               pipedArgType && i === 0
                 ? pipedArgType
                 : typeCheckExpr(
-                    expr.args[pipedArgType ? i - 1 : i],
+                    argValues[pipedArgType ? i - 1 : i],
                     symbols,
                     diagnostics,
                     scope,
@@ -7012,11 +7314,11 @@ function typeCheckExpr(
                   i,
                   resolvedExpected,
                   argType,
-                  expr.args[pipedArgType ? i - 1 : i]?.location ?? expr.location,
-                  null
-                );
-              }
+                argLocations[pipedArgType ? i - 1 : i] ?? expr.location,
+                null
+              );
             }
+          }
           }
           if (typeParamDefs.length > 0) {
             const unresolved = typeParamDefs.map(tp => tp.name).filter(tp => !mapping.has(tp));
@@ -7117,8 +7419,26 @@ function typeCheckExpr(
     const paramTypes = sym.paramTypes ?? [];
     const paramRefs = sym.paramRefs ?? [];
     const paramRefMuts = sym.paramRefMuts ?? [];
-    const effectiveArgCount = expr.args.length + (pipedArgType ? 1 : 0);
-    if (paramTypes.length !== effectiveArgCount) {
+    const paramNames = sym.paramNames ?? [];
+    const paramDefaults = sym.paramDefaults ?? [];
+    const resolved =
+      paramNames.length > 0
+        ? resolveCallArgs(
+            rawArgs,
+            pipedArgType ? paramNames.slice(1) : paramNames,
+            pipedArgType ? paramDefaults.slice(1) : paramDefaults,
+            expr.location
+          )
+        : null;
+    if (resolved?.normalized) {
+      expr.args = resolved.normalized;
+    }
+    const callArgs = resolved ? resolved.args : argValues;
+    const callArgLocations = resolved ? resolved.locations : argLocations;
+    const missingRequired = resolved?.missingRequired ?? false;
+    const tooManyArgs = resolved?.tooMany ?? false;
+    const effectiveArgCount = callArgs.length + (pipedArgType ? 1 : 0);
+    if (tooManyArgs || (!missingRequired && paramTypes.length !== effectiveArgCount)) {
       diagnostics.push(diagAt(`Argument count mismatch for '${callee}'`, expr.location));
       return sym.type ?? null;
     }
@@ -7127,7 +7447,7 @@ function typeCheckExpr(
       const refRequired = paramRefs[i] ?? false;
       const refMutable = paramRefMuts[i] ?? false;
       if (refRequired) {
-        const argExpr = pipedArgType && i === 0 ? undefined : expr.args[pipedArgType ? i - 1 : i];
+        const argExpr = pipedArgType && i === 0 ? undefined : callArgs[pipedArgType ? i - 1 : i];
         if (argExpr && !isLValue(argExpr)) {
           diagnostics.push(
             diagAt(
@@ -7173,8 +7493,9 @@ function typeCheckExpr(
       const argType =
         pipedArgType && i === 0
           ? pipedArgType
-          : typeCheckExpr(
-              expr.args[pipedArgType ? i - 1 : i],
+          : callArgs[pipedArgType ? i - 1 : i]
+            ? typeCheckExpr(
+                callArgs[pipedArgType ? i - 1 : i] as LuminaExpr,
               symbols,
               diagnostics,
               scope,
@@ -7184,7 +7505,8 @@ function typeCheckExpr(
               pendingDeps,
               currentFunction,
               di
-            );
+              )
+            : null;
       const paramType = paramTypes[i];
       if (argType) {
         unifyTypes(paramType, argType, mapping);
@@ -7195,7 +7517,7 @@ function typeCheckExpr(
             i,
             resolvedExpected,
             argType,
-            expr.args[pipedArgType ? i - 1 : i]?.location ?? expr.location,
+            callArgLocations[pipedArgType ? i - 1 : i] ?? expr.location,
             sym.paramNames?.[i] ?? null
           );
         }

@@ -479,7 +479,7 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
           const call: IRCall = {
             kind: 'Call',
             callee: calleeName,
-            args: [lowerExpr(expr.left, ctx), ...expr.right.args.map((arg) => lowerExpr(arg, ctx))],
+            args: [lowerExpr(expr.left, ctx), ...expr.right.args.map((arg) => lowerExpr(arg.value, ctx))],
             location: expr.location,
           };
           return call;
@@ -496,19 +496,20 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       return bin;
     }
     case 'Call': {
+      const argValues = expr.args.map((arg) => arg.value);
       if (!expr.enumName && !expr.receiver && expr.callee.name === 'cast' && expr.typeArgs && expr.typeArgs.length === 1 && expr.args.length === 1) {
         const targetType = normalizeLowerCastTarget(lowerTypeArgToText(expr.typeArgs[0]));
         if (targetType === 'string') {
           return {
             kind: 'Call',
             callee: '__lumina_stringify',
-            args: [lowerExpr(expr.args[0], ctx)],
+            args: [lowerExpr(argValues[0], ctx)],
             location: expr.location,
           } as IRCall;
         }
         return {
           kind: 'Cast',
-          expr: lowerExpr(expr.args[0], ctx),
+          expr: lowerExpr(argValues[0], ctx),
           targetType,
           location: expr.location,
         };
@@ -520,7 +521,7 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
         const enumNode: IREnumConstruct = {
           kind: 'Enum',
           tag: variant.name,
-          values: expr.args.map((arg) => lowerExpr(arg, ctx)),
+          values: argValues.map((arg) => lowerExpr(arg, ctx)),
           location: expr.location,
         };
         return enumNode;
@@ -528,7 +529,7 @@ function lowerExpr(expr: LuminaExpr, ctx: LowerContext): IRNode {
       const call: IRCall = {
         kind: 'Call',
         callee: expr.enumName ? `${expr.enumName}.${expr.callee.name}` : expr.callee.name,
-        args: expr.args.map((arg) => lowerExpr(arg, ctx)),
+        args: argValues.map((arg) => lowerExpr(arg, ctx)),
         location: expr.location,
       };
       return call;

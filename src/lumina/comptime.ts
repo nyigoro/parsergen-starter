@@ -571,7 +571,7 @@ const evalExpr = (
       }
       const argValues: ComptimeValue[] = [];
       for (const arg of expr.args ?? []) {
-        const argValue = evalExpr(arg, env, ctx, fnName);
+        const argValue = evalExpr(arg.value, env, ctx, fnName);
         if (!argValue.ok) return argValue;
         argValues.push(argValue.value);
       }
@@ -757,7 +757,7 @@ const validateComptimeFn = (entry: ComptimeFnEntry, registry: ComptimeFnRegistry
           }
         }
         if (expr.receiver) validateExpr(expr.receiver);
-        for (const arg of expr.args ?? []) validateExpr(arg);
+        for (const arg of expr.args ?? []) validateExpr(arg.value);
         return;
       case 'Binary':
         validateExpr(expr.left);
@@ -980,7 +980,10 @@ const substituteComptimeCalls = (
           return {
             ...expr,
             receiver: expr.receiver ? transformExpr(expr.receiver) : expr.receiver,
-            args: (expr.args ?? []).map((arg) => transformExpr(arg)),
+            args: (expr.args ?? []).map((arg) => ({
+              ...arg,
+              value: transformExpr(arg.value),
+            })),
           };
         case 'Member':
           return { ...expr, object: transformExpr(expr.object) };

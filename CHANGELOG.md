@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 - **JS distribution:** Added dual ESM/CJS output generation (`--target dual`) and dual-package metadata for `lumina-language-client`.
 - **LSP completion:** Import completions now merge stdlib modules with packages discovered from `lumina.lock`, including vault-aware named export suggestions.
 - **Stdlib collections:** Added `@std/iter` helpers (`filter`, `zip`, `enumerate`, `flatten`, `chunk`, `window`, `group_by`, etc.) plus eager `@std/query` pipelines that compose with `|>` for in-memory query-style transforms.
+- **Language:** Added list comprehensions (`[expr for x in xs if cond]` and two-generator form) with Vec-only sources and clear diagnostics (`COMP-001/002`).
+- **Language:** Added named arguments + default parameter values with call-site reordering and explicit diagnostics.
 - **Compiler:** Switched the CLI and worker/watch compile default to the module-graph topological path; `--bundled-compile` now opts into the legacy bundled pipeline while `--topo-compile` remains accepted for compatibility.
 - **Watch mode:** Replaced per-file `fs.watch` usage with chokidar-backed directory watching, batched rebuild scheduling, content-hash filtering, and export-aware incremental invalidation.
 - **Borrow safety:** Added dedicated borrow/move regression coverage, field-aware borrow conflict tracking, loop move diagnostics, and statement-scoped release for temporary ref-parameter borrows.

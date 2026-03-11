@@ -127,7 +127,7 @@ function walkExpr(expr: LuminaExpr, onCall: (call: LuminaCall) => void): void {
   switch (expr.type) {
     case 'Call':
       if (expr.receiver) walkExpr(expr.receiver, onCall);
-      for (const arg of expr.args ?? []) walkExpr(arg, onCall);
+      for (const arg of expr.args ?? []) walkExpr(arg.value, onCall);
       onCall(expr);
       return;
     case 'Binary':
@@ -268,7 +268,7 @@ function countExprNodes(expr: LuminaExpr): number {
       return (
         total +
         (expr.receiver ? countExprNodes(expr.receiver) : 0) +
-        (expr.args ?? []).reduce((sum, arg) => sum + countExprNodes(arg), 0)
+        (expr.args ?? []).reduce((sum, arg) => sum + countExprNodes(arg.value), 0)
       );
     case 'Member':
       return total + countExprNodes(expr.object);
@@ -544,7 +544,10 @@ function renameExpr(expr: LuminaExpr, scope: AlphaScope): LuminaExpr {
       return {
         ...expr,
         receiver: expr.receiver ? renameExpr(expr.receiver, scope) : expr.receiver,
-        args: (expr.args ?? []).map((arg) => renameExpr(arg, scope)),
+        args: (expr.args ?? []).map((arg) => ({
+          ...arg,
+          value: renameExpr(arg.value, scope),
+        })),
       };
     case 'Member':
       return { ...expr, object: renameExpr(expr.object, scope) };
@@ -755,7 +758,10 @@ function substituteInExpr(expr: LuminaExpr, bindings: Map<string, LuminaExpr>): 
       return {
         ...expr,
         receiver: expr.receiver ? substituteInExpr(expr.receiver, bindings) : expr.receiver,
-        args: (expr.args ?? []).map((arg) => substituteInExpr(arg, bindings)),
+        args: (expr.args ?? []).map((arg) => ({
+          ...arg,
+          value: substituteInExpr(arg.value, bindings),
+        })),
       };
     case 'Member':
       return { ...expr, object: substituteInExpr(expr.object, bindings) };
@@ -1092,7 +1098,7 @@ function rewriteExprForInlining(
         inlined += rewrittenReceiver.inlined;
         skipped += rewrittenReceiver.skipped;
       }
-      const rewrittenArgs = (expr.args ?? []).map((arg) => recurse(arg));
+      const rewrittenArgs = (expr.args ?? []).map((arg) => recurse(arg.value));
       for (const item of rewrittenArgs) {
         inlined += item.inlined;
         skipped += item.skipped;
@@ -1100,7 +1106,10 @@ function rewriteExprForInlining(
       const nextCall: LuminaCall = {
         ...expr,
         receiver: rewrittenReceiver ? rewrittenReceiver.expr : expr.receiver,
-        args: rewrittenArgs.map((item) => item.expr),
+        args: (expr.args ?? []).map((arg, idx) => ({
+          ...arg,
+          value: rewrittenArgs[idx]?.expr ?? arg.value,
+        })),
       };
 
       const decision = shouldInlineCall(nextCall, fnState.callerName, fnState, fnMap, graph, sccGraph, options);

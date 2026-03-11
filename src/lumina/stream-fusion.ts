@@ -46,47 +46,48 @@ const isPseudoMethodCall = (expr: LuminaCall, name: string): boolean =>
 
 function matchVecOpCall(expr: LuminaExpr): VecOpCall | null {
   if (expr.type !== 'Call') return null;
+  const argValues = expr.args.map((arg) => arg.value);
 
-  if (isVecQualifiedCall(expr, 'filter') && expr.args.length === 2) {
-    return { kind: 'filter', source: expr.args[0], args: [expr.args[1]] };
+  if (isVecQualifiedCall(expr, 'filter') && argValues.length === 2) {
+    return { kind: 'filter', source: argValues[0], args: [argValues[1]] };
   }
-  if (isVecQualifiedCall(expr, 'map') && expr.args.length === 2) {
-    return { kind: 'map', source: expr.args[0], args: [expr.args[1]] };
+  if (isVecQualifiedCall(expr, 'map') && argValues.length === 2) {
+    return { kind: 'map', source: argValues[0], args: [argValues[1]] };
   }
-  if (isVecQualifiedCall(expr, 'fold') && expr.args.length === 3) {
-    return { kind: 'fold', source: expr.args[0], args: [expr.args[1], expr.args[2]] };
+  if (isVecQualifiedCall(expr, 'fold') && argValues.length === 3) {
+    return { kind: 'fold', source: argValues[0], args: [argValues[1], argValues[2]] };
   }
 
-  if (isVecMethodCall(expr, 'filter') && expr.args.length === 1 && expr.receiver) {
-    return { kind: 'filter', source: expr.receiver, args: [expr.args[0]] };
+  if (isVecMethodCall(expr, 'filter') && argValues.length === 1 && expr.receiver) {
+    return { kind: 'filter', source: expr.receiver, args: [argValues[0]] };
   }
-  if (isVecMethodCall(expr, 'map') && expr.args.length === 1 && expr.receiver) {
-    return { kind: 'map', source: expr.receiver, args: [expr.args[0]] };
+  if (isVecMethodCall(expr, 'map') && argValues.length === 1 && expr.receiver) {
+    return { kind: 'map', source: expr.receiver, args: [argValues[0]] };
   }
-  if (isVecMethodCall(expr, 'fold') && expr.args.length === 2 && expr.receiver) {
-    return { kind: 'fold', source: expr.receiver, args: [expr.args[0], expr.args[1]] };
+  if (isVecMethodCall(expr, 'fold') && argValues.length === 2 && expr.receiver) {
+    return { kind: 'fold', source: expr.receiver, args: [argValues[0], argValues[1]] };
   }
 
   // Parser can represent chained method syntax as enumName=<receiverIdentifier>, receiver=null.
-  if (isPseudoMethodCall(expr, 'filter') && expr.args.length === 1) {
+  if (isPseudoMethodCall(expr, 'filter') && argValues.length === 1) {
     return {
       kind: 'filter',
       source: { type: 'Identifier', name: expr.enumName as string, location: expr.location },
-      args: [expr.args[0]],
+      args: [argValues[0]],
     };
   }
-  if (isPseudoMethodCall(expr, 'map') && expr.args.length === 1) {
+  if (isPseudoMethodCall(expr, 'map') && argValues.length === 1) {
     return {
       kind: 'map',
       source: { type: 'Identifier', name: expr.enumName as string, location: expr.location },
-      args: [expr.args[0]],
+      args: [argValues[0]],
     };
   }
-  if (isPseudoMethodCall(expr, 'fold') && expr.args.length === 2) {
+  if (isPseudoMethodCall(expr, 'fold') && argValues.length === 2) {
     return {
       kind: 'fold',
       source: { type: 'Identifier', name: expr.enumName as string, location: expr.location },
-      args: [expr.args[0], expr.args[1]],
+      args: [argValues[0], argValues[1]],
     };
   }
 
@@ -187,7 +188,8 @@ function rewritePipeBinary(expr: LuminaExpr): LuminaExpr {
   if (right.receiver) {
     return { ...right, receiver: left };
   }
-  return { ...right, args: [left, ...(right.args ?? [])] };
+  const leftArg = { named: false, value: left, location: left.location };
+  return { ...right, args: [leftArg, ...(right.args ?? [])] };
 }
 
 function transformExpr(expr: LuminaExpr): LuminaExpr {
@@ -203,7 +205,10 @@ function transformExpr(expr: LuminaExpr): LuminaExpr {
         return {
           ...expr,
           receiver: expr.receiver ? transformExpr(expr.receiver) : expr.receiver,
-          args: (expr.args ?? []).map((arg) => transformExpr(arg)),
+          args: (expr.args ?? []).map((arg) => ({
+            ...arg,
+            value: transformExpr(arg.value),
+          })),
         };
       case 'Member':
         return { ...expr, object: transformExpr(expr.object) };
@@ -285,7 +290,8 @@ function transformExpr(expr: LuminaExpr): LuminaExpr {
   return {
     type: 'Call',
     callee: { type: 'Identifier', name: fusion.helper },
-    args: fusion.args,
+    args: fusion.args.map((arg) => ({ named: false, value: arg, location: arg.location })),
+    typeArgs: [],
     enumName: 'vec',
     receiver: null,
     location: transformed.location,

@@ -305,6 +305,14 @@ export interface LuminaParam {
   typeName: LuminaTypeExpr | null;
   ref?: boolean;
   refMut?: boolean;
+  defaultValue?: LuminaExpr | null;
+  location?: Location;
+}
+
+export interface LuminaArg {
+  named: boolean;
+  name?: string;
+  value: LuminaExpr;
   location?: Location;
 }
 
@@ -529,6 +537,7 @@ export type LuminaExpr = (
   | LuminaCast
   | LuminaStructLiteral
   | LuminaRange
+  | LuminaListComprehension
   | LuminaArrayLiteral
   | LuminaArrayRepeatLiteral
   | LuminaTupleLiteral
@@ -602,6 +611,17 @@ export interface LuminaRange {
   start: LuminaExpr | null;
   end: LuminaExpr | null;
   inclusive: boolean;
+  location?: Location;
+}
+
+export interface LuminaListComprehension {
+  type: 'ListComprehension';
+  body: LuminaExpr;
+  binding: string;
+  source: LuminaExpr;
+  binding2?: string;
+  source2?: LuminaExpr;
+  filter: LuminaExpr | null;
   location?: Location;
 }
 
@@ -682,7 +702,7 @@ export interface LuminaCast {
 export interface LuminaCall {
   type: 'Call';
   callee: LuminaIdentifier;
-  args: LuminaExpr[];
+  args: LuminaArg[];
   typeArgs?: string[];
   enumName?: string | null;
   receiver?: LuminaExpr | null;

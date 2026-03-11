@@ -304,7 +304,7 @@ export function collectCallExpressions(program: LuminaProgram, predicate?: (call
       case 'Call':
         if (!predicate || predicate(expr)) calls.push(expr);
         if (expr.receiver) visitExpr(expr.receiver);
-        for (const arg of expr.args) visitExpr(arg);
+        for (const arg of expr.args) visitExpr(arg.value);
         return;
       case 'Binary':
         visitExpr(expr.left);

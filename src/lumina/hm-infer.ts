@@ -522,6 +522,7 @@ let activeReturnType: Type | null = null;
 let activeInferLoopDepth = 0;
 let activeExistentialScopeSeed = 0;
 let activeRigidExistentials: Map<number, ExistentialWitness> | null = null;
+let activeFnParamInfo: Map<string, { names: string[]; defaults: Array<LuminaExpr | null> }> | null = null;
 
 export function inferProgram(
   program: LuminaProgram,
@@ -551,6 +552,15 @@ export function inferProgram(
     const macroExpansion = expandMacrosInProgram(program);
     diagnostics.push(...macroExpansion.diagnostics);
   }
+  const fnParamInfo = new Map<string, { names: string[]; defaults: Array<LuminaExpr | null> }>();
+  for (const stmt of program.body) {
+    if (stmt.type !== 'FnDecl') continue;
+    fnParamInfo.set(stmt.name, {
+      names: stmt.params.map((param) => param.name),
+      defaults: stmt.params.map((param) => param.defaultValue ?? null),
+    });
+  }
+  activeFnParamInfo = fnParamInfo;
   const inferredLets = new Map<string, Type>();
   const inferredFnReturns = new Map<string, Type>();
   const inferredFnByName = new Map<string, Type>();
@@ -663,6 +673,7 @@ export function inferProgram(
   activeStructRegistry = null;
   activeConstFnConstraints = null;
   activeTypeAliasRegistry = null;
+  activeFnParamInfo = null;
   activeRowPolymorphism = false;
   activeExistentialScopeSeed = 0;
   activeRigidExistentials = null;
@@ -1624,6 +1635,90 @@ function inferExpr(
       }
       return recordExprType(expr, vecType, subst);
     }
+    case 'ListComprehension': {
+      const comp = expr as Extract<LuminaExpr, { type: 'ListComprehension' }>;
+      const elemType = freshTypeVar();
+      const expectedSource: Type = { kind: 'adt', name: 'Vec', params: [elemType] };
+      const sourceType = inferChild(comp.source, expectedSource) ?? expectedSource;
+      tryUnify(sourceType, expectedSource, subst, diagnostics, {
+        location: comp.source.location,
+        note: 'Comprehension source must be a Vec',
+      });
+
+      const env1 = env.child();
+      env1.extend(comp.binding, { variables: [], type: elemType });
+
+      let envForBody = env1;
+      if (comp.source2 && comp.binding2) {
+        const elemType2 = freshTypeVar();
+        const expectedSource2: Type = { kind: 'adt', name: 'Vec', params: [elemType2] };
+        const source2Type = inferExpr(
+          comp.source2,
+          env1,
+          subst,
+          diagnostics,
+          enumRegistry,
+          structRegistry,
+          moduleBindings,
+          inferredCalls,
+          expectedSource2,
+          inAsync
+        );
+        if (source2Type) {
+          tryUnify(source2Type, expectedSource2, subst, diagnostics, {
+            location: comp.source2.location,
+            note: 'Comprehension source must be a Vec',
+          });
+        }
+        const env2 = env1.child();
+        env2.extend(comp.binding2, { variables: [], type: elemType2 });
+        envForBody = env2;
+      }
+
+      if (comp.filter) {
+        const filterType = inferExpr(
+          comp.filter,
+          envForBody,
+          subst,
+          diagnostics,
+          enumRegistry,
+          structRegistry,
+          moduleBindings,
+          inferredCalls,
+          { kind: 'primitive', name: 'bool' },
+          inAsync
+        );
+        if (filterType) {
+          tryUnify(filterType, { kind: 'primitive', name: 'bool' }, subst, diagnostics, {
+            location: comp.filter.location,
+            note: 'Comprehension filter must return bool',
+          });
+        }
+      }
+
+      const bodyType =
+        inferExpr(
+          comp.body,
+          envForBody,
+          subst,
+          diagnostics,
+          enumRegistry,
+          structRegistry,
+          moduleBindings,
+          inferredCalls,
+          undefined,
+          inAsync
+        ) ?? freshTypeVar();
+
+      const vecType: Type = { kind: 'adt', name: 'Vec', params: [bodyType] };
+      if (expectedType) {
+        tryUnify(vecType, expectedType, subst, diagnostics, {
+          location: comp.location,
+          note: 'Comprehension result must match expected type',
+        });
+      }
+      return recordExprType(expr, vecType, subst);
+    }
     case 'MacroInvoke': {
       if (expr.expansionError) {
         for (const arg of expr.args) {
@@ -2066,8 +2161,120 @@ function inferExpr(
         return null;
       };
 
+      const rawArgs = expr.args ?? [];
+      const rawArgValues = rawArgs.map((arg) => arg.value);
+
+      const resolveArgsForHm = (
+        paramNames: string[] | undefined,
+        paramDefaults: Array<LuminaExpr | null> | undefined
+      ): { args: Array<LuminaExpr | null>; missingRequired: boolean; tooMany: boolean } => {
+        const hasNamed = rawArgs.some((arg) => arg.named);
+        let seenNamed = false;
+        let positionalAfterNamed = false;
+        for (const arg of rawArgs) {
+          if (arg.named) {
+            seenNamed = true;
+          } else if (seenNamed) {
+            positionalAfterNamed = true;
+          }
+        }
+        if (positionalAfterNamed) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'NAMED-ARG-004',
+            message: 'Positional arguments cannot follow named arguments',
+            source: 'lumina',
+            location: diagLocation(expr.location),
+          });
+        }
+        if (!paramNames || paramNames.length === 0) {
+          if (hasNamed) {
+            for (const arg of rawArgs) {
+              if (!arg.named) continue;
+              diagnostics.push({
+                severity: 'error',
+                code: 'NAMED-ARG-001',
+                message: `Unknown parameter name '${arg.name ?? 'unknown'}'`,
+                source: 'lumina',
+                location: diagLocation(arg.location ?? expr.location),
+              });
+            }
+          }
+          return { args: rawArgValues, missingRequired: false, tooMany: false };
+        }
+        const resolved: Array<LuminaExpr | null> = Array(paramNames.length).fill(null);
+        let positionalIndex = 0;
+        let tooMany = false;
+        for (const arg of rawArgs) {
+          if (arg.named) continue;
+          if (positionalIndex >= paramNames.length) {
+            tooMany = true;
+            continue;
+          }
+          resolved[positionalIndex] = arg.value;
+          positionalIndex += 1;
+        }
+        for (const arg of rawArgs) {
+          if (!arg.named) continue;
+          const idx = paramNames.indexOf(arg.name ?? '');
+          if (idx < 0) {
+            diagnostics.push({
+              severity: 'error',
+              code: 'NAMED-ARG-001',
+              message: `Unknown parameter name '${arg.name ?? 'unknown'}'`,
+              source: 'lumina',
+              location: diagLocation(arg.location ?? expr.location),
+            });
+            continue;
+          }
+          if (resolved[idx] != null) {
+            diagnostics.push({
+              severity: 'error',
+              code: 'NAMED-ARG-002',
+              message: `Parameter '${arg.name}' is already provided`,
+              source: 'lumina',
+              location: diagLocation(arg.location ?? expr.location),
+            });
+            continue;
+          }
+          resolved[idx] = arg.value;
+        }
+        let missingRequired = false;
+        let reportedArityMismatch = false;
+        for (let i = 0; i < paramNames.length; i += 1) {
+          if (resolved[i] != null) continue;
+          const fallback = paramDefaults?.[i] ?? null;
+          if (fallback) {
+            resolved[i] = fallback;
+          } else {
+            missingRequired = true;
+            if (!hasNamed) {
+              if (!reportedArityMismatch) {
+                diagnostics.push({
+                  severity: 'error',
+                  code: 'LUM-002',
+                  message: `Argument count mismatch for '${expr.callee.name}'`,
+                  source: 'lumina',
+                  location: diagLocation(expr.location),
+                });
+                reportedArityMismatch = true;
+              }
+            } else {
+              diagnostics.push({
+                severity: 'error',
+                code: 'NAMED-ARG-003',
+                message: `Missing argument for parameter '${paramNames[i]}'`,
+                source: 'lumina',
+                location: diagLocation(expr.location),
+              });
+            }
+          }
+        }
+        return { args: resolved, missingRequired, tooMany };
+      };
+
       if (!expr.receiver && !expr.enumName && expr.callee.name === 'cast') {
-        if ((expr.typeArgs?.length ?? 0) !== 1 || (expr.args?.length ?? 0) !== 1) {
+        if ((expr.typeArgs?.length ?? 0) !== 1 || rawArgValues.length !== 1) {
           diagnostics.push({
             severity: 'error',
             code: 'TYPE-CAST',
@@ -2081,7 +2288,7 @@ function inferExpr(
         const targetType = typeof targetArg === 'string' ? targetArg : '_';
         const syntheticCast: LuminaExpr = {
           type: 'Cast',
-          expr: expr.args[0],
+          expr: rawArgValues[0],
           targetType,
           location: expr.location,
         };
@@ -2090,7 +2297,7 @@ function inferExpr(
 
       const inferReceiverCall = (receiverExpr: LuminaExpr): Type => {
         const receiverType = inferChild(receiverExpr);
-        const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
+        const argTypes = rawArgValues.map((arg) => inferChild(arg) ?? freshTypeVar());
         const resultType = freshTypeVar();
         let resolvedReceiverMethod = false;
         const receiverResolved = receiverType ? prune(receiverType, subst) : null;
@@ -2977,7 +3184,7 @@ function inferExpr(
             });
             return null;
           }
-          const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
+          const argTypes = rawArgValues.map((arg) => inferChild(arg) ?? freshTypeVar());
           const selected = selectModuleOverloadCandidate(
             `${expr.enumName}.${expr.callee.name}`,
             candidates,
@@ -3032,7 +3239,7 @@ function inferExpr(
         const directCandidates =
           directBinding ? resolveModuleFunctionCandidates(directBinding, undefined) : [];
         if (directCandidates.length > 0) {
-          const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
+          const argTypes = rawArgValues.map((arg) => inferChild(arg) ?? freshTypeVar());
           const selected = selectModuleOverloadCandidate(expr.callee.name, directCandidates, argTypes, expr.location);
           if (!selected) return null;
           if (selected.deprecatedMessage) {
@@ -3065,7 +3272,19 @@ function inferExpr(
       const calleeScheme = env.lookup(expr.callee.name);
       if (!calleeScheme) return null;
       const calleeType = instantiate(calleeScheme);
-      const argTypes = expr.args.map((arg) => inferChild(arg) ?? freshTypeVar());
+      const paramInfo = activeFnParamInfo?.get(expr.callee.name);
+      const resolved = paramInfo ? resolveArgsForHm(paramInfo.names, paramInfo.defaults) : null;
+      if (resolved?.tooMany) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'LUM-002',
+          message: `Argument count mismatch for '${expr.callee.name}'`,
+          source: 'lumina',
+          location: diagLocation(expr.location),
+        });
+      }
+      const resolvedArgs = resolved ? resolved.args : rawArgValues;
+      const argTypes = resolvedArgs.map((arg) => (arg ? inferChild(arg) ?? freshTypeVar() : freshTypeVar()));
       const resultType = freshTypeVar();
       const fnType: Type = { kind: 'function', args: argTypes, returnType: resultType };
       tryUnify(calleeType, fnType, subst, diagnostics, {
@@ -4050,7 +4269,7 @@ function inferEnumConstructor(
   }
   const argTypes = expr.args.map((arg) =>
     inferExpr(
-      arg,
+      arg.value,
       env,
       subst,
       diagnostics,

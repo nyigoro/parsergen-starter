@@ -17,6 +17,7 @@ import { SourceMapGenerator, type RawSourceMap } from 'source-map';
 import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils.js';
 import { expandMacrosInProgram } from './macro-expand.js';
 import { expandDerivesInProgram } from './derive-expand.js';
+import { desugarListComprehensions } from './comprehension.js';
 
 const normalizeNumericTypeName = (typeName: string): string => {
   if (typeName === 'int') return 'i32';
@@ -80,6 +81,7 @@ export interface CodegenJsResult {
 export function generateJSFromAst(program: LuminaProgram, options: CodegenJsOptions = {}): CodegenJsResult {
   expandDerivesInProgram(program);
   expandMacrosInProgram(program);
+  program = desugarListComprehensions(program);
   const builder = new CodeBuilder(options.sourceMap === true);
   const generator = new JSGenerator(builder, options);
   generator.emitProgram(program);
@@ -1334,18 +1336,19 @@ class JSGenerator {
       case 'Binary':
         return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));
       case 'Call': {
-        if (!expr.receiver && !expr.enumName && expr.callee.name === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && expr.args.length === 1) {
+        const argValues = expr.args.map((arg) => arg.value);
+        if (!expr.receiver && !expr.enumName && expr.callee.name === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && argValues.length === 1) {
           const targetArg = expr.typeArgs?.[0];
           const targetType = normalizeNumericTypeName(
             typeof targetArg === 'string' ? targetArg : 'any'
           );
           if (targetType === 'string') {
-            return withBase(concat('__lumina_stringify(', this.emitExpr(expr.args[0]), ')'));
+            return withBase(concat('__lumina_stringify(', this.emitExpr(argValues[0]), ')'));
           }
           return withBase(
             this.emitExpr({
               type: 'Cast',
-              expr: expr.args[0],
+              expr: argValues[0],
               targetType,
               location: expr.location,
             })
@@ -1359,7 +1362,7 @@ class JSGenerator {
             location: expr.location,
           };
           const parts: Array<string | EmitResult> = [`${resolution.mangledName}(`, this.emitExpr(receiverExpr)];
-          expr.args.forEach((arg) => {
+          argValues.forEach((arg) => {
             parts.push(', ');
             parts.push(this.emitExpr(arg));
           });
@@ -1373,7 +1376,7 @@ class JSGenerator {
             expr.callee.name
           );
           const parts: Array<string | EmitResult> = [`${mangledName}(`, this.emitExpr({ type: 'Identifier', name: expr.enumName })];
-          expr.args.forEach((arg) => {
+          argValues.forEach((arg) => {
             parts.push(', ');
             parts.push(this.emitExpr(arg));
           });
@@ -1381,7 +1384,7 @@ class JSGenerator {
           return withBase(concat(...parts));
         }
         if (expr.enumName && isUpperIdent(expr.enumName)) {
-          return this.emitEnumConstruct(expr.enumName, expr.callee.name, expr.args, baseLoc);
+          return this.emitEnumConstruct(expr.enumName, expr.callee.name, argValues, baseLoc);
         }
         const helperReceiverExpr =
           expr.receiver ||
@@ -1389,7 +1392,7 @@ class JSGenerator {
             ? ({ type: 'Identifier', name: expr.enumName } as LuminaExpr)
             : null);
 
-        if (helperReceiverExpr && expr.args.length === 0) {
+        if (helperReceiverExpr && argValues.length === 0) {
           const receiverExpr = this.emitExpr(helperReceiverExpr);
           switch (expr.callee.name) {
             case 'millis':
@@ -1407,7 +1410,7 @@ class JSGenerator {
         }
         if (expr.receiver) {
           const parts: Array<string | EmitResult> = [this.emitExpr(expr.receiver), '.', expr.callee.name, '('];
-          expr.args.forEach((arg, idx) => {
+          argValues.forEach((arg, idx) => {
             if (idx > 0) parts.push(', ');
             parts.push(this.emitExpr(arg));
           });
@@ -1416,7 +1419,7 @@ class JSGenerator {
         }
         const calleeName = expr.enumName ? `${expr.enumName}.${expr.callee.name}` : expr.callee.name;
         const parts: Array<string | EmitResult> = [`${calleeName}(`];
-        expr.args.forEach((arg, idx) => {
+        argValues.forEach((arg, idx) => {
           if (idx > 0) parts.push(', ');
           parts.push(this.emitExpr(arg));
         });
@@ -1756,7 +1759,7 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
     case 'Binary':
       return exprUsesTry(expr.left) || exprUsesTry(expr.right);
     case 'Call':
-      return expr.args.some(exprUsesTry) || (expr.receiver ? exprUsesTry(expr.receiver) : false);
+      return expr.args.some((arg) => exprUsesTry(arg.value)) || (expr.receiver ? exprUsesTry(expr.receiver) : false);
     case 'Member':
       return exprUsesTry(expr.object);
     case 'StructLiteral':

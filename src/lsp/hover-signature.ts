@@ -6,7 +6,8 @@ import {
 } from '../lumina/module-registry.js';
 import { type Type, type TypeScheme } from '../lumina/types.js';
 import { type SymbolInfo } from '../lumina/semantic.js';
-import type { LuminaProgram } from '../lumina/ast.js';
+import type { LuminaFnDecl, LuminaProgram } from '../lumina/ast.js';
+import { findFnDeclByName, textOfNode } from './ast-utils.js';
 
 export type SignatureData = { label: string; parameters: string[] };
 export type SignatureHelpData = {
@@ -681,13 +682,28 @@ function formatSignature(
 ): SignatureData {
   const parameters = paramTypes.map((type, idx) => {
     const label = paramNames?.[idx];
-    return label ? `${label}: ${type}` : type;
+    if (!label) return type;
+    const eqIndex = label.indexOf('=');
+    if (eqIndex === -1) return `${label}: ${type}`;
+    const namePart = label.slice(0, eqIndex).trim();
+    const defaultPart = label.slice(eqIndex + 1).trim();
+    if (!defaultPart) return `${namePart}: ${type}`;
+    return `${namePart}: ${type} = ${defaultPart}`;
   });
   const ret = returnType ?? 'void';
   return {
     label: `${name}(${parameters.join(', ')}) -> ${ret}`,
     parameters,
   };
+}
+
+function buildParamLabelsWithDefaults(fn: LuminaFnDecl, text: string): string[] {
+  return fn.params.map((param) => {
+    if (!param.defaultValue) return param.name;
+    const defaultText = textOfNode(param.defaultValue, text);
+    if (!defaultText) return param.name;
+    return `${param.name}=${defaultText}`;
+  });
 }
 
 function formatTypeFromScheme(type: Type, typeVars: Map<number, string>): string {
@@ -922,6 +938,15 @@ function resolveParamNamesForCall(call: CallNode, ctx: HoverSignatureContext): s
   return undefined;
 }
 
+function resolveParamLabelsForCall(call: CallNode, ctx: HoverSignatureContext): string[] | undefined {
+  if (!ctx.ast) return undefined;
+  if (call.enumName || call.receiver) return undefined;
+  if (!call.callee?.name) return undefined;
+  const fn = findFnDeclByName(ctx.ast, call.callee.name);
+  if (!fn) return undefined;
+  return buildParamLabelsWithDefaults(fn, ctx.doc.getText());
+}
+
 function resolveCallSiteSignature(
   ctx: HoverSignatureContext,
   mode: 'callee' | 'call'
@@ -937,7 +962,7 @@ function resolveCallSiteSignature(
   if (call.enumName) return null;
   const signature = ctx.hmCallSignatures.get(call.id);
   if (!signature) return null;
-  const paramNames = resolveParamNamesForCall(call, ctx);
+  const paramNames = resolveParamLabelsForCall(call, ctx) ?? resolveParamNamesForCall(call, ctx);
   return formatSignature(call.callee.name, signature.args, signature.returnType, paramNames);
 }
 

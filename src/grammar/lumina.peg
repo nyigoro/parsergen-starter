@@ -575,10 +575,17 @@ ParamList
 Param
   = leading:ParamRef? node:IdName _ typeAnn:(_ ":" _ trailing:ParamRef? typeName:TypeName {
       return { typeName, ref: !!trailing, refMut: !!(trailing && trailing.mut) };
-    })? {
+    })? defaultVal:(_ "=" _ Expr)? {
       const refFlag = !!leading || !!(typeAnn && typeAnn.ref);
       const refMut = !!(leading && leading.mut) || !!(typeAnn && typeAnn.refMut);
-      return { name: node.name, typeName: typeAnn ? typeAnn.typeName : null, ref: refFlag, refMut, location: node.location };
+      return {
+        name: node.name,
+        typeName: typeAnn ? typeAnn.typeName : null,
+        ref: refFlag,
+        refMut,
+        defaultValue: defaultVal ? defaultVal[3] : null,
+        location: node.location
+      };
     }
 
 ParamRef
@@ -784,6 +791,7 @@ PrimaryAtom
   = SelectExpr
   / MatchExpr
   / MacroInvokeExpr
+  / ListComprehension
   / ArrayRepeatLiteral
   / ArrayLiteral
   / TupleLiteral
@@ -860,6 +868,31 @@ MacroInvokeSeparator
   = "=>" { return "=>"; }
   / ";" { return ";"; }
   / "," { return ","; }
+
+ListComprehension
+  = "[" _ body:Expr _ "for" __ binding:IdName _ "in" __ source:Expr
+      _ "for" __ binding2:IdName _ "in" __ source2:Expr
+      filter:(_ "if" __ Expr)? _ "]" {
+      return createNode("ListComprehension", {
+        body,
+        binding: binding.name,
+        source,
+        binding2: binding2.name,
+        source2,
+        filter: filter ? filter[3] : null,
+        location: binding.location
+      }, location);
+    }
+  / "[" _ body:Expr _ "for" __ binding:IdName _ "in" __ source:Expr
+      filter:(_ "if" __ Expr)? _ "]" {
+      return createNode("ListComprehension", {
+        body,
+        binding: binding.name,
+        source,
+        filter: filter ? filter[3] : null,
+        location: binding.location
+      }, location);
+    }
 
 StructLiteral
   = name:IdName _ targs:TypeArgs? &(_ "{") _ "{" _ fields:StructLiteralFieldList? _ "}" {
@@ -1204,7 +1237,14 @@ QualifiedCall
 
 
 ArgList
-  = head:Expr tail:(_ "," _ Expr)* { return [head].concat(tail.map(t => t[3])); }
+  = head:Arg tail:(_ "," _ Arg)* { return [head].concat(tail.map(t => t[3])); }
+Arg
+  = name:IdName _ ":" !(":" / "::") _ value:Expr {
+      return { named: true, name: name.name, value, location: name.location };
+    }
+  / value:Expr {
+      return { named: false, value, location: value.location };
+    }
 Visibility
   = "pub" { return "public"; }
 MoveExpr
