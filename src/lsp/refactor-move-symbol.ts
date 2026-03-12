@@ -20,6 +20,7 @@ import {
   addEdit,
   findImportDeclarations,
   findTopLevelDeclAtPosition,
+  offsetAt,
   positionAt,
   rangeOfNode,
   textOfNode,
@@ -56,12 +57,6 @@ export interface MoveSymbolResult {
   newName?: string;
 }
 
-function offsetAt(text: string, pos: Position): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i += 1) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
 
 function findMatchingBrace(text: string, openIndex: number): number {
   let depth = 0;
@@ -459,3 +454,6 @@ export function applyMoveSymbol(request: MoveSymbolRequest): MoveSymbolResult {
     newName: movedName,
   };
 }
+
+
+

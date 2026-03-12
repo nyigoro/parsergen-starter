@@ -17,6 +17,7 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint:check
+      - run: npm run build
       - run: npm test
 
   browser-smoke:
@@ -40,3 +41,4 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+

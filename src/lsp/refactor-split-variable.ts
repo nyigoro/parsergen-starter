@@ -1,23 +1,11 @@
 import { CodeAction, CodeActionKind, TextEdit, type Range } from 'vscode-languageserver/node';
+import { offsetAt, positionAt } from './ast-utils.js';
 
-function getOffsetAt(text: string, pos: { line: number; character: number }): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
 
-function positionAt(text: string, offset: number): { line: number; character: number } {
-  const clamped = Math.max(0, Math.min(offset, text.length));
-  const prefix = text.slice(0, clamped);
-  const line = prefix.split('\n').length - 1;
-  const lineStart = prefix.lastIndexOf('\n') + 1;
-  return { line, character: clamped - lineStart };
-}
 
 function getWordAtRange(text: string, range: Range): string | null {
-  const start = getOffsetAt(text, range.start);
-  const end = getOffsetAt(text, range.end);
+  const start = offsetAt(text, range.start);
+  const end = offsetAt(text, range.end);
   const selected = text.slice(start, end).trim();
   if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(selected)) return selected;
   const cursor = start;
@@ -39,7 +27,7 @@ function findUniqueVarName(text: string, base: string): string {
 export function buildSplitVariableCodeAction(text: string, uri: string, range: Range): CodeAction | null {
   const name = getWordAtRange(text, range);
   if (!name) return null;
-  const cursorOffset = getOffsetAt(text, range.end);
+  const cursorOffset = offsetAt(text, range.end);
 
   const plainAssign = new RegExp(`(?<!let\\s)(?<!let\\s+mut\\s)\\b${name}\\s*=`, 'm');
   const plainAssignIndex = text.slice(cursorOffset).search(plainAssign);
@@ -77,3 +65,5 @@ export function buildSplitVariableCodeAction(text: string, uri: string, range: R
     edit: { changes: { [uri]: edits } },
   };
 }
+
+

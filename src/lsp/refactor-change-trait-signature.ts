@@ -11,6 +11,7 @@ import {
   addEdit,
   collectCallExpressions,
   findTraitMethodAtPosition,
+  offsetAt,
   positionAt,
   rangeOfParams,
   rangeOfReturnType,
@@ -117,12 +118,6 @@ function finalizedMethodInfo(traitName: string, method: LuminaTraitMethod | Lumi
   };
 }
 
-function offsetAt(text: string, pos: Position): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i += 1) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
 
 function applyParamChangesToParams(params: ParamInfo[], changes: ParamChange[]): ParamInfo[] {
   const next = [...params];
@@ -425,3 +420,6 @@ export function applyChangeTraitSignature(
     warnings,
   };
 }
+
+
+

@@ -7,15 +7,15 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist",
-    "!dist/bin/*-core.*",
-    "!dist/bin/*-cjs.*",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md",
-    "RELEASE.md",
-    "lumina.config.schema.json",
-    "std"
+    "dist/bin/*.js",
+    "dist/bin/*.cjs",
+    "dist/index.js",
+    "dist/index.cjs",
+    "dist/index.d.ts",
+    "dist/lumina-runtime.js",
+    "dist/lumina-runtime.cjs",
+    "std/",
+    "README.md"
   ],
   "exports": {
     ".": {
@@ -132,3 +132,4 @@
   },
   "homepage": "https://github.com/nyigoro/lumina-lang#readme"
 }
+

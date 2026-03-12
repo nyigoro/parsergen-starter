@@ -1,19 +1,7 @@
 import { CodeAction, CodeActionKind, TextEdit, type Range } from 'vscode-languageserver/node';
+import { offsetAt, positionAt } from './ast-utils.js';
 
-function getOffsetAt(text: string, pos: { line: number; character: number }): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
 
-function positionAt(text: string, offset: number): { line: number; character: number } {
-  const clamped = Math.max(0, Math.min(offset, text.length));
-  const prefix = text.slice(0, clamped);
-  const line = prefix.split('\n').length - 1;
-  const lineStart = prefix.lastIndexOf('\n') + 1;
-  return { line, character: clamped - lineStart };
-}
 
 function findFunctionHeader(text: string, offset: number): { start: number; openBrace: number; end: number; header: string } | null {
   const matches = Array.from(text.matchAll(/^\s*(?:pub\s+)?(?:async\s+)?fn\b.*$/gm)).filter(
@@ -42,7 +30,7 @@ function findFunctionHeader(text: string, offset: number): { start: number; open
 }
 
 export function buildWrapReturnResultCodeAction(text: string, uri: string, range: Range): CodeAction | null {
-  const fn = findFunctionHeader(text, getOffsetAt(text, range.start));
+  const fn = findFunctionHeader(text, offsetAt(text, range.start));
   if (!fn) return null;
   const typeMatch = /->\s*([^ {]+(?:<[^>]+>)?)/.exec(fn.header);
   if (!typeMatch) return null;
@@ -89,3 +77,5 @@ export function buildWrapReturnResultCodeAction(text: string, uri: string, range
     edit: { changes: { [uri]: edits } },
   };
 }
+
+

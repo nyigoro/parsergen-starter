@@ -1,14 +1,9 @@
 import { CodeAction, CodeActionKind, TextEdit, type Range } from 'vscode-languageserver/node';
+import { offsetAt } from './ast-utils.js';
 
-function getOffsetAt(text: string, pos: { line: number; character: number }): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
 
 function snippetFor(text: string, range: Range): string {
-  return text.slice(getOffsetAt(text, range.start), getOffsetAt(text, range.end)).trim();
+  return text.slice(offsetAt(text, range.start), offsetAt(text, range.end)).trim();
 }
 
 export function buildIfLetToMatchCodeAction(text: string, uri: string, range: Range): CodeAction | null {
@@ -36,3 +31,5 @@ export function buildMatchToIfLetCodeAction(text: string, uri: string, range: Ra
     edit: { changes: { [uri]: [TextEdit.replace(range, replacement)] } },
   };
 }
+
+

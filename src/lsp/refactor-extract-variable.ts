@@ -1,11 +1,6 @@
 import { CodeAction, CodeActionKind, TextEdit, type Range } from 'vscode-languageserver/node';
+import { offsetAt } from './ast-utils.js';
 
-function getOffsetAt(text: string, pos: { line: number; character: number }): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
 
 function findUniqueVarName(text: string, base: string = 'extracted'): string {
   if (!new RegExp(`\\b${base}\\b`).test(text)) return base;
@@ -24,8 +19,8 @@ function isNonTrivialExpression(value: string): boolean {
 }
 
 export function buildExtractVariableCodeAction(text: string, uri: string, range: Range): CodeAction | null {
-  const start = getOffsetAt(text, range.start);
-  const end = getOffsetAt(text, range.end);
+  const start = offsetAt(text, range.start);
+  const end = offsetAt(text, range.end);
   if (end <= start) return null;
   const selectedRaw = text.slice(start, end);
   const selected = selectedRaw.trim();
@@ -50,3 +45,5 @@ export function buildExtractVariableCodeAction(text: string, uri: string, range:
     },
   };
 }
+
+

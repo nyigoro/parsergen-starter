@@ -1,21 +1,9 @@
 import { CodeAction, CodeActionKind, TextEdit, type Range } from 'vscode-languageserver/node';
+import { offsetAt, positionAt } from './ast-utils.js';
 
 type BlockBounds = { start: number; openBrace: number; end: number };
 
-function getOffsetAt(text: string, pos: { line: number; character: number }): number {
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += (lines[i] ?? '').length + 1;
-  return offset + pos.character;
-}
 
-function positionAt(text: string, offset: number): { line: number; character: number } {
-  const clamped = Math.max(0, Math.min(offset, text.length));
-  const prefix = text.slice(0, clamped);
-  const line = prefix.split('\n').length - 1;
-  const lineStart = prefix.lastIndexOf('\n') + 1;
-  return { line, character: clamped - lineStart };
-}
 
 function findBlock(text: string, startPattern: RegExp, offset: number): { header: string; bounds: BlockBounds } | null {
   const matches = Array.from(text.matchAll(startPattern)).filter((match) => (match.index ?? -1) <= offset);
@@ -55,7 +43,7 @@ function parseTraitMethods(body: string): Array<{ name: string; signature: strin
 }
 
 export function buildTraitStubsCodeAction(text: string, uri: string, range: Range): CodeAction | null {
-  const offset = getOffsetAt(text, range.start);
+  const offset = offsetAt(text, range.start);
   const implMatch = findBlock(text, /\bimpl\s+[A-Za-z_][A-Za-z0-9_]*\s+for\s+[A-Za-z_][A-Za-z0-9_<>,\s.]*/g, offset);
   if (!implMatch) return null;
   const traitName = /\bimpl\s+([A-Za-z_][A-Za-z0-9_]*)\s+for\b/.exec(implMatch.header)?.[1];
@@ -90,3 +78,5 @@ export function buildTraitStubsCodeAction(text: string, uri: string, range: Rang
     },
   };
 }
+
+
