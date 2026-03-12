@@ -13,6 +13,7 @@ import {
   type LuminaFnDecl,
   type LuminaBlock,
   type LuminaLambda,
+  type LuminaArg,
 } from './ast.js';
 import { inferProgram } from './hm-infer.js';
 import { normalizeDiagnostic } from './diagnostics-util.js';
@@ -4445,7 +4446,7 @@ function typeCheckExpr(
             used.add(node.callee.name);
           }
           if (node.receiver) visitExprNode(node.receiver);
-          for (const arg of node.args) visitExprNode(arg);
+          for (const arg of node.args) visitExprNode(arg.value);
           return;
         case 'Binary':
           visitExprNode(node.left);

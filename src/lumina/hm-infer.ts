@@ -1646,7 +1646,7 @@ function inferExpr(
       });
 
       const env1 = env.child();
-      env1.extend(comp.binding, { variables: [], type: elemType });
+      env1.extend(comp.binding, { kind: 'scheme', variables: [], type: elemType });
 
       let envForBody = env1;
       if (comp.source2 && comp.binding2) {
@@ -1671,7 +1671,7 @@ function inferExpr(
           });
         }
         const env2 = env1.child();
-        env2.extend(comp.binding2, { variables: [], type: elemType2 });
+        env2.extend(comp.binding2, { kind: 'scheme', variables: [], type: elemType2 });
         envForBody = env2;
       }
 

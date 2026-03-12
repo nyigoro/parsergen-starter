@@ -5823,8 +5823,8 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'sum_vec_f64',
             ['Vec<f64>'],
             'f64',
-            [adt('Vec', [primitive('f64')])],
-            primitive('f64'),
+            [adt('Vec', [primitive('float')])],
+            primitive('float'),
             ['values'],
             'std://iter'
           ),
