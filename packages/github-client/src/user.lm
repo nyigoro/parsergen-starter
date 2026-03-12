@@ -1,6 +1,6 @@
-import { get } from "@lumina/http";
-import { parse } from "@lumina/json-parser";
-import { JsonValue, Entry, JList, ParseError } from "@lumina/json-parser/types";
+import { get } from "lumina-http";
+import { parse } from "lumina-json-parser";
+import { JsonValue, Entry, JList, ParseError } from "lumina-json-parser/types";
 import { Option, Result } from "../../../std/prelude.lm";
 import { User } from "./types.lm";
 import { str, math } from "@std";
@@ -129,3 +129,4 @@ fn format_parse_error(err: ParseError) -> string {
     }
   }
 }
+

@@ -10,7 +10,7 @@ lumina init
 ### Add dependencies
 ```bash
 lumina add my-package
-lumina add @lumina/json-parser
+lumina add lumina-json-parser
 ```
 
 ### Install dependencies
@@ -26,7 +26,7 @@ lumina list
 ## Import Packages
 
 ```lumina
-import { parse } from "@lumina/json-parser";
+import { parse } from "lumina-json-parser";
 import { helper } from "my-package/utils";
 ```
 
@@ -53,3 +53,4 @@ npm publish
 ## Lockfile Format
 
 See `docs/PACKAGE_MANAGEMENT_PHASE1.md` for the full technical details.
+

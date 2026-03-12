@@ -1,17 +1,17 @@
-# @lumina/github-client
+# lumina-github-client
 
 A small GitHub API client built in Lumina.
 
 ## Installation
 
 ```bash
-lumina add @lumina/github-client
+lumina add lumina-github-client
 ```
 
 ## Usage
 
 ```lumina
-import { get_user } from "@lumina/github-client";
+import { get_user } from "lumina-github-client";
 import { io, str } from "@std";
 
 async fn main() {
@@ -32,3 +32,4 @@ async fn main() {
 ## Types
 
 See `src/types.lm` for `User` and `Repository` structs.
+

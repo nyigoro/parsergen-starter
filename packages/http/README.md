@@ -1,17 +1,17 @@
-# @lumina/http
+# lumina-http
 
 HTTP client library for Lumina.
 
 ## Installation
 
 ```bash
-lumina add @lumina/http
+lumina add lumina-http
 ```
 
 ## Usage
 
 ```lumina
-import { get } from "@lumina/http";
+import { get } from "lumina-http";
 import { io, str } from "@std";
 
 async fn example() {
@@ -42,3 +42,4 @@ See `src/request.lm` and `src/response.lm` for the type definitions.
 ## Why `del` instead of `delete`?
 
 `delete` is a reserved keyword in JavaScript. To avoid codegen conflicts, the HTTP DELETE method is exposed as `del()`.
+

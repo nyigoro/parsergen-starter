@@ -1,5 +1,5 @@
 import { Result } from "../../std/prelude.lm";
-import { get } from "@lumina/http";
+import { get } from "lumina-http";
 import { io, str } from "@std";
 
 async fn main() {
@@ -20,3 +20,4 @@ async fn main() {
 }
 
 main()
+

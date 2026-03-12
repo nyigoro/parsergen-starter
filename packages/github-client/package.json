@@ -19,7 +19,8 @@
   "author": "Lumina Contributors",
   "license": "MIT",
   "dependencies": {
-    "@lumina/http": "^0.1.0",
-    "@lumina/json-parser": "^0.1.0"
+    "lumina-http": "^0.5.3",
+    "lumina-json-parser": "^0.5.3"
   }
 }
+

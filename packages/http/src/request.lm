@@ -1,6 +1,6 @@
 import { Option, List } from "../../../std/prelude.lm";
 
-// Request types for @lumina/http
+// Request types for lumina-http
 
 pub struct Header {
   name: string,
@@ -13,3 +13,4 @@ pub struct Request {
   headers: Option<List<Header>>,
   body: Option<string>
 }
+

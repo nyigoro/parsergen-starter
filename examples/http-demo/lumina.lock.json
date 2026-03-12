@@ -1,8 +1,8 @@
 {
   "lockfileVersion": 1,
   "packages": {
-    "@lumina/http": {
-      "version": "0.1.0",
+    "lumina-http": {
+      "version": "0.5.3",
       "resolved": "../../packages/http",
       "lumina": {
         ".": "./src/index.lm",
@@ -12,3 +12,4 @@
     }
   }
 }
+

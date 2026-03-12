@@ -1,8 +1,8 @@
 {
   "lockfileVersion": 1,
   "packages": {
-    "@lumina/github-client": {
-      "version": "0.1.0",
+    "lumina-github-client": {
+      "version": "0.5.3",
       "resolved": "../../packages/github-client",
       "lumina": {
         ".": "./src/user.lm",
@@ -10,15 +10,15 @@
         "./repo": "./src/repo.lm"
       }
     },
-    "@lumina/http": {
-      "version": "0.1.0",
+    "lumina-http": {
+      "version": "0.5.3",
       "resolved": "../../packages/http",
       "lumina": {
         ".": "./src/index.lm"
       }
     },
-    "@lumina/json-parser": {
-      "version": "0.1.0",
+    "lumina-json-parser": {
+      "version": "0.5.3",
       "resolved": "../../packages/json-parser",
       "lumina": {
         ".": "./src/parser.lm",
@@ -29,3 +29,4 @@
     }
   }
 }
+
