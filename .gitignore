@@ -23,6 +23,7 @@ pnpm-debug.log*
 /demo.js
 /lumina-runtime.js
 /lumina.out.js
+vscode-extension/*.vsix
 examples/wasm-hello/*.wat
 examples/wasm-hello/*.wasm
 examples/wasm-hello/*.cjs
