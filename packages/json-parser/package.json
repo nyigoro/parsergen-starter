@@ -1,6 +1,6 @@
 {
   "name": "@lumina/json-parser",
-  "version": "0.1.0",
+  "version": "0.5.2",
   "description": "JSON parser for Lumina",
   "type": "module",
   "lumina": {

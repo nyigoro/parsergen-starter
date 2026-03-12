@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-12
+
+- **Packaging:** Slimmed npm publish contents by enumerating dist artifacts and stdlib, excluding source maps and extra files.
+- **LSP refactors:** Consolidated `offsetAt`/`positionAt` helpers to shared `ast-utils` across refactor actions.
+- **CI:** Added build verification step to the main CI job.
+
 ## [0.5.1] - 2026-03-11
 
 - **Package security:** Tightened lockfile integrity handling so missing hashes are reported explicitly, installs/adds fail with distinct missing-vs-mismatch errors, and added `lumina secret-scan` plus publish-time secret scanning with `.luminaignore` support.

@@ -1,6 +1,6 @@
 # Lumina Language Milestones
 
-## v0.5.1 - Web-Native Tooling Maturity (Current)
+## v0.5.2 - Web-Native Tooling Maturity (Current)
 
 **Date:** March 2026
 

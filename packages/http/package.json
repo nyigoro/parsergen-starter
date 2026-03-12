@@ -1,6 +1,6 @@
 {
   "name": "@lumina/http",
-  "version": "0.1.0",
+  "version": "0.5.2",
   "description": "HTTP client library for Lumina",
   "type": "module",
   "lumina": {

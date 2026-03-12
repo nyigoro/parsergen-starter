@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g., v0.5.1)'
+        description: 'Tag to release (e.g., v0.5.2)'
         required: true
-        default: 'v0.5.1'
+        default: 'v0.5.2'
 
 jobs:
   verify:
@@ -138,7 +138,7 @@ jobs:
       - name: Publish VS Code extension
         run: |
           cd vscode-extension
-          npm pkg set dependencies.lumina-language-client="0.5.1"
+          npm pkg set dependencies.lumina-language-client="0.5.2"
           npm ci --workspaces=false
           npm run build
           npx @vscode/vsce publish --pat ${{ secrets.VSCE_PAT }}
