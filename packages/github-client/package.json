@@ -1,5 +1,5 @@
 {
-  "name": "@lumina/github-client",
+  "name": "lumina-github-client",
   "version": "0.5.3",
   "description": "GitHub API client for Lumina",
   "type": "module",
