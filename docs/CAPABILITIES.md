@@ -1,7 +1,7 @@
 # Lumina Capabilities Matrix
 
 This document tracks the current state of the Lumina language/tooling and near‑term priorities.
-Last updated for v0.5.2.
+Last updated for v0.5.3.
 
 ## Strategic Focus
 - **Primary identity**: Web-native systems language (WASM + browser runtime first).

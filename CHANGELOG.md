@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-03-12
+
+- **Packaging:** Build and verify `dist/` before publishing `lumina-lang`, ensuring compiled artifacts are included in the npm tarball.
+- **VS Code extension:** Ignore parent `../packages` and `../node_modules` paths to prevent VSIX traversal outside the extension.
+
+
 ## [0.5.2] - 2026-03-12
 
 - **Packaging:** Slimmed npm publish contents by enumerating dist artifacts and stdlib, excluding source maps and extra files.

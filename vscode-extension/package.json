@@ -2,7 +2,7 @@
   "name": "lumina-vscode",
   "displayName": "Lumina Language",
   "description": "Advanced VS Code integration for Lumina (LSP, inlay hints, refactors, semantic tokens, tasks).",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publisher": "nyigoro",
   "license": "MIT",
   "repository": {

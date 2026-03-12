@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g., v0.5.2)'
+        description: 'Tag to release (e.g., v0.5.3)'
         required: true
-        default: 'v0.5.2'
+        default: 'v0.5.3'
 
 jobs:
   verify:
@@ -102,6 +102,15 @@ jobs:
         if: steps.lumina_lang_exists.outputs.exists == '1'
         run: echo "lumina-lang@${{ steps.version.outputs.VERSION }} already published; skipping."
 
+      - name: Build lumina-lang
+        if: steps.lumina_lang_exists.outputs.exists != '1'
+        run: npm run build
+
+      - name: Verify dist
+        if: steps.lumina_lang_exists.outputs.exists != '1'
+        run: npm run build:verify
+
+
       - name: Publish lumina-lang
         if: steps.lumina_lang_exists.outputs.exists != '1'
         run: npm publish --access public
@@ -138,7 +147,7 @@ jobs:
       - name: Publish VS Code extension
         run: |
           cd vscode-extension
-          npm pkg set dependencies.lumina-language-client="0.5.2"
+          npm pkg set dependencies.lumina-language-client="0.5.3"
           npm ci --workspaces=false
           npm run build
           npx @vscode/vsce publish --pat ${{ secrets.VSCE_PAT }}
