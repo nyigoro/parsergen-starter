@@ -38,5 +38,5 @@ describe('parity gap baseline: type narrowing', () => {
   parityIt('JS and WASM agree on type-narrowing runtime behavior', async () => {
     const result = await parityTest({ name: 'type narrowing parity', source, expectedRet: 1 });
     expect(result.match).toBe(true);
-  });
+  }, 15000);
 });

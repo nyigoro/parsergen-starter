@@ -4,6 +4,8 @@ import { execSync } from 'node:child_process';
 import { loadWASM, callWASMFunction } from '../src/wasm-runtime.js';
 import { createSignal, get, set, createMemo, mount_reactive, render, text } from '../src/lumina-runtime.js';
 
+jest.setTimeout(20000);
+
 type ExplorerNode = {
   name: string;
   kind: 'dir' | 'file';

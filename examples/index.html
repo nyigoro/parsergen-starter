@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumina Examples</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.18), transparent 34%),
+        linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+      color: #0f172a;
+    }
+    main {
+      width: min(1100px, calc(100vw - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 3rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.4rem, 5vw, 4rem);
+      line-height: 1;
+    }
+    .lead {
+      max-width: 48rem;
+      margin: 1rem 0 0;
+      color: #334155;
+      font-size: 1.1rem;
+      line-height: 1.7;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      display: grid;
+      gap: 0.8rem;
+      padding: 1.25rem;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+      backdrop-filter: blur(12px);
+    }
+    .eyebrow {
+      margin: 0;
+      color: #2563eb;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 1.35rem;
+    }
+    .card p {
+      margin: 0;
+      color: #475569;
+      line-height: 1.6;
+    }
+    .card a {
+      width: fit-content;
+      padding: 0.7rem 1rem;
+      border-radius: 999px;
+      background: #0f172a;
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .card a:hover {
+      background: #1d4ed8;
+    }
+    @media (max-width: 640px) {
+      main {
+        width: min(100vw, calc(100vw - 1rem));
+        padding: 1rem 0 2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Lumina Examples</p>
+    <h1>Live UI demos and benchmarks</h1>
+    <p class="lead">
+      This gallery exposes the repo’s browser-ready examples. Use it as the fastest way to verify the UI runtime,
+      app-layer helpers, SSR output, and benchmark harness from one place.
+    </p>
+
+    <section class="grid">
+      <article class="card">
+        <p class="eyebrow">Headless UI</p>
+        <h2>Tabs</h2>
+        <p>Reactive tabs, ARIA wiring, keyboard navigation, and stable keyed identity.</p>
+        <a href="./tabs/index.html">Open tabs demo</a>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">App Layer</p>
+        <h2>Forms + Resource</h2>
+        <p>Controlled input, checkbox state, resource loading, suspense fallback, and draft persistence.</p>
+        <a href="./forms-store-resource/index.html">Open app-layer demo</a>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Interop</p>
+        <h2>Web Components</h2>
+        <p>Custom elements powered by Lumina runtime rendering and live attribute updates.</p>
+        <a href="./web-components/index.html">Open web component demo</a>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Static Output</p>
+        <h2>SSG Page</h2>
+        <p>Server-rendered HTML generated from a Lumina component tree.</p>
+        <a href="./ssg-page/index.html">Open static page</a>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Renderer</p>
+        <h2>DOM Render</h2>
+        <p>Counter, todo, and async demos built directly on the DOM renderer layer.</p>
+        <a href="./dom-render/index.html">Open DOM render demo</a>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Benchmark</p>
+        <h2>Benchmark Harness</h2>
+        <p>Measure Lumina DOM list updates against React, Solid, and vanilla DOM.</p>
+        <a href="./benchmark.html">Open benchmarks</a>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

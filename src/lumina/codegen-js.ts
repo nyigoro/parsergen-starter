@@ -18,6 +18,13 @@ import { mangleTraitMethodName, type TraitMethodResolution } from './trait-utils
 import { expandMacrosInProgram } from './macro-expand.js';
 import { expandDerivesInProgram } from './derive-expand.js';
 import { desugarListComprehensions } from './comprehension.js';
+import {
+  getStaticDomTemplateHtml,
+  isReactiveGetCall,
+  isStaticRenderHoistableExpr,
+  lowerRenderProgram,
+  stripRenderLoweringMetadata,
+} from './render-lowering.js';
 
 const normalizeNumericTypeName = (typeName: string): string => {
   if (typeName === 'int') return 'i32';
@@ -82,23 +89,40 @@ export function generateJSFromAst(program: LuminaProgram, options: CodegenJsOpti
   expandDerivesInProgram(program);
   expandMacrosInProgram(program);
   program = desugarListComprehensions(program);
+  program = lowerRenderProgram(program);
   const builder = new CodeBuilder(options.sourceMap === true);
   const generator = new JSGenerator(builder, options);
   generator.emitProgram(program);
-  const code = builder.toString().trimEnd() + '\n';
+  const hoistBlock = generator.consumeStaticRenderHoists();
+  const hoistMarker = generator.hoistMarker();
+  const rawCode = builder.toString().trimEnd() + '\n';
+  const code = hoistMarker
+    ? rawCode.replace(hoistMarker, hoistBlock.length > 0 ? `${hoistBlock}\n` : '')
+    : rawCode;
   const map = options.sourceMap ? buildSourceMap(builder, options) : undefined;
   return { code, map };
 }
 
 class JSGenerator {
+  private static readonly STATIC_HOIST_MARKER = '/*__LUMINA_STATIC_RENDER_HOISTS__*/\n';
+  private static readonly INCLUDE_RUNTIME_EXPORTS =
+    'io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic';
+  private static readonly NO_RUNTIME_EXPORTS =
+    'io, str, math, list, vec, hashmap, hashset, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl';
   private indentLevel = 0;
   private readonly target: 'esm' | 'cjs';
   private readonly includeRuntime: boolean;
+  private readonly enableStaticRenderHoists: boolean;
   private matchCounter = 0;
   private tempCounter = 0;
+  private hoistCounter = 0;
   private usesTryHelper = false;
   private readonly traitMethodResolutions: Map<number, TraitMethodResolution>;
   private readonly traitDecls = new Map<string, LuminaTraitDecl>();
+  private readonly staticRenderHoists = new Map<string, string>();
+  private readonly activeStaticRenderHoists = new Set<string>();
+  private readonly staticRenderHoistDecls: string[] = [];
+  private readonly publicBindings = new Set<string>();
   private defaultMethodContext:
     | { traitType: string; forType: string; selfParams: Set<string> }
     | null = null;
@@ -106,7 +130,16 @@ class JSGenerator {
   constructor(private readonly builder: CodeBuilder, options: CodegenJsOptions) {
     this.target = options.target ?? 'esm';
     this.includeRuntime = options.includeRuntime !== false;
+    this.enableStaticRenderHoists = options.sourceMap !== true;
     this.traitMethodResolutions = options.traitMethodResolutions ?? new Map();
+  }
+
+  hoistMarker(): string {
+    return this.enableStaticRenderHoists ? JSGenerator.STATIC_HOIST_MARKER : '';
+  }
+
+  consumeStaticRenderHoists(): string {
+    return this.staticRenderHoistDecls.join('\n');
   }
 
   emitProgram(node: LuminaProgram): void {
@@ -120,11 +153,11 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
@@ -251,26 +284,33 @@ class JSGenerator {
       this.builder.append('\n');
     }
     this.builder.append('\n');
+    if (this.enableStaticRenderHoists) {
+      this.builder.append(JSGenerator.STATIC_HOIST_MARKER);
+    }
 
     for (const stmt of node.body) {
       this.emitStatement(stmt);
     }
 
+    const publicExportSuffix = this.publicBindings.size > 0
+      ? `, ${Array.from(this.publicBindings).join(', ')}`
+      : '';
+
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
+          `module.exports = { ${JSGenerator.INCLUDE_RUNTIME_EXPORTS}${publicExportSuffix} };`
         );
       } else {
         this.builder.append(
-          'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };'
+          `export { ${JSGenerator.INCLUDE_RUNTIME_EXPORTS}${publicExportSuffix} };`
         );
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append('module.exports = { io, str, math, list, vec, hashmap, hashset, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
+        this.builder.append(`module.exports = { ${JSGenerator.NO_RUNTIME_EXPORTS}${publicExportSuffix} };`);
       } else {
-        this.builder.append('export { io, str, math, list, vec, hashmap, hashset, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };');
+        this.builder.append(`export { ${JSGenerator.NO_RUNTIME_EXPORTS}${publicExportSuffix} };`);
       }
     }
     this.builder.append('\n');
@@ -280,6 +320,9 @@ class JSGenerator {
     const pad = this.pad();
     switch (stmt.type) {
       case 'FnDecl': {
+        if (stmt.visibility === 'public') {
+          this.publicBindings.add(stmt.name);
+        }
         this.emitFunctionDecl(stmt.name, stmt);
         return;
       }
@@ -881,6 +924,7 @@ class JSGenerator {
     this.defaultMethodContext = { traitType, forType, selfParams };
     const fnDecl: LuminaFnDecl = {
       type: 'FnDecl',
+      declarationKind: 'fn',
       name: mangledName,
       params: method.params,
       returnType: method.returnType ?? null,
@@ -1144,11 +1188,22 @@ class JSGenerator {
     const tempBuilder = new CodeBuilder(false);
     const tempGenerator = new JSGenerator(tempBuilder, {
       target: this.target,
-      includeRuntime: false,
+      includeRuntime: this.includeRuntime,
       traitMethodResolutions: this.traitMethodResolutions,
     });
     tempGenerator.indentLevel = 1;
+    tempGenerator.hoistCounter = this.hoistCounter;
+    for (const [key, value] of this.staticRenderHoists.entries()) {
+      tempGenerator.staticRenderHoists.set(key, value);
+    }
     tempGenerator.emitFunctionBodyStatements(block);
+    for (const decl of tempGenerator.staticRenderHoistDecls) {
+      this.staticRenderHoistDecls.push(decl);
+    }
+    for (const [key, value] of tempGenerator.staticRenderHoists.entries()) {
+      this.staticRenderHoists.set(key, value);
+    }
+    this.hoistCounter = tempGenerator.hoistCounter;
     const rendered = tempBuilder.toString();
     return rendered.endsWith('\n') ? rendered : `${rendered}\n`;
   }
@@ -1187,6 +1242,11 @@ class JSGenerator {
       }
       return { code, mappings };
     };
+
+    const hoistedRef = this.tryEmitStaticRenderHoist(expr);
+    if (hoistedRef) {
+      return withBase({ code: hoistedRef, mappings: [] });
+    }
 
     switch (expr.type) {
       case 'Number':
@@ -1370,6 +1430,15 @@ class JSGenerator {
         const argValues = expr.args.map((arg) => arg.value);
         const directCalleeName = expr.callee.type === 'Identifier' ? expr.callee.name : null;
         const calleeName = directCalleeName ?? expr.callee.name ?? '__computed__';
+        if (
+          this.includeRuntime
+          && expr.renderLowering?.callee === 'text'
+          && argValues.length === 1
+          && isReactiveGetCall(argValues[0])
+          && argValues[0].args.length === 1
+        ) {
+          return withBase(concat('render.liveText(', this.emitExpr(argValues[0].args[0].value), ')'));
+        }
         if (!expr.receiver && !expr.enumName && !directCalleeName) {
           const parts: Array<string | EmitResult> = ['(', this.emitExpr(expr.callee), ')('];
           argValues.forEach((arg, idx) => {
@@ -1520,6 +1589,43 @@ class JSGenerator {
       }
       default:
         return withBase({ code: 'undefined', mappings: [] });
+    }
+  }
+
+  private tryEmitStaticRenderHoist(expr: LuminaExpr): string | null {
+    if (!this.enableStaticRenderHoists) {
+      return null;
+    }
+    if (expr.type !== 'Call') {
+      return null;
+    }
+    if (!isStaticRenderHoistableExpr(expr)) {
+      return null;
+    }
+    const key = JSON.stringify(stripRenderLoweringMetadata(expr));
+    if (this.activeStaticRenderHoists.has(key)) {
+      return null;
+    }
+    const cached = this.staticRenderHoists.get(key);
+    if (cached) {
+      return cached;
+    }
+    const name = `__lumina_static_render_${this.hoistCounter++}`;
+    this.activeStaticRenderHoists.add(key);
+    try {
+      const emitted = this.emitExpr(expr);
+      const staticDomTemplateHtml = this.includeRuntime ? getStaticDomTemplateHtml(expr) : null;
+      if (staticDomTemplateHtml !== null) {
+        this.staticRenderHoistDecls.push(
+          `const ${name} = (() => { const __lumina_node = ${emitted.code}; __lumina_node.domTemplateHtml = ${JSON.stringify(staticDomTemplateHtml)}; return __lumina_node; })();`
+        );
+      } else {
+        this.staticRenderHoistDecls.push(`const ${name} = ${emitted.code};`);
+      }
+      this.staticRenderHoists.set(key, name);
+      return name;
+    } finally {
+      this.activeStaticRenderHoists.delete(key);
     }
   }
 

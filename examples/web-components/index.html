@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumina Web Components</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 2rem;
+      display: grid;
+      place-items: center;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(251, 191, 36, 0.2), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(249, 115, 22, 0.2), transparent 34%),
+        linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%);
+      color: #431407;
+    }
+    main {
+      width: min(92vw, 760px);
+      display: grid;
+      gap: 1rem;
+      padding: 2rem;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 24px 60px rgba(67, 20, 7, 0.16);
+      backdrop-filter: blur(12px);
+    }
+    h1,
+    p {
+      margin: 0;
+    }
+    .stack {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 0.8rem 1.05rem;
+      background: #9a3412;
+      color: #fff7ed;
+      font: inherit;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Web components interop</h1>
+    <p>These badges are custom elements defined through the Lumina runtime and updated by changing their attributes.</p>
+    <div class="stack">
+      <lumina-profile-badge id="badge-a" label="Ada Lovelace"></lumina-profile-badge>
+      <lumina-profile-badge id="badge-b" label="Grace Hopper"></lumina-profile-badge>
+    </div>
+    <div class="controls">
+      <button id="swap">Swap labels</button>
+      <button id="highlight">Highlight second badge</button>
+    </div>
+  </main>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

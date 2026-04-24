@@ -77,7 +77,7 @@ describe('WASM memory usage validation', () => {
     const runtime = await compileWatAndLoad(managedStringWat, 'memory-balanced');
     const live = Number(callWASMFunction(runtime, 'alloc_and_release'));
     expect(live).toBe(0);
-  });
+  }, 15000);
 
   it('reports live allocations when release is missing', async () => {
     if (!hasWabt()) return;

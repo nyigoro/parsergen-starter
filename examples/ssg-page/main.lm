@@ -1,0 +1,22 @@
+import { render } from "@std";
+import { renderApp } from "@std/ssg";
+
+component MarketingPage(title: string) -> VNode {
+  render.element("main", render.props_class("hero-shell"), [
+    render.element("p", render.props_class("hero-eyebrow"), [render.text("Lumina SSG")]),
+    render.element("h1", render.props_class("hero-title"), [render.text(title)]),
+    render.element("p", render.props_class("hero-copy"), [
+      render.text("Ship static HTML from the same component tree you hydrate in the browser.")
+    ])
+  ])
+}
+
+pub fn preview() -> string {
+  renderApp(fn(title: string) -> VNode {
+    MarketingPage(title)
+  }, "Ship Lumina UI", render.props_empty())
+}
+
+pub fn main() -> VNode {
+  MarketingPage("Ship Lumina UI")
+}

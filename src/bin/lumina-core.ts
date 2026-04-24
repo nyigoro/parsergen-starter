@@ -379,6 +379,7 @@ type FileCacheEntry = {
   diagnostics: ReturnType<typeof analyzeLumina>['diagnostics'];
   ir: ReturnType<typeof optimizeIR>;
   grammarHash: string;
+  compilerVersion?: string;
   semanticTarget?: AnalyzeTarget;
 };
 
@@ -472,6 +473,8 @@ const buildCache: BuildCache = {
   cacheDir: '.lumina-cache',
   stats: { hits: 0, misses: 0, writes: 0, invalidations: 0 },
 };
+
+const COMPILER_CACHE_VERSION = '2026-04-24-compiler-ui-dom-lowering-v1';
 
 let configFileExtensions: string[] = ['.lm', '.lumina'];
 let configStdPath = '';
@@ -1076,23 +1079,23 @@ function rewriteProgramImports(
         }
         return node;
       }
-      case 'Call': {
-        const enumName = node.enumName as string | null | undefined;
-        if (enumName) {
-          if (!scope.types.has(enumName) && renameMap.has(enumName)) {
-            node.enumName = renameMap.get(enumName);
+        case 'Call': {
+          const enumName = node.enumName as string | null | undefined;
+          if (enumName) {
+            if (!scope.types.has(enumName) && renameMap.has(enumName)) {
+              node.enumName = renameMap.get(enumName);
           } else if (!scope.values.has(enumName) && namespaceAliases.has(enumName)) {
             const replacement = namespaceAliases.get(enumName);
             node.enumName = replacement ?? null;
           }
-        }
-        const callee = node.callee as { name?: string } | undefined;
-        if (callee?.name && !scope.values.has(callee.name) && renameMap.has(callee.name)) {
-          callee.name = renameMap.get(callee.name);
-        }
-        if (Array.isArray(node.typeArgs)) {
-          node.typeArgs = node.typeArgs.map((arg) => rewriteTypeNameLiteScoped(arg, renameMap, scope.types));
-        }
+          }
+          const callee = node.callee as { name?: string } | undefined;
+          if (!node.receiver && !enumName && callee?.name && !scope.values.has(callee.name) && renameMap.has(callee.name)) {
+            callee.name = renameMap.get(callee.name);
+          }
+          if (Array.isArray(node.typeArgs)) {
+            node.typeArgs = node.typeArgs.map((arg) => rewriteTypeNameLiteScoped(arg, renameMap, scope.types));
+          }
         if (node.receiver) {
           node.receiver = rewriteExpr(node.receiver, scope);
         }
@@ -2182,7 +2185,12 @@ async function compileLumina(
   }
   const fileHash = hashText(source);
   const cached = buildCache.files.get(sourcePath);
-  if (cached && cached.hash === fileHash && cached.grammarHash === buildCache.grammarHash) {
+  if (
+    cached &&
+    cached.hash === fileHash &&
+    cached.grammarHash === buildCache.grammarHash &&
+    cached.compilerVersion === COMPILER_CACHE_VERSION
+  ) {
     buildCache.stats.hits += 1;
     if (shouldUseAstJs(cached.ast)) {
       const analysis = analyzeLumina(cached.ast as never, analysisOptions);
@@ -2251,7 +2259,12 @@ async function compileLumina(
     return { ok: true, map: result.map, ir };
   }
   const diskCache = await readDiskCache(sourcePath);
-  if (diskCache && diskCache.hash === fileHash && diskCache.grammarHash === buildCache.grammarHash) {
+  if (
+    diskCache &&
+    diskCache.hash === fileHash &&
+    diskCache.grammarHash === buildCache.grammarHash &&
+    diskCache.compilerVersion === COMPILER_CACHE_VERSION
+  ) {
     buildCache.stats.hits += 1;
     buildCache.files.set(sourcePath, diskCache);
     if (shouldUseAstJs(diskCache.ast)) {
@@ -2394,6 +2407,7 @@ async function compileLumina(
     diagnostics: analysis.diagnostics,
     ir: noOptimize ? null : optimized,
     grammarHash: buildCache.grammarHash ?? '',
+    compilerVersion: COMPILER_CACHE_VERSION,
     semanticTarget,
   };
   buildCache.files.set(sourcePath, entry);
@@ -2421,6 +2435,7 @@ async function checkLumina(
     cached &&
     cached.hash === fileHash &&
     cached.grammarHash === buildCache.grammarHash &&
+    cached.compilerVersion === COMPILER_CACHE_VERSION &&
     (cached.semanticTarget ?? 'js') === semanticTarget
   ) {
     buildCache.stats.hits += 1;
@@ -2436,6 +2451,7 @@ async function checkLumina(
     diskCache &&
     diskCache.hash === fileHash &&
     diskCache.grammarHash === buildCache.grammarHash &&
+    diskCache.compilerVersion === COMPILER_CACHE_VERSION &&
     (diskCache.semanticTarget ?? 'js') === semanticTarget
   ) {
     buildCache.stats.hits += 1;
@@ -2494,6 +2510,7 @@ async function checkLumina(
     diagnostics: combinedDiagnostics as never,
     ir: null,
     grammarHash: buildCache.grammarHash ?? '',
+    compilerVersion: COMPILER_CACHE_VERSION,
     semanticTarget,
   };
   buildCache.files.set(sourcePath, entry);

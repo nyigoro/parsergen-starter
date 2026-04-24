@@ -1,0 +1,17 @@
+import { render } from "@std";
+import { defineCustomElement, mountCustomElement } from "@std/web_components";
+
+component ProfileBadge(label: string) -> VNode {
+  render.element("span", render.props_class("profile-badge"), [render.text(label)])
+}
+
+pub fn register() -> void {
+  let _defined = defineCustomElement<string>("lumina-profile-badge", fn(label: string) -> VNode {
+    ProfileBadge(label)
+  }, render.props_empty());
+  let _mounted = mountCustomElement<string>(render.props_empty(), fn(label: string) -> VNode {
+    ProfileBadge(label)
+  }, render.props_empty());
+}
+
+register();

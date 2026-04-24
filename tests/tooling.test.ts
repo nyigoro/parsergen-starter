@@ -23,6 +23,7 @@ describe('Lumina tooling helpers', () => {
       body: [
         {
           type: 'FnDecl',
+          declarationKind: 'fn',
           name: 'public_fn',
           async: false,
           params: [],
@@ -32,6 +33,7 @@ describe('Lumina tooling helpers', () => {
         },
         {
           type: 'FnDecl',
+          declarationKind: 'fn',
           name: 'private_fn',
           async: false,
           params: [],

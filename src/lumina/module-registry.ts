@@ -4671,6 +4671,19 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const rendererFactoryT = freshTypeVar();
     const clickReturnT = freshTypeVar();
     const textType: Type = fnType([textValueT], vnodeT);
+    const liveTextSourceT = freshTypeVar();
+    const liveTextType: Type = fnType([liveTextSourceT], vnodeT);
+    const indexListSourceT = freshTypeVar();
+    const indexListType: Type = fnType([
+      adt('Signal', [indexListSourceT]),
+      fnType([adt('Signal', [primitive('any')]), primitive('int')], vnodeT),
+    ], vnodeT);
+    const forListSourceT = freshTypeVar();
+    const forListType: Type = fnType([
+      adt('Signal', [forListSourceT]),
+      fnType([primitive('any'), primitive('int')], primitive('any')),
+      fnType([adt('Signal', [primitive('any')]), adt('Signal', [primitive('int')])], vnodeT),
+    ], vnodeT);
     const elementType: Type = fnType([primitive('string'), attrsT, childrenT], vnodeT);
     const fragmentType: Type = fnType([fragmentChildrenT], vnodeT);
     const propsEmptyType: Type = fnType([], primitive('any'));
@@ -4995,6 +5008,39 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'VNode',
             schemeFromVars(textType, [textValueT]),
             ['value'],
+            'std://render'
+          ),
+        ],
+        [
+          'liveText',
+          moduleFunctionWithScheme(
+            'liveText',
+            ['any'],
+            'VNode',
+            schemeFromVars(liveTextType, [liveTextSourceT]),
+            ['signal'],
+            'std://render'
+          ),
+        ],
+        [
+          'indexList',
+          moduleFunctionWithScheme(
+            'indexList',
+            ['Signal<any>', 'fn(Signal<any>, int) -> VNode'],
+            'VNode',
+            schemeFromVars(indexListType, []),
+            ['items', 'renderItem'],
+            'std://render'
+          ),
+        ],
+        [
+          'forList',
+          moduleFunctionWithScheme(
+            'forList',
+            ['Signal<any>', 'fn(any, int) -> any', 'fn(Signal<any>, Signal<int>) -> VNode'],
+            'VNode',
+            schemeFromVars(forListType, []),
+            ['items', 'keyOf', 'renderItem'],
             'std://render'
           ),
         ],

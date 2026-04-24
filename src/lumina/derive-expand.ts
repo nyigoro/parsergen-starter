@@ -139,6 +139,7 @@ const makeReturnMethod = (
   location?: Location
 ): LuminaFnDecl => ({
   type: 'FnDecl',
+  declarationKind: 'fn',
   name: methodName,
   async: false,
   params,

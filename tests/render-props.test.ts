@@ -150,7 +150,10 @@ describe('render prop helpers', () => {
     expect(js).toContain('props_on_checked_change');
     expect(js).toContain('props_on_submit');
     expect(js).toContain('composeHandlers');
-    expect(js).toContain('children(text("item"))');
+    expect(
+      js.includes('children(text("item"))')
+      || (js.includes('const __lumina_static_render_') && js.includes('children(__lumina_static_render_'))
+    ).toBe(true);
     expect(js).toContain('slot(text(useContext(theme)), 0)');
   });
 });

@@ -4,6 +4,18 @@ pub fn text(value: any) -> VNode {
   render.text(value)
 }
 
+pub fn liveText(value: any) -> VNode {
+  render.liveText(value)
+}
+
+pub fn indexList(items: Signal<any>, renderItem: fn(Signal<any>, int) -> VNode) -> VNode {
+  render.indexList(items, renderItem)
+}
+
+pub fn forList(items: Signal<any>, keyOf: fn(any, int) -> any, renderItem: fn(Signal<any>, Signal<int>) -> VNode) -> VNode {
+  render.forList(items, keyOf, renderItem)
+}
+
 pub fn fragment(children: any) -> VNode {
   render.fragment(children)
 }

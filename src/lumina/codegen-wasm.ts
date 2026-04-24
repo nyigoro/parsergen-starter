@@ -915,6 +915,7 @@ export function generateWasmTextModuleFromAst(
         if (!traitMethod.body || overrides.has(traitMethod.name)) continue;
         methodsToRegister.push({
           type: 'FnDecl',
+          declarationKind: 'fn',
           name: traitMethod.name,
           async: false,
           params: traitMethod.params ?? [],
@@ -1253,6 +1254,7 @@ class WasmBuilder {
     const params = [...captureParams, ...(info.lambda.params ?? [])];
     return {
       type: 'FnDecl',
+      declarationKind: 'fn',
       name: info.fnName,
       async: !!info.lambda.async,
       params,

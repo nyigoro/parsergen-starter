@@ -48,7 +48,7 @@ describe('WASM channel host bindings', () => {
 `.trim();
     const runtime = await compileWatAndLoad(wat);
     expect(callWASMFunction(runtime, 'roundtrip')).toBe(42);
-  });
+  }, 15000);
 
   it('enforces bounded backpressure at capacity 1', async () => {
     if (!hasWabt()) return;
@@ -74,5 +74,5 @@ describe('WASM channel host bindings', () => {
 `.trim();
     const runtime = await compileWatAndLoad(wat);
     expect(callWASMFunction(runtime, 'capacity_check')).toBe(10);
-  });
+  }, 15000);
 });

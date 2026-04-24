@@ -122,6 +122,8 @@ describe('@std/render module', () => {
         let _submit = render.props_on_submit(fn() -> void {
           let _ = 0;
         });
+        let row = render.signal("email");
+        let _live = render.liveText(row);
         let resource = render.createResource("channel", || loadChannel(), 0);
         let _status = render.resourceStatus(resource);
         let _data = render.resourceData(resource);
@@ -263,6 +265,7 @@ describe('@std/render module', () => {
 
       fn main() -> string {
         let harness = render.testingCreateDomHarness();
+        let rows = render.signal(["a", "b"]);
         let _node = render.renderApp(fn(label: string) -> VNode {
           app(label)
         }, "Clicks");
@@ -278,6 +281,18 @@ describe('@std/render module', () => {
         let _roles = render.testingQueryAllByRole(harness, "button");
         let _transition = render.transitionPresence(render.signal(true), render.props_empty(), 120, fn() -> any {
           "fade"
+        });
+        let _index = render.indexList(rows, fn(row: Signal<any>, index: int) -> VNode {
+          render.element("li", 0, [render.liveText(row), render.text(index)])
+        });
+        let keyedRows = render.signal(["Alpha", "Beta"]);
+        let _for = render.forList(keyedRows, fn(row: any, index: int) -> any {
+          row
+        }, fn(row: Signal<any>, index: Signal<int>) -> VNode {
+          render.element("li", 0, [
+            render.liveText(row),
+            render.text(render.get(index))
+          ])
         });
         let _devtools = render.devtoolsSnapshot();
         let _installed = render.installDevtools();

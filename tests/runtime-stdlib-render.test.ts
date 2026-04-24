@@ -40,6 +40,35 @@ describe('runtime render module', () => {
     expect(runs).toBe(2);
   });
 
+  test('signal get/set preserves deep-clone isolation for plain arrays and objects', () => {
+    const source = render.signal([{ id: 'alpha', meta: { count: 1 } }]);
+
+    const read = render.get(source) as Array<{ id: string; meta: { count: number } }>;
+    read[0].meta.count = 9;
+    expect((render.get(source) as Array<{ meta: { count: number } }>)[0].meta.count).toBe(1);
+
+    const next = [{ id: 'beta', meta: { count: 2 } }];
+    render.set(source, next);
+    next[0].meta.count = 7;
+    expect((render.get(source) as Array<{ meta: { count: number } }>)[0].meta.count).toBe(2);
+  });
+
+  test('aggregate signal updates are reference-based and rerun on structurally equal clones', async () => {
+    const rows = render.signal(['alpha', 'beta']);
+    const seen: string[] = [];
+
+    const fx = render.effect(() => {
+      seen.push((render.get(rows) as string[]).join(','));
+    });
+
+    expect(seen).toEqual(['alpha,beta']);
+    expect(render.set(rows, ['alpha', 'beta'])).toBe(true);
+    await Promise.resolve();
+    expect(seen).toEqual(['alpha,beta', 'alpha,beta']);
+
+    render.dispose_effect(fx);
+  });
+
   test('effect cleanup runs before rerun and on dispose', async () => {
     const source = render.signal(0);
     const log: string[] = [];
@@ -72,6 +101,53 @@ describe('runtime render module', () => {
 
     expect(parsed).toEqual(node);
     expect(parsed.kind).toBe('element');
+  });
+
+  test('liveText snapshots to string output while staying signal-backed in DOM mode', () => {
+    const value = render.signal('hello');
+    expect(render.render_to_string(render.liveText(value))).toBe('hello');
+
+    render.set(value, 'world');
+    expect(render.render_to_string(render.liveText(value))).toBe('world');
+  });
+
+  test('indexList snapshots current array values for string output', () => {
+    const rows = render.signal(['alpha', 'beta']);
+    const node = render.indexList(rows, (row, index) =>
+      render.element('li', { 'data-index': String(index) }, [render.liveText(row)])
+    );
+
+    expect(render.render_to_string(node)).toContain('data-lumina-index-list');
+    expect(render.render_to_string(node)).toContain('alpha');
+    expect(render.render_to_string(node)).toContain('beta');
+
+    render.set(rows, ['alpha', 'gamma']);
+    expect(render.render_to_string(node)).toContain('gamma');
+  });
+
+  test('forList snapshots keyed rows for string output', () => {
+    const rows = render.signal([
+      { id: 'alpha', label: 'Alpha' },
+      { id: 'beta', label: 'Beta' },
+    ]);
+    const node = render.forList(
+      rows,
+      (row: { id: string }) => row.id,
+      (row, index) =>
+        render.element('li', { 'data-index': String(render.get(index)) }, [
+          render.liveText(render.memo(() => render.get(row).label)),
+        ])
+    );
+
+    expect(render.render_to_string(node)).toContain('data-lumina-for-list');
+    expect(render.render_to_string(node)).toContain('Alpha');
+    expect(render.render_to_string(node)).toContain('Beta');
+
+    render.set(rows, [
+      { id: 'alpha', label: 'Alpha*' },
+      { id: 'beta', label: 'Beta' },
+    ]);
+    expect(render.render_to_string(node)).toContain('Alpha*');
   });
 
   test('renderer root lifecycle delegates to renderer hooks', () => {

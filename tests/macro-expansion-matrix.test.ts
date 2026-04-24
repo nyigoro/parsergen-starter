@@ -829,10 +829,29 @@ describe('macro expansion matrix: module visibility and order', () => {
         expect(output).toMatch(/const helper = 1;/);
         expect(output).toMatch(/return helper;/);
         expect(output).not.toMatch(/return __lumina_bundle_\d+_helper;/);
-      }
-    );
+        }
+      );
+    });
+
+    it('D07 bundled renames do not rewrite receiver method names', async () => {
+      await createTempProject(
+        {
+          'main.lm': `
+            import { render } from "@std";
+
+            fn main() -> any {
+              render.props_empty()
+            }
+          `,
+        },
+        async ({ ok, output }) => {
+          expect(ok).toBe(true);
+          expect(output).toMatch(/render\.props_empty\(\)/);
+          expect(output).not.toMatch(/render\.__lumina_bundle_\d+_props_empty\(\)/);
+        }
+      );
+    });
   });
-});
 
 describe('macro expansion matrix: repetition and edge tokens', () => {
   const cases: Array<{ name: string; source: string; assert: (ast: LuminaProgram, diagnostics: Diagnostic[]) => void }> = [

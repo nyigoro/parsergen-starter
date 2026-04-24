@@ -1,0 +1,47 @@
+import { reactive, render } from "@std";
+import { checkbox, submitProps, textInput } from "@std/forms";
+import { createResource, read, status } from "@std/resource";
+import { createStore, get as storeGet, set as storeSet } from "@std/store";
+
+async fn loadProfile() -> string {
+  "Ada Lovelace"
+}
+
+component ProfileWorkspace(label: string) -> VNode {
+  let name = reactive.createSignal("");
+  let ready = reactive.createSignal(false);
+  let draft = createStore<string>("draft");
+  let profile = createResource<string>("example:profile", || loadProfile());
+
+  render.element("section", render.props_class("profile-workspace"), [
+    render.element("h1", render.props_class("profile-title"), [render.text(label)]),
+    render.element("p", render.props_class("profile-status"), [render.text(status(profile))]),
+    render.suspense(render.text("Loading profile"), || [
+      render.errorBoundary(render.text("Profile failed"), || [
+        render.element("p", render.props_class("profile-name"), [render.text(read(profile))])
+      ])
+    ]),
+    render.element("form", submitProps(fn() -> void {
+      let _ = storeSet(draft, reactive.get(name))
+    }, render.props_class("profile-form")), [
+      render.element("input", textInput(name, render.props_class("profile-input")), []),
+      render.element("label", render.props_class("profile-ready"), [
+        render.element("input", checkbox(ready, render.props_class("profile-checkbox")), []),
+        render.text("Ready to publish")
+      ]),
+      render.element("button", render.props_class("profile-submit"), [render.text("Save draft")])
+    ]),
+    render.element("p", render.props_class("profile-preview"), [
+      render.text("Stored draft: "),
+      render.text(storeGet(draft))
+    ])
+  ])
+}
+
+pub fn main() -> void {
+  let container = render.dom_get_element_by_id("app");
+  let renderer = render.createDomRenderer();
+  let _mounted = render.mount_reactive(renderer, container, || ProfileWorkspace("Profile workspace"));
+}
+
+main();

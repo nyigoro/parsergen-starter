@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
@@ -10,6 +11,9 @@ type CompilerModule = {
     options?: { target?: 'esm' | 'cjs'; includeRuntime?: boolean; sourceMap?: boolean; sourceFile?: string; sourceContent?: string }
   ) => { code: string };
 };
+
+const runtimeImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<CompilerModule>;
+const nodeRequire = createRequire(__filename);
 
 const importStatementRegex = /^\s*import\s+.+?from\s+["']([^"']+)["'];?\s*$/gm;
 const sourceBackedStdModules = new Set([
@@ -122,7 +126,11 @@ export function luminaPlugin(): Plugin {
 
   const getCompiler = async (): Promise<CompilerModule> => {
     if (!compilerPromise) {
-      compilerPromise = import(pathToFileUrl(path.join(repoRoot, 'dist', 'index.js')).href) as Promise<CompilerModule>;
+      if (process.env.JEST_WORKER_ID) {
+        compilerPromise = Promise.resolve(nodeRequire(path.join(repoRoot, 'src', 'index.ts')) as CompilerModule);
+      } else {
+        compilerPromise = runtimeImport(pathToFileUrl(path.join(repoRoot, 'dist', 'index.js')).href);
+      }
     }
     return compilerPromise;
   };

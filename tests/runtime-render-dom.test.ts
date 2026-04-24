@@ -32,8 +32,43 @@ class FakeNode {
   }
 
   appendChild(node: FakeNode): FakeNode {
+    const currentParent = node.parentNode;
+    if (currentParent && currentParent !== this) {
+      currentParent.removeChild(node);
+    }
+    if (currentParent === this) {
+      const currentIndex = this.nodes.indexOf(node);
+      if (currentIndex >= 0) {
+        this.nodes.splice(currentIndex, 1);
+      }
+    }
     node.parentNode = this;
     this.nodes.push(node);
+    return node;
+  }
+
+  insertBefore(node: FakeNode, referenceNode: FakeNode | null): FakeNode {
+    const currentParent = node.parentNode;
+    if (currentParent && currentParent !== this) {
+      currentParent.removeChild(node);
+    }
+    if (currentParent === this) {
+      const currentIndex = this.nodes.indexOf(node);
+      if (currentIndex >= 0) {
+        this.nodes.splice(currentIndex, 1);
+      }
+    }
+    node.parentNode = this;
+    if (referenceNode == null) {
+      this.nodes.push(node);
+      return node;
+    }
+    const index = this.nodes.indexOf(referenceNode);
+    if (index < 0) {
+      this.nodes.push(node);
+      return node;
+    }
+    this.nodes.splice(index, 0, node);
     return node;
   }
 
@@ -55,6 +90,63 @@ class FakeNode {
     }
     return oldChild;
   }
+
+  cloneNode(_deep?: boolean): FakeNode {
+    const clone = new FakeNode();
+    clone.textContent = this.textContent;
+    return clone;
+  }
+}
+
+class FakeDocumentFragment extends FakeNode {
+  override cloneNode(deep = false): FakeNode {
+    const clone = new FakeDocumentFragment();
+    if (deep) {
+      for (const child of this.childNodes) {
+        clone.appendChild(child.cloneNode(true));
+      }
+    }
+    return clone;
+  }
+}
+
+const parseTemplateIntoFragment = (html: string, ownerDocument: FakeDocument): FakeDocumentFragment => {
+  const fragment = new FakeDocumentFragment();
+  const stack: FakeNode[] = [fragment];
+  const tokenPattern = /<!--[\s\S]*?-->|<\/?[^>]+>|[^<]+/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(html))) {
+    const token = match[0];
+    if (!token || token.startsWith('<!--')) continue;
+    if (token.startsWith('</')) {
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+    if (token.startsWith('<')) {
+      const opening = /^<([A-Za-z0-9-]+)([^>]*)\/?>$/.exec(token.trim());
+      if (!opening) continue;
+      const [, tagName, rawAttrs] = opening;
+      const element = new FakeElement(tagName, ownerDocument);
+      const attrPattern = /([A-Za-z_:][-A-Za-z0-9_:.]*)(?:="([^"]*)")?/g;
+      let attrMatch: RegExpExecArray | null;
+      while ((attrMatch = attrPattern.exec(rawAttrs))) {
+        const [, name, value] = attrMatch;
+        element.setAttribute(name, value ?? '');
+      }
+      stack[stack.length - 1].appendChild(element);
+      if (!token.endsWith('/>')) {
+        stack.push(element);
+      }
+      continue;
+    }
+
+    if (token.length > 0) {
+      stack[stack.length - 1].appendChild(new FakeTextNode(token));
+    }
+  }
+
+  return fragment;
 }
 
 class FakeElement extends FakeNode {
@@ -115,12 +207,65 @@ class FakeElement extends FakeNode {
   getBoundingClientRect(): { left: number; top: number; right: number; bottom: number; width: number; height: number } {
     return { ...this.boundingRect };
   }
+
+  override cloneNode(deep = false): FakeNode {
+    const clone = new FakeElement(this.tagName, this.ownerDocument);
+    clone.textContent = this.textContent;
+    clone.value = this.value;
+    clone.checked = this.checked;
+    clone.disabled = this.disabled;
+    clone.name = this.name;
+    clone.type = this.type;
+    clone.boundingRect = { ...this.boundingRect };
+    for (const [name, value] of this.attributes.entries()) {
+      clone.setAttribute(name, value);
+    }
+    for (const [name, value] of Object.entries(this.style)) {
+      if (name === 'setProperty') continue;
+      clone.style[name] = value;
+    }
+    if (deep) {
+      for (const child of this.childNodes) {
+        clone.appendChild(child.cloneNode(true));
+      }
+    }
+    return clone;
+  }
 }
 
 class FakeTextNode extends FakeNode {
   constructor(value: string) {
     super();
     this.textContent = value;
+  }
+
+  override cloneNode(): FakeNode {
+    return new FakeTextNode(this.textContent ?? '');
+  }
+}
+
+class FakeTemplateElement extends FakeElement {
+  readonly content: FakeDocumentFragment;
+  private html = '';
+
+  constructor(ownerDocument: FakeDocument) {
+    super('template', ownerDocument);
+    this.content = new FakeDocumentFragment();
+  }
+
+  set innerHTML(value: string) {
+    this.html = value;
+    const parsed = parseTemplateIntoFragment(value, this.ownerDocument);
+    while (this.content.childNodes.length > 0) {
+      this.content.removeChild(this.content.childNodes[0]);
+    }
+    for (const child of parsed.childNodes) {
+      this.content.appendChild(child.cloneNode(true));
+    }
+  }
+
+  get innerHTML(): string {
+    return this.html;
   }
 }
 
@@ -133,6 +278,9 @@ class FakeDocument {
   }
 
   createElement(tag: string): FakeElement {
+    if (tag.toLowerCase() === 'template') {
+      return new FakeTemplateElement(this) as unknown as FakeElement;
+    }
     return new FakeElement(tag, this);
   }
 
@@ -176,6 +324,27 @@ describe('render DOM renderer', () => {
     const span = section.childNodes[1] as FakeElement;
     expect(span.tagName).toBe('span');
     expect(span.childNodes[0].textContent).toBe('world');
+  });
+
+  test('clones static DOM templates for hoisted element vnodes when template support exists', () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+
+    const vnode = render.element('section', { className: 'card' }, [
+      render.element('span', { className: 'eyebrow' }, [render.text('Profile')]),
+    ]);
+    vnode.domTemplateHtml = '<section class="card"><span class="eyebrow">Profile</span></section>';
+
+    render.mount(renderer, container, vnode);
+
+    const section = container.childNodes[0] as FakeElement;
+    expect(section.tagName).toBe('section');
+    expect(section.getAttribute('class')).toBe('card');
+    const span = section.childNodes[0] as FakeElement;
+    expect(span.tagName).toBe('span');
+    expect(span.getAttribute('class')).toBe('eyebrow');
+    expect(span.childNodes[0].textContent).toBe('Profile');
   });
 
   test('patches text in place without replacing host node', () => {
@@ -286,6 +455,383 @@ describe('render DOM renderer', () => {
     expect(container.childNodes).toHaveLength(0);
   });
 
+  test('liveText updates a mounted text node without a reactive root rerender', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const value = render.signal('A');
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('div', null, [render.liveText(value)])
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const textNode = host.childNodes[0];
+    expect(textNode.textContent).toBe('A');
+
+    render.set(value, 'B');
+    await Promise.resolve();
+    expect(textNode.textContent).toBe('B');
+
+    root.unmount();
+    expect(container.childNodes).toHaveLength(0);
+  });
+
+  test('indexList fans out one array signal into stable row text updates', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal(['A', 'B', 'C']);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.indexList(rows, (row, index) =>
+          render.element('li', { 'data-index': String(index) }, [render.liveText(row)])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    const rowA = listHost.childNodes[0] as FakeElement;
+    const rowB = listHost.childNodes[1] as FakeElement;
+    const rowC = listHost.childNodes[2] as FakeElement;
+
+    render.set(rows, ['A*', 'B', 'C']);
+    await Promise.resolve();
+
+    expect(listHost.childNodes[0]).toBe(rowA);
+    expect(listHost.childNodes[1]).toBe(rowB);
+    expect(listHost.childNodes[2]).toBe(rowC);
+    expect(rowA.childNodes[0].textContent).toBe('A*');
+    expect(rowB.childNodes[0].textContent).toBe('B');
+    expect(rowC.childNodes[0].textContent).toBe('C');
+
+    root.unmount();
+    expect(container.childNodes).toHaveLength(0);
+  });
+
+  test('indexList rebuilds its row set when the source length changes', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal(['A', 'B']);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.indexList(rows, (row) =>
+          render.element('li', null, [render.liveText(row)])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    expect(listHost.childNodes).toHaveLength(2);
+
+    render.set(rows, ['A', 'B', 'C']);
+    await Promise.resolve();
+    expect(listHost.childNodes).toHaveLength(3);
+    expect((listHost.childNodes[2] as FakeElement).childNodes[0].textContent).toBe('C');
+
+    render.set(rows, ['A']);
+    await Promise.resolve();
+    expect(listHost.childNodes).toHaveLength(1);
+    expect((listHost.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('A');
+
+    root.unmount();
+  });
+
+  test('forList updates keyed row signals without remounting stable rows', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+    ]);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', { 'data-index': render.get(index) }, [
+              render.liveText(render.memo(() => render.get(row).label)),
+            ])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    const rowA = listHost.childNodes[0] as FakeElement;
+    const rowB = listHost.childNodes[1] as FakeElement;
+
+    render.set(rows, [
+      { id: 'a', label: 'Alpha*' },
+      { id: 'b', label: 'Beta' },
+    ]);
+    await Promise.resolve();
+
+    expect(listHost.childNodes[0]).toBe(rowA);
+    expect(listHost.childNodes[1]).toBe(rowB);
+    expect(rowA.childNodes[0].textContent).toBe('Alpha*');
+    expect(rowB.childNodes[0].textContent).toBe('Beta');
+
+    root.unmount();
+  });
+
+  test('forList reorders keyed rows while preserving DOM identity and index signals', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+    ]);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', { 'data-row-id': render.memo(() => render.get(row).id) }, [
+              render.liveText(render.memo(() => `${render.get(row).label}:${render.get(index)}`)),
+            ])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    const rowA = listHost.childNodes[0] as FakeElement;
+    const rowB = listHost.childNodes[1] as FakeElement;
+    const rowC = listHost.childNodes[2] as FakeElement;
+
+    render.set(rows, [
+      { id: 'c', label: 'Gamma' },
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta*' },
+    ]);
+    await Promise.resolve();
+
+    expect(listHost.childNodes[0]).toBe(rowC);
+    expect(listHost.childNodes[1]).toBe(rowA);
+    expect(listHost.childNodes[2]).toBe(rowB);
+    expect((listHost.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('Gamma:0');
+    expect((listHost.childNodes[1] as FakeElement).childNodes[0].textContent).toBe('Alpha:1');
+    expect((listHost.childNodes[2] as FakeElement).childNodes[0].textContent).toBe('Beta*:2');
+
+    root.unmount();
+  });
+
+  test('forList adjacent keyed swaps use one DOM move without rebuild', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+    ]);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row) => render.element('li', { 'data-row-id': render.memo(() => render.get(row).id) }, [
+            render.liveText(render.memo(() => render.get(row).label)),
+          ])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    const rowA = listHost.childNodes[0];
+    const rowB = listHost.childNodes[1];
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = listHost.appendChild.bind(listHost);
+    const removeChild = listHost.removeChild.bind(listHost);
+    const insertBefore = listHost.insertBefore.bind(listHost);
+    listHost.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof listHost.appendChild;
+    listHost.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof listHost.removeChild;
+    listHost.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof listHost.insertBefore;
+
+    render.set(rows, [
+      { id: 'b', label: 'Beta' },
+      { id: 'a', label: 'Alpha' },
+      { id: 'c', label: 'Gamma' },
+    ]);
+    await Promise.resolve();
+
+    expect(listHost.childNodes[0]).toBe(rowB);
+    expect(listHost.childNodes[1]).toBe(rowA);
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(1);
+
+    root.unmount();
+  });
+
+  test('forList single keyed move updates only the moved range without rebuild', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'd', label: 'Delta' },
+    ]);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', { 'data-row-id': render.memo(() => render.get(row).id) }, [
+              render.liveText(render.memo(() => `${render.get(row).label}:${render.get(index)}`)),
+            ])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    const rowA = listHost.childNodes[0];
+    const rowB = listHost.childNodes[1];
+    const rowC = listHost.childNodes[2];
+    const rowD = listHost.childNodes[3];
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = listHost.appendChild.bind(listHost);
+    const removeChild = listHost.removeChild.bind(listHost);
+    const insertBefore = listHost.insertBefore.bind(listHost);
+    listHost.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof listHost.appendChild;
+    listHost.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof listHost.removeChild;
+    listHost.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof listHost.insertBefore;
+
+    render.set(rows, [
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'a', label: 'Alpha' },
+      { id: 'd', label: 'Delta' },
+    ]);
+    await Promise.resolve();
+
+    expect(listHost.childNodes[0]).toBe(rowB);
+    expect(listHost.childNodes[1]).toBe(rowC);
+    expect(listHost.childNodes[2]).toBe(rowA);
+    expect(listHost.childNodes[3]).toBe(rowD);
+    expect((listHost.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('Beta:0');
+    expect((listHost.childNodes[1] as FakeElement).childNodes[0].textContent).toBe('Gamma:1');
+    expect((listHost.childNodes[2] as FakeElement).childNodes[0].textContent).toBe('Alpha:2');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(1);
+
+    root.unmount();
+  });
+
+  test('forList skips host child reordering when keyed order stays the same', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+    ]);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row) => render.element('li', null, [render.liveText(render.memo(() => render.get(row).label))])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = listHost.appendChild.bind(listHost);
+    const removeChild = listHost.removeChild.bind(listHost);
+    const insertBefore = listHost.insertBefore.bind(listHost);
+    listHost.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof listHost.appendChild;
+    listHost.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof listHost.removeChild;
+    listHost.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof listHost.insertBefore;
+
+    render.set(rows, [
+      { id: 'a', label: 'Alpha*' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+    ]);
+    await Promise.resolve();
+
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(0);
+
+    root.unmount();
+  });
+
   test('component-local state survives parent rerenders', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -363,6 +909,169 @@ describe('render DOM renderer', () => {
     expect(host.childNodes[1]).toBe(buttonA);
     expect((host.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('B:0');
     expect((host.childNodes[1] as FakeElement).childNodes[0].textContent).toBe('A:1');
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('reorders keyed children without removing and re-appending the whole list', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element('section', null, render.get(items).map((item) =>
+        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+      ))
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = host.appendChild.bind(host);
+    const removeChild = host.removeChild.bind(host);
+    const insertBefore = host.insertBefore.bind(host);
+    host.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof host.appendChild;
+    host.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof host.removeChild;
+    host.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof host.insertBefore;
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'a', label: 'A' },
+      { id: 'c', label: 'C' },
+    ]);
+    await Promise.resolve();
+
+    expect((host.childNodes[0] as FakeElement).getAttribute('data-id')).toBe('b');
+    expect((host.childNodes[1] as FakeElement).getAttribute('data-id')).toBe('a');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(1);
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('moves one keyed child without rebuilding the whole list', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element(
+        'ul',
+        null,
+        render.get(items).map((item) =>
+          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+        )
+      )
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = host.appendChild.bind(host);
+    const removeChild = host.removeChild.bind(host);
+    const insertBefore = host.insertBefore.bind(host);
+    host.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof host.appendChild;
+    host.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof host.removeChild;
+    host.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof host.insertBefore;
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'a', label: 'A' },
+      { id: 'd', label: 'D' },
+    ]);
+    await Promise.resolve();
+
+    expect((host.childNodes[0] as FakeElement).getAttribute('data-id')).toBe('b');
+    expect((host.childNodes[1] as FakeElement).getAttribute('data-id')).toBe('c');
+    expect((host.childNodes[2] as FakeElement).getAttribute('data-id')).toBe('a');
+    expect((host.childNodes[3] as FakeElement).getAttribute('data-id')).toBe('d');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(1);
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('patches same-order keyed children without rebuilding the parent child list', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element('section', null, render.get(items).map((item) =>
+        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+      ))
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const buttonA = host.childNodes[0] as FakeElement;
+    const buttonB = host.childNodes[1] as FakeElement;
+    const buttonC = host.childNodes[2] as FakeElement;
+
+    let appendCount = 0;
+    let removeCount = 0;
+    const appendChild = host.appendChild.bind(host);
+    const removeChild = host.removeChild.bind(host);
+    host.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof host.appendChild;
+    host.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof host.removeChild;
+
+    render.set(items, [
+      { id: 'a', label: 'A*' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(buttonA);
+    expect(host.childNodes[1]).toBe(buttonB);
+    expect(host.childNodes[2]).toBe(buttonC);
+    expect(buttonA.childNodes[0].textContent).toBe('A*');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
 
     render.dispose_reactive(mounted);
   });

@@ -30,8 +30,43 @@ export class TestingNode {
   }
 
   appendChild(node: TestingNode): TestingNode {
+    const currentParent = node.parentNode;
+    if (currentParent && currentParent !== this) {
+      currentParent.removeChild(node);
+    }
+    if (currentParent === this) {
+      const currentIndex = this.nodes.indexOf(node);
+      if (currentIndex >= 0) {
+        this.nodes.splice(currentIndex, 1);
+      }
+    }
     node.parentNode = this;
     this.nodes.push(node);
+    return node;
+  }
+
+  insertBefore(node: TestingNode, referenceNode: TestingNode | null): TestingNode {
+    const currentParent = node.parentNode;
+    if (currentParent && currentParent !== this) {
+      currentParent.removeChild(node);
+    }
+    if (currentParent === this) {
+      const currentIndex = this.nodes.indexOf(node);
+      if (currentIndex >= 0) {
+        this.nodes.splice(currentIndex, 1);
+      }
+    }
+    node.parentNode = this;
+    if (referenceNode == null) {
+      this.nodes.push(node);
+      return node;
+    }
+    const index = this.nodes.indexOf(referenceNode);
+    if (index < 0) {
+      this.nodes.push(node);
+      return node;
+    }
+    this.nodes.splice(index, 0, node);
     return node;
   }
 

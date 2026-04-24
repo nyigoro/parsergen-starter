@@ -1,4 +1,4 @@
-import { render } from '../../dist/lumina-runtime.js';
+import { render } from './lumina-runtime.js';
 
 const appContainer = document.getElementById('app');
 if (!appContainer) {

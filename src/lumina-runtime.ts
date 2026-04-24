@@ -661,7 +661,82 @@ const runtimeEquals = (left: unknown, right: unknown): boolean => {
   return deepRuntimeEqual(left, right);
 };
 
+const FAST_CLONE_UNSUPPORTED = Symbol('lumina.fast-clone-unsupported');
+
+const isPlainCloneableObject = (value: object): boolean => {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
+
+const cloneFast = (
+  value: unknown,
+  seen: WeakMap<object, unknown> = new WeakMap()
+): unknown | typeof FAST_CLONE_UNSUPPORTED => {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'object') return value;
+
+  if (Array.isArray(value)) {
+    const cached = seen.get(value);
+    if (cached) return cached;
+    const out: unknown[] = new Array(value.length);
+    seen.set(value, out);
+    for (let index = 0; index < value.length; index += 1) {
+      const cloned = cloneFast(value[index], seen);
+      if (cloned === FAST_CLONE_UNSUPPORTED) {
+        return FAST_CLONE_UNSUPPORTED;
+      }
+      out[index] = cloned;
+    }
+    return out;
+  }
+
+  if (
+    value instanceof Date
+    || value instanceof RegExp
+    || value instanceof Map
+    || value instanceof Set
+    || value instanceof ArrayBuffer
+    || ArrayBuffer.isView(value)
+  ) {
+    return FAST_CLONE_UNSUPPORTED;
+  }
+
+  if (!isPlainCloneableObject(value)) {
+    return FAST_CLONE_UNSUPPORTED;
+  }
+
+  const cached = seen.get(value);
+  if (cached) return cached;
+  const out: Record<string, unknown> = {};
+  seen.set(value, out);
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const cloned = cloneFast(entry, seen);
+    if (cloned === FAST_CLONE_UNSUPPORTED) {
+      return FAST_CLONE_UNSUPPORTED;
+    }
+    out[key] = cloned;
+  }
+  const typeTag = getRuntimeTypeTag(value);
+  if (typeTag) {
+    try {
+      Object.defineProperty(out, '__lumina_type', {
+        value: typeTag,
+        enumerable: false,
+        writable: false,
+        configurable: false,
+      });
+    } catch {
+      out.__lumina_type = typeTag;
+    }
+  }
+  return out;
+};
+
 const cloneFallback = (value: unknown): unknown => {
+  const fast = cloneFast(value);
+  if (fast !== FAST_CLONE_UNSUPPORTED) {
+    return fast;
+  }
   if (value === null || value === undefined) return value;
   if (typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map((entry) => cloneFallback(entry));
@@ -686,6 +761,10 @@ const cloneFallback = (value: unknown): unknown => {
 };
 
 export const __lumina_clone = <T>(value: T): T => {
+  const fast = cloneFast(value);
+  if (fast !== FAST_CLONE_UNSUPPORTED) {
+    return fast as T;
+  }
   const cloneFn = (globalThis as { structuredClone?: <U>(entry: U) => U }).structuredClone;
   if (typeof cloneFn === 'function') {
     try {
@@ -5918,7 +5997,13 @@ export class Signal<T> implements ReactiveSource {
 
   set(next: T): boolean {
     const cloned = __lumina_clone(next);
-    if (runtimeEquals(this.value, cloned)) return false;
+    const currentIsAggregate = this.value !== null && typeof this.value === 'object';
+    const nextIsAggregate = cloned !== null && typeof cloned === 'object';
+    if (currentIsAggregate || nextIsAggregate) {
+      if (Object.is(this.value, cloned)) return false;
+    } else if (runtimeEquals(this.value, cloned)) {
+      return false;
+    }
     this.value = cloned;
     notifyReactiveObservers(this);
     scheduleDevtoolsNotify();
@@ -6166,13 +6251,19 @@ const asResourceHandle = <T>(candidate: unknown, apiName: string): ResourceHandl
 };
 
 export interface VNode {
-  kind: 'text' | 'element' | 'fragment' | 'portal';
+  kind: 'text' | 'live_text' | 'index_list' | 'for_list' | 'element' | 'fragment' | 'portal';
   tag?: string;
   key?: string | number;
   text?: string;
+  signal?: Signal<unknown> | Memo<unknown>;
+  itemsSignal?: Signal<unknown>;
+  listRender?: (item: Signal<unknown>, index: number) => VNodeInput;
+  listIndexedRender?: (item: Signal<unknown>, index: Signal<number>) => VNodeInput;
+  listKey?: (item: unknown, index: number) => string | number;
   props?: Record<string, unknown>;
   children?: VNode[];
   target?: string | null;
+  domTemplateHtml?: string | null;
 }
 
 type VNodeInput = VNode | string | number | boolean | null | undefined | VNodeInput[];
@@ -6290,6 +6381,9 @@ export const isVNode = (value: unknown): value is VNode => {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<VNode>;
   return candidate.kind === 'text'
+    || candidate.kind === 'live_text'
+    || candidate.kind === 'index_list'
+    || candidate.kind === 'for_list'
     || candidate.kind === 'element'
     || candidate.kind === 'fragment'
     || candidate.kind === 'portal';
@@ -6298,6 +6392,115 @@ export const isVNode = (value: unknown): value is VNode => {
 export const vnodeText = (value: unknown): VNode => ({
   kind: 'text',
   text: value == null ? '' : String(value),
+});
+
+export const vnodeLiveText = (signal: Signal<unknown> | Memo<unknown>): VNode => ({
+  kind: 'live_text',
+  signal,
+});
+
+const createStaticSignal = <T>(value: T): Signal<T> => {
+  let current = __lumina_clone(value);
+  return {
+    observers: new Set<ReactiveComputation>(),
+    __luminaDevtoolsId: 0,
+    get: (): T => __lumina_clone(current),
+    peek: (): T => __lumina_clone(current),
+    set: (next: T): boolean => {
+      current = __lumina_clone(next);
+      return true;
+    },
+    update: (updater: (value: T) => T): T => {
+      current = __lumina_clone(updater(__lumina_clone(current)));
+      return __lumina_clone(current);
+    },
+  } as Signal<T>;
+};
+
+const readSignalRaw = <T>(signal: Signal<T>, tracked: boolean): T => {
+  if (tracked) {
+    trackReactiveSource(signal);
+  }
+  return (signal as unknown as { value: T }).value;
+};
+
+const readIndexListValues = (signal: Signal<unknown>, tracked: boolean): unknown[] => {
+  const value = readSignalRaw(signal, tracked);
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    const iterator = (value as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
+    if (typeof iterator === 'function') {
+      return Array.from(value as Iterable<unknown>);
+    }
+  }
+  return [];
+};
+
+const materializeIndexListChildren = (node: VNode, tracked: boolean): VNode[] => {
+  const source = node.itemsSignal;
+  const renderItem = node.listRender;
+  if (!source || typeof renderItem !== 'function') {
+    return [];
+  }
+  return readIndexListValues(source, tracked).map((value, index) =>
+    coerceRenderableToVNode(renderItem(createStaticSignal(value), index))
+  );
+};
+
+const indexListHostProps = {
+  style: { display: 'contents' },
+  'data-lumina-index-list': 'true',
+};
+
+const forListHostProps = {
+  style: { display: 'contents' },
+  'data-lumina-for-list': 'true',
+};
+
+const coerceListKey = (value: unknown, index: number): string | number => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  throw new Error(`List key at index ${index} must be a string or number`);
+};
+
+export const vnodeIndexList = (
+  itemsSignal: Signal<unknown>,
+  renderItem: (item: Signal<unknown>, index: number) => VNodeInput
+): VNode => ({
+  kind: 'index_list',
+  itemsSignal,
+  listRender: renderItem,
+});
+
+const materializeForListChildren = (node: VNode, tracked: boolean): VNode[] => {
+  const source = node.itemsSignal;
+  const keyOf = node.listKey;
+  const renderItem = node.listIndexedRender;
+  if (!source || typeof keyOf !== 'function' || typeof renderItem !== 'function') {
+    return [];
+  }
+  const seenKeys = new Set<string | number>();
+  return readIndexListValues(source, tracked).map((value, index) => {
+    const key = coerceListKey(keyOf(value, index), index);
+    if (seenKeys.has(key)) {
+      throw new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`);
+    }
+    seenKeys.add(key);
+    const vnode = coerceRenderableToVNode(renderItem(createStaticSignal(value), createStaticSignal(index)));
+    return applyVNodeKey(vnode, key);
+  });
+};
+
+export const vnodeForList = (
+  itemsSignal: Signal<unknown>,
+  keyOf: (item: unknown, index: number) => string | number,
+  renderItem: (item: Signal<unknown>, index: Signal<number>) => VNodeInput
+): VNode => ({
+  kind: 'for_list',
+  itemsSignal,
+  listKey: keyOf,
+  listIndexedRender: renderItem,
 });
 
 export const vnodeElement = (
@@ -6323,6 +6526,25 @@ export const vnodePortal = (target: string | null | undefined, children: VNodeIn
   children: normalizeVNodeChildren(children),
 });
 
+const snapshotVNode = (node: VNode): VNode => {
+  if (node.kind === 'live_text') {
+    return vnodeText(node.signal ? node.signal.get() : '');
+  }
+  if (node.kind === 'index_list') {
+    return vnodeElement('lumina-index-list', indexListHostProps, materializeIndexListChildren(node, false));
+  }
+  if (node.kind === 'for_list') {
+    return vnodeElement('lumina-for-list', forListHostProps, materializeForListChildren(node, false));
+  }
+  if (node.kind === 'element' || node.kind === 'fragment' || node.kind === 'portal') {
+    return {
+      ...node,
+      children: asDomChildren(node).map((child) => snapshotVNode(child)),
+    };
+  }
+  return node;
+};
+
 const coerceRenderableToVNode = (input: VNodeInput): VNode => {
   const children = normalizeVNodeChildren(input);
   if (children.length === 1) {
@@ -6341,7 +6563,7 @@ const applyVNodeKey = (node: VNode, key: unknown): VNode => {
 const resolveChildrenInput = (input: unknown): VNodeInput =>
   typeof input === 'function' ? (input as () => VNodeInput)() : (input as VNodeInput);
 
-export const serializeVNode = (node: VNode): string => JSON.stringify(node);
+export const serializeVNode = (node: VNode): string => JSON.stringify(snapshotVNode(node));
 
 export const parseVNode = (json: string): VNode => {
   const parsed = JSON.parse(json) as unknown;
@@ -6366,8 +6588,16 @@ interface DomNodeLike extends DomEventTargetLike {
   childNodes: ArrayLike<DomNodeLike> & Iterable<DomNodeLike>;
   parentNode: DomNodeLike | null;
   appendChild: (node: DomNodeLike) => DomNodeLike;
+  insertBefore?: (node: DomNodeLike, referenceNode: DomNodeLike | null) => DomNodeLike;
   removeChild: (node: DomNodeLike) => DomNodeLike;
   replaceChild?: (newChild: DomNodeLike, oldChild: DomNodeLike) => DomNodeLike;
+  __luminaIndexListEffect?: Effect | null;
+  __luminaIndexListSource?: Signal<unknown> | null;
+  __luminaIndexListRender?: ((item: Signal<unknown>, index: number) => VNodeInput) | null;
+  __luminaForListEffect?: Effect | null;
+  __luminaForListSource?: Signal<unknown> | null;
+  __luminaForListKey?: ((item: unknown, index: number) => string | number) | null;
+  __luminaForListRender?: ((item: Signal<unknown>, index: Signal<number>) => VNodeInput) | null;
 }
 
 interface DomElementLike extends DomNodeLike {
@@ -6397,12 +6627,22 @@ interface DomDocumentLike {
   getElementById?: (id: string) => DomElementLike | null;
 }
 
+interface DomTemplateLike extends DomElementLike {
+  innerHTML?: string;
+  content?: {
+    childNodes?: DomNodeLike[];
+    cloneNode?: (deep?: boolean) => DomNodeLike;
+  };
+}
+
 interface DomRendererOptions {
   document?: DomDocumentLike;
 }
 
 type DomEventMap = Record<string, (event: unknown) => void>;
 type DomEventStore = Map<DomNodeLike, DomEventMap>;
+type DomLiveTextStore = WeakMap<DomNodeLike, Effect>;
+const domTemplateCache = new WeakMap<DomDocumentLike, Map<string, DomTemplateLike>>();
 
 const getDomDocument = (options?: DomRendererOptions): DomDocumentLike => {
   if (options?.document) return options.document;
@@ -6416,6 +6656,45 @@ const getDomDocument = (options?: DomRendererOptions): DomDocumentLike => {
 const asDomChildren = (node: VNode): VNode[] => node.children ?? [];
 
 const isEventProp = (name: string): boolean => /^on[A-Z]/.test(name);
+
+const cloneStaticTemplateElement = (
+  documentLike: DomDocumentLike,
+  html: string
+): DomElementLike | null => {
+  let cache = domTemplateCache.get(documentLike);
+  if (!cache) {
+    cache = new Map<string, DomTemplateLike>();
+    domTemplateCache.set(documentLike, cache);
+  }
+
+  let template = cache.get(html);
+  if (!template) {
+    const candidate = documentLike.createElement('template') as DomTemplateLike;
+    if (!candidate || typeof candidate !== 'object') return null;
+    if (!('innerHTML' in candidate) || !candidate.content || typeof candidate.content.cloneNode !== 'function') {
+      return null;
+    }
+    candidate.innerHTML = html;
+    template = candidate;
+    cache.set(html, template);
+  }
+
+  const clonedContent = template.content?.cloneNode?.(true) as
+    | (DomNodeLike & { childNodes?: ArrayLike<DomNodeLike> | Iterable<DomNodeLike> })
+    | undefined;
+  const rawChildNodes = clonedContent?.childNodes;
+  const childNodes =
+    rawChildNodes == null
+      ? []
+      : Array.isArray(rawChildNodes)
+        ? rawChildNodes
+        : Array.from(rawChildNodes as Iterable<DomNodeLike> | ArrayLike<DomNodeLike>);
+  if (childNodes.length !== 1) {
+    return null;
+  }
+  const root = childNodes[0];
+  return root && typeof root === 'object' ? (root as DomElementLike) : null;
+};
 
 const normalizeEventName = (name: string): string => name.slice(2).toLowerCase();
 
@@ -6572,11 +6851,30 @@ const resolvePortalTarget = (node: VNode, documentLike: DomDocumentLike): DomEle
 const disposeDomNode = (
   node: DomNodeLike,
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): void => {
+  const liveTextEffect = liveTextStore.get(node);
+  if (liveTextEffect) {
+    liveTextEffect.dispose();
+    liveTextStore.delete(node);
+  }
+  if (node.__luminaIndexListEffect) {
+    node.__luminaIndexListEffect.dispose();
+    node.__luminaIndexListEffect = null;
+    node.__luminaIndexListSource = null;
+    node.__luminaIndexListRender = null;
+  }
+  if (node.__luminaForListEffect) {
+    node.__luminaForListEffect.dispose();
+    node.__luminaForListEffect = null;
+    node.__luminaForListSource = null;
+    node.__luminaForListKey = null;
+    node.__luminaForListRender = null;
+  }
   const portal = portalStore.get(node);
   if (portal?.host) {
-    disposeDomNode(portal.host, eventStore, portalStore);
+    disposeDomNode(portal.host, eventStore, portalStore, liveTextStore);
     const portalParent = portal.host.parentNode;
     if (portalParent) {
       try {
@@ -6589,7 +6887,7 @@ const disposeDomNode = (
   portalStore.delete(node);
 
   for (const child of readChildNodes(node)) {
-    disposeDomNode(child, eventStore, portalStore);
+    disposeDomNode(child, eventStore, portalStore, liveTextStore);
   }
 
   eventStore.delete(node);
@@ -6599,11 +6897,12 @@ const replaceChildren = (
   container: DomNodeLike,
   children: DomNodeLike[],
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): void => {
   const current = readChildNodes(container);
   for (const child of current) {
-    disposeDomNode(child, eventStore, portalStore);
+    disposeDomNode(child, eventStore, portalStore, liveTextStore);
     container.removeChild(child);
   }
   for (const child of children) {
@@ -6620,6 +6919,289 @@ const hasKeyedChildren = (children: VNode[]): boolean => children.some((child) =
 
 const duplicateKeyError = (key: string | number): Error =>
   new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`);
+
+type KeyedListTransition =
+  | { kind: 'same_order' }
+  | { kind: 'adjacent_swap'; left: number; right: number }
+  | { kind: 'single_move'; from: number; to: number }
+  | { kind: 'complex_reorder' };
+
+const getTransitionAffectedRange = (
+  transition: KeyedListTransition,
+  length: number
+): { start: number; end: number } | null => {
+  switch (transition.kind) {
+    case 'same_order':
+      return null;
+    case 'adjacent_swap':
+      return { start: transition.left, end: transition.right };
+    case 'single_move':
+      return {
+        start: Math.min(transition.from, transition.to),
+        end: Math.max(transition.from, transition.to),
+      };
+    case 'complex_reorder':
+      return length > 0 ? { start: 0, end: length - 1 } : null;
+  }
+};
+
+const findSingleMove = <T>(
+  previous: T[],
+  next: T[],
+  equals: (left: T, right: T) => boolean
+): { from: number; to: number } | null => {
+  if (previous.length !== next.length || previous.length < 2) {
+    return null;
+  }
+
+  let first = -1;
+  for (let index = 0; index < previous.length; index += 1) {
+    if (!equals(previous[index], next[index])) {
+      first = index;
+      break;
+    }
+  }
+  if (first < 0) return null;
+
+  let last = -1;
+  for (let index = previous.length - 1; index >= 0; index -= 1) {
+    if (!equals(previous[index], next[index])) {
+      last = index;
+      break;
+    }
+  }
+  if (last <= first) return null;
+
+  for (let from = first + 1; from <= last; from += 1) {
+    if (!equals(previous[from], next[first])) continue;
+    let matches = true;
+    for (let index = first; index < from; index += 1) {
+      if (!equals(previous[index], next[index + 1])) {
+        matches = false;
+        break;
+      }
+    }
+    if (!matches) continue;
+    for (let index = from + 1; index <= last; index += 1) {
+      if (!equals(previous[index], next[index])) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return { from, to: first };
+    }
+  }
+
+  for (let to = first + 1; to <= last; to += 1) {
+    if (!equals(previous[first], next[to])) continue;
+    let matches = true;
+    for (let index = first + 1; index <= to; index += 1) {
+      if (!equals(previous[index], next[index - 1])) {
+        matches = false;
+        break;
+      }
+    }
+    if (!matches) continue;
+    for (let index = to + 1; index <= last; index += 1) {
+      if (!equals(previous[index], next[index])) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return { from: first, to };
+    }
+  }
+
+  return null;
+};
+
+const analyzeSequenceTransition = <T>(
+  previous: T[],
+  next: T[],
+  equals: (left: T, right: T) => boolean
+): KeyedListTransition => {
+  if (previous.length !== next.length) {
+    return { kind: 'complex_reorder' };
+  }
+
+  let identical = true;
+  for (let index = 0; index < previous.length; index += 1) {
+    if (!equals(previous[index], next[index])) {
+      identical = false;
+      break;
+    }
+  }
+  if (identical) {
+    return { kind: 'same_order' };
+  }
+
+  if (previous.length >= 2) {
+    let left = -1;
+    for (let index = 0; index < previous.length; index += 1) {
+      if (!equals(previous[index], next[index])) {
+        left = index;
+        break;
+      }
+    }
+    const right = left + 1;
+    if (
+      left >= 0
+      && right < previous.length
+      && equals(previous[left], next[right])
+      && equals(previous[right], next[left])
+    ) {
+      let restMatches = true;
+      for (let index = right + 1; index < previous.length; index += 1) {
+        if (!equals(previous[index], next[index])) {
+          restMatches = false;
+          break;
+        }
+      }
+      if (restMatches) {
+        return { kind: 'adjacent_swap', left, right };
+      }
+    }
+  }
+
+  const singleMove = findSingleMove(previous, next, equals);
+  if (singleMove) {
+    return { kind: 'single_move', from: singleMove.from, to: singleMove.to };
+  }
+
+  return { kind: 'complex_reorder' };
+};
+
+const analyzeKeyedChildTransition = (prevChildren: VNode[], nextChildren: VNode[]): KeyedListTransition | null => {
+  if (
+    prevChildren.length !== nextChildren.length
+    || !prevChildren.every((child) => hasVNodeKey(child))
+    || !nextChildren.every((child) => hasVNodeKey(child))
+  ) {
+    return null;
+  }
+
+  const assertUniqueKeys = (children: VNode[]): void => {
+    const seenKeys = new Set<string | number>();
+    for (const child of children) {
+      if (hasVNodeKey(child)) {
+        if (seenKeys.has(child.key)) {
+          throw duplicateKeyError(child.key);
+        }
+        seenKeys.add(child.key);
+      }
+    }
+  };
+  assertUniqueKeys(prevChildren);
+  assertUniqueKeys(nextChildren);
+
+  return analyzeSequenceTransition(prevChildren, nextChildren, (left, right) =>
+    hasVNodeKey(left) && hasVNodeKey(right) ? left.key === right.key : false
+  );
+};
+
+const analyzeDomChildTransition = (currentChildren: DomNodeLike[], nextChildren: DomNodeLike[]): KeyedListTransition =>
+  analyzeSequenceTransition(currentChildren, nextChildren, (left, right) => left === right);
+
+interface ForListState {
+  entries: ForListEntry[];
+  entriesByKey: Map<string | number, ForListEntry>;
+  order: Array<string | number>;
+}
+
+const createForListState = (entries: ForListEntry[]): ForListState => ({
+  entries,
+  entriesByKey: new Map(entries.map((entry) => [entry.key, entry] as const)),
+  order: entries.map((entry) => entry.key),
+});
+
+const buildKeyedOrder = (
+  items: unknown[],
+  keyOf: (item: unknown, index: number) => string | number
+): Array<string | number> => {
+  const order: Array<string | number> = [];
+  const seen = new Set<string | number>();
+  for (let index = 0; index < items.length; index += 1) {
+    const key = coerceListKey(keyOf(items[index], index), index);
+    if (seen.has(key)) {
+      throw duplicateKeyError(key);
+    }
+    seen.add(key);
+    order.push(key);
+  }
+  return order;
+};
+
+const hasShallowEqualProps = (
+  left: Record<string, unknown> | undefined,
+  right: Record<string, unknown> | undefined
+): boolean => {
+  if (left === right) return true;
+  if (!left || !right) return !left && !right;
+
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+
+  for (const key of leftKeys) {
+    if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+    if (left[key] !== right[key]) return false;
+  }
+
+  return true;
+};
+
+const canSkipDomPatch = (prevNode: VNode, nextNode: VNode): boolean => {
+  if (prevNode === nextNode) return true;
+  if (prevNode.kind !== nextNode.kind) return false;
+
+  if (prevNode.kind === 'text' && nextNode.kind === 'text') {
+    return prevNode.text === nextNode.text;
+  }
+
+  if (prevNode.kind === 'live_text' && nextNode.kind === 'live_text') {
+    return prevNode.signal === nextNode.signal;
+  }
+
+  if (prevNode.kind === 'index_list' && nextNode.kind === 'index_list') {
+    return prevNode.itemsSignal === nextNode.itemsSignal && prevNode.listRender === nextNode.listRender;
+  }
+
+  if (prevNode.kind === 'for_list' && nextNode.kind === 'for_list') {
+    return prevNode.itemsSignal === nextNode.itemsSignal
+      && prevNode.listKey === nextNode.listKey
+      && prevNode.listIndexedRender === nextNode.listIndexedRender;
+  }
+
+  if (prevNode.kind === 'portal' || nextNode.kind === 'portal') {
+    return false;
+  }
+
+  if (prevNode.tag !== nextNode.tag || prevNode.key !== nextNode.key) {
+    return false;
+  }
+
+  if (!hasShallowEqualProps(prevNode.props, nextNode.props)) {
+    return false;
+  }
+
+  const prevChildren = asDomChildren(prevNode);
+  const nextChildren = asDomChildren(nextNode);
+  if (prevChildren.length !== nextChildren.length) {
+    return false;
+  }
+
+  if (prevChildren.length === 0) {
+    return true;
+  }
+
+  if (prevChildren.length === 1) {
+    return canSkipDomPatch(prevChildren[0], nextChildren[0]);
+  }
+
+  return false;
+};
 
 const mergeClassValues = (left: unknown, right: unknown): unknown => {
   const tokens = [left, right]
@@ -6727,7 +7309,8 @@ const patchPortalMount = (
   nextNode: VNode,
   documentLike: DomDocumentLike,
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): void => {
   const previous = portalStore.get(anchor) ?? { target: null, host: null };
   const nextTarget = resolvePortalTarget(nextNode, documentLike);
@@ -6736,7 +7319,7 @@ const patchPortalMount = (
 
   if (!nextTarget) {
     if (previous.host) {
-      replaceChildren(previous.host, [], eventStore, portalStore);
+      replaceChildren(previous.host, [], eventStore, portalStore, liveTextStore);
       const parent = previous.host.parentNode;
       if (parent) parent.removeChild(previous.host);
     }
@@ -6748,7 +7331,7 @@ const patchPortalMount = (
   const targetChanged = previous.target !== nextTarget || !host || host.parentNode !== nextTarget;
   if (targetChanged) {
     if (host) {
-      replaceChildren(host, [], eventStore, portalStore);
+      replaceChildren(host, [], eventStore, portalStore, liveTextStore);
       const parent = host.parentNode;
       if (parent) parent.removeChild(host);
     }
@@ -6761,42 +7344,369 @@ const patchPortalMount = (
   }
 
   if (targetChanged || !prevNode || prevNode.kind !== 'portal') {
-    const mountedChildren = nextChildren.map((child) => createDomNode(child, documentLike, eventStore, portalStore));
-    replaceChildren(host, mountedChildren, eventStore, portalStore);
+    const mountedChildren = nextChildren.map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore));
+    replaceChildren(host, mountedChildren, eventStore, portalStore, liveTextStore);
   } else if (hasKeyedChildren(prevChildren) || hasKeyedChildren(nextChildren)) {
-    patchDomChildrenWithKeys(host, prevChildren, nextChildren, documentLike, eventStore, portalStore);
+    patchDomChildrenWithKeys(host, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore);
   } else {
-    patchDomChildrenPositionally(host, prevChildren, nextChildren, documentLike, eventStore, portalStore);
+    patchDomChildrenPositionally(host, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore);
   }
 
   portalStore.set(anchor, { target: nextTarget, host });
+};
+
+const bindIndexListHost = (
+  host: DomElementLike,
+  node: VNode,
+  documentLike: DomDocumentLike,
+  eventStore: DomEventStore,
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
+): void => {
+  const source = node.itemsSignal;
+  const renderItem = node.listRender;
+  if (!source || typeof renderItem !== 'function') {
+    host.__luminaIndexListEffect?.dispose();
+    host.__luminaIndexListEffect = null;
+    host.__luminaIndexListSource = null;
+    host.__luminaIndexListRender = null;
+    replaceChildren(host, [], eventStore, portalStore, liveTextStore);
+    return;
+  }
+
+  if (
+    host.__luminaIndexListEffect
+    && host.__luminaIndexListSource === source
+    && host.__luminaIndexListRender === renderItem
+  ) {
+    return;
+  }
+
+  host.__luminaIndexListEffect?.dispose();
+
+  let currentItems = readIndexListValues(source, false);
+  let itemSignals = currentItems.map((value) => new Signal(value));
+  const renderChildren = (): DomNodeLike[] =>
+    itemSignals.map((itemSignal, index) =>
+      createDomNode(
+        coerceRenderableToVNode(renderItem(itemSignal, index)),
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore
+      )
+    );
+
+  replaceChildren(host, renderChildren(), eventStore, portalStore, liveTextStore);
+
+  const runBatched = (fn: () => void): void => {
+    batchDepth += 1;
+    try {
+      fn();
+    } finally {
+      batchDepth = Math.max(0, batchDepth - 1);
+      if (batchDepth === 0) {
+        flushEffects();
+      }
+    }
+  };
+
+  host.__luminaIndexListEffect = new Effect(() => {
+    const nextItems = readIndexListValues(source, true);
+    if (nextItems.length !== itemSignals.length) {
+      currentItems = nextItems;
+      itemSignals = nextItems.map((value) => new Signal(value));
+      replaceChildren(host, renderChildren(), eventStore, portalStore, liveTextStore);
+      return;
+    }
+
+    runBatched(() => {
+      for (let index = 0; index < nextItems.length; index += 1) {
+        if (currentItems[index] === nextItems[index] || runtimeEquals(currentItems[index], nextItems[index])) {
+          continue;
+        }
+        itemSignals[index].set(nextItems[index]);
+      }
+      currentItems = nextItems;
+    });
+  });
+  host.__luminaIndexListSource = source;
+  host.__luminaIndexListRender = renderItem;
+};
+
+interface ForListEntry {
+  key: string | number;
+  currentValue: unknown;
+  currentIndex: number;
+  itemSignal: Signal<unknown>;
+  indexSignal: Signal<number>;
+  domNode: DomNodeLike;
+}
+
+const bindForListHost = (
+  host: DomElementLike,
+  node: VNode,
+  documentLike: DomDocumentLike,
+  eventStore: DomEventStore,
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
+): void => {
+  const source = node.itemsSignal;
+  const keyOf = node.listKey;
+  const renderItem = node.listIndexedRender;
+  if (!source || typeof keyOf !== 'function' || typeof renderItem !== 'function') {
+    host.__luminaForListEffect?.dispose();
+    host.__luminaForListEffect = null;
+    host.__luminaForListSource = null;
+    host.__luminaForListKey = null;
+    host.__luminaForListRender = null;
+    replaceChildren(host, [], eventStore, portalStore, liveTextStore);
+    return;
+  }
+
+  if (
+    host.__luminaForListEffect
+    && host.__luminaForListSource === source
+    && host.__luminaForListKey === keyOf
+    && host.__luminaForListRender === renderItem
+  ) {
+    return;
+  }
+
+  host.__luminaForListEffect?.dispose();
+
+  const runBatched = (fn: () => void): void => {
+    batchDepth += 1;
+    try {
+      fn();
+    } finally {
+      batchDepth = Math.max(0, batchDepth - 1);
+      if (batchDepth === 0) {
+        flushEffects();
+      }
+    }
+  };
+
+  const createEntry = (value: unknown, index: number): ForListEntry => {
+    const key = coerceListKey(keyOf(value, index), index);
+    const itemSignal = new Signal(value);
+    const indexSignal = new Signal(index);
+    const domNode = createDomNode(
+      applyVNodeKey(coerceRenderableToVNode(renderItem(itemSignal, indexSignal)), key),
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore
+    );
+    return { key, currentValue: value, currentIndex: index, itemSignal, indexSignal, domNode };
+  };
+
+  const initialEntries = readIndexListValues(source, false).map((value, index) => createEntry(value, index));
+  let state = createForListState(initialEntries);
+  replaceChildren(host, state.entries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore);
+
+  const syncEntryValue = (entry: ForListEntry, value: unknown): void => {
+    if (entry.currentValue !== value && !runtimeEquals(entry.currentValue, value)) {
+      entry.itemSignal.set(value);
+      entry.currentValue = value;
+    }
+  };
+
+  const syncEntryIndex = (entry: ForListEntry, index: number): void => {
+    if (entry.currentIndex !== index) {
+      entry.indexSignal.set(index);
+      entry.currentIndex = index;
+    }
+  };
+
+  const syncValuesForOrder = (items: unknown[], order: Array<string | number>): void => {
+    for (let index = 0; index < items.length; index += 1) {
+      const entry = state.entriesByKey.get(order[index]);
+      if (!entry) continue;
+      syncEntryValue(entry, items[index]);
+    }
+  };
+
+  const syncIndicesForRange = (
+    nextEntries: ForListEntry[],
+    transition: KeyedListTransition
+  ): void => {
+    const range = getTransitionAffectedRange(transition, nextEntries.length);
+    if (!range) return;
+    for (let index = range.start; index <= range.end; index += 1) {
+      const entry = nextEntries[index];
+      if (!entry) continue;
+      syncEntryIndex(entry, index);
+    }
+  };
+
+  const buildNextEntries = (
+    items: unknown[],
+    order: Array<string | number>
+  ): { nextEntries: ForListEntry[]; structureChanged: boolean } => {
+    const retained = new Set<string | number>();
+    const nextEntries: ForListEntry[] = [];
+    let structureChanged = items.length !== state.entries.length;
+
+    for (let index = 0; index < items.length; index += 1) {
+      const key = order[index];
+      const value = items[index];
+      let entry = state.entriesByKey.get(key);
+      if (!entry) {
+        entry = createEntry(value, index);
+        state.entriesByKey.set(key, entry);
+        structureChanged = true;
+      } else {
+        syncEntryValue(entry, value);
+      }
+      retained.add(key);
+      nextEntries.push(entry);
+    }
+
+    for (const key of Array.from(state.entriesByKey.keys())) {
+      if (retained.has(key)) continue;
+      state.entriesByKey.delete(key);
+      structureChanged = true;
+    }
+
+    return { nextEntries, structureChanged };
+  };
+
+  host.__luminaForListEffect = new Effect(() => {
+    const nextItems = readIndexListValues(source, true);
+    if (nextItems.length === state.order.length) {
+      let sameOrder = true;
+      for (let index = 0; index < nextItems.length; index += 1) {
+        const key = coerceListKey(keyOf(nextItems[index], index), index);
+        if (state.order[index] !== key) {
+          sameOrder = false;
+          break;
+        }
+      }
+
+      if (sameOrder) {
+        runBatched(() => {
+          for (let index = 0; index < nextItems.length; index += 1) {
+            const entry = state.entries[index];
+            if (!entry) continue;
+            syncEntryValue(entry, nextItems[index]);
+          }
+        });
+        return;
+      }
+    }
+
+    const nextOrder = buildKeyedOrder(nextItems, keyOf);
+    const transition = analyzeSequenceTransition(state.order, nextOrder, (left, right) => left === right);
+
+    if (transition.kind === 'same_order') {
+      runBatched(() => {
+        syncValuesForOrder(nextItems, nextOrder);
+      });
+      return;
+    }
+
+    if (transition.kind === 'adjacent_swap' || transition.kind === 'single_move') {
+      const nextEntries = nextOrder.map((key) => {
+        const entry = state.entriesByKey.get(key);
+        if (!entry) {
+          throw new Error(`Missing keyed list entry '${String(key)}' during transition`);
+        }
+        return entry;
+      });
+
+      runBatched(() => {
+        syncValuesForOrder(nextItems, nextOrder);
+        syncIndicesForRange(nextEntries, transition);
+      });
+
+      state.entries = nextEntries;
+      state.order = nextOrder;
+      reorderChildren(host, nextEntries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore, {
+        transition,
+        structureChanged: false,
+      });
+      return;
+    }
+
+    let nextEntries: ForListEntry[] = [];
+    let structureChanged = false;
+    runBatched(() => {
+      const built = buildNextEntries(nextItems, nextOrder);
+      nextEntries = built.nextEntries;
+      structureChanged = built.structureChanged;
+      syncIndicesForRange(nextEntries, transition);
+    });
+
+    state.entries = nextEntries;
+    state.order = nextOrder;
+    reorderChildren(host, nextEntries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore, {
+      transition,
+      structureChanged,
+    });
+  });
+
+  host.__luminaForListSource = source;
+  host.__luminaForListKey = keyOf;
+  host.__luminaForListRender = renderItem;
 };
 
 const createDomNode = (
   node: VNode,
   documentLike: DomDocumentLike,
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): DomNodeLike => {
   if (node.kind === 'text') {
     return documentLike.createTextNode(node.text ?? '');
   }
+  if (node.kind === 'live_text') {
+    const textNode = documentLike.createTextNode(node.signal ? String(node.signal.get()) : '');
+    if (node.signal) {
+      const effect = new Effect(() => {
+        textNode.textContent = String(node.signal?.get() ?? '');
+      });
+      liveTextStore.set(textNode, effect);
+    }
+    return textNode;
+  }
+  if (node.kind === 'index_list') {
+    const host = documentLike.createElement('lumina-index-list');
+    updateDomProperties(host, {}, indexListHostProps, eventStore);
+    bindIndexListHost(host, node, documentLike, eventStore, portalStore, liveTextStore);
+    return host;
+  }
+  if (node.kind === 'for_list') {
+    const host = documentLike.createElement('lumina-for-list');
+    updateDomProperties(host, {}, forListHostProps, eventStore);
+    bindForListHost(host, node, documentLike, eventStore, portalStore, liveTextStore);
+    return host;
+  }
   if (node.kind === 'fragment') {
     const wrapper = documentLike.createElement('lumina-fragment');
-    const children = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore, portalStore));
+    const children = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore));
     setChildren(wrapper, children);
     return wrapper;
   }
   if (node.kind === 'portal') {
     const anchor = documentLike.createElement('lumina-portal-anchor');
     updateDomProperties(anchor, {}, { hidden: true, 'data-lumina-portal-anchor': 'true' }, eventStore);
-    patchPortalMount(anchor, null, node, documentLike, eventStore, portalStore);
+    patchPortalMount(anchor, null, node, documentLike, eventStore, portalStore, liveTextStore);
     return anchor;
+  }
+
+  if (node.kind === 'element' && typeof node.domTemplateHtml === 'string') {
+    const templated = cloneStaticTemplateElement(documentLike, node.domTemplateHtml);
+    if (templated) {
+      updateDomProperties(templated, {}, node.props, eventStore);
+      return templated;
+    }
   }
 
   const element = documentLike.createElement(node.tag ?? 'div');
   updateDomProperties(element, {}, node.props, eventStore);
-  const children = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore, portalStore));
+  const children = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore));
   setChildren(element, children);
   return element;
 };
@@ -6807,28 +7717,32 @@ const patchDomChildrenPositionally = (
   nextChildren: VNode[],
   documentLike: DomDocumentLike,
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): void => {
   const shared = Math.min(prevChildren.length, nextChildren.length);
 
   for (let i = 0; i < shared; i += 1) {
     const currentChild = element.childNodes[i];
     if (!currentChild) {
-      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore));
+      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore, liveTextStore));
       continue;
     }
-    patchDomNode(currentChild, prevChildren[i], nextChildren[i], documentLike, eventStore, portalStore);
+    if (canSkipDomPatch(prevChildren[i], nextChildren[i])) {
+      continue;
+    }
+    patchDomNode(currentChild, prevChildren[i], nextChildren[i], documentLike, eventStore, portalStore, liveTextStore);
   }
 
   if (nextChildren.length > prevChildren.length) {
     for (let i = prevChildren.length; i < nextChildren.length; i += 1) {
-      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore));
+      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore, liveTextStore));
     }
   } else if (prevChildren.length > nextChildren.length) {
     for (let i = prevChildren.length - 1; i >= nextChildren.length; i -= 1) {
       const child = element.childNodes[i];
       if (child) {
-        disposeDomNode(child, eventStore, portalStore);
+        disposeDomNode(child, eventStore, portalStore, liveTextStore);
         element.removeChild(child);
       }
     }
@@ -6841,8 +7755,54 @@ const patchDomChildrenWithKeys = (
   nextChildren: VNode[],
   documentLike: DomDocumentLike,
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): void => {
+  const keyedTransition = analyzeKeyedChildTransition(prevChildren, nextChildren);
+  if (keyedTransition?.kind === 'same_order') {
+    for (let i = 0; i < nextChildren.length; i += 1) {
+      const domChild = element.childNodes[i];
+      if (!domChild) {
+        element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore, liveTextStore));
+        continue;
+      }
+      if (canSkipDomPatch(prevChildren[i], nextChildren[i])) {
+        continue;
+      }
+      patchDomNode(domChild, prevChildren[i], nextChildren[i], documentLike, eventStore, portalStore, liveTextStore);
+    }
+    return;
+  }
+
+  if (keyedTransition?.kind === 'adjacent_swap') {
+    const currentDomChildren = readChildNodes(element);
+    const leftDom = currentDomChildren[keyedTransition.left];
+    const rightDom = currentDomChildren[keyedTransition.right];
+    if (leftDom && rightDom && typeof element.insertBefore === 'function') {
+      element.insertBefore(rightDom, leftDom);
+      for (let index = 0; index < nextChildren.length; index += 1) {
+        if (index === keyedTransition.left) {
+          if (!canSkipDomPatch(prevChildren[keyedTransition.right], nextChildren[index])) {
+            patchDomNode(rightDom, prevChildren[keyedTransition.right], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore);
+          }
+          continue;
+        }
+        if (index === keyedTransition.right) {
+          if (!canSkipDomPatch(prevChildren[keyedTransition.left], nextChildren[index])) {
+            patchDomNode(leftDom, prevChildren[keyedTransition.left], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore);
+          }
+          continue;
+        }
+        const domChild = currentDomChildren[index];
+        if (!domChild || canSkipDomPatch(prevChildren[index], nextChildren[index])) {
+          continue;
+        }
+        patchDomNode(domChild, prevChildren[index], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore);
+      }
+      return;
+    }
+  }
+
   const currentDomChildren = readChildNodes(element);
   const prevKeyed = new Map<string | number, { vnode: VNode; domNode: DomNodeLike }>();
   const prevUnkeyed: Array<{ vnode: VNode; domNode: DomNodeLike }> = [];
@@ -6876,13 +7836,23 @@ const patchDomChildrenWithKeys = (
 
       const prevEntry = prevKeyed.get(nextChild.key);
       if (!prevEntry) {
-        nextDomChildren.push(createDomNode(nextChild, documentLike, eventStore, portalStore));
+        nextDomChildren.push(createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore));
         continue;
       }
 
       prevKeyed.delete(nextChild.key);
       nextDomChildren.push(
-        patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore)
+        canSkipDomPatch(prevEntry.vnode, nextChild)
+          ? prevEntry.domNode
+          : patchDomNode(
+              prevEntry.domNode,
+              prevEntry.vnode,
+              nextChild,
+              documentLike,
+              eventStore,
+              portalStore,
+              liveTextStore
+            )
       );
       continue;
     }
@@ -6890,23 +7860,40 @@ const patchDomChildrenWithKeys = (
     const prevEntry = prevUnkeyed[unkeyedIndex];
     unkeyedIndex += 1;
     if (!prevEntry) {
-      nextDomChildren.push(createDomNode(nextChild, documentLike, eventStore, portalStore));
+      nextDomChildren.push(createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore));
       continue;
     }
 
     nextDomChildren.push(
-      patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore)
+      canSkipDomPatch(prevEntry.vnode, nextChild)
+        ? prevEntry.domNode
+        : patchDomNode(
+            prevEntry.domNode,
+            prevEntry.vnode,
+            nextChild,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore
+          )
     );
   }
 
   for (const stale of prevKeyed.values()) {
-    disposeDomNode(stale.domNode, eventStore, portalStore);
+    disposeDomNode(stale.domNode, eventStore, portalStore, liveTextStore);
   }
   for (let i = unkeyedIndex; i < prevUnkeyed.length; i += 1) {
-    disposeDomNode(prevUnkeyed[i].domNode, eventStore, portalStore);
+    disposeDomNode(prevUnkeyed[i].domNode, eventStore, portalStore, liveTextStore);
   }
 
-  setChildren(element, nextDomChildren);
+  const structureChanged =
+    prevKeyed.size > 0
+    || unkeyedIndex < prevUnkeyed.length
+    || currentDomChildren.length !== nextDomChildren.length;
+  reorderChildren(element, nextDomChildren, eventStore, portalStore, liveTextStore, {
+    transition: keyedTransition,
+    structureChanged,
+  });
 };
 
 const patchDomNode = (
@@ -6915,17 +7902,18 @@ const patchDomNode = (
   nextNode: VNode,
   documentLike: DomDocumentLike,
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): DomNodeLike => {
   if (vnodeKindTag(prevNode) !== vnodeKindTag(nextNode)) {
-    const replacement = createDomNode(nextNode, documentLike, eventStore, portalStore);
+    const replacement = createDomNode(nextNode, documentLike, eventStore, portalStore, liveTextStore);
     const parent = domNode.parentNode;
     if (parent && parent.replaceChild) {
       parent.replaceChild(replacement, domNode);
-      disposeDomNode(domNode, eventStore, portalStore);
+      disposeDomNode(domNode, eventStore, portalStore, liveTextStore);
       return replacement;
     }
-    disposeDomNode(domNode, eventStore, portalStore);
+    disposeDomNode(domNode, eventStore, portalStore, liveTextStore);
     return replacement;
   }
 
@@ -6937,8 +7925,37 @@ const patchDomNode = (
     return domNode;
   }
 
+  if (nextNode.kind === 'live_text') {
+    const existingEffect = liveTextStore.get(domNode);
+    if (existingEffect) {
+      existingEffect.dispose();
+      liveTextStore.delete(domNode);
+    }
+    if (nextNode.signal) {
+      const effect = new Effect(() => {
+        domNode.textContent = String(nextNode.signal?.get() ?? '');
+      });
+      liveTextStore.set(domNode, effect);
+    } else {
+      domNode.textContent = '';
+    }
+    return domNode;
+  }
+
+  if (nextNode.kind === 'index_list') {
+    updateDomProperties(domNode as DomElementLike, prevNode.props, indexListHostProps, eventStore);
+    bindIndexListHost(domNode as DomElementLike, nextNode, documentLike, eventStore, portalStore, liveTextStore);
+    return domNode;
+  }
+
+  if (nextNode.kind === 'for_list') {
+    updateDomProperties(domNode as DomElementLike, prevNode.props, forListHostProps, eventStore);
+    bindForListHost(domNode as DomElementLike, nextNode, documentLike, eventStore, portalStore, liveTextStore);
+    return domNode;
+  }
+
   if (nextNode.kind === 'portal') {
-    patchPortalMount(domNode as DomElementLike, prevNode, nextNode, documentLike, eventStore, portalStore);
+    patchPortalMount(domNode as DomElementLike, prevNode, nextNode, documentLike, eventStore, portalStore, liveTextStore);
     return domNode;
   }
 
@@ -6950,9 +7967,9 @@ const patchDomNode = (
   const prevChildren = asDomChildren(prevNode);
   const nextChildren = asDomChildren(nextNode);
   if (hasKeyedChildren(prevChildren) || hasKeyedChildren(nextChildren)) {
-    patchDomChildrenWithKeys(element, prevChildren, nextChildren, documentLike, eventStore, portalStore);
+    patchDomChildrenWithKeys(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore);
   } else {
-    patchDomChildrenPositionally(element, prevChildren, nextChildren, documentLike, eventStore, portalStore);
+    patchDomChildrenPositionally(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore);
   }
 
   return element;
@@ -6963,7 +7980,8 @@ const hydrateDomNode = (
   node: VNode,
   documentLike: DomDocumentLike,
   eventStore: DomEventStore,
-  portalStore: DomPortalStore
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore
 ): DomNodeLike => {
   if (node.kind === 'text') {
     const nextText = node.text ?? '';
@@ -6973,8 +7991,38 @@ const hydrateDomNode = (
     return domNode;
   }
 
+  if (node.kind === 'live_text') {
+    const existingEffect = liveTextStore.get(domNode);
+    if (existingEffect) {
+      existingEffect.dispose();
+      liveTextStore.delete(domNode);
+    }
+    if (node.signal) {
+      const effect = new Effect(() => {
+        domNode.textContent = String(node.signal?.get() ?? '');
+      });
+      liveTextStore.set(domNode, effect);
+      domNode.textContent = String(node.signal.get());
+    } else {
+      domNode.textContent = '';
+    }
+    return domNode;
+  }
+
+  if (node.kind === 'index_list') {
+    updateDomProperties(domNode as DomElementLike, undefined, indexListHostProps, eventStore);
+    bindIndexListHost(domNode as DomElementLike, node, documentLike, eventStore, portalStore, liveTextStore);
+    return domNode;
+  }
+
+  if (node.kind === 'for_list') {
+    updateDomProperties(domNode as DomElementLike, undefined, forListHostProps, eventStore);
+    bindForListHost(domNode as DomElementLike, node, documentLike, eventStore, portalStore, liveTextStore);
+    return domNode;
+  }
+
   if (node.kind === 'portal') {
-    patchPortalMount(domNode as DomElementLike, vnodePortal(node.target, []), node, documentLike, eventStore, portalStore);
+    patchPortalMount(domNode as DomElementLike, vnodePortal(node.target, []), node, documentLike, eventStore, portalStore, liveTextStore);
     return domNode;
   }
 
@@ -6992,16 +8040,16 @@ const hydrateDomNode = (
     const currentChild = existingChildren[index];
     nextDomChildren.push(
       currentChild
-        ? hydrateDomNode(currentChild, nextChild, documentLike, eventStore, portalStore)
-        : createDomNode(nextChild, documentLike, eventStore, portalStore)
+        ? hydrateDomNode(currentChild, nextChild, documentLike, eventStore, portalStore, liveTextStore)
+        : createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore)
     );
   }
 
   for (let index = nextChildren.length; index < existingChildren.length; index += 1) {
-    disposeDomNode(existingChildren[index], eventStore, portalStore);
+    disposeDomNode(existingChildren[index], eventStore, portalStore, liveTextStore);
   }
 
-  setChildren(element, nextDomChildren);
+  reorderChildren(element, nextDomChildren, eventStore, portalStore, liveTextStore);
   return element;
 };
 
@@ -7009,29 +8057,30 @@ export const createDomRenderer = (options?: DomRendererOptions): Renderer => {
   const documentLike = getDomDocument(options);
   const eventStore: DomEventStore = new Map();
   const portalStore: DomPortalStore = new WeakMap();
+  const liveTextStore: DomLiveTextStore = new WeakMap();
   let currentDom: DomNodeLike | null = null;
   let currentVNode: VNode | null = null;
 
   return {
     mount(node: VNode, container: unknown): void {
       const domContainer = container as DomNodeLike;
-      const domNode = createDomNode(node, documentLike, eventStore, portalStore);
-      replaceChildren(domContainer, [domNode], eventStore, portalStore);
+      const domNode = createDomNode(node, documentLike, eventStore, portalStore, liveTextStore);
+      replaceChildren(domContainer, [domNode], eventStore, portalStore, liveTextStore);
       currentDom = domNode;
       currentVNode = node;
     },
     patch(prev: VNode | null, next: VNode, container: unknown): void {
       const domContainer = container as DomNodeLike;
       if (!currentDom || !currentVNode || !prev) {
-        const domNode = createDomNode(next, documentLike, eventStore, portalStore);
-        replaceChildren(domContainer, [domNode], eventStore, portalStore);
+        const domNode = createDomNode(next, documentLike, eventStore, portalStore, liveTextStore);
+        replaceChildren(domContainer, [domNode], eventStore, portalStore, liveTextStore);
         currentDom = domNode;
         currentVNode = next;
         return;
       }
-      const nextDom = patchDomNode(currentDom, prev, next, documentLike, eventStore, portalStore);
+      const nextDom = patchDomNode(currentDom, prev, next, documentLike, eventStore, portalStore, liveTextStore);
       if (nextDom !== currentDom) {
-        setChildren(domContainer, [nextDom]);
+        reorderChildren(domContainer, [nextDom], eventStore, portalStore, liveTextStore);
       }
       currentDom = nextDom;
       currentVNode = next;
@@ -7040,22 +8089,22 @@ export const createDomRenderer = (options?: DomRendererOptions): Renderer => {
       const domContainer = container as DomNodeLike;
       const existing = readChildNodes(domContainer)[0] ?? null;
       if (!existing) {
-        const domNode = createDomNode(node, documentLike, eventStore, portalStore);
-        replaceChildren(domContainer, [domNode], eventStore, portalStore);
+        const domNode = createDomNode(node, documentLike, eventStore, portalStore, liveTextStore);
+        replaceChildren(domContainer, [domNode], eventStore, portalStore, liveTextStore);
         currentDom = domNode;
         currentVNode = node;
         return;
       }
-      const hydratedDom = hydrateDomNode(existing, node, documentLike, eventStore, portalStore);
+      const hydratedDom = hydrateDomNode(existing, node, documentLike, eventStore, portalStore, liveTextStore);
       if (hydratedDom !== existing) {
-        setChildren(domContainer, [hydratedDom]);
+        reorderChildren(domContainer, [hydratedDom], eventStore, portalStore, liveTextStore);
       }
       currentDom = hydratedDom;
       currentVNode = node;
     },
     unmount(container: unknown): void {
       const domContainer = container as DomNodeLike;
-      replaceChildren(domContainer, [], eventStore, portalStore);
+      replaceChildren(domContainer, [], eventStore, portalStore, liveTextStore);
       currentDom = null;
       currentVNode = null;
       eventStore.clear();
@@ -7122,6 +8171,13 @@ const voidHtmlTags = new Set([
 
 const vnodeToHtml = (node: VNode): string => {
   if (node.kind === 'text') return escapeHtml(node.text ?? '');
+  if (node.kind === 'live_text') return escapeHtml(node.signal ? String(node.signal.get()) : '');
+  if (node.kind === 'index_list') {
+    return vnodeToHtml(vnodeElement('lumina-index-list', indexListHostProps, materializeIndexListChildren(node, false)));
+  }
+  if (node.kind === 'for_list') {
+    return vnodeToHtml(vnodeElement('lumina-for-list', forListHostProps, materializeForListChildren(node, false)));
+  }
   const children = (node.children ?? []).map((child) => vnodeToHtml(child)).join('');
   if (node.kind === 'fragment' || node.kind === 'portal') return children;
 
@@ -7403,6 +8459,24 @@ const drawCanvasVNode = (
     if (ctx.fillText) ctx.fillText(node.text ?? '', state.x, state.y);
     return state.y + state.lineHeight;
   }
+  if (node.kind === 'live_text') {
+    if (ctx.fillText) ctx.fillText(node.signal ? String(node.signal.get()) : '', state.x, state.y);
+    return state.y + state.lineHeight;
+  }
+  if (node.kind === 'index_list') {
+    let y = state.y;
+    for (const child of materializeIndexListChildren(node, false)) {
+      y = drawCanvasVNode(ctx, child, { ...state, y });
+    }
+    return y;
+  }
+  if (node.kind === 'for_list') {
+    let y = state.y;
+    for (const child of materializeForListChildren(node, false)) {
+      y = drawCanvasVNode(ctx, child, { ...state, y });
+    }
+    return y;
+  }
   if (node.kind === 'fragment' || node.kind === 'portal') {
     let y = state.y;
     for (const child of node.children ?? []) {
@@ -7491,6 +8565,15 @@ const vnodeToTerminal = (node: VNode, depth = 0): string[] => {
   const indent = '  '.repeat(depth);
   if (node.kind === 'text') {
     return [`${indent}${node.text ?? ''}`];
+  }
+  if (node.kind === 'live_text') {
+    return [`${indent}${node.signal ? String(node.signal.get()) : ''}`];
+  }
+  if (node.kind === 'index_list') {
+    return materializeIndexListChildren(node, false).flatMap((child) => vnodeToTerminal(child, depth));
+  }
+  if (node.kind === 'for_list') {
+    return materializeForListChildren(node, false).flatMap((child) => vnodeToTerminal(child, depth));
   }
   if (node.kind === 'fragment' || node.kind === 'portal') {
     return (node.children ?? []).flatMap((child) => vnodeToTerminal(child, depth));
@@ -7623,6 +8706,113 @@ const unregisterDevtoolsRoot = (root: ReactiveRenderRoot): void => {
     devtoolsRoots.delete(id);
     scheduleDevtoolsNotify();
   }
+};
+
+const reorderChildren = (
+  container: DomNodeLike,
+  children: DomNodeLike[],
+  eventStore: DomEventStore,
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore,
+  options?: { transition?: KeyedListTransition | null; structureChanged?: boolean }
+): void => {
+  if (typeof container.insertBefore !== 'function') {
+    setChildren(container, children);
+    return;
+  }
+
+  const structureChanged = options?.structureChanged ?? true;
+  if (structureChanged) {
+    const desired = new Set(children);
+    for (const child of readChildNodes(container)) {
+      if (!desired.has(child)) {
+        disposeDomNode(child, eventStore, portalStore, liveTextStore);
+        container.removeChild(child);
+      }
+    }
+  }
+
+  const currentChildren = readChildNodes(container);
+  const transition = options?.transition ?? analyzeDomChildTransition(currentChildren, children);
+  if (transition.kind === 'same_order') {
+    return;
+  }
+  if (transition.kind === 'adjacent_swap') {
+    container.insertBefore(children[transition.left], children[transition.right]);
+    return;
+  }
+  if (transition.kind === 'single_move') {
+    const moving = currentChildren[transition.from];
+    if (!moving) return;
+    const reference =
+      transition.from < transition.to
+        ? (currentChildren[transition.to + 1] ?? null)
+        : (currentChildren[transition.to] ?? null);
+    container.insertBefore(moving, reference);
+    return;
+  }
+
+  const currentOrder = new Map<DomNodeLike, number>();
+  currentChildren.forEach((child, index) => {
+    currentOrder.set(child, index);
+  });
+
+  const sequence = children.map((child) => currentOrder.get(child) ?? -1);
+  const keepIndices = longestIncreasingSubsequenceIndices(sequence);
+  const keepIndexSet = new Set(keepIndices);
+
+  let anchor: DomNodeLike | null = null;
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const nextChild = children[index];
+    const currentIndex = sequence[index];
+    if (currentIndex >= 0 && keepIndexSet.has(index)) {
+      anchor = nextChild;
+      continue;
+    }
+    container.insertBefore(nextChild, anchor);
+    anchor = nextChild;
+  }
+};
+
+const longestIncreasingSubsequenceIndices = (values: number[]): number[] => {
+  const predecessors = new Array<number>(values.length).fill(-1);
+  const tails: number[] = [];
+
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (value < 0) continue;
+
+    let low = 0;
+    let high = tails.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (values[tails[mid]] < value) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+
+    if (low > 0) {
+      predecessors[index] = tails[low - 1];
+    }
+
+    if (low === tails.length) {
+      tails.push(index);
+    } else {
+      tails[low] = index;
+    }
+  }
+
+  if (tails.length === 0) return [];
+
+  const result = new Array<number>(tails.length);
+  let cursor = tails[tails.length - 1];
+  for (let index = tails.length - 1; index >= 0; index -= 1) {
+    result[index] = cursor;
+    cursor = predecessors[cursor];
+  }
+  return result;
 };
 
 const snapshotFrame = (frame: ComponentFrame): DevtoolsFrameSnapshot => ({
@@ -10925,6 +12115,26 @@ export const render = {
     children: VNodeInput = []
   ): VNode => render.menu_item(value, props, children),
   text: (value: unknown): VNode => vnodeText(value),
+  live_text: (signal: Signal<unknown> | Memo<unknown>): VNode => vnodeLiveText(signal),
+  liveText: (signal: Signal<unknown> | Memo<unknown>): VNode => vnodeLiveText(signal),
+  index_list: (
+    itemsSignal: Signal<unknown>,
+    renderItem: (item: Signal<unknown>, index: number) => VNodeInput
+  ): VNode => vnodeIndexList(itemsSignal, renderItem),
+  indexList: (
+    itemsSignal: Signal<unknown>,
+    renderItem: (item: Signal<unknown>, index: number) => VNodeInput
+  ): VNode => vnodeIndexList(itemsSignal, renderItem),
+  for_list: (
+    itemsSignal: Signal<unknown>,
+    keyOf: (item: unknown, index: number) => string | number,
+    renderItem: (item: Signal<unknown>, index: Signal<number>) => VNodeInput
+  ): VNode => vnodeForList(itemsSignal, keyOf, renderItem),
+  forList: (
+    itemsSignal: Signal<unknown>,
+    keyOf: (item: unknown, index: number) => string | number,
+    renderItem: (item: Signal<unknown>, index: Signal<number>) => VNodeInput
+  ): VNode => vnodeForList(itemsSignal, keyOf, renderItem),
   element: (tag: string, props?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
     vnodeElement(tag, props, children),
   props_empty: (): Record<string, unknown> => ({}),
@@ -11440,6 +12650,16 @@ export const radioIndicator = (
 export const vnode = (tag: string, attrs?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
   render.element(tag, attrs, children);
 export const text = (value: unknown): VNode => render.text(value);
+export const liveText = (signal: Signal<unknown> | Memo<unknown>): VNode => render.liveText(signal);
+export const indexList = (
+  itemsSignal: Signal<unknown>,
+  renderItem: (item: Signal<unknown>, index: number) => VNodeInput
+): VNode => render.indexList(itemsSignal, renderItem);
+export const forList = (
+  itemsSignal: Signal<unknown>,
+  keyOf: (item: unknown, index: number) => string | number,
+  renderItem: (item: Signal<unknown>, index: Signal<number>) => VNodeInput
+): VNode => render.forList(itemsSignal, keyOf, renderItem);
 export const mount_reactive = (
   renderer: unknown,
   container: unknown,

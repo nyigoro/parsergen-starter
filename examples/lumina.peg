@@ -306,7 +306,7 @@ ImplAssocType
 
 ImplMethod
   = visibility:Visibility? _ mods:FnModifiers? "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ body:Block {
-      const fnDecl = { name: node.name, async: !!mods?.async, params: params || [], returnType: ret || null, whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location };
+      const fnDecl = { declarationKind: "fn", name: node.name, async: !!mods?.async, params: params || [], returnType: ret || null, whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, location: node.location };
       if (mods?.comptime) fnDecl.comptime = true;
       return createNode("FnDecl", fnDecl, location);
     }
@@ -412,15 +412,15 @@ TypePath
   = head:IdName tail:(_ "::" _ IdName)* { return [head.name].concat(tail.map(t => t[3].name)); }
 
 FnDecl
-  = attrs:OuterAttr* visibility:Visibility? _ mods:FnModifiers? ("fn" / "component") _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ body:Block {
-      const fnDecl = { name: node.name, async: !!mods?.async, params: params || [], returnType: ret || null, whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, attributes: normalizeAttributes(attrs), location: node.location };
+  = attrs:OuterAttr* visibility:Visibility? _ mods:FnModifiers? kind:("fn" / "component") _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ body:Block {
+      const fnDecl = { declarationKind: kind, name: node.name, async: !!mods?.async, params: params || [], returnType: ret || null, whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body, typeParams: tparams || [], visibility: visibility ?? "private", extern: false, attributes: normalizeAttributes(attrs), location: node.location };
       if (mods?.comptime) fnDecl.comptime = true;
       return createNode("FnDecl", fnDecl, location);
     }
 
 ExternFnDecl
   = attrs:OuterAttr* visibility:Visibility? _ "extern" _ "fn" _ node:IdName _ tparams:TypeParams? _ "(" _ params:ParamList? _ ")" _ ret:ReturnType? _ whereInfo:WhereClause? _ source:FromClause? _ ";"? {
-      return createNode("FnDecl", { name: node.name, params: params || [], returnType: ret || "any", whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body: createNode("Block", { body: [] }, location), typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, attributes: normalizeAttributes(attrs), location: node.location }, location);
+      return createNode("FnDecl", { declarationKind: "fn", name: node.name, params: params || [], returnType: ret || "any", whereClauses: whereInfo ? whereInfo.constClauses : [], whereTypeBounds: whereInfo ? whereInfo.typeBounds : [], body: createNode("Block", { body: [] }, location), typeParams: tparams || [], visibility: visibility ?? "public", extern: true, externModule: source ?? null, attributes: normalizeAttributes(attrs), location: node.location }, location);
     }
 
 FnModifiers

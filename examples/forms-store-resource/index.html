@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumina Forms + Resource</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 2rem;
+      display: grid;
+      place-items: center;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.16), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.18), transparent 34%),
+        linear-gradient(180deg, #ecfeff 0%, #e0f2fe 100%);
+      color: #0f172a;
+    }
+    #app {
+      width: min(92vw, 760px);
+    }
+    .profile-workspace {
+      display: grid;
+      gap: 1rem;
+      padding: 2rem;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+      backdrop-filter: blur(12px);
+    }
+    .profile-title {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      line-height: 1;
+    }
+    .profile-status,
+    .profile-name,
+    .profile-preview {
+      margin: 0;
+      color: #475569;
+      line-height: 1.7;
+    }
+    .profile-form {
+      display: grid;
+      gap: 0.9rem;
+      padding: 1rem;
+      border-radius: 22px;
+      background: #f8fafc;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+    }
+    .profile-input {
+      width: 100%;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      border-radius: 16px;
+      padding: 0.9rem 1rem;
+      font: inherit;
+      background: #ffffff;
+    }
+    .profile-ready {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .profile-submit {
+      border: none;
+      border-radius: 999px;
+      padding: 0.85rem 1.2rem;
+      width: fit-content;
+      background: #0f172a;
+      color: #ffffff;
+      font: inherit;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

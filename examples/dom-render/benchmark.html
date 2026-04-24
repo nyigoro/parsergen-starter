@@ -4,7 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lumina DOM Benchmarks</title>
+    <link rel="icon" href="data:," />
     <style>
+      :root {
+        color-scheme: dark;
+      }
       body {
         font-family: "Segoe UI", system-ui, sans-serif;
         margin: 0;
@@ -12,15 +16,60 @@
         color: #e2e8f0;
       }
       main {
-        max-width: 960px;
+        max-width: 1080px;
         margin: 0 auto;
         padding: 24px;
+        display: grid;
+        gap: 16px;
       }
       .card {
         background: #111827;
         border: 1px solid #1f2937;
-        border-radius: 12px;
-        padding: 16px;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 16px 40px rgba(2, 6, 23, 0.35);
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+      .lead {
+        color: #cbd5e1;
+        line-height: 1.7;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+      button {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 11px 16px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:disabled {
+        opacity: 0.7;
+        cursor: wait;
+      }
+      .status {
+        color: #93c5fd;
+        font-size: 0.95rem;
+      }
+      .scenario-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       }
       table {
         width: 100%;
@@ -32,14 +81,10 @@
         text-align: left;
         border-bottom: 1px solid #1f2937;
         padding: 8px 6px;
+        vertical-align: top;
       }
-      button {
-        background: #2563eb;
-        color: #fff;
-        border: none;
-        border-radius: 8px;
-        padding: 10px 14px;
-        cursor: pointer;
+      .muted {
+        color: #94a3b8;
       }
       .hidden {
         position: absolute;
@@ -54,37 +99,142 @@
         border-radius: 6px;
         padding: 1px 5px;
       }
+      ul {
+        margin: 0;
+        padding-left: 1.2rem;
+        color: #cbd5e1;
+        line-height: 1.7;
+      }
     </style>
   </head>
   <body>
     <main>
-      <div class="card">
+      <section class="card stack">
         <h1>DOM Benchmark Harness</h1>
-        <p>
-          Compares list update throughput for:
-          <code>Lumina render DOM</code>,
-          <code>React</code>,
-          <code>Solid</code>,
-          <code>Vanilla</code>.
+        <p class="lead">
+          This page now splits the workload into multiple scenarios so we can see where Lumina is still paying
+          whole-tree patch costs and where its reactive primitives are already competitive.
         </p>
-        <p>Scenario: update one row in a 1,000-item list over 300 iterations.</p>
-        <button id="run">Run Benchmarks</button>
-        <table>
-          <thead>
-            <tr>
-              <th>Library</th>
-              <th>Total (ms)</th>
-              <th>Avg / iter (ms)</th>
-            </tr>
-          </thead>
-          <tbody id="results"></tbody>
-        </table>
-      </div>
+        <div class="controls">
+          <button id="run">Run all benchmarks</button>
+          <span id="status" class="status">Idle</span>
+        </div>
+        <ul>
+          <li><code>Whole-list patch</code> measures raw JS fallback render cost plus the compiler-promoted Lumina path.</li>
+          <li><code>Indexed list patch</code> measures a whole-array signal fanning out into stable row signals.</li>
+          <li><code>Keyed signal list patch</code> measures keyed row signals plus stable keyed DOM identity.</li>
+          <li><code>Compiled Lumina rows</code> measure the compiler-lowered DOM path with static template hoists and direct live text bindings.</li>
+          <li><code>Initial mount</code> measures first render cost for a 1,000-row list.</li>
+          <li><code>Keyed reorder</code> measures moving keyed rows without changing content, including the compiled keyed-list path.</li>
+          <li><code>Fine-grained row update</code> measures direct row-level reactivity instead of full rerender.</li>
+        </ul>
+      </section>
 
-      <div id="host-lumina" class="hidden"></div>
-      <div id="host-react" class="hidden"></div>
-      <div id="host-solid" class="hidden"></div>
-      <div id="host-vanilla" class="hidden"></div>
+      <section class="scenario-grid">
+        <article class="card">
+          <div class="stack">
+            <h2>Whole-list patch</h2>
+            <p class="muted">300 iterations. Update one row in a 1,000-item keyed list.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Library</th>
+                  <th>Total (ms)</th>
+                  <th>Avg / iter (ms)</th>
+                </tr>
+              </thead>
+              <tbody id="results-whole-list"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="stack">
+            <h2>Initial mount</h2>
+            <p class="muted">40 iterations. Build and dispose the same 1,000-item list repeatedly.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Library</th>
+                  <th>Total (ms)</th>
+                  <th>Avg / iter (ms)</th>
+                </tr>
+              </thead>
+              <tbody id="results-mount"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="stack">
+            <h2>Indexed list patch</h2>
+            <p class="muted">300 iterations. Update one row through one array signal while preserving per-row signals.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Library</th>
+                  <th>Total (ms)</th>
+                  <th>Avg / iter (ms)</th>
+                </tr>
+              </thead>
+              <tbody id="results-index-list"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="stack">
+            <h2>Keyed signal list patch</h2>
+            <p class="muted">300 iterations. Update keyed rows through stable keyed item signals.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Library</th>
+                  <th>Total (ms)</th>
+                  <th>Avg / iter (ms)</th>
+                </tr>
+              </thead>
+              <tbody id="results-for-list"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="stack">
+            <h2>Keyed reorder</h2>
+            <p class="muted">300 iterations. Swap adjacent keyed rows and keep row identity stable.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Library</th>
+                  <th>Total (ms)</th>
+                  <th>Avg / iter (ms)</th>
+                </tr>
+              </thead>
+              <tbody id="results-reorder"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="stack">
+            <h2>Fine-grained row update</h2>
+            <p class="muted">300 iterations. Update one row directly without rebuilding the full list view.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Library</th>
+                  <th>Total (ms)</th>
+                  <th>Avg / iter (ms)</th>
+                </tr>
+              </thead>
+              <tbody id="results-fine-grained"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <div id="workspace" class="hidden"></div>
     </main>
 
     <script type="module" src="./benchmark.js"></script>

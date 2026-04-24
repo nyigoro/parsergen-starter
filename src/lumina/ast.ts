@@ -297,6 +297,7 @@ export interface LuminaTypeField {
 
 export interface LuminaFnDecl {
   type: 'FnDecl';
+  declarationKind: 'fn' | 'component';
   name: string;
   async?: boolean;
   comptime?: boolean;
@@ -719,6 +720,14 @@ export interface LuminaCall {
   typeArgs?: string[];
   enumName?: string | null;
   receiver?: LuminaExpr | null;
+  renderLowering?: {
+    callee: string;
+    staticHoistable: boolean;
+    domSpecializable: boolean;
+  } | null;
+  reactiveLowering?: {
+    callee: string;
+  } | null;
   location?: Location;
 }
 
