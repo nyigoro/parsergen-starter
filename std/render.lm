@@ -108,6 +108,10 @@ pub fn errorBoundary(fallback: any, renderChildren: fn() -> any) -> VNode {
   render.errorBoundary(fallback, renderChildren)
 }
 
+pub fn show(condition: any, renderChildren: fn() -> any, fallback: any) -> VNode {
+  render.show(condition, renderChildren, fallback)
+}
+
 pub fn children(input: any) -> any {
   render.children(input)
 }
@@ -146,6 +150,14 @@ pub fn props_on_click_dec(signal: Signal<i32>) -> any {
 
 pub fn props_merge(left: any, right: any) -> any {
   render.props_merge(left, right)
+}
+
+pub fn props_attr(name: string, value: any) -> any {
+  render.props_attr(name, value)
+}
+
+pub fn props_when(condition: any, props: any) -> any {
+  render.props_when(condition, props)
 }
 
 pub fn composeHandlers(left: any, right: any) -> any {
@@ -428,7 +440,7 @@ pub fn props_on_submit(handler: fn() -> any) -> any {
   render.props_on_submit(handler)
 }
 
-pub fn props_key(key: string) -> any {
+pub fn props_key(key: any) -> any {
   render.props_key(key)
 }
 

@@ -54,11 +54,6 @@ describe('UI stdlib matrix', () => {
 
     const inferred = inferProgram(ast);
     const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
-    if (moduleName === 'render') {
-      expect(hmErrors).toHaveLength(1);
-      expect(hmErrors[0]?.message).toContain("render.with_context");
-      return;
-    }
     expect(hmErrors).toHaveLength(0);
   });
 

@@ -100,4 +100,50 @@ describe('Lumina parser UI framework coverage', () => {
     expect(componentDecl).toBeDefined();
     expect(componentDecl && 'declarationKind' in componentDecl ? componentDecl.declarationKind : null).toBe('component');
   });
+
+  test('parses authoring sugar for props, lists, boundaries, transitions, and named slot args', () => {
+    const source = `
+      import { render } from "@std";
+
+      component Shell(
+        title: string = "Default",
+        header: any = 0,
+        children: any = 0
+      ) -> VNode {
+        render.element("section", props {
+          class: "shell",
+          when true => data_state: "ready"
+        }, [
+          render.slot_or(header, props { title: title }, render.text(title)),
+          render.slot_or(children, props {}, render.text("Empty"))
+        ])
+      }
+
+      fn app(rows: Signal<Vec<any>>, open: Signal<bool>) -> VNode {
+        Shell(
+          children: || suspense(render.text("Loading")) {
+            error_boundary(render.text("Failed")) {
+              transition(open, 120, props { class: "fade", ...render.props_id("panel") }) {
+                render.element("ul", props { class: "rows" }, [
+                  show(render.get(open)) {
+                    index (row, idx in rows) => render.element("li", props { key: idx }, [render.text(row)])
+                  } else {
+                    for (row, idx in rows key row.id) => render.element("li", props { key: row.id }, [render.text(row.label), render.text(idx)])
+                  }
+                ])
+              }
+            }
+          },
+          header: fn(props: any) -> VNode {
+            render.element("h1", 0, [render.text(props.title)])
+          }
+        )
+      }
+    `.trim() + '\n';
+
+    const ast = parseLuminaProgram(source);
+    expect(ast.type).toBe('Program');
+    expect(ast.body.some((stmt) => stmt.type === 'FnDecl' && stmt.name === 'Shell')).toBe(true);
+    expect(ast.body.some((stmt) => stmt.type === 'FnDecl' && stmt.name === 'app')).toBe(true);
+  });
 });

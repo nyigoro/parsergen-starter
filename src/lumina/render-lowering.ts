@@ -1,4 +1,4 @@
-import type { LuminaCall, LuminaExpr, LuminaImport, LuminaImportSpec, LuminaLambda, LuminaProgram } from './ast.js';
+import type { LuminaArg, LuminaCall, LuminaExpr, LuminaFnDecl, LuminaImport, LuminaImportSpec, LuminaLambda, LuminaProgram } from './ast.js';
 
 const DIRECT_RENDER_IMPORTS = new Map<string, string>([
   ['vnode', 'vnode'],
@@ -11,6 +11,12 @@ const DIRECT_RENDER_IMPORTS = new Map<string, string>([
   ['forList', 'forList'],
   ['props_empty', 'props_empty'],
   ['props_class', 'props_class'],
+  ['props_on_input', 'props_on_input'],
+  ['props_on_change', 'props_on_change'],
+  ['props_on_checked_change', 'props_on_checked_change'],
+  ['props_on_submit', 'props_on_submit'],
+  ['props_attr', 'props_attr'],
+  ['props_when', 'props_when'],
   ['props_id', 'props_id'],
   ['props_style', 'props_style'],
   ['props_value', 'props_value'],
@@ -22,6 +28,13 @@ const DIRECT_RENDER_IMPORTS = new Map<string, string>([
   ['props_type', 'props_type'],
   ['props_name', 'props_name'],
   ['props_merge', 'props_merge'],
+  ['show', 'show'],
+  ['children', 'children'],
+  ['slot', 'slot'],
+  ['slot_or', 'slot_or'],
+  ['suspense', 'suspense'],
+  ['errorBoundary', 'errorBoundary'],
+  ['transitionPresence', 'transitionPresence'],
 ]);
 
 const DIRECT_REACTIVE_IMPORTS = new Map<string, string>([
@@ -42,6 +55,12 @@ const RENDER_NAMESPACE_CALLS = new Map<string, string>([
   ['forList', 'forList'],
   ['props_empty', 'props_empty'],
   ['props_class', 'props_class'],
+  ['props_on_input', 'props_on_input'],
+  ['props_on_change', 'props_on_change'],
+  ['props_on_checked_change', 'props_on_checked_change'],
+  ['props_on_submit', 'props_on_submit'],
+  ['props_attr', 'props_attr'],
+  ['props_when', 'props_when'],
   ['props_id', 'props_id'],
   ['props_style', 'props_style'],
   ['props_value', 'props_value'],
@@ -54,6 +73,13 @@ const RENDER_NAMESPACE_CALLS = new Map<string, string>([
   ['props_name', 'props_name'],
   ['props_merge', 'props_merge'],
   ['component', 'component'],
+  ['show', 'show'],
+  ['children', 'children'],
+  ['slot', 'slot'],
+  ['slot_or', 'slot_or'],
+  ['suspense', 'suspense'],
+  ['errorBoundary', 'errorBoundary'],
+  ['transitionPresence', 'transitionPresence'],
 ]);
 
 const STATIC_RENDER_CALLS = new Set([
@@ -63,6 +89,7 @@ const STATIC_RENDER_CALLS = new Set([
   'portal',
   'props_empty',
   'props_class',
+  'props_attr',
   'props_id',
   'props_style',
   'props_value',
@@ -183,6 +210,10 @@ const getNormalizedReactiveCalleeNameFromContext = (
   if (expr.receiver) return null;
   const calleeName = expr.callee.type === 'Identifier' ? expr.callee.name : (expr.callee.name ?? null);
   if (!calleeName) return null;
+
+  if (expr.enumName && context.renderNamespaces.has(expr.enumName)) {
+    if (calleeName === 'get') return 'get';
+  }
 
   if (expr.enumName && context.reactiveNamespaces.has(expr.enumName)) {
     if (calleeName === 'get') return 'get';
@@ -388,6 +419,72 @@ const getSignalMapCallInfo = (
   return null;
 };
 
+const createUndefinedExpr = (): LuminaExpr => ({
+  type: 'Identifier',
+  name: 'undefined',
+});
+
+const collectLocalFunctions = (program: LuminaProgram): Map<string, LuminaFnDecl> => {
+  const functions = new Map<string, LuminaFnDecl>();
+  for (const stmt of program.body) {
+    if (stmt.type === 'FnDecl') {
+      functions.set(stmt.name, stmt);
+    }
+  }
+  return functions;
+};
+
+const normalizeNamedArgsForParams = (rawArgs: LuminaArg[], params: LuminaFnDecl['params']): LuminaArg[] | null => {
+  if (!rawArgs.some((arg) => arg.named)) return null;
+  const resolved: Array<LuminaArg | null> = Array(params.length).fill(null);
+  let positionalIndex = 0;
+  for (const arg of rawArgs) {
+    if (arg.named) continue;
+    if (positionalIndex >= params.length) return null;
+    resolved[positionalIndex] = { ...arg, named: false };
+    positionalIndex += 1;
+  }
+  for (const arg of rawArgs) {
+    if (!arg.named) continue;
+    const index = params.findIndex((param) => param.name === arg.name);
+    if (index < 0 || resolved[index]) return null;
+    resolved[index] = { named: false, value: arg.value, location: arg.location };
+  }
+  return params.map((param, index) => {
+    const existing = resolved[index];
+    if (existing) return existing;
+    if (param.defaultValue !== null && param.defaultValue !== undefined) {
+      return { named: false, value: createUndefinedExpr(), location: param.location };
+    }
+    return { named: false, value: createUndefinedExpr(), location: param.location };
+  });
+};
+
+const normalizeNamedCallArgs = (node: unknown, localFunctions: Map<string, LuminaFnDecl>): void => {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const entry of node) normalizeNamedCallArgs(entry, localFunctions);
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  if (record.type === 'Call') {
+    const call = record as unknown as LuminaCall;
+    if (!call.receiver && !call.enumName && call.callee.type === 'Identifier') {
+      const declaration = localFunctions.get(call.callee.name);
+      if (declaration) {
+        const normalized = normalizeNamedArgsForParams(call.args, declaration.params);
+        if (normalized) {
+          call.args = normalized;
+        }
+      }
+    }
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'location' || key === 'renderLowering' || key === 'reactiveLowering') continue;
+    normalizeNamedCallArgs(value, localFunctions);
+  }
+};
+
 const promoteMappedSignalChildren = (node: unknown): void => {
   if (!node || typeof node !== 'object') return;
   if (Array.isArray(node)) {
@@ -527,6 +624,7 @@ const promoteMappedSignalChildren = (node: unknown): void => {
 };
 
 export const lowerRenderProgram = (program: LuminaProgram): LuminaProgram => {
+  normalizeNamedCallArgs(program, collectLocalFunctions(program));
   const context = collectRenderImportContext(program);
   visitNode(program, context);
   promoteMappedSignalChildren(program);
@@ -546,6 +644,19 @@ const escapeHtmlAttr = (value: string): string =>
 
 const camelToKebab = (value: string): string =>
   value.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
+
+const normalizeAuthoringPropName = (name: string): string => {
+  if (name === 'class') return 'className';
+  if (name.startsWith('data_')) return `data-${name.slice(5).replace(/_/g, '-')}`;
+  if (name.startsWith('aria_')) return `aria-${name.slice(5).replace(/_/g, '-')}`;
+  if (name.startsWith('on_')) {
+    const eventName = name
+      .slice(3)
+      .replace(/_([a-zA-Z0-9])/g, (_match, ch: string) => ch.toUpperCase());
+    return `on${eventName.charAt(0).toUpperCase()}${eventName.slice(1)}`;
+  }
+  return name.replace(/_([a-zA-Z0-9])/g, (_match, ch: string) => ch.toUpperCase());
+};
 
 const isLiteralStaticValue = (expr: LuminaExpr): expr is Extract<LuminaExpr, { type: 'String' | 'Number' | 'Boolean' }> =>
   expr.type === 'String' || expr.type === 'Number' || expr.type === 'Boolean';
@@ -638,6 +749,25 @@ const getStaticPropRecord = (expr: LuminaExpr): Record<string, string | boolean>
       }
       case 'props_key':
         return {};
+      case 'props_attr': {
+        if (args.length !== 2) return null;
+        const propName = staticExprToString(args[0]);
+        if (propName === null) return null;
+        const normalizedName = normalizeAuthoringPropName(propName);
+        if (normalizedName === 'style') {
+          const value = serializeStaticStyle(args[1]);
+          return value === null ? null : { style: value };
+        }
+        if (args[1].type === 'Boolean') {
+          return { [normalizedName]: args[1].value };
+        }
+        const value = staticExprToString(args[1]);
+        return value === null ? null : { [normalizedName]: value };
+      }
+      case 'props_when': {
+        if (args.length !== 2 || args[0].type !== 'Boolean') return null;
+        return args[0].value ? getStaticPropRecord(args[1]) : {};
+      }
       case 'props_merge': {
         const merged: Record<string, string | boolean> = {};
         for (const arg of args) {

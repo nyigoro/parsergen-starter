@@ -317,6 +317,23 @@ describe('runtime render module', () => {
     ).toThrow();
   });
 
+  test('show and props authoring helpers resolve conditions and merge attrs', () => {
+    const visible = render.show(true, () => render.text('Visible'), render.text('Hidden'));
+    expect(visible.kind).toBe('text');
+    expect(visible.text).toBe('Visible');
+
+    const hidden = render.show(render.signal(false), () => render.text('Visible'), render.text('Hidden'));
+    expect(hidden.kind).toBe('text');
+    expect(hidden.text).toBe('Hidden');
+
+    const props = render.props_merge(
+      render.props_attr('data_state', 'open'),
+      render.props_when(true, render.props_attr('aria_label', 'Profile'))
+    );
+    expect(props['data-state']).toBe('open');
+    expect(props['aria-label']).toBe('Profile');
+  });
+
   test('app-level SSR helpers support stateful components', () => {
     const App = ({ label }: { label: string }) => {
       const count = render.state(1);

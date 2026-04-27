@@ -1,25 +1,18 @@
 import {
   createContextToken,
   FrameManager,
-  type ComponentFrame,
   type ComponentFunction,
   type ContextToken,
 } from './frame-manager.js';
+import { type TestingDomHarness } from './testing-dom.js';
 import {
-  createTestingDomHarness,
-  dispatchTestingCheckedChange,
-  dispatchTestingClick,
-  dispatchTestingInput,
-  dispatchTestingKeydown,
-  dispatchTestingSubmit,
-  getTestingHarnessBody,
-  getTestingHarnessByText,
-  getTestingHarnessById,
-  getTestingHarnessContainer,
-  getTestingTextContent,
-  queryTestingHarnessByRole,
-  type TestingDomHarness,
-} from './testing-dom.js';
+  createDevtoolsController,
+  snapshotComponentFrame,
+  type DevtoolsResourceSnapshot,
+  type DevtoolsSnapshot,
+} from './runtime/devtools.js';
+import { createSsgApi } from './runtime/ssg.js';
+import { createTestingFacade } from './runtime/testing-facade.js';
 
 export type LuminaEnumLike =
   | { $tag: string; $payload?: unknown }
@@ -5840,6 +5833,25 @@ const runMicrotask = (fn: () => void): void => {
   Promise.resolve().then(fn);
 };
 
+const devtools = createDevtoolsController<ReactiveRenderRoot, VNode | null>({
+  scheduleMicrotask: runMicrotask,
+  snapshotRoot: (root, id) => ({
+    id,
+    current: root.root.currentNode(),
+    frames: [
+      ...Array.from(root.frameManager.rootFrame.keyedChildren.values()).map(snapshotComponentFrame),
+      ...root.frameManager.rootFrame.unkeyedChildren.map(snapshotComponentFrame),
+    ],
+  }),
+  snapshotResources: () =>
+    Array.from(resourceCache.values()).map((record): DevtoolsResourceSnapshot => ({
+      key: record.key,
+      status: record.status.peek(),
+      hasData: record.hasData.peek(),
+      error: record.error.peek(),
+    })),
+});
+
 const flushEffects = (): void => {
   if (pendingEffects.size === 0) return;
   const toRun = Array.from(pendingEffects);
@@ -5861,28 +5873,15 @@ const scheduleEffectsFlush = (): void => {
   });
 };
 
-const registerDevtoolsSignal = (signal: Signal<unknown> | Memo<unknown>): void => {
-  devtoolsSignals.add(signal);
-};
+const registerDevtoolsSignal = (kind: 'signal' | 'memo', signal: Signal<unknown> | Memo<unknown>): number =>
+  devtools.registerSignal(kind, signal);
 
-const unregisterDevtoolsSignal = (signal: Signal<unknown> | Memo<unknown>): void => {
-  devtoolsSignals.delete(signal);
+const unregisterDevtoolsSignal = (id: number): void => {
+  devtools.unregisterSignal(id);
 };
 
 const scheduleDevtoolsNotify = (): void => {
-  if (devtoolsListeners.size === 0 || devtoolsNotifyPending) return;
-  devtoolsNotifyPending = true;
-  runMicrotask(() => {
-    devtoolsNotifyPending = false;
-    const snapshot = snapshotDevtools();
-    for (const listener of Array.from(devtoolsListeners)) {
-      try {
-        listener(snapshot);
-      } catch {
-        // Ignore observer failures.
-      }
-    }
-  });
+  devtools.scheduleNotify();
 };
 
 const trackReactiveSource = (source: ReactiveSource): void => {
@@ -5978,12 +5977,12 @@ const notifyReactiveObservers = (source: ReactiveSource): void => {
 
 export class Signal<T> implements ReactiveSource {
   observers = new Set<ReactiveComputation>();
-  readonly __luminaDevtoolsId = nextDevtoolsSignalId++;
+  readonly __luminaDevtoolsId: number;
   private value: T;
 
   constructor(initial: T) {
+    this.__luminaDevtoolsId = registerDevtoolsSignal('signal', this as Signal<unknown>);
     this.value = __lumina_clone(initial);
-    registerDevtoolsSignal(this as Signal<unknown>);
   }
 
   get(): T {
@@ -6019,7 +6018,7 @@ export class Signal<T> implements ReactiveSource {
 
 export class Memo<T> implements ReactiveSource {
   observers = new Set<ReactiveComputation>();
-  readonly __luminaDevtoolsId = nextDevtoolsSignalId++;
+  readonly __luminaDevtoolsId: number;
   private readonly compute: () => T;
   private readonly computation: ReactiveComputation;
   private value!: T;
@@ -6027,8 +6026,8 @@ export class Memo<T> implements ReactiveSource {
   private stale = true;
 
   constructor(compute: () => T) {
+    this.__luminaDevtoolsId = registerDevtoolsSignal('memo', this as Memo<unknown>);
     this.compute = compute;
-    registerDevtoolsSignal(this as Memo<unknown>);
     this.computation = new ReactiveComputation(
       () => {
         const next = __lumina_clone(this.compute());
@@ -6070,7 +6069,7 @@ export class Memo<T> implements ReactiveSource {
   dispose(): void {
     this.computation.dispose();
     this.observers.clear();
-    unregisterDevtoolsSignal(this as Memo<unknown>);
+    unregisterDevtoolsSignal(this.__luminaDevtoolsId);
     scheduleDevtoolsNotify();
   }
 }
@@ -6293,55 +6292,7 @@ interface CustomElementController<P = CustomElementProps> {
   disconnect: () => void;
 }
 
-interface SsgPageOptions {
-  title?: string;
-  lang?: string;
-  head?: string | string[];
-  bodyClassName?: string;
-  appClassName?: string;
-  appId?: string;
-  hydrateModule?: string;
-}
-
-interface DevtoolsSignalSnapshot {
-  id: number;
-  kind: 'signal' | 'memo';
-  value: unknown;
-}
-
-interface DevtoolsResourceSnapshot {
-  key: string;
-  status: string;
-  hasData: boolean;
-  error: unknown;
-}
-
-interface DevtoolsFrameSnapshot {
-  id: number;
-  name: string;
-  key: unknown;
-  slots: Array<{ kind: string }>;
-  children: DevtoolsFrameSnapshot[];
-}
-
-interface DevtoolsSnapshot {
-  roots: Array<{ id: number; current: VNode | null; frames: DevtoolsFrameSnapshot[] }>;
-  resources: DevtoolsResourceSnapshot[];
-  signals: DevtoolsSignalSnapshot[];
-}
-
-type DevtoolsListener = (snapshot: DevtoolsSnapshot) => void;
-
 let activeFrameManager: FrameManager | null = null;
-let nextDevtoolsSignalId = 1;
-let nextDevtoolsRootId = 1;
-const devtoolsSignals = new Set<Signal<unknown> | Memo<unknown>>();
-const devtoolsRoots = new Map<number, ReactiveRenderRoot>();
-const devtoolsListeners = new Set<DevtoolsListener>();
-let devtoolsNotifyPending = false;
-
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' ? value as Record<string, unknown> : {};
 
 const normalizeVNodeChildren = (input: VNodeInput): VNode[] => {
   if (Array.isArray(input)) {
@@ -7301,6 +7252,28 @@ const mergeProps = (left: unknown, right: unknown): Record<string, unknown> => {
   }
 
   return merged;
+};
+
+const normalizeAuthoringPropName = (name: string): string => {
+  if (name === 'class') return 'className';
+  if (name.startsWith('data_')) return `data-${name.slice(5).replace(/_/g, '-')}`;
+  if (name.startsWith('aria_')) return `aria-${name.slice(5).replace(/_/g, '-')}`;
+  if (name.startsWith('on_')) {
+    const eventName = name
+      .slice(3)
+      .replace(/_([a-zA-Z0-9])/g, (_match, ch: string) => ch.toUpperCase());
+    return `on${eventName.charAt(0).toUpperCase()}${eventName.slice(1)}`;
+  }
+  return name.replace(/_([a-zA-Z0-9])/g, (_match, ch: string) => ch.toUpperCase());
+};
+
+const propsAttr = (name: string, value: unknown): Record<string, unknown> => ({
+  [normalizeAuthoringPropName(name)]: value,
+});
+
+const propsWhen = (condition: unknown, props: unknown): Record<string, unknown> => {
+  const resolved = condition instanceof Signal ? condition.get() : condition;
+  return resolved ? mergeProps({}, props) : {};
 };
 
 const patchPortalMount = (
@@ -8280,6 +8253,32 @@ const mountTestingApp = <P>(
   return root;
 };
 
+const testingFacade = createTestingFacade<
+  ComponentFunction<unknown, ComponentRenderable>,
+  ReactiveRenderRoot | { $tag: string; $payload?: unknown }
+>({
+  createRenderer: (documentLike) => createDomRenderer({ document: documentLike as DomDocumentLike }),
+  mountApp: (harness, componentFn, props, hydrate) =>
+    mountTestingApp(
+      harness,
+      componentFn as ComponentFunction<unknown, ComponentRenderable>,
+      props,
+      hydrate
+    ),
+});
+
+const ssgApi = createSsgApi<VNode, ComponentFunction<unknown, ComponentRenderable>>({
+  isVNode,
+  renderToString,
+  coerceRenderableToVNode: (value) => coerceRenderableToVNode(value as VNodeInput),
+  escapeHtml,
+  resolvePath: resolvePathBasic,
+  dirnamePath: dirnamePathBasic,
+  getNodeBuiltinModule,
+  renderApp: (componentFn, props) =>
+    renderAppVNode(componentFn as ComponentFunction<unknown, ComponentRenderable>, props),
+});
+
 const readCustomElementAttributes = (
   host: unknown,
   observedAttributes: readonly string[]
@@ -8690,22 +8689,12 @@ export class ReactiveRenderRoot {
   }
 }
 
-const devtoolsRootIds = new WeakMap<ReactiveRenderRoot, number>();
-
 const registerDevtoolsRoot = (root: ReactiveRenderRoot): void => {
-  if (!devtoolsRootIds.has(root)) {
-    devtoolsRootIds.set(root, nextDevtoolsRootId++);
-  }
-  devtoolsRoots.set(devtoolsRootIds.get(root)!, root);
-  scheduleDevtoolsNotify();
+  devtools.registerRoot(root);
 };
 
 const unregisterDevtoolsRoot = (root: ReactiveRenderRoot): void => {
-  const id = devtoolsRootIds.get(root);
-  if (id !== undefined) {
-    devtoolsRoots.delete(id);
-    scheduleDevtoolsNotify();
-  }
+  devtools.unregisterRoot(root);
 };
 
 const reorderChildren = (
@@ -8815,59 +8804,10 @@ const longestIncreasingSubsequenceIndices = (values: number[]): number[] => {
   return result;
 };
 
-const snapshotFrame = (frame: ComponentFrame): DevtoolsFrameSnapshot => ({
-  id: frame.id,
-  name: frame.componentFn?.name?.trim() || (frame.componentFn ? '<anonymous component>' : 'root'),
-  key: frame.key ?? null,
-  slots: frame.slots.map((slot) => ({ kind: slot.kind })),
-  children: [
-    ...Array.from(frame.keyedChildren.values()).map(snapshotFrame),
-    ...frame.unkeyedChildren.map(snapshotFrame),
-  ],
-});
+const snapshotDevtools = (): DevtoolsSnapshot<VNode | null> => devtools.snapshot();
 
-function snapshotDevtools(): DevtoolsSnapshot {
-  return {
-    roots: Array.from(devtoolsRoots.values()).map((root) => ({
-      id: devtoolsRootIds.get(root) ?? 0,
-      current: root.root.currentNode(),
-      frames: [
-        ...Array.from(root.frameManager.rootFrame.keyedChildren.values()).map(snapshotFrame),
-        ...root.frameManager.rootFrame.unkeyedChildren.map(snapshotFrame),
-      ],
-    })),
-    resources: Array.from(resourceCache.values()).map((record) => ({
-      key: record.key,
-      status: record.status.peek(),
-      hasData: record.hasData.peek(),
-      error: record.error.peek(),
-    })),
-    signals: Array.from(devtoolsSignals).map((signal) => ({
-      id: signal.__luminaDevtoolsId,
-      kind: signal instanceof Memo ? 'memo' : 'signal',
-      value: signal.peek(),
-    })),
-  };
-}
-
-const subscribeDevtools = (listener: DevtoolsListener): (() => void) => {
-  devtoolsListeners.add(listener);
-  listener(snapshotDevtools());
-  return () => {
-    devtoolsListeners.delete(listener);
-  };
-};
-
-const installLuminaDevtools = (key: string = '__LUMINA_DEVTOOLS__'): Record<string, unknown> => {
-  const globalRecord = globalThis as Record<string, unknown>;
-  const handle = {
-    version: 'beta',
-    snapshot: () => snapshotDevtools(),
-    subscribe: (listener: DevtoolsListener) => subscribeDevtools(listener),
-  };
-  globalRecord[key] = handle;
-  return handle;
-};
+const installLuminaDevtools = (key: string = '__LUMINA_DEVTOOLS__'): Record<string, unknown> =>
+  devtools.install(key);
 
 const toRenderErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);
@@ -8990,60 +8930,6 @@ const renderTransitionPresence = (
   });
 
   return vnodeElement('div', currentProps, resolveChildrenInput(children));
-};
-
-const coerceSsgPageOptions = (options: unknown): Required<SsgPageOptions> => {
-  const candidate = asRecord(options);
-  const headValue = candidate.head;
-  const head = Array.isArray(headValue)
-    ? headValue.map((entry) => String(entry))
-    : headValue == null
-      ? []
-      : [String(headValue)];
-  return {
-    title: typeof candidate.title === 'string' ? candidate.title : '',
-    lang: typeof candidate.lang === 'string' && candidate.lang.length > 0 ? candidate.lang : 'en',
-    head,
-    bodyClassName: typeof candidate.bodyClassName === 'string' ? candidate.bodyClassName : '',
-    appClassName: typeof candidate.appClassName === 'string' ? candidate.appClassName : '',
-    appId: typeof candidate.appId === 'string' && candidate.appId.length > 0 ? candidate.appId : 'app',
-    hydrateModule: typeof candidate.hydrateModule === 'string' ? candidate.hydrateModule : '',
-  };
-};
-
-const renderSsgPage = (body: unknown, options?: unknown): string => {
-  const normalized = coerceSsgPageOptions(options);
-  const bodyContent = isVNode(body)
-    ? renderToString(body)
-    : Array.isArray(body) || (body && typeof body === 'object')
-      ? renderToString(coerceRenderableToVNode(body as VNodeInput))
-      : String(body ?? '');
-  const head = [
-    '<meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    normalized.title ? `<title>${escapeHtml(normalized.title)}</title>` : '',
-    ...normalized.head,
-  ].filter((entry) => entry.length > 0).join('');
-  const hydrateScript = normalized.hydrateModule
-    ? `<script type="module" src="${escapeHtml(normalized.hydrateModule)}"></script>`
-    : '';
-  const bodyClass = normalized.bodyClassName ? ` class="${escapeHtml(normalized.bodyClassName)}"` : '';
-  const appClass = normalized.appClassName ? ` class="${escapeHtml(normalized.appClassName)}"` : '';
-  return `<!DOCTYPE html><html lang="${escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${escapeHtml(normalized.appId)}"${appClass}>${bodyContent}</div>${hydrateScript}</body></html>`;
-};
-
-const writeSsgPage = (filePath: string, body: unknown, options?: unknown): string => {
-  const resolvedPath = resolvePathBasic(filePath);
-  const fsModule = getNodeBuiltinModule('node:fs') as {
-    mkdirSync?: (path: string, options?: { recursive?: boolean }) => void;
-    writeFileSync?: (path: string, content: string, encoding?: string) => void;
-  } | null;
-  if (!fsModule?.mkdirSync || !fsModule.writeFileSync) {
-    throw new Error('SSG write requires Node.js file system support');
-  }
-  fsModule.mkdirSync(dirnamePathBasic(resolvedPath), { recursive: true });
-  fsModule.writeFileSync(resolvedPath, renderSsgPage(body, options), 'utf-8');
-  return resolvedPath;
 };
 
 const requireActiveFrameManager = (apiName: string): FrameManager => {
@@ -10215,6 +10101,12 @@ export const render = {
       return coerceRenderableToVNode(resolvedFallback);
     }
   },
+  show: (condition: unknown, renderChildren: () => ComponentRenderable, fallback: unknown): VNode => {
+    const resolved = condition instanceof Signal ? condition.get() : condition;
+    return resolved
+      ? coerceRenderableToVNode(renderChildren())
+      : coerceRenderableToVNode(typeof fallback === 'function' ? fallback() : fallback);
+  },
   createResource: <T>(
     key: unknown,
     loader: (() => Promise<T>) | (() => T),
@@ -10280,7 +10172,7 @@ export const render = {
   testingKeydown: (node: unknown, key: string, shiftKey?: boolean): void =>
     render.testing_keydown(node, key, shiftKey),
   testingSubmit: (node: unknown): void => render.testing_submit(node),
-  devtoolsSnapshot: (): DevtoolsSnapshot => render.devtools_snapshot(),
+  devtoolsSnapshot: (): DevtoolsSnapshot<VNode | null> => render.devtools_snapshot(),
   installDevtools: (key?: string): Record<string, unknown> => render.install_devtools(key),
   ssgPage: (body: unknown, options?: unknown): string => render.ssg_page(body, options),
   ssgRenderApp: <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P, options?: unknown): string =>
@@ -10293,18 +10185,18 @@ export const render = {
     props: P,
     options?: unknown
   ): string => render.ssg_write_app(filePath, componentFn, props, options),
-  devtools_snapshot: (): DevtoolsSnapshot => snapshotDevtools(),
+  devtools_snapshot: (): DevtoolsSnapshot<VNode | null> => snapshotDevtools(),
   install_devtools: (key?: string): Record<string, unknown> => installLuminaDevtools(key),
-  ssg_page: (body: unknown, options?: unknown): string => renderSsgPage(body, options),
+  ssg_page: (body: unknown, options?: unknown): string => ssgApi.renderPage(body, options),
   ssg_render_app: <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P, options?: unknown): string =>
-    renderSsgPage(render.render_app(componentFn, props), options),
-  ssg_write_page: (filePath: string, body: unknown, options?: unknown): string => writeSsgPage(filePath, body, options),
+    ssgApi.renderAppPage(componentFn as ComponentFunction<unknown, ComponentRenderable>, props, options),
+  ssg_write_page: (filePath: string, body: unknown, options?: unknown): string => ssgApi.writePage(filePath, body, options),
   ssg_write_app: <P>(
     filePath: string,
     componentFn: ComponentFunction<P, ComponentRenderable>,
     props: P,
     options?: unknown
-  ): string => writeSsgPage(filePath, render.render_app(componentFn, props), options),
+  ): string => ssgApi.writeAppPage(filePath, componentFn as ComponentFunction<unknown, ComponentRenderable>, props, options),
   mountCustomElement: <P>(
     host: unknown,
     componentFn: ComponentFunction<P, ComponentRenderable>,
@@ -12189,7 +12081,9 @@ export const render = {
         return handler();
       },
     }),
-  props_key: (key: string): Record<string, unknown> => ({ key }),
+  props_key: (key: unknown): Record<string, unknown> => ({ key }),
+  props_attr: (name: string, value: unknown): Record<string, unknown> => propsAttr(name, value),
+  props_when: (condition: unknown, props: unknown): Record<string, unknown> => propsWhen(condition, props),
   props_merge: (left: unknown, right: unknown): Record<string, unknown> => mergeProps(left, right),
   dom_get_element_by_id: (id: string): unknown => {
     const doc = (globalThis as { document?: { getElementById?: (value: string) => unknown } }).document;
@@ -12284,33 +12178,33 @@ export const render = {
     props: P
   ): ReactiveRenderRoot | { $tag: string; $payload?: unknown } =>
     hydrateReactiveApp(renderer, container, componentFn, props),
-  testing_create_dom_harness: (): TestingDomHarness => {
-    const harness = createTestingDomHarness();
-    harness.renderer = createDomRenderer({ document: harness.document as unknown as DomDocumentLike });
-    return harness;
-  },
+  testing_create_dom_harness: (): TestingDomHarness => testingFacade.testing_create_dom_harness(),
   testing_mount_app: <P>(
     harness: TestingDomHarness,
     componentFn: ComponentFunction<P, ComponentRenderable>,
     props: P
-  ): ReactiveRenderRoot | { $tag: string; $payload?: unknown } => mountTestingApp(harness, componentFn, props, false),
+  ): ReactiveRenderRoot | { $tag: string; $payload?: unknown } =>
+    testingFacade.testing_mount_app(harness, componentFn as ComponentFunction<unknown, ComponentRenderable>, props),
   testing_hydrate_app: <P>(
     harness: TestingDomHarness,
     componentFn: ComponentFunction<P, ComponentRenderable>,
     props: P
-  ): ReactiveRenderRoot | { $tag: string; $payload?: unknown } => mountTestingApp(harness, componentFn, props, true),
-  testing_container: (harness: unknown): unknown => getTestingHarnessContainer(harness),
-  testing_body: (harness: unknown): unknown => getTestingHarnessBody(harness),
-  testing_get_by_id: (harness: unknown, id: string): unknown => getTestingHarnessById(harness, id),
-  testing_get_by_text: (scope: unknown, value: string): unknown => getTestingHarnessByText(scope, value),
-  testing_query_all_by_role: (scope: unknown, role: string): unknown => queryTestingHarnessByRole(scope, role),
-  testing_text_content: (node: unknown): string => getTestingTextContent(node),
-  testing_click: (node: unknown): void => dispatchTestingClick(node),
-  testing_input: (node: unknown, value: string): void => dispatchTestingInput(node, value),
-  testing_change_checked: (node: unknown, checked: boolean): void => dispatchTestingCheckedChange(node, checked),
+  ): ReactiveRenderRoot | { $tag: string; $payload?: unknown } =>
+    testingFacade.testing_hydrate_app(harness, componentFn as ComponentFunction<unknown, ComponentRenderable>, props),
+  testing_container: (harness: unknown): unknown => testingFacade.testing_container(harness),
+  testing_body: (harness: unknown): unknown => testingFacade.testing_body(harness),
+  testing_get_by_id: (harness: unknown, id: string): unknown => testingFacade.testing_get_by_id(harness, id),
+  testing_get_by_text: (scope: unknown, value: string): unknown => testingFacade.testing_get_by_text(scope, value),
+  testing_query_all_by_role: (scope: unknown, role: string): unknown =>
+    testingFacade.testing_query_all_by_role(scope, role),
+  testing_text_content: (node: unknown): string => testingFacade.testing_text_content(node),
+  testing_click: (node: unknown): void => testingFacade.testing_click(node),
+  testing_input: (node: unknown, value: string): void => testingFacade.testing_input(node, value),
+  testing_change_checked: (node: unknown, checked: boolean): void =>
+    testingFacade.testing_change_checked(node, checked),
   testing_keydown: (node: unknown, key: string, shiftKey?: boolean): void =>
-    dispatchTestingKeydown(node, key, shiftKey ?? false),
-  testing_submit: (node: unknown): void => dispatchTestingSubmit(node),
+    testingFacade.testing_keydown(node, key, shiftKey),
+  testing_submit: (node: unknown): void => testingFacade.testing_submit(node),
   mount_custom_element: <P>(
     host: unknown,
     componentFn: ComponentFunction<P, ComponentRenderable>,
@@ -12390,6 +12284,11 @@ export const suspense = (fallback: unknown, renderChildren: () => ComponentRende
   render.suspense(fallback, renderChildren);
 export const errorBoundary = (fallback: unknown, renderChildren: () => ComponentRenderable): VNode =>
   render.error_boundary(fallback, renderChildren);
+export const show = (
+  condition: unknown,
+  renderChildren: () => ComponentRenderable,
+  fallback: unknown = []
+): VNode => render.show(condition, renderChildren, fallback);
 export const mountApp = <P>(
   renderer: unknown,
   container: unknown,
@@ -12689,7 +12588,10 @@ export const props_on_checked_change = (handler: (checked: boolean) => unknown):
   render.props_on_checked_change(handler);
 export const props_on_submit = (handler: (() => unknown) | null | undefined): Record<string, unknown> =>
   render.props_on_submit(handler);
-export const props_key = (key: string): Record<string, unknown> => render.props_key(key);
+export const props_key = (key: unknown): Record<string, unknown> => render.props_key(key);
+export const props_attr = (name: string, value: unknown): Record<string, unknown> => render.props_attr(name, value);
+export const props_when = (condition: unknown, props: unknown): Record<string, unknown> =>
+  render.props_when(condition, props);
 export const props_merge = (left: unknown, right: unknown): Record<string, unknown> => render.props_merge(left, right);
 export const dom_get_element_by_id = (id: string): unknown => render.dom_get_element_by_id(id);
 export const transitionPresence = (

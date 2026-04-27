@@ -166,4 +166,55 @@ describe('render lowering', () => {
     const calls = collectCalls(lowered);
     expect(calls.some((call) => call.renderLowering?.callee === 'forList')).toBe(true);
   });
+
+  test('normalizes named component args and lowers authoring props/helpers', () => {
+    const program = parseLuminaProgram(
+      `
+        import { render } from "@std";
+
+        component Card(
+          title: string = "Untitled",
+          header: any = 0,
+          children: any = 0
+        ) -> VNode {
+          render.element("section", props {
+            class: "card",
+            when true => data_state: "ready",
+            ...render.props_id("card")
+          }, [
+            render.slot_or(header, props { title: title }, render.text(title)),
+            render.slot_or(children, props {}, render.text("Empty"))
+          ])
+        }
+
+        fn app(open: Signal<bool>) -> VNode {
+          Card(
+            children: transition(open, 150, props { class: "fade" }) {
+              show(render.get(open)) {
+                render.text("Open")
+              } else {
+                render.text("Closed")
+              }
+            },
+            header: fn(props: any) -> VNode {
+              render.element("h1", 0, [render.text(props.title)])
+            }
+          )
+        }
+      `.trim() + '\n'
+    );
+
+    const lowered = lowerRenderProgram(program);
+    const calls = collectCalls(lowered);
+    const appDecl = findFnDecl(lowered, 'app');
+    const cardCall = calls.find((call) => call.callee.type === 'Identifier' && call.callee.name === 'Card');
+
+    expect(appDecl.params[0]?.defaultValue ?? null).toBeNull();
+    expect(cardCall?.args.every((arg) => !arg.named)).toBe(true);
+    expect(calls.some((call) => call.renderLowering?.callee === 'props_merge')).toBe(true);
+    expect(calls.some((call) => call.renderLowering?.callee === 'props_when')).toBe(true);
+    expect(calls.some((call) => call.renderLowering?.callee === 'props_attr')).toBe(true);
+    expect(calls.some((call) => call.renderLowering?.callee === 'show')).toBe(true);
+    expect(calls.some((call) => call.renderLowering?.callee === 'transitionPresence')).toBe(true);
+  });
 });

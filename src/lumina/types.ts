@@ -338,6 +338,13 @@ export function unify(
     }
   }
 
+  if (
+    (left.kind === 'primitive' && left.name === 'any') ||
+    (right.kind === 'primitive' && right.name === 'any')
+  ) {
+    return;
+  }
+
   if (left.kind === 'primitive' && right.kind === 'primitive') {
     const leftName = normalizePrimitiveName(left.name);
     const rightName = normalizePrimitiveName(right.name);

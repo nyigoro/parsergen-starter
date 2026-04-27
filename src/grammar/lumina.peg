@@ -54,6 +54,225 @@
   function stripAttributes(attrs, name) {
     return normalizeAttributes(attrs).filter(attr => attr && attr.name !== name);
   }
+
+  function createIdentifierNode(name, loc) {
+    return createNode("Identifier", { name, location: loc }, () => loc);
+  }
+
+  function createExprArg(value, loc) {
+    return { named: false, value, location: (value && value.location) ? value.location : loc };
+  }
+
+  function createCallNode(callee, args, loc, options) {
+    return createNode("Call", {
+      callee,
+      args: (args || []).map(arg => createExprArg(arg, loc)),
+      typeArgs: [],
+      enumName: options && options.enumName ? options.enumName : null,
+      ...(options && options.receiver ? { receiver: options.receiver } : {})
+    }, () => loc);
+  }
+
+  function createDirectCallNode(name, args, loc) {
+    return createCallNode(createIdentifierNode(name, loc), args, loc, null);
+  }
+
+  function createRenderCallNode(name, args, loc) {
+    return createCallNode(createIdentifierNode(name, loc), args, loc, { enumName: "render" });
+  }
+
+  function createStringNode(value, loc) {
+    return createNode("String", { value, location: loc }, () => loc);
+  }
+
+  function createBlockFromExpr(body, loc) {
+    if (body && body.type === "Block") return body;
+    const ret = createNode("Return", { value: body }, () => loc);
+    return createNode("Block", { body: [ret] }, () => loc);
+  }
+
+  function createZeroArgLambda(body, loc) {
+    return createNode("Lambda", {
+      async: false,
+      params: [],
+      returnType: null,
+      body: createBlockFromExpr(body, loc),
+      typeParams: [],
+      location: loc
+    }, () => loc);
+  }
+
+  function createParamNode(name, typeName, loc) {
+    return {
+      name,
+      typeName,
+      ref: false,
+      refMut: false,
+      defaultValue: null,
+      location: loc
+    };
+  }
+
+  function createGetCallNode(value, loc) {
+    return createRenderCallNode("get", [value], loc);
+  }
+
+  function buildPropsPart(name, value, loc) {
+    switch (name) {
+      case "class":
+        return createRenderCallNode("props_class", [value], loc);
+      case "id":
+        return createRenderCallNode("props_id", [value], loc);
+      case "style":
+        return createRenderCallNode("props_style", [value], loc);
+      case "value":
+        return createRenderCallNode("props_value", [value], loc);
+      case "placeholder":
+        return createRenderCallNode("props_placeholder", [value], loc);
+      case "href":
+        return createRenderCallNode("props_href", [value], loc);
+      case "disabled":
+        return createRenderCallNode("props_disabled", [value], loc);
+      case "key":
+        return createRenderCallNode("props_key", [value], loc);
+      case "checked":
+        return createRenderCallNode("props_checked", [value], loc);
+      case "type":
+        return createRenderCallNode("props_type", [value], loc);
+      case "name":
+        return createRenderCallNode("props_name", [value], loc);
+      case "on_click":
+        return createRenderCallNode("props_on_click", [value], loc);
+      case "on_input":
+        return createRenderCallNode("props_on_input", [value], loc);
+      case "on_change":
+        return createRenderCallNode("props_on_change", [value], loc);
+      case "on_checked_change":
+        return createRenderCallNode("props_on_checked_change", [value], loc);
+      case "on_submit":
+        return createRenderCallNode("props_on_submit", [value], loc);
+      default:
+        return createRenderCallNode("props_attr", [createStringNode(name, loc), value], loc);
+    }
+  }
+
+  function buildPropsExpr(entries, loc) {
+    let current = createRenderCallNode("props_empty", [], loc);
+    for (const entry of entries || []) {
+      let part = current;
+      if (entry.kind === "spread") {
+        part = entry.value;
+      } else if (entry.kind === "field") {
+        part = buildPropsPart(entry.name, entry.value, entry.location || loc);
+      } else if (entry.kind === "conditional") {
+        part = createRenderCallNode("props_when", [
+          entry.condition,
+          buildPropsPart(entry.name, entry.value, entry.location || loc)
+        ], entry.location || loc);
+      }
+      current = createRenderCallNode("props_merge", [current, part], entry.location || loc);
+    }
+    return current;
+  }
+
+  function buildShowExpr(condition, body, fallback, loc) {
+    return createRenderCallNode("show", [
+      condition,
+      createZeroArgLambda(body, loc),
+      fallback ? createZeroArgLambda(fallback, loc) : createNode("ArrayLiteral", { elements: [], location: loc }, () => loc)
+    ], loc);
+  }
+
+  function buildBoundaryExpr(kind, fallback, body, loc) {
+    return createRenderCallNode(kind, [fallback, createZeroArgLambda(body, loc)], loc);
+  }
+
+  function buildTransitionExpr(open, duration, propsExpr, body, loc) {
+    return createRenderCallNode("transitionPresence", [
+      open,
+      propsExpr || createRenderCallNode("props_empty", [], loc),
+      duration,
+      createZeroArgLambda(body, loc)
+    ], loc);
+  }
+
+  function buildIndexAuthoringExpr(itemParam, indexParam, source, body, loc) {
+    const itemSignalName = `__lumina_index_item_${++nodeId}`;
+    const indexName = `__lumina_index_pos_${++nodeId}`;
+    const authorLambda = createNode("Lambda", {
+      async: false,
+      params: [createParamNode(itemParam, "any", loc)].concat(indexParam ? [createParamNode(indexParam, "int", loc)] : []),
+      returnType: "VNode",
+      body: createBlockFromExpr(body, loc),
+      typeParams: [],
+      location: loc
+    }, () => loc);
+    const forwardParams = [createParamNode(itemSignalName, "Signal<any>", loc)];
+    const forwardArgs = [createGetCallNode(createIdentifierNode(itemSignalName, loc), loc)];
+    if (indexParam) {
+      forwardParams.push(createParamNode(indexName, "int", loc));
+      forwardArgs.push(createIdentifierNode(indexName, loc));
+    }
+    const renderLambda = createNode("Lambda", {
+      async: false,
+      params: forwardParams,
+      returnType: "VNode",
+      body: createNode("Block", {
+        body: [
+          createNode("ExprStmt", {
+            expr: createCallNode(authorLambda, forwardArgs, loc, null)
+          }, () => loc)
+        ]
+      }, () => loc),
+      typeParams: [],
+      location: loc
+    }, () => loc);
+    return createRenderCallNode("indexList", [source, renderLambda], loc);
+  }
+
+  function buildForAuthoringExpr(itemParam, indexParam, source, keyExpr, body, loc) {
+    const itemSignalName = `__lumina_for_item_${++nodeId}`;
+    const indexSignalName = `__lumina_for_index_${++nodeId}`;
+    const authorParams = [createParamNode(itemParam, "any", loc)].concat(indexParam ? [createParamNode(indexParam, "int", loc)] : []);
+    const keyLambda = createNode("Lambda", {
+      async: false,
+      params: authorParams,
+      returnType: null,
+      body: createBlockFromExpr(keyExpr, loc),
+      typeParams: [],
+      location: loc
+    }, () => loc);
+    const authorLambda = createNode("Lambda", {
+      async: false,
+      params: authorParams,
+      returnType: "VNode",
+      body: createBlockFromExpr(body, loc),
+      typeParams: [],
+      location: loc
+    }, () => loc);
+    const renderArgs = [createGetCallNode(createIdentifierNode(itemSignalName, loc), loc)];
+    if (indexParam) {
+      renderArgs.push(createGetCallNode(createIdentifierNode(indexSignalName, loc), loc));
+    }
+    const renderLambda = createNode("Lambda", {
+      async: false,
+      params: [
+        createParamNode(itemSignalName, "Signal<any>", loc),
+        createParamNode(indexSignalName, "Signal<int>", loc)
+      ],
+      returnType: "VNode",
+      body: createNode("Block", {
+        body: [
+          createNode("ExprStmt", {
+            expr: createCallNode(authorLambda, renderArgs, loc, null)
+          }, () => loc)
+        ]
+      }, () => loc),
+      typeParams: [],
+      location: loc
+    }, () => loc);
+    return createRenderCallNode("forList", [source, keyLambda, renderLambda], loc);
+  }
 }
 Start
   = _ statements:TopStatementList _ { return createNode("Program", { body: statements }, location); }
@@ -814,7 +1033,14 @@ PostfixPart
   / _ targs:TypeArgsWithTurbofish? _ "(" _ args:ArgList? _ ")" { return { kind: "call", args: args || [], typeArgs: targs || [] }; }
 
 PrimaryAtom
-  = SelectExpr
+  = PropsExpr
+  / ShowExpr
+  / SuspenseExpr
+  / ErrorBoundaryExpr
+  / TransitionExpr
+  / IndexAuthoringExpr
+  / ForAuthoringExpr
+  / SelectExpr
   / MatchExpr
   / MacroInvokeExpr
   / ListComprehension
@@ -1010,6 +1236,55 @@ StructLiteralFieldList
 
 StructLiteralField
   = field:IdName _ ":" _ value:Expr { return { name: field.name, value, location: field.location }; }
+
+PropsExpr
+  = "props" _ "{" _ entries:PropsEntryList? _ "}" {
+      return buildPropsExpr(entries || [], location());
+    }
+
+PropsEntryList
+  = head:PropsEntry tail:(_ "," _ PropsEntry)* _ ","? { return [head].concat(tail.map(t => t[3])); }
+
+PropsEntry
+  = "..." _ value:Expr {
+      return { kind: "spread", value, location: location() };
+    }
+  / "when" __ condition:Expr _ "=>" _ name:IdName _ ":" _ value:Expr {
+      return { kind: "conditional", condition, name: name.name, value, location: name.location };
+    }
+  / name:IdName _ ":" _ value:Expr {
+      return { kind: "field", name: name.name, value, location: name.location };
+    }
+
+ShowExpr
+  = "show" _ "(" _ condition:Expr _ ")" _ body:(Block / Expr) _ elsePart:(_ "else" _ fallback:(Block / Expr))? {
+      return buildShowExpr(condition, body, elsePart ? elsePart[3] : null, location());
+    }
+
+SuspenseExpr
+  = "suspense" _ "(" _ fallback:Expr _ ")" _ body:(Block / Expr) {
+      return buildBoundaryExpr("suspense", fallback, body, location());
+    }
+
+ErrorBoundaryExpr
+  = "error_boundary" _ "(" _ fallback:Expr _ ")" _ body:(Block / Expr) {
+      return buildBoundaryExpr("errorBoundary", fallback, body, location());
+    }
+
+TransitionExpr
+  = "transition" _ "(" _ open:Expr _ "," _ duration:Expr _ propsExpr:(_ "," _ Expr)? _ ")" _ body:(Block / Expr) {
+      return buildTransitionExpr(open, duration, propsExpr ? propsExpr[3] : null, body, location());
+    }
+
+IndexAuthoringExpr
+  = "index" _ "(" _ item:IdName indexInfo:(_ "," _ idx:IdName { return idx.name; })? __ "in" __ source:Expr _ ")" _ "=>" _ body:(Block / Expr) {
+      return buildIndexAuthoringExpr(item.name, indexInfo || null, source, body, item.location);
+    }
+
+ForAuthoringExpr
+  = "for" _ "(" _ item:IdName indexInfo:(_ "," _ idx:IdName { return idx.name; })? __ "in" __ source:Expr __ "key" __ keyExpr:Expr _ ")" _ "=>" _ body:(Block / Expr) {
+      return buildForAuthoringExpr(item.name, indexInfo || null, source, keyExpr, body, item.location);
+    }
 
 Keyword
   = ("fn" / "async" / "comptime" / "await" / "struct" / "enum" / "type" / "extern" / "import" / "pub" / "trait" / "impl" / "shader" / "let" / "mut" / "ref" / "move"

@@ -568,6 +568,7 @@ class JSGenerator {
     if (usesTry) {
       this.builder.append(`${this.pad()}try {\n`);
       this.indentLevel++;
+      this.emitDefaultParamInitializers(stmt.params);
       this.emitFunctionBodyStatements(stmt.body);
       this.indentLevel--;
       this.builder.append(`${this.pad()}} catch (err) {\n`);
@@ -577,10 +578,30 @@ class JSGenerator {
       this.indentLevel--;
       this.builder.append(`${this.pad()}}\n`);
     } else {
+      this.emitDefaultParamInitializers(stmt.params);
       this.emitFunctionBodyStatements(stmt.body);
     }
     this.indentLevel--;
     this.builder.append(`${pad}}\n`);
+  }
+
+  private emitDefaultParamInitializers(params: Array<{ name: string; defaultValue?: LuminaExpr | null }>): void {
+    for (const param of params) {
+      if (!param.defaultValue) continue;
+      this.builder.append(`${this.pad()}if (${param.name} === undefined) ${param.name} = `);
+      this.builder.appendExpr(this.emitExpr(param.defaultValue));
+      this.builder.append(';\n');
+    }
+  }
+
+  private renderDefaultParamInitializersInline(
+    params: Array<{ name: string; defaultValue?: LuminaExpr | null }>,
+    indent: string
+  ): string {
+    return params
+      .filter((param) => !!param.defaultValue)
+      .map((param) => `${indent}if (${param.name} === undefined) ${param.name} = ${this.emitExpr(param.defaultValue as LuminaExpr).code};\n`)
+      .join('');
   }
 
   private emitFunctionBodyStatements(block: { body: LuminaStatement[] }): void {
@@ -1289,9 +1310,10 @@ class JSGenerator {
         const params = expr.params.map((param) => param.name).join(', ');
         const asyncKeyword = expr.async ? 'async ' : '';
         const body = this.renderInlineFunctionBody(expr.body);
+        const defaultInit = this.renderDefaultParamInitializersInline(expr.params, '  ');
         const usesTry = blockUsesTry(expr.body);
         if (usesTry) {
-          const wrappedBody = this.indentMultiline(body, '    ');
+          const wrappedBody = this.indentMultiline(defaultInit + body, '    ');
           const code =
             `${asyncKeyword}function(${params}) {\n` +
             `  try {\n` +
@@ -1303,7 +1325,7 @@ class JSGenerator {
             `}`;
           return withBase({ code, mappings: [] });
         }
-        const code = `${asyncKeyword}function(${params}) {\n${body}}`;
+        const code = `${asyncKeyword}function(${params}) {\n${defaultInit}${body}}`;
         return withBase({ code, mappings: [] });
       }
       case 'String':

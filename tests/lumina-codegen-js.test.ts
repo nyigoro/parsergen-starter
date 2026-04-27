@@ -228,4 +228,70 @@ describe('Lumina AST JS codegen', () => {
     expect(code).not.toContain('__lumina_static_render_');
     expect(code).not.toContain('__LUMINA_STATIC_RENDER_HOISTS__');
   });
+
+  test('emits default parameter initialization and lowers authoring syntax into render helpers', () => {
+    const program = `
+      import { render } from "@std";
+
+      component Card(
+        title: string = "Untitled",
+        header: any = 0,
+        children: any = 0
+      ) -> VNode {
+        render.element("section", props {
+          class: "card",
+          when true => data_state: "ready",
+          ...render.props_id("card")
+        }, [
+          render.slot_or(header, props { title: title }, render.text(title)),
+          render.slot_or(children, props {}, render.text("Empty"))
+        ])
+      }
+
+      fn app(rows: Signal<Vec<any>>, open: Signal<bool>) -> VNode {
+        Card(
+          children: suspense(render.text("Loading")) {
+            error_boundary(render.text("Failed")) {
+              transition(open, 120, props { class: "fade" }) {
+                render.element("ul", 0, [
+                  index (row, idx in rows) => render.element("li", props { key: idx }, [render.text(row)])
+                ])
+              }
+            }
+          },
+          header: fn(props: any) -> VNode {
+            render.element("h1", 0, [render.text(props.title)])
+          }
+        )
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
+    expect(code).toContain('if (title === undefined) title = "Untitled";');
+    expect(code).toContain('render.props_merge(');
+    expect(code).toContain('render.props_when(true');
+    expect(code).toContain('render.props_attr("data_state"');
+    expect(code).toContain('render.suspense(');
+    expect(code).toContain('render.errorBoundary(');
+    expect(code).toContain('render.transitionPresence(');
+    expect(code).toContain('indexList(rows');
+  });
+
+  test('lowers native for authoring syntax into render.forList', () => {
+    const program = `
+      import { render } from "@std";
+
+      fn rows(items: Signal<Vec<any>>) -> VNode {
+        render.element("ul", 0, [
+          for (row, idx in items key row.id) => render.element("li", props { key: row.id }, [render.text(row.label), render.text(idx)])
+        ])
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
+    expect(code).toContain('forList(items');
+    expect(code).toContain('render.props_key(row.id)');
+  });
 });

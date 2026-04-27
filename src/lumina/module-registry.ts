@@ -4701,14 +4701,17 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const propsPlaceholderType: Type = fnType([primitive('string')], primitive('any'));
     const propsHrefType: Type = fnType([primitive('string')], primitive('any'));
     const propsDisabledType: Type = fnType([primitive('bool')], primitive('any'));
-    const propsKeyType: Type = fnType([primitive('string')], primitive('any'));
+    const propsKeyValueT = freshTypeVar();
+    const propsKeyType: Type = fnType([propsKeyValueT], primitive('any'));
     const propsOnInputType: Type = fnType([fnType([primitive('string')], primitive('void'))], primitive('any'));
     const propsOnChangeType: Type = fnType([fnType([primitive('string')], primitive('void'))], primitive('any'));
     const checkedChangeReturnT = freshTypeVar();
     const submitReturnT = freshTypeVar();
     const propsOnCheckedChangeType: Type = fnType([fnType([primitive('bool')], checkedChangeReturnT)], primitive('any'));
     const propsOnSubmitType: Type = fnType([fnType([], submitReturnT)], primitive('any'));
-    const propsMergeType: Type = fnType([primitive('any'), primitive('any')], primitive('any'));
+    const propsMergeLeftT = freshTypeVar();
+    const propsMergeRightT = freshTypeVar();
+    const propsMergeType: Type = fnType([propsMergeLeftT, propsMergeRightT], primitive('any'));
     const domGetElementByIdType: Type = fnType([primitive('string')], primitive('any'));
     const componentPropsT = freshTypeVar();
     const componentFnType: Type = fnType([componentPropsT], vnodeT);
@@ -4736,16 +4739,46 @@ export function createStdModuleRegistry(): ModuleRegistry {
     const resourceValueType: Type = fnType([resourceHandleType], primitive('any'));
     const resourceRefreshType: Type = fnType([resourceHandleType], promiseType(primitive('any')));
     const resourceInvalidateType: Type = fnType([resourceHandleType], primitive('void'));
-    const suspenseType: Type = fnType([primitive('any'), fnType([], primitive('any'))], vnodeT);
-    const errorBoundaryType: Type = fnType([primitive('any'), fnType([], primitive('any'))], vnodeT);
-    const childrenResolveType: Type = fnType([primitive('any')], primitive('any'));
-    const slotType: Type = fnType([primitive('any'), primitive('any')], vnodeT);
-    const slotOrType: Type = fnType([primitive('any'), primitive('any'), primitive('any')], vnodeT);
+    const suspenseFallbackT = freshTypeVar();
+    const suspenseChildrenT = freshTypeVar();
+    const suspenseType: Type = fnType([suspenseFallbackT, fnType([], suspenseChildrenT)], vnodeT);
+    const errorBoundaryFallbackT = freshTypeVar();
+    const errorBoundaryChildrenT = freshTypeVar();
+    const errorBoundaryType: Type = fnType([errorBoundaryFallbackT, fnType([], errorBoundaryChildrenT)], vnodeT);
+    const showConditionT = freshTypeVar();
+    const showChildrenT = freshTypeVar();
+    const showFallbackT = freshTypeVar();
+    const showType: Type = fnType([showConditionT, fnType([], showChildrenT), showFallbackT], vnodeT);
+    const childrenResolveInputT = freshTypeVar();
+    const childrenResolveType: Type = fnType([childrenResolveInputT], primitive('any'));
+    const slotValueT = freshTypeVar();
+    const slotPropsT = freshTypeVar();
+    const slotType: Type = fnType([slotValueT, slotPropsT], vnodeT);
+    const slotOrValueT = freshTypeVar();
+    const slotOrPropsT = freshTypeVar();
+    const slotOrFallbackT = freshTypeVar();
+    const slotOrType: Type = fnType([slotOrValueT, slotOrPropsT, slotOrFallbackT], vnodeT);
     const composeHandlersType: Type = fnType([primitive('any'), primitive('any')], primitive('any'));
-    const portalType: Type = fnType([primitive('any'), primitive('any')], vnodeT);
-    const portalBodyType: Type = fnType([primitive('any')], vnodeT);
-    const renderChildrenType: Type = fnType([], primitive('any'));
-    const transitionPresenceType: Type = fnType([adt('Signal', [primitive('bool')]), primitive('any'), primitive('int'), renderChildrenType], vnodeT);
+    const portalTargetT = freshTypeVar();
+    const portalChildrenT = freshTypeVar();
+    const portalType: Type = fnType([portalTargetT, portalChildrenT], vnodeT);
+    const portalBodyChildrenT = freshTypeVar();
+    const portalBodyType: Type = fnType([portalBodyChildrenT], vnodeT);
+    const renderChildrenTypeValueT = freshTypeVar();
+    const renderChildrenType: Type = fnType([], renderChildrenTypeValueT);
+    const transitionPropsT = freshTypeVar();
+    const transitionChildrenT = freshTypeVar();
+    const transitionPresenceType: Type = fnType([
+      adt('Signal', [primitive('bool')]),
+      transitionPropsT,
+      primitive('int'),
+      fnType([], transitionChildrenT),
+    ], vnodeT);
+    const propsAttrValueT = freshTypeVar();
+    const propsAttrType: Type = fnType([primitive('string'), propsAttrValueT], primitive('any'));
+    const propsWhenConditionT = freshTypeVar();
+    const propsWhenPropsT = freshTypeVar();
+    const propsWhenType: Type = fnType([propsWhenConditionT, propsWhenPropsT], primitive('any'));
     const tabsRootType: Type = fnType([adt('Signal', [primitive('string')]), renderChildrenType], vnodeT);
     const tabsListType: Type = fnType([primitive('any'), renderChildrenType], vnodeT);
     const tabsTriggerType: Type = fnType([primitive('string'), primitive('any'), primitive('any')], vnodeT);
@@ -5081,7 +5114,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
           'props_class',
           moduleFunctionWithScheme(
             'props_class',
-            ['string'],
+            ['any'],
             'any',
             schemeFromVars(propsClassType, []),
             ['className'],
@@ -5235,9 +5268,9 @@ export function createStdModuleRegistry(): ModuleRegistry {
           'props_key',
           moduleFunctionWithScheme(
             'props_key',
-            ['string'],
+            ['any'],
             'any',
-            schemeFromVars(propsKeyType, []),
+            schemeFromVars(propsKeyType, [propsKeyValueT]),
             ['key'],
             'std://render'
           ),
@@ -5287,12 +5320,34 @@ export function createStdModuleRegistry(): ModuleRegistry {
           ),
         ],
         [
+          'props_attr',
+          moduleFunctionWithScheme(
+            'props_attr',
+            ['string', 'any'],
+            'any',
+            schemeFromVars(propsAttrType, [propsAttrValueT]),
+            ['name', 'value'],
+            'std://render'
+          ),
+        ],
+        [
+          'props_when',
+          moduleFunctionWithScheme(
+            'props_when',
+            ['any', 'any'],
+            'any',
+            schemeFromVars(propsWhenType, [propsWhenConditionT, propsWhenPropsT]),
+            ['condition', 'props'],
+            'std://render'
+          ),
+        ],
+        [
           'props_merge',
           moduleFunctionWithScheme(
             'props_merge',
             ['any', 'any'],
             'any',
-            schemeFromVars(propsMergeType, []),
+            schemeFromVars(propsMergeType, [propsMergeLeftT, propsMergeRightT]),
             ['left', 'right'],
             'std://render'
           ),
@@ -5424,7 +5479,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'transitionPresence',
             ['Signal<bool>', 'any', 'int', 'fn() -> any'],
             'VNode',
-            schemeFromVars(transitionPresenceType, []),
+            schemeFromVars(transitionPresenceType, [transitionPropsT, transitionChildrenT]),
             ['open', 'props', 'durationMs', 'renderChildren'],
             'std://render'
           ),
@@ -5523,7 +5578,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'suspense',
             ['any', 'fn() -> any'],
             'VNode',
-            schemeFromVars(suspenseType, []),
+            schemeFromVars(suspenseType, [suspenseFallbackT, suspenseChildrenT]),
             ['fallback', 'renderChildren'],
             'std://render'
           ),
@@ -5534,8 +5589,19 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'errorBoundary',
             ['any', 'fn() -> any'],
             'VNode',
-            schemeFromVars(errorBoundaryType, []),
+            schemeFromVars(errorBoundaryType, [errorBoundaryFallbackT, errorBoundaryChildrenT]),
             ['fallback', 'renderChildren'],
+            'std://render'
+          ),
+        ],
+        [
+          'show',
+          moduleFunctionWithScheme(
+            'show',
+            ['any', 'fn() -> any', 'any'],
+            'VNode',
+            schemeFromVars(showType, [showConditionT, showChildrenT, showFallbackT]),
+            ['condition', 'renderChildren', 'fallback'],
             'std://render'
           ),
         ],
@@ -5545,7 +5611,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'children',
             ['any'],
             'any',
-            schemeFromVars(childrenResolveType, []),
+            schemeFromVars(childrenResolveType, [childrenResolveInputT]),
             ['input'],
             'std://render'
           ),
@@ -5556,7 +5622,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'slot',
             ['any', 'any'],
             'VNode',
-            schemeFromVars(slotType, []),
+            schemeFromVars(slotType, [slotValueT, slotPropsT]),
             ['slotValue', 'props'],
             'std://render'
           ),
@@ -5567,7 +5633,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'slot_or',
             ['any', 'any', 'any'],
             'VNode',
-            schemeFromVars(slotOrType, []),
+            schemeFromVars(slotOrType, [slotOrValueT, slotOrPropsT, slotOrFallbackT]),
             ['slotValue', 'props', 'fallback'],
             'std://render'
           ),
@@ -5589,7 +5655,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'portal',
             ['any', 'any'],
             'VNode',
-            schemeFromVars(portalType, []),
+            schemeFromVars(portalType, [portalTargetT, portalChildrenT]),
             ['target', 'children'],
             'std://render'
           ),
@@ -5600,7 +5666,7 @@ export function createStdModuleRegistry(): ModuleRegistry {
             'portalBody',
             ['any'],
             'VNode',
-            schemeFromVars(portalBodyType, []),
+            schemeFromVars(portalBodyType, [portalBodyChildrenT]),
             ['children'],
             'std://render'
           ),

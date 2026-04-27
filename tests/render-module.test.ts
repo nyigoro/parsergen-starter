@@ -375,4 +375,52 @@ describe('@std/render module', () => {
     const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
     expect(hmErrors).toHaveLength(0);
   });
+
+  it('typechecks authoring sugar for defaults, slots, lists, boundaries, and transitions', () => {
+    const source = `
+      import { render } from "@std";
+
+      component Panel(
+        title: string = "Untitled",
+        header: any = 0,
+        children: any = 0
+      ) -> VNode {
+        render.element("section", props {
+          class: "panel",
+          when true => data_state: "ready"
+        }, [
+          render.slot_or(header, title, render.text(title)),
+          render.slot_or(children, props {}, render.text("Body"))
+        ])
+      }
+
+      fn app(rows: Signal<Vec<string>>, items: Signal<Vec<string>>, open: Signal<bool>) -> VNode {
+        Panel(
+          header: fn(title: string) -> VNode {
+            render.element("h1", 0, [render.text(title)])
+          },
+          children: suspense(render.text("Loading")) {
+            error_boundary(render.text("Failed")) {
+              transition(open, 120, props { class: "fade" }) {
+                render.element("ul", 0, [
+                  show(render.get(open)) {
+                    index (row, idx in rows) => render.element("li", props { data_index: idx }, [render.text(row)])
+                  } else {
+                    for (row, idx in items key row) => render.element("li", props { key: row }, [render.text(row), render.text(idx)])
+                  }
+                ])
+              }
+            }
+          }
+        )
+      }
+    `.trim() + '\n';
+
+    const ast = parseLuminaProgram(source);
+    const analysis = analyzeLumina(ast);
+    expect(analysis.diagnostics.filter((diag) => diag.severity === 'error')).toHaveLength(0);
+
+    const inferred = inferProgram(ast);
+    expect(inferred.diagnostics.filter((diag) => diag.severity === 'error')).toHaveLength(0);
+  });
 });
