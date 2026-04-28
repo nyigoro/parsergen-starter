@@ -1,4 +1,4 @@
-import type { ModuleExport, ModuleNamespace, ModuleRegistry } from './module-registry.js';
+import type { ModuleExport, ModuleNamespace, ModuleRegistry } from './module-registry-types.js';
 
 export type ModuleRegistryEntry = readonly [string, ModuleNamespace];
 export type ModuleRootEntry = readonly [string, ModuleExport];

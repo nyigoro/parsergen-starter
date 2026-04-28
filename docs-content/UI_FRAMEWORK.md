@@ -8,6 +8,7 @@ References:
 
 - [RENDER.md](RENDER.md) for the current renderer/runtime model
 - [CAPABILITIES.md](CAPABILITIES.md) for implementation status and roadmap placement
+- [RUNTIME_ARCHITECTURE.md](RUNTIME_ARCHITECTURE.md) for the current runtime layer map and ownership rules
 
 ## Current Foundation
 

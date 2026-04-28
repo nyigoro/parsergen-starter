@@ -11,6 +11,15 @@ const importSpecifiers = (source: string): string[] => {
   return Array.from(matches, (match) => match[1]);
 };
 
+const expectNoImportMatches = (relativePath: string, patterns: RegExp[]): void => {
+  const specs = importSpecifiers(read(relativePath));
+  for (const spec of specs) {
+    for (const pattern of patterns) {
+      expect(spec).not.toMatch(pattern);
+    }
+  }
+};
+
 describe('runtime layering boundaries', () => {
   test('runtime support modules do not depend on compiler or parser layers', () => {
     const runtimeDir = path.join(repo, 'src', 'runtime');
@@ -34,6 +43,32 @@ describe('runtime layering boundaries', () => {
         expect(spec).not.toMatch(/\.\.\/runtime\//);
         expect(spec).not.toBe('../testing-dom.js');
       }
+    }
+  });
+
+  test('core runtime modules stay platform-agnostic', () => {
+    const forbidden = [
+      /\.\/browser-runtime\.js$/,
+      /\.\/channel-runtime\.js$/,
+      /\.\/collections-runtime\.js$/,
+      /\.\/concurrency-runtime\.js$/,
+      /\.\/dom-renderer\.js$/,
+      /\.\/headless-primitives-runtime\.js$/,
+      /\.\/headless-ui-runtime\.js$/,
+      /\.\/node-platform\.js$/,
+      /\.\/system-runtime\.js$/,
+      /\.\/webgpu-runtime\.js$/,
+    ];
+
+    for (const file of [
+      'src/runtime/frame-runtime.ts',
+      'src/runtime/props-core.ts',
+      'src/runtime/reactive-core.ts',
+      'src/runtime/render-core.ts',
+      'src/runtime/resource-core.ts',
+      'src/runtime/vnode-core.ts',
+    ]) {
+      expectNoImportMatches(file, forbidden);
     }
   });
 
@@ -71,5 +106,10 @@ describe('runtime layering boundaries', () => {
     expect(read('src/lumina-runtime.ts')).not.toContain("from './runtime/custom-elements.js'");
     expect(read('src/runtime/app-runtime.ts')).toContain("from './custom-elements.js'");
     expect(read('src/runtime/render-api.ts')).toContain("from './custom-elements.js'");
+  });
+
+  test('main runtime facade stays below the monolith threshold', () => {
+    const lineCount = read('src/lumina-runtime.ts').split('\n').length;
+    expect(lineCount).toBeLessThanOrEqual(950);
   });
 });
