@@ -40,9 +40,19 @@ describe('runtime layering boundaries', () => {
   test('main runtime consumes extracted support modules explicitly', () => {
     const runtimeSource = read('src/lumina-runtime.ts');
     expect(runtimeSource).toContain("from './runtime/dom-accessibility.js'");
+    expect(runtimeSource).toContain("from './runtime/custom-elements.js'");
+    expect(runtimeSource).toContain("from './runtime/dom-reconciler.js'");
     expect(runtimeSource).toContain("from './runtime/devtools.js'");
+    expect(runtimeSource).toContain("from './runtime/frame-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/props-core.js'");
+    expect(runtimeSource).toContain("from './runtime/resource-core.js'");
+    expect(runtimeSource).toContain("from './runtime/reactive-core.js'");
+    expect(runtimeSource).toContain("from './runtime/render-core.js'");
+    expect(runtimeSource).toContain("from './runtime/render-targets.js'");
+    expect(runtimeSource).toContain("from './runtime/ssr-renderer.js'");
     expect(runtimeSource).toContain("from './runtime/ssg.js'");
     expect(runtimeSource).toContain("from './runtime/testing-facade.js'");
     expect(runtimeSource).toContain("from './runtime/node-platform.js'");
+    expect(runtimeSource).toContain("from './runtime/vnode-core.js'");
   });
 });

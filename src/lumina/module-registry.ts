@@ -1,5 +1,18 @@
 import { type LuminaProgram, type LuminaImport, type LuminaType } from './ast.js';
 import { type Type, type TypeScheme, freshTypeVar, promiseType } from './types.js';
+import {
+  createStdCollectionsRegistryEntries,
+  createStdCollectionsRootEntries,
+  createStdConcurrencyRegistryEntries,
+  createStdConcurrencyRootEntries,
+  createStdFunctionalRegistryEntries,
+  createStdFunctionalRootEntries,
+  createStdSystemRegistryEntries,
+  createStdSystemRootEntries,
+  createStdUiRegistryEntries,
+  createStdUiRootEntries,
+  registerModuleRegistryEntries,
+} from './module-registry-domains.js';
 
 export interface ModuleFunction {
   kind: 'function';
@@ -7945,105 +7958,79 @@ export function createStdModuleRegistry(): ModuleRegistry {
     exports: preludeExports,
   };
 
+  const stdDomainModules = {
+    ioModule,
+    fsModule,
+    opfsModule,
+    urlModule,
+    routerModule,
+    webStorageModule,
+    domModule,
+    webWorkerModule,
+    webStreamsModule,
+    pathModule,
+    envModule,
+    processModule,
+    jsonModule,
+    httpModule,
+    timeModule,
+    asyncModule,
+    regexModule,
+    cryptoModule,
+    optionModule,
+    resultModule,
+    strModule,
+    mathModule,
+    listModule,
+    vecModule,
+    iterModule,
+    queryModule,
+    hashmapModule,
+    hashsetModule,
+    dequeModule,
+    btreemapModule,
+    btreesetModule,
+    priorityQueueModule,
+    channelModule,
+    asyncChannelModule,
+    sabChannelModule,
+    threadModule,
+    syncModule,
+    webgpuModule,
+    reactiveModule,
+    renderModule,
+    functorModule,
+    applicativeModule,
+    monadModule,
+    foldableModule,
+    traversableModule,
+  };
+
+  const stdRootEntries = [
+    ...createStdSystemRootEntries(stdDomainModules),
+    ...createStdCollectionsRootEntries(stdDomainModules),
+    ...createStdConcurrencyRootEntries(stdDomainModules),
+    ...createStdUiRootEntries(stdDomainModules),
+    ...createStdFunctionalRootEntries(stdDomainModules),
+  ];
+
+  const stdRegistryEntries = [
+    ...createStdSystemRegistryEntries(stdDomainModules),
+    ...createStdCollectionsRegistryEntries(stdDomainModules),
+    ...createStdConcurrencyRegistryEntries(stdDomainModules),
+    ...createStdUiRegistryEntries(stdDomainModules),
+    ...createStdFunctionalRegistryEntries(stdDomainModules),
+  ];
+
   const stdModule: ModuleNamespace = {
     kind: 'module',
     name: '@std',
     moduleId: 'std://root',
-    exports: new Map([
-      ['io', ioModule],
-      ['Option', optionModule],
-      ['Result', resultModule],
-      ['str', strModule],
-      ['math', mathModule],
-      ['list', listModule],
-      ['vec', vecModule],
-      ['iter', iterModule],
-      ['hashmap', hashmapModule],
-      ['hashset', hashsetModule],
-      ['deque', dequeModule],
-      ['btreemap', btreemapModule],
-      ['btreeset', btreesetModule],
-      ['priority_queue', priorityQueueModule],
-      ['channel', channelModule],
-      ['async_channel', asyncChannelModule],
-      ['thread', threadModule],
-      ['sync', syncModule],
-      ['reactive', reactiveModule],
-      ['render', renderModule],
-      ['functor', functorModule],
-      ['applicative', applicativeModule],
-      ['monad', monadModule],
-      ['foldable', foldableModule],
-      ['traversable', traversableModule],
-      ['fs', fsModule],
-      ['opfs', opfsModule],
-      ['url', urlModule],
-      ['router', routerModule],
-      ['web_storage', webStorageModule],
-      ['dom', domModule],
-      ['web_worker', webWorkerModule],
-      ['web_streams', webStreamsModule],
-      ['path', pathModule],
-      ['env', envModule],
-      ['process', processModule],
-      ['json', jsonModule],
-      ['http', httpModule],
-      ['time', timeModule],
-      ['async_util', asyncModule],
-      ['sab_channel', sabChannelModule],
-      ['webgpu', webgpuModule],
-      ['regex', regexModule],
-      ['crypto', cryptoModule],
-    ]),
+    exports: new Map(stdRootEntries),
   };
 
   registry.set('@std', stdModule);
-  registry.set('@std/io', ioModule);
-  registry.set('@std/fs', fsModule);
-  registry.set('@std/opfs', opfsModule);
-  registry.set('@std/url', urlModule);
-  registry.set('@std/router', routerModule);
-  registry.set('@std/web_storage', webStorageModule);
-  registry.set('@std/dom', domModule);
-  registry.set('@std/web_worker', webWorkerModule);
-  registry.set('@std/web_streams', webStreamsModule);
-  registry.set('@std/path', pathModule);
-  registry.set('@std/env', envModule);
-  registry.set('@std/process', processModule);
-  registry.set('@std/json', jsonModule);
-  registry.set('@std/http', httpModule);
-  registry.set('@std/time', timeModule);
-  registry.set('@std/async', asyncModule);
-  registry.set('@std/async_util', asyncModule);
-  registry.set('@std/regex', regexModule);
-  registry.set('@std/crypto', cryptoModule);
-  registry.set('@std/Option', optionModule);
-  registry.set('@std/Result', resultModule);
-  registry.set('@std/str', strModule);
-  registry.set('@std/math', mathModule);
-  registry.set('@std/list', listModule);
-  registry.set('@std/vec', vecModule);
-  registry.set('@std/iter', iterModule);
-  registry.set('@std/query', queryModule);
-  registry.set('@std/hashmap', hashmapModule);
-  registry.set('@std/hashset', hashsetModule);
-  registry.set('@std/deque', dequeModule);
-  registry.set('@std/btreemap', btreemapModule);
-  registry.set('@std/btreeset', btreesetModule);
-  registry.set('@std/priority_queue', priorityQueueModule);
-  registry.set('@std/channel', channelModule);
-  registry.set('@std/async_channel', asyncChannelModule);
-  registry.set('@std/sab_channel', sabChannelModule);
-  registry.set('@std/thread', threadModule);
-  registry.set('@std/sync', syncModule);
-  registry.set('@std/webgpu', webgpuModule);
-  registry.set('@std/reactive', reactiveModule);
-  registry.set('@std/render', renderModule);
-  registry.set('@std/functor', functorModule);
-  registry.set('@std/applicative', applicativeModule);
-  registry.set('@std/monad', monadModule);
-  registry.set('@std/foldable', foldableModule);
-  registry.set('@std/traversable', traversableModule);
+  registerModuleRegistryEntries(registry, stdRegistryEntries);
   registry.set('@prelude', preludeModule);
   return registry;
 }

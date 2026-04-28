@@ -6,6 +6,11 @@ import {
 } from './frame-manager.js';
 import { type TestingDomHarness } from './testing-dom.js';
 import {
+  createCustomElementsRuntime,
+  type CustomElementController,
+  type CustomElementMountOptions,
+} from './runtime/custom-elements.js';
+import {
   createDevtoolsController,
   snapshotComponentFrame,
   type DevtoolsResourceSnapshot,
@@ -17,6 +22,93 @@ import {
   readChildNodes,
   trapDialogTabNavigation,
 } from './runtime/dom-accessibility.js';
+import { createFrameRuntime } from './runtime/frame-runtime.js';
+import {
+  analyzeSequenceTransition,
+  getTransitionAffectedRange,
+  reorderChildren,
+  type KeyedListTransition,
+} from './runtime/dom-reconciler.js';
+import {
+  coerceRenderer as coerceRendererBase,
+  isDisposableLike,
+  isUnmountableLike,
+  ReactiveRenderRoot as ReactiveRenderRootBase,
+  RenderRoot as RenderRootBase,
+} from './runtime/render-core.js';
+import {
+  batch as batchReactive,
+  configureReactiveCore,
+  Effect,
+  Memo,
+  Signal,
+  untrack as untrackReactive,
+  type ReactiveCleanup,
+} from './runtime/reactive-core.js';
+import {
+  composeHandlers,
+  mergeProps,
+  propsAttr,
+  propsChecked,
+  propsClass,
+  propsDisabled,
+  propsEmpty,
+  propsHref,
+  propsId,
+  propsKey,
+  propsName,
+  propsOnChange,
+  propsOnCheckedChange,
+  propsOnClick,
+  propsOnClickDec,
+  propsOnClickDelta,
+  propsOnClickInc,
+  propsOnInput,
+  propsOnSubmit,
+  propsPlaceholder,
+  propsStyle,
+  propsType,
+  propsValue,
+  propsWhen,
+} from './runtime/props-core.js';
+import {
+  asResourceHandle,
+  configureResourceCore,
+  ensureResourceCurrent,
+  listResourceRecords,
+  ResourceHandle,
+  resolveResourceRecord,
+  startResourceLoad,
+} from './runtime/resource-core.js';
+import {
+  createRenderTargetsRuntime,
+  type CanvasRendererOptions,
+} from './runtime/render-targets.js';
+import {
+  applyVNodeKey,
+  coerceListKey,
+  coerceRenderableToVNode,
+  forListHostProps,
+  indexListHostProps,
+  isVNode,
+  materializeForListChildren,
+  materializeIndexListChildren,
+  normalizeVNodeChildren,
+  parseVNode,
+  readIndexListValues,
+  resolveChildrenInput,
+  serializeVNode,
+  vnodeElement,
+  vnodeForList,
+  vnodeFragment,
+  vnodeIndexList,
+  vnodeLiveText,
+  vnodePortal,
+  vnodeText,
+  type ComponentRenderable,
+  type VNode,
+  type VNodeInput,
+} from './runtime/vnode-core.js';
 import {
   basenamePathBasic,
   dirnamePathBasic,
@@ -32,8 +124,26 @@ import {
   normalizePathBasic,
   resolvePathBasic,
 } from './runtime/node-platform.js';
+import { createSsrRuntime, escapeHtml } from './runtime/ssr-renderer.js';
 import { createSsgApi } from './runtime/ssg.js';
 import { createTestingFacade } from './runtime/testing-facade.js';
+
+export { Effect, Memo, Signal };
+export { ResourceHandle };
+export type { ReactiveCleanup };
+export {
+  isVNode,
+  parseVNode,
+  serializeVNode,
+  vnodeElement,
+  vnodeForList,
+  vnodeFragment,
+  vnodeIndexList,
+  vnodeLiveText,
+  vnodePortal,
+  vnodeText,
+};
+export type { ComponentRenderable, VNode, VNodeInput };
 
 export type LuminaEnumLike =
   | { $tag: string; $payload?: unknown }
@@ -5626,14 +5736,6 @@ export const webgpu = {
   }),
 };
 
-type ReactiveCleanup = () => void;
-type ReactiveSource = { observers: Set<ReactiveComputation> };
-
-let activeComputation: ReactiveComputation | null = null;
-const pendingEffects = new Set<ReactiveComputation>();
-let effectFlushPending = false;
-let batchDepth = 0;
-
 const runMicrotask = (fn: () => void): void => {
   const queue = (globalThis as { queueMicrotask?: (cb: () => void) => void }).queueMicrotask;
   if (typeof queue === 'function') {
@@ -5654,34 +5756,13 @@ const devtools = createDevtoolsController<ReactiveRenderRoot, VNode | null>({
     ],
   }),
   snapshotResources: () =>
-    Array.from(resourceCache.values()).map((record): DevtoolsResourceSnapshot => ({
+    listResourceRecords().map((record): DevtoolsResourceSnapshot => ({
       key: record.key,
       status: record.status.peek(),
       hasData: record.hasData.peek(),
       error: record.error.peek(),
     })),
 });
-
-const flushEffects = (): void => {
-  if (pendingEffects.size === 0) return;
-  const toRun = Array.from(pendingEffects);
-  pendingEffects.clear();
-  for (const computation of toRun) {
-    computation.run();
-  }
-  if (pendingEffects.size > 0 && batchDepth === 0) {
-    scheduleEffectsFlush();
-  }
-};
-
-const scheduleEffectsFlush = (): void => {
-  if (batchDepth > 0 || effectFlushPending) return;
-  effectFlushPending = true;
-  runMicrotask(() => {
-    effectFlushPending = false;
-    flushEffects();
-  });
-};
 
 const registerDevtoolsSignal = (kind: 'signal' | 'memo', signal: Signal<unknown> | Memo<unknown>): number =>
   devtools.registerSignal(kind, signal);
@@ -5694,643 +5775,29 @@ const scheduleDevtoolsNotify = (): void => {
   devtools.scheduleNotify();
 };
 
-const trackReactiveSource = (source: ReactiveSource): void => {
-  if (!activeComputation) return;
-  if (activeComputation.isDisposed()) return;
-  if (source.observers.has(activeComputation)) return;
-  source.observers.add(activeComputation);
-  activeComputation.dependencies.add(source);
-};
+configureReactiveCore({
+  cloneValue: __lumina_clone,
+  equalsValue: runtimeEquals,
+  scheduleMicrotask: runMicrotask,
+  registerSignal: registerDevtoolsSignal,
+  unregisterSignal: unregisterDevtoolsSignal,
+  notifyDevtools: scheduleDevtoolsNotify,
+});
 
-const clearComputationDependencies = (computation: ReactiveComputation): void => {
-  for (const dep of computation.dependencies) {
-    dep.observers.delete(computation);
-  }
-  computation.dependencies.clear();
-};
-
-class ReactiveComputation {
-  readonly dependencies = new Set<ReactiveSource>();
-  private cleanups: ReactiveCleanup[] = [];
-  private disposed = false;
-  private running = false;
-
-  constructor(
-    private readonly runner: (onCleanup: (cleanup: ReactiveCleanup) => void) => void,
-    private readonly kind: 'memo' | 'effect',
-    private readonly onInvalidate?: () => void
-  ) {}
-
-  isDisposed(): boolean {
-    return this.disposed;
-  }
-
-  private runCleanups(): void {
-    const cleanups = this.cleanups;
-    this.cleanups = [];
-    for (const cleanup of cleanups) {
-      try {
-        cleanup();
-      } catch {
-        // Swallow cleanup failures to avoid tearing down the graph.
-      }
-    }
-  }
-
-  run(): void {
-    if (this.disposed || this.running) return;
-    this.running = true;
-    this.runCleanups();
-    clearComputationDependencies(this);
-    const previous = activeComputation;
-    // eslint-disable-next-line @typescript-eslint/no-this-alias -- active dependency collector for this execution frame.
-    activeComputation = this;
+configureResourceCore({
+  serializeKey: (key) => {
     try {
-      this.runner((cleanup) => {
-        if (!this.disposed) this.cleanups.push(cleanup);
-      });
-    } finally {
-      activeComputation = previous;
-      this.running = false;
+      return toJsonString(key, false);
+    } catch {
+      return String(key);
     }
-  }
-
-  invalidate(): void {
-    if (this.disposed) return;
-    if (this.onInvalidate) {
-      this.onInvalidate();
-      return;
-    }
-    if (this.kind === 'effect') {
-      pendingEffects.add(this);
-      scheduleEffectsFlush();
-      return;
-    }
-    this.run();
-  }
-
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    pendingEffects.delete(this);
-    this.runCleanups();
-    clearComputationDependencies(this);
-  }
-}
-
-const notifyReactiveObservers = (source: ReactiveSource): void => {
-  const observers = Array.from(source.observers);
-  for (const observer of observers) {
-    observer.invalidate();
-  }
-};
-
-export class Signal<T> implements ReactiveSource {
-  observers = new Set<ReactiveComputation>();
-  readonly __luminaDevtoolsId: number;
-  private value: T;
-
-  constructor(initial: T) {
-    this.__luminaDevtoolsId = registerDevtoolsSignal('signal', this as Signal<unknown>);
-    this.value = __lumina_clone(initial);
-  }
-
-  get(): T {
-    trackReactiveSource(this);
-    return __lumina_clone(this.value);
-  }
-
-  peek(): T {
-    return __lumina_clone(this.value);
-  }
-
-  set(next: T): boolean {
-    const cloned = __lumina_clone(next);
-    const currentIsAggregate = this.value !== null && typeof this.value === 'object';
-    const nextIsAggregate = cloned !== null && typeof cloned === 'object';
-    if (currentIsAggregate || nextIsAggregate) {
-      if (Object.is(this.value, cloned)) return false;
-    } else if (runtimeEquals(this.value, cloned)) {
-      return false;
-    }
-    this.value = cloned;
-    notifyReactiveObservers(this);
-    scheduleDevtoolsNotify();
-    return true;
-  }
-
-  update(updater: (value: T) => T): T {
-    const next = updater(this.get());
-    this.set(next);
-    return this.get();
-  }
-}
-
-export class Memo<T> implements ReactiveSource {
-  observers = new Set<ReactiveComputation>();
-  readonly __luminaDevtoolsId: number;
-  private readonly compute: () => T;
-  private readonly computation: ReactiveComputation;
-  private value!: T;
-  private ready = false;
-  private stale = true;
-
-  constructor(compute: () => T) {
-    this.__luminaDevtoolsId = registerDevtoolsSignal('memo', this as Memo<unknown>);
-    this.compute = compute;
-    this.computation = new ReactiveComputation(
-      () => {
-        const next = __lumina_clone(this.compute());
-        const changed = !this.ready || !runtimeEquals(this.value, next);
-        this.value = next;
-        this.ready = true;
-        this.stale = false;
-        scheduleDevtoolsNotify();
-        if (changed) {
-          notifyReactiveObservers(this);
-        }
-      },
-      'memo',
-      () => {
-        this.stale = true;
-        notifyReactiveObservers(this);
-        scheduleDevtoolsNotify();
-      }
-    );
-  }
-
-  private ensureFresh(): void {
-    if (!this.ready || this.stale) {
-      this.computation.run();
-    }
-  }
-
-  get(): T {
-    this.ensureFresh();
-    trackReactiveSource(this);
-    return __lumina_clone(this.value);
-  }
-
-  peek(): T {
-    this.ensureFresh();
-    return __lumina_clone(this.value);
-  }
-
-  dispose(): void {
-    this.computation.dispose();
-    this.observers.clear();
-    unregisterDevtoolsSignal(this.__luminaDevtoolsId);
-    scheduleDevtoolsNotify();
-  }
-}
-
-export class Effect {
-  private readonly computation: ReactiveComputation;
-
-  constructor(effectFn: (onCleanup: (cleanup: ReactiveCleanup) => void) => void | ReactiveCleanup) {
-    this.computation = new ReactiveComputation((onCleanup) => {
-      const cleanup = effectFn(onCleanup);
-      if (typeof cleanup === 'function') onCleanup(cleanup);
-    }, 'effect');
-    this.computation.run();
-  }
-
-  dispose(): void {
-    this.computation.dispose();
-  }
-}
-
-type ResourceStatus = 'idle' | 'loading' | 'success' | 'error';
-
-interface ResourceOptions {
-  ttlMs: number;
-  enabled: boolean;
-}
-
-interface ResourceRecord<T = unknown> {
-  key: string;
-  loader: () => Promise<T> | T;
-  ttlMs: number;
-  enabled: boolean;
-  data: Signal<unknown>;
-  hasData: Signal<boolean>;
-  error: Signal<unknown>;
-  status: Signal<ResourceStatus>;
-  promise: Promise<T> | null;
-  expiresAt: number;
-}
-
-export class ResourceHandle<T = unknown> {
-  constructor(readonly record: ResourceRecord<T>) {}
-}
-
-const resourceCache = new Map<string, ResourceRecord<unknown>>();
-
+  },
+  notifyDevtools: scheduleDevtoolsNotify,
+});
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
   !!value
   && (typeof value === 'object' || typeof value === 'function')
   && typeof (value as { then?: unknown }).then === 'function';
-
-const normalizeResourceKey = (key: unknown): string => {
-  if (typeof key === 'string') return key;
-  if (typeof key === 'number' || typeof key === 'boolean' || typeof key === 'bigint') {
-    return String(key);
-  }
-  if (key === null) return 'null';
-  if (key === undefined) return 'undefined';
-  try {
-    return toJsonString(key, false);
-  } catch {
-    return String(key);
-  }
-};
-
-const normalizeResourceOptions = (options: unknown): ResourceOptions => {
-  const candidate = options && typeof options === 'object' ? (options as Record<string, unknown>) : {};
-  const ttlRaw = candidate.ttlMs;
-  const ttlMs = typeof ttlRaw === 'number' && Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : 0;
-  const enabled = candidate.enabled !== false;
-  return { ttlMs, enabled };
-};
-
-const resourceHasData = (record: ResourceRecord<unknown>): boolean => !!record.hasData.peek();
-
-const createResourceRecord = <T>(
-  key: string,
-  loader: () => Promise<T> | T,
-  options: ResourceOptions
-): ResourceRecord<T> => ({
-  key,
-  loader,
-  ttlMs: options.ttlMs,
-  enabled: options.enabled,
-  data: new Signal<unknown>(null),
-  hasData: new Signal<boolean>(false),
-  error: new Signal<unknown>(null),
-  status: new Signal<ResourceStatus>('idle'),
-  promise: null,
-  expiresAt: 0,
-});
-
-const startResourceLoad = <T>(record: ResourceRecord<T>, force: boolean = false): Promise<T> => {
-  if (record.promise) return record.promise;
-  if (!record.enabled && !force) {
-    return Promise.reject(new Error(`Resource '${record.key}' is disabled`));
-  }
-  record.status.set('loading');
-  record.error.set(null);
-
-  let loadResult: Promise<T>;
-  try {
-    loadResult = Promise.resolve(record.loader());
-  } catch (error) {
-    loadResult = Promise.reject(error);
-  }
-
-  const promise = loadResult.then(
-    (value) => {
-      record.data.set(value as unknown);
-      record.hasData.set(true);
-      record.error.set(null);
-      record.status.set('success');
-      record.expiresAt = record.ttlMs > 0 ? Date.now() + record.ttlMs : Number.POSITIVE_INFINITY;
-      record.promise = null;
-      scheduleDevtoolsNotify();
-      return value;
-    },
-    (error) => {
-      record.error.set(error);
-      record.status.set('error');
-      record.expiresAt = 0;
-      record.promise = null;
-      scheduleDevtoolsNotify();
-      throw error;
-    }
-  );
-
-  promise.catch(() => undefined);
-  record.promise = promise;
-  scheduleDevtoolsNotify();
-  return promise;
-};
-
-const ensureResourceCurrent = <T>(record: ResourceRecord<T>): void => {
-  if (record.promise) return;
-  if (!record.enabled) return;
-
-  if (!resourceHasData(record)) {
-    if (record.status.peek() === 'idle') {
-      startResourceLoad(record);
-    }
-    return;
-  }
-
-  if (record.ttlMs > 0 && Date.now() >= record.expiresAt) {
-    startResourceLoad(record);
-  }
-};
-
-const resolveResourceRecord = <T>(
-  key: unknown,
-  loader: () => Promise<T> | T,
-  options: unknown
-): ResourceRecord<T> => {
-  const normalizedKey = normalizeResourceKey(key);
-  const normalizedOptions = normalizeResourceOptions(options);
-  const existing = resourceCache.get(normalizedKey) as ResourceRecord<T> | undefined;
-  if (existing) {
-    existing.loader = loader;
-    existing.ttlMs = normalizedOptions.ttlMs;
-    existing.enabled = normalizedOptions.enabled;
-    ensureResourceCurrent(existing);
-    return existing;
-  }
-
-  const record = createResourceRecord(normalizedKey, loader, normalizedOptions);
-  resourceCache.set(normalizedKey, record as ResourceRecord<unknown>);
-  ensureResourceCurrent(record);
-  return record;
-};
-
-const asResourceHandle = <T>(candidate: unknown, apiName: string): ResourceHandle<T> => {
-  if (candidate instanceof ResourceHandle) {
-    return candidate as ResourceHandle<T>;
-  }
-  throw new Error(`${apiName} expects a resource handle`);
-};
-
-export interface VNode {
-  kind: 'text' | 'live_text' | 'index_list' | 'for_list' | 'element' | 'fragment' | 'portal';
-  tag?: string;
-  key?: string | number;
-  text?: string;
-  signal?: Signal<unknown> | Memo<unknown>;
-  itemsSignal?: Signal<unknown>;
-  listRender?: (item: Signal<unknown>, index: number) => VNodeInput;
-  listIndexedRender?: (item: Signal<unknown>, index: Signal<number>) => VNodeInput;
-  listKey?: (item: unknown, index: number) => string | number;
-  props?: Record<string, unknown>;
-  children?: VNode[];
-  target?: string | null;
-  domTemplateHtml?: string | null;
-}
-
-type VNodeInput = VNode | string | number | boolean | null | undefined | VNodeInput[];
-type ComponentRenderable = VNodeInput;
-
-type CustomElementProps = Record<string, unknown>;
-
-interface CustomElementMountOptions<P = CustomElementProps> {
-  observedAttributes?: string[];
-  useShadow?: boolean;
-  props?: Partial<P>;
-  mapProps?: (attrs: Record<string, string | null>, host: unknown) => P;
-  registry?: {
-    define?: (name: string, ctor: new () => unknown) => void;
-    get?: (name: string) => unknown;
-  };
-  baseClass?: new () => unknown;
-}
-
-interface CustomElementController<P = CustomElementProps> {
-  root: ReactiveRenderRoot | { $tag: string; $payload?: unknown };
-  props: Signal<P>;
-  host: unknown;
-  target: unknown;
-  updateProps: (next: P) => P;
-  syncAttributes: () => P;
-  disconnect: () => void;
-}
-
-let activeFrameManager: FrameManager | null = null;
-
-const normalizeVNodeChildren = (input: VNodeInput): VNode[] => {
-  if (Array.isArray(input)) {
-    const out: VNode[] = [];
-    for (const child of input) {
-      out.push(...normalizeVNodeChildren(child));
-    }
-    return out;
-  }
-  if (input && typeof input === 'object' && !isVNode(input)) {
-    const iterator = (input as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
-    if (typeof iterator === 'function') {
-      const out: VNode[] = [];
-      for (const child of input as Iterable<unknown>) {
-        out.push(...normalizeVNodeChildren(child as VNodeInput));
-      }
-      return out;
-    }
-  }
-  if (input === null || input === undefined || input === false) return [];
-  if (typeof input === 'object' && input !== null && isVNode(input)) {
-    return [input];
-  }
-  return [vnodeText(input)];
-};
-
-const sanitizeProps = (props: Record<string, unknown> | null | undefined): Record<string, unknown> => {
-  if (!props) return {};
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (value !== undefined) out[key] = value;
-  }
-  return out;
-};
-
-export const isVNode = (value: unknown): value is VNode => {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<VNode>;
-  return candidate.kind === 'text'
-    || candidate.kind === 'live_text'
-    || candidate.kind === 'index_list'
-    || candidate.kind === 'for_list'
-    || candidate.kind === 'element'
-    || candidate.kind === 'fragment'
-    || candidate.kind === 'portal';
-};
-
-export const vnodeText = (value: unknown): VNode => ({
-  kind: 'text',
-  text: value == null ? '' : String(value),
-});
-
-export const vnodeLiveText = (signal: Signal<unknown> | Memo<unknown>): VNode => ({
-  kind: 'live_text',
-  signal,
-});
-
-const createStaticSignal = <T>(value: T): Signal<T> => {
-  let current = __lumina_clone(value);
-  return {
-    observers: new Set<ReactiveComputation>(),
-    __luminaDevtoolsId: 0,
-    get: (): T => __lumina_clone(current),
-    peek: (): T => __lumina_clone(current),
-    set: (next: T): boolean => {
-      current = __lumina_clone(next);
-      return true;
-    },
-    update: (updater: (value: T) => T): T => {
-      current = __lumina_clone(updater(__lumina_clone(current)));
-      return __lumina_clone(current);
-    },
-  } as Signal<T>;
-};
-
-const readSignalRaw = <T>(signal: Signal<T>, tracked: boolean): T => {
-  if (tracked) {
-    trackReactiveSource(signal);
-  }
-  return (signal as unknown as { value: T }).value;
-};
-
-const readIndexListValues = (signal: Signal<unknown>, tracked: boolean): unknown[] => {
-  const value = readSignalRaw(signal, tracked);
-  if (Array.isArray(value)) return value;
-  if (value && typeof value === 'object') {
-    const iterator = (value as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
-    if (typeof iterator === 'function') {
-      return Array.from(value as Iterable<unknown>);
-    }
-  }
-  return [];
-};
-
-const materializeIndexListChildren = (node: VNode, tracked: boolean): VNode[] => {
-  const source = node.itemsSignal;
-  const renderItem = node.listRender;
-  if (!source || typeof renderItem !== 'function') {
-    return [];
-  }
-  return readIndexListValues(source, tracked).map((value, index) =>
-    coerceRenderableToVNode(renderItem(createStaticSignal(value), index))
-  );
-};
-
-const indexListHostProps = {
-  style: { display: 'contents' },
-  'data-lumina-index-list': 'true',
-};
-
-const forListHostProps = {
-  style: { display: 'contents' },
-  'data-lumina-for-list': 'true',
-};
-
-const coerceListKey = (value: unknown, index: number): string | number => {
-  if (typeof value === 'string' || typeof value === 'number') {
-    return value;
-  }
-  throw new Error(`List key at index ${index} must be a string or number`);
-};
-
-export const vnodeIndexList = (
-  itemsSignal: Signal<unknown>,
-  renderItem: (item: Signal<unknown>, index: number) => VNodeInput
-): VNode => ({
-  kind: 'index_list',
-  itemsSignal,
-  listRender: renderItem,
-});
-
-const materializeForListChildren = (node: VNode, tracked: boolean): VNode[] => {
-  const source = node.itemsSignal;
-  const keyOf = node.listKey;
-  const renderItem = node.listIndexedRender;
-  if (!source || typeof keyOf !== 'function' || typeof renderItem !== 'function') {
-    return [];
-  }
-  const seenKeys = new Set<string | number>();
-  return readIndexListValues(source, tracked).map((value, index) => {
-    const key = coerceListKey(keyOf(value, index), index);
-    if (seenKeys.has(key)) {
-      throw new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`);
-    }
-    seenKeys.add(key);
-    const vnode = coerceRenderableToVNode(renderItem(createStaticSignal(value), createStaticSignal(index)));
-    return applyVNodeKey(vnode, key);
-  });
-};
-
-export const vnodeForList = (
-  itemsSignal: Signal<unknown>,
-  keyOf: (item: unknown, index: number) => string | number,
-  renderItem: (item: Signal<unknown>, index: Signal<number>) => VNodeInput
-): VNode => ({
-  kind: 'for_list',
-  itemsSignal,
-  listKey: keyOf,
-  listIndexedRender: renderItem,
-});
-
-export const vnodeElement = (
-  tag: string,
-  props?: Record<string, unknown> | null,
-  children: VNodeInput = []
-): VNode => ({
-  kind: 'element',
-  tag,
-  key: typeof props?.key === 'string' || typeof props?.key === 'number' ? props.key : undefined,
-  props: sanitizeProps(props),
-  children: normalizeVNodeChildren(children),
-});
-
-export const vnodeFragment = (children: VNodeInput = []): VNode => ({
-  kind: 'fragment',
-  children: normalizeVNodeChildren(children),
-});
-
-export const vnodePortal = (target: string | null | undefined, children: VNodeInput = []): VNode => ({
-  kind: 'portal',
-  target: target == null ? null : String(target),
-  children: normalizeVNodeChildren(children),
-});
-
-const snapshotVNode = (node: VNode): VNode => {
-  if (node.kind === 'live_text') {
-    return vnodeText(node.signal ? node.signal.get() : '');
-  }
-  if (node.kind === 'index_list') {
-    return vnodeElement('lumina-index-list', indexListHostProps, materializeIndexListChildren(node, false));
-  }
-  if (node.kind === 'for_list') {
-    return vnodeElement('lumina-for-list', forListHostProps, materializeForListChildren(node, false));
-  }
-  if (node.kind === 'element' || node.kind === 'fragment' || node.kind === 'portal') {
-    return {
-      ...node,
-      children: asDomChildren(node).map((child) => snapshotVNode(child)),
-    };
-  }
-  return node;
-};
-
-const coerceRenderableToVNode = (input: VNodeInput): VNode => {
-  const children = normalizeVNodeChildren(input);
-  if (children.length === 1) {
-    return children[0];
-  }
-  return vnodeFragment(children);
-};
-
-const applyVNodeKey = (node: VNode, key: unknown): VNode => {
-  if ((typeof key !== 'string' && typeof key !== 'number') || node.key !== undefined) {
-    return node;
-  }
-  return { ...node, key };
-};
-
-const resolveChildrenInput = (input: unknown): VNodeInput =>
-  typeof input === 'function' ? (input as () => VNodeInput)() : (input as VNodeInput);
-
-export const serializeVNode = (node: VNode): string => JSON.stringify(snapshotVNode(node));
-
-export const parseVNode = (json: string): VNode => {
-  const parsed = JSON.parse(json) as unknown;
-  if (!isVNode(parsed)) throw new Error('Invalid VNode payload');
-  return parsed;
-};
 
 export interface Renderer {
   mount: (node: VNode, container: unknown) => void;
@@ -6681,159 +6148,6 @@ const hasKeyedChildren = (children: VNode[]): boolean => children.some((child) =
 const duplicateKeyError = (key: string | number): Error =>
   new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`);
 
-type KeyedListTransition =
-  | { kind: 'same_order' }
-  | { kind: 'adjacent_swap'; left: number; right: number }
-  | { kind: 'single_move'; from: number; to: number }
-  | { kind: 'complex_reorder' };
-
-const getTransitionAffectedRange = (
-  transition: KeyedListTransition,
-  length: number
-): { start: number; end: number } | null => {
-  switch (transition.kind) {
-    case 'same_order':
-      return null;
-    case 'adjacent_swap':
-      return { start: transition.left, end: transition.right };
-    case 'single_move':
-      return {
-        start: Math.min(transition.from, transition.to),
-        end: Math.max(transition.from, transition.to),
-      };
-    case 'complex_reorder':
-      return length > 0 ? { start: 0, end: length - 1 } : null;
-  }
-};
-
-const findSingleMove = <T>(
-  previous: T[],
-  next: T[],
-  equals: (left: T, right: T) => boolean
-): { from: number; to: number } | null => {
-  if (previous.length !== next.length || previous.length < 2) {
-    return null;
-  }
-
-  let first = -1;
-  for (let index = 0; index < previous.length; index += 1) {
-    if (!equals(previous[index], next[index])) {
-      first = index;
-      break;
-    }
-  }
-  if (first < 0) return null;
-
-  let last = -1;
-  for (let index = previous.length - 1; index >= 0; index -= 1) {
-    if (!equals(previous[index], next[index])) {
-      last = index;
-      break;
-    }
-  }
-  if (last <= first) return null;
-
-  for (let from = first + 1; from <= last; from += 1) {
-    if (!equals(previous[from], next[first])) continue;
-    let matches = true;
-    for (let index = first; index < from; index += 1) {
-      if (!equals(previous[index], next[index + 1])) {
-        matches = false;
-        break;
-      }
-    }
-    if (!matches) continue;
-    for (let index = from + 1; index <= last; index += 1) {
-      if (!equals(previous[index], next[index])) {
-        matches = false;
-        break;
-      }
-    }
-    if (matches) {
-      return { from, to: first };
-    }
-  }
-
-  for (let to = first + 1; to <= last; to += 1) {
-    if (!equals(previous[first], next[to])) continue;
-    let matches = true;
-    for (let index = first + 1; index <= to; index += 1) {
-      if (!equals(previous[index], next[index - 1])) {
-        matches = false;
-        break;
-      }
-    }
-    if (!matches) continue;
-    for (let index = to + 1; index <= last; index += 1) {
-      if (!equals(previous[index], next[index])) {
-        matches = false;
-        break;
-      }
-    }
-    if (matches) {
-      return { from: first, to };
-    }
-  }
-
-  return null;
-};
-
-const analyzeSequenceTransition = <T>(
-  previous: T[],
-  next: T[],
-  equals: (left: T, right: T) => boolean
-): KeyedListTransition => {
-  if (previous.length !== next.length) {
-    return { kind: 'complex_reorder' };
-  }
-
-  let identical = true;
-  for (let index = 0; index < previous.length; index += 1) {
-    if (!equals(previous[index], next[index])) {
-      identical = false;
-      break;
-    }
-  }
-  if (identical) {
-    return { kind: 'same_order' };
-  }
-
-  if (previous.length >= 2) {
-    let left = -1;
-    for (let index = 0; index < previous.length; index += 1) {
-      if (!equals(previous[index], next[index])) {
-        left = index;
-        break;
-      }
-    }
-    const right = left + 1;
-    if (
-      left >= 0
-      && right < previous.length
-      && equals(previous[left], next[right])
-      && equals(previous[right], next[left])
-    ) {
-      let restMatches = true;
-      for (let index = right + 1; index < previous.length; index += 1) {
-        if (!equals(previous[index], next[index])) {
-          restMatches = false;
-          break;
-        }
-      }
-      if (restMatches) {
-        return { kind: 'adjacent_swap', left, right };
-      }
-    }
-  }
-
-  const singleMove = findSingleMove(previous, next, equals);
-  if (singleMove) {
-    return { kind: 'single_move', from: singleMove.from, to: singleMove.to };
-  }
-
-  return { kind: 'complex_reorder' };
-};
-
 const analyzeKeyedChildTransition = (prevChildren: VNode[], nextChildren: VNode[]): KeyedListTransition | null => {
   if (
     prevChildren.length !== nextChildren.length
@@ -6861,9 +6175,6 @@ const analyzeKeyedChildTransition = (prevChildren: VNode[], nextChildren: VNode[
     hasVNodeKey(left) && hasVNodeKey(right) ? left.key === right.key : false
   );
 };
-
-const analyzeDomChildTransition = (currentChildren: DomNodeLike[], nextChildren: DomNodeLike[]): KeyedListTransition =>
-  analyzeSequenceTransition(currentChildren, nextChildren, (left, right) => left === right);
 
 interface ForListState {
   entries: ForListEntry[];
@@ -6964,128 +6275,6 @@ const canSkipDomPatch = (prevNode: VNode, nextNode: VNode): boolean => {
   return false;
 };
 
-const mergeClassValues = (left: unknown, right: unknown): unknown => {
-  const tokens = [left, right]
-    .flatMap((value) => (typeof value === 'string' ? value.split(/\s+/) : []))
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
-  if (tokens.length === 0) return right ?? left;
-  return Array.from(new Set(tokens)).join(' ');
-};
-
-const mergeStyleValues = (left: unknown, right: unknown): unknown => {
-  if (typeof left === 'string' && typeof right === 'string') {
-    const parts = [left, right]
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-    return parts.join(parts.length > 1 ? ';' : '');
-  }
-
-  if (
-    left &&
-    right &&
-    typeof left === 'object' &&
-    typeof right === 'object' &&
-    !Array.isArray(left) &&
-    !Array.isArray(right)
-  ) {
-    return {
-      ...(left as Record<string, unknown>),
-      ...(right as Record<string, unknown>),
-    };
-  }
-
-  return right ?? left;
-};
-
-const preventDefaultIfNeeded = (args: unknown[]): void => {
-  const event = args[0] as { preventDefault?: () => void } | undefined;
-  if (event && typeof event.preventDefault === 'function') {
-    event.preventDefault();
-  }
-};
-
-const composeHandlers = <Args extends unknown[]>(
-  left: ((...args: Args) => unknown) | null | undefined,
-  right: ((...args: Args) => unknown) | null | undefined
-): ((...args: Args) => unknown) | undefined => {
-  if (typeof left !== 'function') return typeof right === 'function' ? right : undefined;
-  if (typeof right !== 'function') return left;
-
-  return (...args: Args) => {
-    const leftResult = left(...args);
-    if (leftResult === false) {
-      preventDefaultIfNeeded(args);
-    }
-
-    const rightResult = right(...args);
-    if (rightResult === false) {
-      preventDefaultIfNeeded(args);
-    }
-
-    return rightResult === undefined ? leftResult : rightResult;
-  };
-};
-
-const mergePropValue = (name: string, left: unknown, right: unknown): unknown => {
-  if (right === undefined) return left;
-  if (left === undefined) return right;
-
-  if (name === 'class' || name === 'className') {
-    return mergeClassValues(left, right);
-  }
-
-  if (name === 'style') {
-    return mergeStyleValues(left, right);
-  }
-
-  if (isEventProp(name) && typeof left === 'function' && typeof right === 'function') {
-    return composeHandlers(
-      left as (...args: unknown[]) => unknown,
-      right as (...args: unknown[]) => unknown
-    );
-  }
-
-  return right;
-};
-
-const mergeProps = (left: unknown, right: unknown): Record<string, unknown> => {
-  const lhs = left && typeof left === 'object' ? (left as Record<string, unknown>) : {};
-  const rhs = right && typeof right === 'object' ? (right as Record<string, unknown>) : {};
-  const merged: Record<string, unknown> = {};
-
-  for (const key of new Set([...Object.keys(lhs), ...Object.keys(rhs)])) {
-    const value = mergePropValue(key, lhs[key], rhs[key]);
-    if (value !== undefined) {
-      merged[key] = value;
-    }
-  }
-
-  return merged;
-};
-
-const normalizeAuthoringPropName = (name: string): string => {
-  if (name === 'class') return 'className';
-  if (name.startsWith('data_')) return `data-${name.slice(5).replace(/_/g, '-')}`;
-  if (name.startsWith('aria_')) return `aria-${name.slice(5).replace(/_/g, '-')}`;
-  if (name.startsWith('on_')) {
-    const eventName = name
-      .slice(3)
-      .replace(/_([a-zA-Z0-9])/g, (_match, ch: string) => ch.toUpperCase());
-    return `on${eventName.charAt(0).toUpperCase()}${eventName.slice(1)}`;
-  }
-  return name.replace(/_([a-zA-Z0-9])/g, (_match, ch: string) => ch.toUpperCase());
-};
-
-const propsAttr = (name: string, value: unknown): Record<string, unknown> => ({
-  [normalizeAuthoringPropName(name)]: value,
-});
-
-const propsWhen = (condition: unknown, props: unknown): Record<string, unknown> => {
-  const resolved = condition instanceof Signal ? condition.get() : condition;
-  return resolved ? mergeProps({}, props) : {};
-};
-
 const patchPortalMount = (
   anchor: DomElementLike,
   prevNode: VNode | null,
@@ -7183,15 +6372,7 @@ const bindIndexListHost = (
   replaceChildren(host, renderChildren(), eventStore, portalStore, liveTextStore);
 
   const runBatched = (fn: () => void): void => {
-    batchDepth += 1;
-    try {
-      fn();
-    } finally {
-      batchDepth = Math.max(0, batchDepth - 1);
-      if (batchDepth === 0) {
-        flushEffects();
-      }
-    }
+    batchReactive(fn);
   };
 
   host.__luminaIndexListEffect = new Effect(() => {
@@ -7259,15 +6440,7 @@ const bindForListHost = (
   host.__luminaForListEffect?.dispose();
 
   const runBatched = (fn: () => void): void => {
-    batchDepth += 1;
-    try {
-      fn();
-    } finally {
-      batchDepth = Math.max(0, batchDepth - 1);
-      if (batchDepth === 0) {
-        flushEffects();
-      }
-    }
+    batchReactive(fn);
   };
 
   const createEntry = (value: unknown, index: number): ForListEntry => {
@@ -7405,10 +6578,15 @@ const bindForListHost = (
 
       state.entries = nextEntries;
       state.order = nextOrder;
-      reorderChildren(host, nextEntries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore, {
-        transition,
-        structureChanged: false,
-      });
+      reorderChildren(
+        host,
+        nextEntries.map((entry) => entry.domNode),
+        (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+        {
+          transition,
+          structureChanged: false,
+        }
+      );
       return;
     }
 
@@ -7423,10 +6601,15 @@ const bindForListHost = (
 
     state.entries = nextEntries;
     state.order = nextOrder;
-    reorderChildren(host, nextEntries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore, {
-      transition,
-      structureChanged,
-    });
+    reorderChildren(
+      host,
+      nextEntries.map((entry) => entry.domNode),
+      (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+      {
+        transition,
+        structureChanged,
+      }
+    );
   });
 
   host.__luminaForListSource = source;
@@ -7673,10 +6856,15 @@ const patchDomChildrenWithKeys = (
     prevKeyed.size > 0
     || unkeyedIndex < prevUnkeyed.length
     || currentDomChildren.length !== nextDomChildren.length;
-  reorderChildren(element, nextDomChildren, eventStore, portalStore, liveTextStore, {
-    transition: keyedTransition,
-    structureChanged,
-  });
+  reorderChildren(
+    element,
+    nextDomChildren,
+    (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+    {
+      transition: keyedTransition,
+      structureChanged,
+    }
+  );
 };
 
 const patchDomNode = (
@@ -7832,7 +7020,11 @@ const hydrateDomNode = (
     disposeDomNode(existingChildren[index], eventStore, portalStore, liveTextStore);
   }
 
-  reorderChildren(element, nextDomChildren, eventStore, portalStore, liveTextStore);
+    reorderChildren(
+      element,
+      nextDomChildren,
+      (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore)
+    );
   return element;
 };
 
@@ -7863,7 +7055,11 @@ export const createDomRenderer = (options?: DomRendererOptions): Renderer => {
       }
       const nextDom = patchDomNode(currentDom, prev, next, documentLike, eventStore, portalStore, liveTextStore);
       if (nextDom !== currentDom) {
-        reorderChildren(domContainer, [nextDom], eventStore, portalStore, liveTextStore);
+    reorderChildren(
+      domContainer,
+      [nextDom],
+      (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore)
+    );
       }
       currentDom = nextDom;
       currentVNode = next;
@@ -7880,7 +7076,11 @@ export const createDomRenderer = (options?: DomRendererOptions): Renderer => {
       }
       const hydratedDom = hydrateDomNode(existing, node, documentLike, eventStore, portalStore, liveTextStore);
       if (hydratedDom !== existing) {
-        reorderChildren(domContainer, [hydratedDom], eventStore, portalStore, liveTextStore);
+    reorderChildren(
+      domContainer,
+      [hydratedDom],
+      (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore)
+    );
       }
       currentDom = hydratedDom;
       currentVNode = node;
@@ -7895,134 +7095,27 @@ export const createDomRenderer = (options?: DomRendererOptions): Renderer => {
   };
 };
 
-const htmlEscapeMap: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-const escapeHtml = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char);
-
-const kebabCase = (value: string): string =>
-  value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, '-ms-');
-
-const serializeStyleValue = (value: Record<string, unknown>): string =>
-  Object.entries(value)
-    .filter(([, entry]) => entry !== null && entry !== undefined)
-    .map(([key, entry]) => `${kebabCase(key)}:${String(entry)}`)
-    .join(';');
-
-const serializePropsToHtml = (props: Record<string, unknown> | undefined): string => {
-  if (!props) return '';
-  const attrs: string[] = [];
-  for (const [key, value] of Object.entries(props)) {
-    if (key === 'key') continue;
-    if (key.startsWith('on') && typeof value === 'function') continue;
-    if (value === false || value === null || value === undefined) continue;
-    if (key === 'style' && typeof value === 'object' && value !== null) {
-      const styleText = serializeStyleValue(value as Record<string, unknown>);
-      if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);
-      continue;
+const ssrRuntime = createSsrRuntime<VNode>({
+  normalizeNodeForHtml: (node) => {
+    if (node.kind === 'index_list') {
+      return vnodeElement('lumina-index-list', indexListHostProps, materializeIndexListChildren(node, false));
     }
-    if (value === true) {
-      attrs.push(key);
-      continue;
+    if (node.kind === 'for_list') {
+      return vnodeElement('lumina-for-list', forListHostProps, materializeForListChildren(node, false));
     }
-    attrs.push(`${key}="${escapeHtml(String(value))}"`);
-  }
-  return attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
-};
+    return node;
+  },
+  getKind: (node) => node.kind,
+  getTag: (node) => node.tag,
+  getProps: (node) => node.props,
+  getChildren: (node) => node.children ?? [],
+  getText: (node) => node.text,
+  getSignalValue: (node) => node.signal?.get(),
+});
 
-const voidHtmlTags = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'param',
-  'source',
-  'track',
-  'wbr',
-]);
+export const createSsrRenderer = (): Renderer => ssrRuntime.createRenderer();
 
-const vnodeToHtml = (node: VNode): string => {
-  if (node.kind === 'text') return escapeHtml(node.text ?? '');
-  if (node.kind === 'live_text') return escapeHtml(node.signal ? String(node.signal.get()) : '');
-  if (node.kind === 'index_list') {
-    return vnodeToHtml(vnodeElement('lumina-index-list', indexListHostProps, materializeIndexListChildren(node, false)));
-  }
-  if (node.kind === 'for_list') {
-    return vnodeToHtml(vnodeElement('lumina-for-list', forListHostProps, materializeForListChildren(node, false)));
-  }
-  const children = (node.children ?? []).map((child) => vnodeToHtml(child)).join('');
-  if (node.kind === 'fragment' || node.kind === 'portal') return children;
-
-  const tag = node.tag ?? 'div';
-  const attrs = serializePropsToHtml(node.props);
-  if (voidHtmlTags.has(tag.toLowerCase())) {
-    return `<${tag}${attrs}>`;
-  }
-  return `<${tag}${attrs}>${children}</${tag}>`;
-};
-
-const setContainerMarkup = (container: unknown, output: string): void => {
-  if (container && typeof container === 'object') {
-    const target = container as {
-      innerHTML?: string;
-      html?: string;
-      textContent?: string;
-      write?: (value: string) => void;
-    };
-    if (typeof target.write === 'function') {
-      target.write(output);
-      return;
-    }
-    if (typeof target.innerHTML === 'string' || 'innerHTML' in target) {
-      target.innerHTML = output;
-      return;
-    }
-    if (typeof target.html === 'string' || 'html' in target) {
-      target.html = output;
-      return;
-    }
-    if (typeof target.textContent === 'string' || 'textContent' in target) {
-      target.textContent = output;
-      return;
-    }
-    target.html = output;
-  }
-};
-
-export const createSsrRenderer = (): Renderer => {
-  let current = '';
-  return {
-    mount(node: VNode, container: unknown): void {
-      current = vnodeToHtml(node);
-      setContainerMarkup(container, current);
-    },
-    patch(_prev: VNode | null, next: VNode, container: unknown): void {
-      current = vnodeToHtml(next);
-      setContainerMarkup(container, current);
-    },
-    hydrate(node: VNode, container: unknown): void {
-      current = vnodeToHtml(node);
-      setContainerMarkup(container, current);
-    },
-    unmount(container: unknown): void {
-      current = '';
-      setContainerMarkup(container, '');
-    },
-  };
-};
-
-export const renderToString = (node: VNode): string => vnodeToHtml(node);
+export const renderToString = (node: VNode): string => ssrRuntime.renderToString(node);
 
 const renderAppVNode = <P>(
   componentFn: ComponentFunction<P, ComponentRenderable>,
@@ -8089,413 +7182,88 @@ const ssgApi = createSsgApi<VNode, ComponentFunction<unknown, ComponentRenderabl
     renderAppVNode(componentFn as ComponentFunction<unknown, ComponentRenderable>, props),
 });
 
-const readCustomElementAttributes = (
-  host: unknown,
-  observedAttributes: readonly string[]
-): Record<string, string | null> => {
-  const attrs: Record<string, string | null> = {};
-  const element = host as { getAttribute?: (name: string) => string | null };
-  for (const name of observedAttributes) {
-    attrs[name] = typeof element.getAttribute === 'function' ? element.getAttribute(name) : null;
-  }
-  return attrs;
-};
+const renderTargetsRuntime = createRenderTargetsRuntime<VNode>({
+  getKind: (node) => node.kind,
+  getTag: (node) => node.tag,
+  getProps: (node) => node.props,
+  getChildren: (node) => node.children ?? [],
+  getText: (node) => node.text,
+  getSignalValue: (node) => node.signal?.get(),
+  materializeIndexListChildren: (node, tracked) => materializeIndexListChildren(node, tracked),
+  materializeForListChildren: (node, tracked) => materializeForListChildren(node, tracked),
+});
 
-const buildCustomElementProps = <P>(
-  host: unknown,
-  options?: CustomElementMountOptions<P>
-): P => {
-  const attrs = readCustomElementAttributes(host, options?.observedAttributes ?? []);
-  if (typeof options?.mapProps === 'function') {
-    return options.mapProps(attrs, host);
-  }
-  return {
-    ...((options?.props ?? {}) as Record<string, unknown>),
-    ...attrs,
-  } as P;
-};
+const frameRuntime = createFrameRuntime<VNode, Signal<unknown>>({
+  coerceRenderable: (input) => coerceRenderableToVNode(input as VNodeInput),
+  createState: <T>(initial: T): Signal<T> => new Signal<T>(initial),
+});
 
-const ensureCustomElementTarget = <P>(host: unknown, options?: CustomElementMountOptions<P>): unknown => {
-  const element = host as {
-    shadowRoot?: unknown;
-    attachShadow?: (options: { mode: string }) => unknown;
-  };
-  if (!options?.useShadow) return host;
-  if (element.shadowRoot) return element.shadowRoot;
-  if (typeof element.attachShadow === 'function') {
-    return element.attachShadow({ mode: 'open' });
-  }
-  return host;
-};
+const customElementsRuntime = createCustomElementsRuntime<
+  unknown,
+  VNode,
+  ReactiveRenderRoot | { $tag: string; $payload?: unknown },
+  Signal<unknown>,
+  Renderer,
+  DomDocumentLike
+>({
+  createRenderer: (documentLike) => createDomRenderer({ document: documentLike }),
+  createSignal: (initial: unknown): Signal<unknown> => new Signal(initial),
+  getSignal: (signal: Signal<unknown>): unknown => signal.get(),
+  setSignal: (signal: Signal<unknown>, value: unknown): void => {
+    signal.set(value);
+  },
+  createView: (componentFn: ComponentFunction<unknown, VNode>, propsSignal: Signal<unknown>) =>
+    () => render.component(componentFn as ComponentFunction<unknown, ComponentRenderable>, render.get(propsSignal)),
+  mountReactive: (renderer, container, view) => render.mount_reactive(renderer, container, view),
+  isDisposableLike,
+  disposeReactive: (root) => render.dispose_reactive(root),
+  getGlobalDocument: () => (globalThis as unknown as { document?: DomDocumentLike }).document,
+});
 
-const mountCustomElementHost = <P>(
+const mountCustomElementInternal = <P>(
   host: unknown,
   componentFn: ComponentFunction<P, ComponentRenderable>,
   options?: CustomElementMountOptions<P>
-): CustomElementController<P> => {
-  const documentLike =
-    ((host as { ownerDocument?: DomDocumentLike }).ownerDocument ??
-      (globalThis as unknown as { document?: DomDocumentLike }).document);
-  if (!documentLike) {
-    throw new Error('mountCustomElement requires a document-like host');
-  }
-
-  const renderer = createDomRenderer({ document: documentLike });
-  const target = ensureCustomElementTarget(host, options);
-  const props = new Signal<P>(buildCustomElementProps(host, options));
-  const root = render.mount_reactive(renderer, target, () => render.component(componentFn, render.get(props)));
-
-  return {
-    root,
-    props,
+): CustomElementController<P, ReactiveRenderRoot | { $tag: string; $payload?: unknown }, Signal<P>> =>
+  customElementsRuntime.mountCustomElementHost(
     host,
-    target,
-    updateProps: (next: P): P => {
-      render.set(props, next);
-      return next;
-    },
-    syncAttributes: (): P => {
-      const next = buildCustomElementProps(host, options);
-      render.set(props, next);
-      return next;
-    },
-    disconnect: (): void => {
-      if (isUnmountableLike(root)) {
-        render.dispose_reactive(root);
-      }
-    },
-  };
-};
+    componentFn as unknown as ComponentFunction<unknown, VNode>,
+    options as CustomElementMountOptions<unknown> | undefined
+  ) as unknown as CustomElementController<P, ReactiveRenderRoot | { $tag: string; $payload?: unknown }, Signal<P>>;
 
-const defineCustomElementClass = <P>(
+const defineCustomElementInternal = <P>(
   tagName: string,
   componentFn: ComponentFunction<P, ComponentRenderable>,
   options?: CustomElementMountOptions<P>
-): (new () => unknown) => {
-  const BaseCtor =
-    (options?.baseClass as (new () => unknown) | undefined) ??
-    ((globalThis as { HTMLElement?: new () => unknown }).HTMLElement ?? class {});
-  const registry =
-    options?.registry ??
-    ((globalThis as { customElements?: { define?: (name: string, ctor: new () => unknown) => void; get?: (name: string) => unknown } })
-      .customElements);
+): new () => unknown =>
+  customElementsRuntime.defineCustomElementClass(
+    tagName,
+    componentFn as unknown as ComponentFunction<unknown, VNode>,
+    options as CustomElementMountOptions<unknown> | undefined
+  );
 
-  const CustomElement = class LuminaCustomElement extends (BaseCtor as new () => Record<string, unknown>) {
-    private __luminaController?: CustomElementController<P>;
+const runWithFrameManager = frameRuntime.runWithFrameManager;
+const requireActiveFrameManager = frameRuntime.requireActiveFrameManager;
 
-    static get observedAttributes(): string[] {
-      return [...(options?.observedAttributes ?? [])];
-    }
+export const createCanvasRenderer = (options?: CanvasRendererOptions): Renderer =>
+  renderTargetsRuntime.createCanvasRenderer(options);
 
-    connectedCallback(): void {
-      if (!this.__luminaController) {
-        this.__luminaController = mountCustomElementHost(this, componentFn, options);
-      } else {
-        this.__luminaController.syncAttributes();
-      }
-    }
+export const renderToTerminal = (node: VNode): string => renderTargetsRuntime.renderToTerminal(node);
 
-    attributeChangedCallback(): void {
-      this.__luminaController?.syncAttributes();
-    }
+export const createTerminalRenderer = (): Renderer => renderTargetsRuntime.createTerminalRenderer();
 
-    disconnectedCallback(): void {
-      this.__luminaController?.disconnect();
-      this.__luminaController = undefined;
-    }
-  };
+export class RenderRoot extends RenderRootBase<VNode> {}
 
-  if (registry?.define) {
-    const existing = typeof registry.get === 'function' ? registry.get(tagName) : undefined;
-    if (!existing) {
-      registry.define(tagName, CustomElement);
-    }
-  }
-
-  return CustomElement;
-};
-
-interface Canvas2DLike {
-  canvas?: { width?: number; height?: number };
-  clearRect?: (x: number, y: number, width: number, height: number) => void;
-  fillRect?: (x: number, y: number, width: number, height: number) => void;
-  strokeRect?: (x: number, y: number, width: number, height: number) => void;
-  beginPath?: () => void;
-  arc?: (x: number, y: number, radius: number, startAngle: number, endAngle: number) => void;
-  fill?: () => void;
-  stroke?: () => void;
-  fillText?: (text: string, x: number, y: number) => void;
-  font?: string;
-  fillStyle?: unknown;
-  strokeStyle?: unknown;
-}
-
-interface CanvasLike {
-  getContext?: (kind: '2d') => Canvas2DLike | null;
-  width?: number;
-  height?: number;
-}
-
-interface CanvasRendererOptions {
-  context?: Canvas2DLike;
-  clear?: boolean;
-  width?: number;
-  height?: number;
-}
-
-const resolveCanvasContext = (container: unknown, options?: CanvasRendererOptions): Canvas2DLike => {
-  if (options?.context) return options.context;
-  if (container && typeof container === 'object') {
-    const maybeContext = container as Canvas2DLike;
-    if (typeof maybeContext.fillText === 'function' || typeof maybeContext.fillRect === 'function') {
-      return maybeContext;
-    }
-    const canvas = container as CanvasLike;
-    if (typeof canvas.getContext === 'function') {
-      const ctx = canvas.getContext('2d');
-      if (ctx) return ctx;
-    }
-  }
-  throw new Error('Canvas renderer requires a 2D context or canvas');
-};
-
-const drawCanvasVNode = (
-  ctx: Canvas2DLike,
-  node: VNode,
-  state: { x: number; y: number; lineHeight: number }
-): number => {
-  if (node.kind === 'text') {
-    if (ctx.fillText) ctx.fillText(node.text ?? '', state.x, state.y);
-    return state.y + state.lineHeight;
-  }
-  if (node.kind === 'live_text') {
-    if (ctx.fillText) ctx.fillText(node.signal ? String(node.signal.get()) : '', state.x, state.y);
-    return state.y + state.lineHeight;
-  }
-  if (node.kind === 'index_list') {
-    let y = state.y;
-    for (const child of materializeIndexListChildren(node, false)) {
-      y = drawCanvasVNode(ctx, child, { ...state, y });
-    }
-    return y;
-  }
-  if (node.kind === 'for_list') {
-    let y = state.y;
-    for (const child of materializeForListChildren(node, false)) {
-      y = drawCanvasVNode(ctx, child, { ...state, y });
-    }
-    return y;
-  }
-  if (node.kind === 'fragment' || node.kind === 'portal') {
-    let y = state.y;
-    for (const child of node.children ?? []) {
-      y = drawCanvasVNode(ctx, child, { ...state, y });
-    }
-    return y;
-  }
-
-  const props = node.props ?? {};
-  const tag = (node.tag ?? '').toLowerCase();
-  if (typeof props.fill === 'string') ctx.fillStyle = props.fill;
-  if (typeof props.stroke === 'string') ctx.strokeStyle = props.stroke;
-  if (typeof props.font === 'string') ctx.font = props.font;
-
-  if (tag === 'rect') {
-    const x = Number(props.x ?? state.x);
-    const y = Number(props.y ?? state.y);
-    const width = Number(props.width ?? 50);
-    const height = Number(props.height ?? 20);
-    if (ctx.fillRect) ctx.fillRect(x, y, width, height);
-    if (ctx.strokeRect) ctx.strokeRect(x, y, width, height);
-    return Math.max(state.y + state.lineHeight, y + height + 4);
-  }
-
-  if (tag === 'circle') {
-    const x = Number(props.x ?? state.x);
-    const y = Number(props.y ?? state.y);
-    const radius = Number(props.radius ?? 10);
-    if (ctx.beginPath && ctx.arc) {
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      if (ctx.fill) ctx.fill();
-      if (ctx.stroke) ctx.stroke();
-    }
-    return Math.max(state.y + state.lineHeight, y + radius + 4);
-  }
-
-  if (tag === 'text') {
-    const value = typeof props.value === 'string' ? props.value : (node.children ?? []).map((child) => child.text ?? '').join('');
-    const x = Number(props.x ?? state.x);
-    const y = Number(props.y ?? state.y);
-    if (ctx.fillText) ctx.fillText(value, x, y);
-    return Math.max(state.y + state.lineHeight, y + state.lineHeight);
-  }
-
-  let y = state.y;
-  for (const child of node.children ?? []) {
-    y = drawCanvasVNode(ctx, child, { ...state, y });
-  }
-  return y;
-};
-
-export const createCanvasRenderer = (options?: CanvasRendererOptions): Renderer => {
-  let context: Canvas2DLike | null = options?.context ?? null;
-  return {
-    mount(node: VNode, container: unknown): void {
-      context = resolveCanvasContext(container, options);
-      const width = Number(options?.width ?? context.canvas?.width ?? 800);
-      const height = Number(options?.height ?? context.canvas?.height ?? 600);
-      if (options?.clear !== false && context.clearRect) {
-        context.clearRect(0, 0, width, height);
-      }
-      drawCanvasVNode(context, node, { x: 8, y: 20, lineHeight: 20 });
-    },
-    patch(_prev: VNode | null, next: VNode, container: unknown): void {
-      const ctx = context ?? resolveCanvasContext(container, options);
-      context = ctx;
-      const width = Number(options?.width ?? ctx.canvas?.width ?? 800);
-      const height = Number(options?.height ?? ctx.canvas?.height ?? 600);
-      if (options?.clear !== false && ctx.clearRect) {
-        ctx.clearRect(0, 0, width, height);
-      }
-      drawCanvasVNode(ctx, next, { x: 8, y: 20, lineHeight: 20 });
-    },
-    unmount(container: unknown): void {
-      const ctx = context ?? resolveCanvasContext(container, options);
-      const width = Number(options?.width ?? ctx.canvas?.width ?? 800);
-      const height = Number(options?.height ?? ctx.canvas?.height ?? 600);
-      if (ctx.clearRect) ctx.clearRect(0, 0, width, height);
-      context = null;
-    },
-  };
-};
-
-const vnodeToTerminal = (node: VNode, depth = 0): string[] => {
-  const indent = '  '.repeat(depth);
-  if (node.kind === 'text') {
-    return [`${indent}${node.text ?? ''}`];
-  }
-  if (node.kind === 'live_text') {
-    return [`${indent}${node.signal ? String(node.signal.get()) : ''}`];
-  }
-  if (node.kind === 'index_list') {
-    return materializeIndexListChildren(node, false).flatMap((child) => vnodeToTerminal(child, depth));
-  }
-  if (node.kind === 'for_list') {
-    return materializeForListChildren(node, false).flatMap((child) => vnodeToTerminal(child, depth));
-  }
-  if (node.kind === 'fragment' || node.kind === 'portal') {
-    return (node.children ?? []).flatMap((child) => vnodeToTerminal(child, depth));
-  }
-  const tag = node.tag ?? 'div';
-  const head = `${indent}<${tag}>`;
-  const children = (node.children ?? []).flatMap((child) => vnodeToTerminal(child, depth + 1));
-  const tail = `${indent}</${tag}>`;
-  return [head, ...children, tail];
-};
-
-export const renderToTerminal = (node: VNode): string => vnodeToTerminal(node).join('\n');
-
-interface TerminalSink {
-  textContent?: string;
-  output?: string;
-  write?: (text: string) => void;
-}
-
-const setTerminalOutput = (container: unknown, text: string): void => {
-  if (!container || typeof container !== 'object') return;
-  const sink = container as TerminalSink;
-  if (typeof sink.write === 'function') {
-    sink.write(text);
-    return;
-  }
-  if (typeof sink.textContent === 'string' || 'textContent' in sink) {
-    sink.textContent = text;
-    return;
-  }
-  if (typeof sink.output === 'string' || 'output' in sink) {
-    sink.output = text;
-    return;
-  }
-  sink.output = text;
-};
-
-export const createTerminalRenderer = (): Renderer => ({
-  mount(node: VNode, container: unknown): void {
-    setTerminalOutput(container, renderToTerminal(node));
-  },
-  patch(_prev: VNode | null, next: VNode, container: unknown): void {
-    setTerminalOutput(container, renderToTerminal(next));
-  },
-  hydrate(node: VNode, container: unknown): void {
-    setTerminalOutput(container, renderToTerminal(node));
-  },
-  unmount(container: unknown): void {
-    setTerminalOutput(container, '');
-  },
-});
-
-export class RenderRoot {
-  private current: VNode | null = null;
-
-  constructor(
-    private readonly renderer: Renderer,
-    private readonly container: unknown
-  ) {}
-
-  mount(node: VNode): void {
-    this.current = node;
-    this.renderer.mount(node, this.container);
-  }
-
-  hydrate(node: VNode): void {
-    this.current = node;
-    if (typeof this.renderer.hydrate === 'function') {
-      this.renderer.hydrate(node, this.container);
-      return;
-    }
-    this.renderer.mount(node, this.container);
-  }
-
-  update(node: VNode): void {
-    if (!this.current) {
-      this.mount(node);
-      return;
-    }
-    if (typeof this.renderer.patch === 'function') {
-      this.renderer.patch(this.current, node, this.container);
-    } else {
-      this.renderer.mount(node, this.container);
-    }
-    this.current = node;
-  }
-
-  unmount(): void {
-    if (typeof this.renderer.unmount === 'function') {
-      this.renderer.unmount(this.container);
-    }
-    this.current = null;
-  }
-
-  currentNode(): VNode | null {
-    return this.current;
-  }
-}
-
-export class ReactiveRenderRoot {
+export class ReactiveRenderRoot extends ReactiveRenderRootBase<VNode, FrameManager['rootFrame'], FrameManager> {
   constructor(
     readonly root: RenderRoot,
     readonly effect: Effect,
     readonly frameManager: FrameManager
   ) {
-    registerDevtoolsRoot(this);
-  }
-
-  dispose(): void {
-    unregisterDevtoolsRoot(this);
-    this.effect.dispose();
-    this.frameManager.disposeFrame(this.frameManager.rootFrame, false);
-    this.root.unmount();
+    super(root, effect, frameManager, {
+      onInit: (root) => registerDevtoolsRoot(root as ReactiveRenderRoot),
+      onDispose: (root) => unregisterDevtoolsRoot(root as ReactiveRenderRoot),
+    });
   }
 }
 
@@ -8505,113 +7273,6 @@ const registerDevtoolsRoot = (root: ReactiveRenderRoot): void => {
 
 const unregisterDevtoolsRoot = (root: ReactiveRenderRoot): void => {
   devtools.unregisterRoot(root);
-};
-
-const reorderChildren = (
-  container: DomNodeLike,
-  children: DomNodeLike[],
-  eventStore: DomEventStore,
-  portalStore: DomPortalStore,
-  liveTextStore: DomLiveTextStore,
-  options?: { transition?: KeyedListTransition | null; structureChanged?: boolean }
-): void => {
-  if (typeof container.insertBefore !== 'function') {
-    setChildren(container, children);
-    return;
-  }
-
-  const structureChanged = options?.structureChanged ?? true;
-  if (structureChanged) {
-    const desired = new Set(children);
-    for (const child of readChildNodes(container)) {
-      if (!desired.has(child)) {
-        disposeDomNode(child, eventStore, portalStore, liveTextStore);
-        container.removeChild(child);
-      }
-    }
-  }
-
-  const currentChildren = readChildNodes(container);
-  const transition = options?.transition ?? analyzeDomChildTransition(currentChildren, children);
-  if (transition.kind === 'same_order') {
-    return;
-  }
-  if (transition.kind === 'adjacent_swap') {
-    container.insertBefore(children[transition.left], children[transition.right]);
-    return;
-  }
-  if (transition.kind === 'single_move') {
-    const moving = currentChildren[transition.from];
-    if (!moving) return;
-    const reference =
-      transition.from < transition.to
-        ? (currentChildren[transition.to + 1] ?? null)
-        : (currentChildren[transition.to] ?? null);
-    container.insertBefore(moving, reference);
-    return;
-  }
-
-  const currentOrder = new Map<DomNodeLike, number>();
-  currentChildren.forEach((child, index) => {
-    currentOrder.set(child, index);
-  });
-
-  const sequence = children.map((child) => currentOrder.get(child) ?? -1);
-  const keepIndices = longestIncreasingSubsequenceIndices(sequence);
-  const keepIndexSet = new Set(keepIndices);
-
-  let anchor: DomNodeLike | null = null;
-  for (let index = children.length - 1; index >= 0; index -= 1) {
-    const nextChild = children[index];
-    const currentIndex = sequence[index];
-    if (currentIndex >= 0 && keepIndexSet.has(index)) {
-      anchor = nextChild;
-      continue;
-    }
-    container.insertBefore(nextChild, anchor);
-    anchor = nextChild;
-  }
-};
-
-const longestIncreasingSubsequenceIndices = (values: number[]): number[] => {
-  const predecessors = new Array<number>(values.length).fill(-1);
-  const tails: number[] = [];
-
-  for (let index = 0; index < values.length; index += 1) {
-    const value = values[index];
-    if (value < 0) continue;
-
-    let low = 0;
-    let high = tails.length;
-    while (low < high) {
-      const mid = Math.floor((low + high) / 2);
-      if (values[tails[mid]] < value) {
-        low = mid + 1;
-      } else {
-        high = mid;
-      }
-    }
-
-    if (low > 0) {
-      predecessors[index] = tails[low - 1];
-    }
-
-    if (low === tails.length) {
-      tails.push(index);
-    } else {
-      tails[low] = index;
-    }
-  }
-
-  if (tails.length === 0) return [];
-
-  const result = new Array<number>(tails.length);
-  let cursor = tails[tails.length - 1];
-  for (let index = tails.length - 1; index >= 0; index -= 1) {
-    result[index] = cursor;
-    cursor = predecessors[cursor];
-  }
-  return result;
 };
 
 const snapshotDevtools = (): DevtoolsSnapshot<VNode | null> => devtools.snapshot();
@@ -8633,40 +7294,7 @@ const toRenderErrorMessage = (error: unknown): string => {
   return message;
 };
 
-const isDisposableLike = (value: unknown): value is { dispose: () => void } =>
-  !!value && typeof value === 'object' && typeof (value as { dispose?: unknown }).dispose === 'function';
-
-const isUnmountableLike = (value: unknown): value is { unmount: () => void } =>
-  !!value && typeof value === 'object' && typeof (value as { unmount?: unknown }).unmount === 'function';
-
-const coerceRenderer = (candidate: unknown): Renderer => {
-  if (!candidate || typeof candidate !== 'object') {
-    throw new Error('Renderer must be an object with a mount function');
-  }
-  const renderer = candidate as Renderer;
-  if (typeof renderer.mount !== 'function') {
-    throw new Error('Renderer.mount must be a function');
-  }
-  if (renderer.patch && typeof renderer.patch !== 'function') {
-    throw new Error('Renderer.patch must be a function when provided');
-  }
-  if (renderer.unmount && typeof renderer.unmount !== 'function') {
-    throw new Error('Renderer.unmount must be a function when provided');
-  }
-  return renderer;
-};
-
-const runWithFrameManager = <T>(frameManager: FrameManager, renderView: () => T): T => {
-  frameManager.beginRender();
-  frameManager.rootFrame.seenEpoch = frameManager.renderEpoch;
-  const previousManager = activeFrameManager;
-  activeFrameManager = frameManager;
-  try {
-    return frameManager.renderFrame(frameManager.rootFrame, renderView);
-  } finally {
-    activeFrameManager = previousManager;
-  }
-};
+const coerceRenderer = (candidate: unknown): Renderer => coerceRendererBase<VNode>(candidate);
 
 const clearTimerHandle = (handle: ReturnType<typeof setTimeout> | null | undefined): void => {
   if (handle !== null && handle !== undefined) {
@@ -8740,13 +7368,6 @@ const renderTransitionPresence = (
   });
 
   return vnodeElement('div', currentProps, resolveChildrenInput(children));
-};
-
-const requireActiveFrameManager = (apiName: string): FrameManager => {
-  if (!activeFrameManager) {
-    throw new Error(`${apiName} can only be used while rendering inside mount_reactive or hydrate_reactive`);
-  }
-  return activeFrameManager;
 };
 
 interface TabsContextValue {
@@ -9636,36 +8257,10 @@ export const render = {
       // Keep stale/invalid handles idempotent.
     }
   },
-  batch: <T>(fn: () => T): T => {
-    batchDepth += 1;
-    try {
-      return fn();
-    } finally {
-      batchDepth = Math.max(0, batchDepth - 1);
-      if (batchDepth === 0) {
-        flushEffects();
-      }
-    }
-  },
-  untrack: <T>(fn: () => T): T => {
-    const previous = activeComputation;
-    activeComputation = null;
-    try {
-      return fn();
-    } finally {
-      activeComputation = previous;
-    }
-  },
-  component: <P>(
-    componentFn: ComponentFunction<P, ComponentRenderable>,
-    props: P,
-    key?: unknown
-  ): VNode => {
-    const frameManager = requireActiveFrameManager('render.component');
-    const parentFrame = frameManager.currentFrame ?? frameManager.rootFrame;
-    const { result } = frameManager.executeComponent(parentFrame, componentFn, key ?? null, props);
-    return applyVNodeKey(coerceRenderableToVNode(result), key);
-  },
+  batch: <T>(fn: () => T): T => batchReactive(fn),
+  untrack: <T>(fn: () => T): T => untrackReactive(fn),
+  component: <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P, key?: unknown): VNode =>
+    applyVNodeKey(frameRuntime.component(componentFn, props, key), key),
   component_keyed: <P>(
     componentFn: ComponentFunction<P, ComponentRenderable>,
     props: P,
@@ -9675,28 +8270,13 @@ export const render = {
     renderAppVNode(componentFn, props),
   render_to_string_app: <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P): string =>
     renderToString(renderAppVNode(componentFn, props)),
-  create_context: <T>(defaultValue?: T): ContextToken<T> => createContextToken(defaultValue),
-  create_required_context: <T>(): ContextToken<T> => createContextToken<T>(),
-  with_context: <T>(
-    context: ContextToken<T>,
-    value: T,
-    renderChildren: () => ComponentRenderable
-  ): VNode => {
-    const frameManager = requireActiveFrameManager('render.with_context');
-    return coerceRenderableToVNode(frameManager.withContext(context, value, renderChildren));
-  },
-  use_context: <T>(context: ContextToken<T>): T => {
-    const frameManager = requireActiveFrameManager('render.use_context');
-    return frameManager.useContext(context);
-  },
-  state: <T>(initial: T): Signal<T> => {
-    const frameManager = requireActiveFrameManager('render.state');
-    return frameManager.getSlot('state', () => new Signal<T>(initial));
-  },
-  remember: <T>(compute: () => T): T => {
-    const frameManager = requireActiveFrameManager('render.remember');
-    return frameManager.getSlot('memo', compute);
-  },
+  create_context: frameRuntime.createContext,
+  create_required_context: frameRuntime.createRequiredContext,
+  with_context: <T>(context: ContextToken<T>, value: T, renderChildren: () => ComponentRenderable): VNode =>
+    frameRuntime.withContext(context, value, renderChildren),
+  use_context: <T>(context: ContextToken<T>): T => frameRuntime.useContext(context),
+  state: <T>(initial: T): Signal<T> => frameRuntime.state(initial) as Signal<T>,
+  remember: <T>(compute: () => T): T => frameRuntime.remember(compute),
   transition_presence: (
     open: Signal<boolean>,
     props: Record<string, unknown> | null | undefined,
@@ -11715,59 +10295,26 @@ export const render = {
   ): VNode => vnodeForList(itemsSignal, keyOf, renderItem),
   element: (tag: string, props?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
     vnodeElement(tag, props, children),
-  props_empty: (): Record<string, unknown> => ({}),
-  props_class: (className: string): Record<string, unknown> => ({ className }),
-  props_on_click: (handler: (() => unknown) | null | undefined): Record<string, unknown> => ({
-    onClick: (event?: Event) => {
-      if (typeof handler !== 'function') return undefined;
-      const outcome = handler();
-      if (outcome === false && event && typeof event.preventDefault === 'function') {
-        event.preventDefault();
-      }
-      return outcome;
-    },
-  }),
-  props_on_click_delta: (signal: Signal<number>, delta: number): Record<string, unknown> => ({
-    onClick: () => {
-      signal.set(signal.get() + delta);
-    },
-  }),
-  props_on_click_inc: (signal: Signal<number>): Record<string, unknown> => ({
-    onClick: () => {
-      signal.set(signal.get() + 1);
-    },
-  }),
-  props_on_click_dec: (signal: Signal<number>): Record<string, unknown> => ({
-      onClick: () => {
-        signal.set(signal.get() - 1);
-      },
-    }),
-  props_id: (id: string): Record<string, unknown> => ({ id }),
-  props_style: (style: string): Record<string, unknown> => ({ style }),
-  props_value: (value: string): Record<string, unknown> => ({ value }),
-  props_checked: (checked: boolean): Record<string, unknown> => ({ checked }),
-  props_type: (type: string): Record<string, unknown> => ({ type }),
-  props_name: (name: string): Record<string, unknown> => ({ name }),
-  props_placeholder: (placeholder: string): Record<string, unknown> => ({ placeholder }),
-  props_href: (href: string): Record<string, unknown> => ({ href }),
-  props_disabled: (disabled: boolean): Record<string, unknown> => ({ disabled }),
-  props_on_input: (handler: (value: string) => unknown): Record<string, unknown> => ({
-      onInput: (e: Event) => handler(((e.target as HTMLInputElement | null)?.value ?? '')),
-    }),
-  props_on_change: (handler: (value: string) => unknown): Record<string, unknown> => ({
-      onChange: (e: Event) => handler(((e.target as HTMLInputElement | null)?.value ?? '')),
-    }),
-  props_on_checked_change: (handler: (checked: boolean) => unknown): Record<string, unknown> => ({
-      onChange: (e: Event) => handler(!!((e.target as HTMLInputElement | null)?.checked)),
-    }),
-  props_on_submit: (handler: (() => unknown) | null | undefined): Record<string, unknown> => ({
-      onSubmit: (event?: Event) => {
-        event?.preventDefault?.();
-        if (typeof handler !== 'function') return undefined;
-        return handler();
-      },
-    }),
-  props_key: (key: unknown): Record<string, unknown> => ({ key }),
+  props_empty: propsEmpty,
+  props_class: propsClass,
+  props_on_click: propsOnClick,
+  props_on_click_delta: propsOnClickDelta,
+  props_on_click_inc: propsOnClickInc,
+  props_on_click_dec: propsOnClickDec,
+  props_id: propsId,
+  props_style: propsStyle,
+  props_value: propsValue,
+  props_checked: propsChecked,
+  props_type: propsType,
+  props_name: propsName,
+  props_placeholder: propsPlaceholder,
+  props_href: propsHref,
+  props_disabled: propsDisabled,
+  props_on_input: propsOnInput,
+  props_on_change: propsOnChange,
+  props_on_checked_change: propsOnCheckedChange,
+  props_on_submit: propsOnSubmit,
+  props_key: propsKey,
   props_attr: (name: string, value: unknown): Record<string, unknown> => propsAttr(name, value),
   props_when: (condition: unknown, props: unknown): Record<string, unknown> => propsWhen(condition, props),
   props_merge: (left: unknown, right: unknown): Record<string, unknown> => mergeProps(left, right),
@@ -11895,12 +10442,13 @@ export const render = {
     host: unknown,
     componentFn: ComponentFunction<P, ComponentRenderable>,
     options?: CustomElementMountOptions<P>
-  ): CustomElementController<P> => mountCustomElementHost(host, componentFn, options),
+  ): CustomElementController<P, ReactiveRenderRoot | { $tag: string; $payload?: unknown }, Signal<P>> =>
+    mountCustomElementInternal(host, componentFn, options),
   define_custom_element: <P>(
     tagName: string,
     componentFn: ComponentFunction<P, ComponentRenderable>,
     options?: CustomElementMountOptions<P>
-  ): new () => unknown => defineCustomElementClass(tagName, componentFn, options),
+  ): new () => unknown => defineCustomElementInternal(tagName, componentFn, options),
   update: (root: unknown, node: VNode): void => {
     if (!root || typeof root !== 'object') return;
     if (typeof (root as { update?: unknown }).update !== 'function') return;
@@ -11934,6 +10482,8 @@ export const set = <T>(signal: Signal<T>, value: T): boolean => render.set(signa
 export const createMemo = <T>(compute: () => T): Memo<T> => render.memo(compute);
 export const createEffect = (fn: (onCleanup: (cleanup: ReactiveCleanup) => void) => void | ReactiveCleanup): Effect =>
   render.effect(fn);
+export const batch = <T>(fn: () => T): T => render.batch(fn);
+export const untrack = <T>(fn: () => T): T => render.untrack(fn);
 export const component = <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P, key?: unknown): VNode =>
   render.component(componentFn, props, key);
 export const component_keyed = <P>(
