@@ -11,6 +11,27 @@ import {
   type DevtoolsResourceSnapshot,
   type DevtoolsSnapshot,
 } from './runtime/devtools.js';
+import {
+  findDomElementById,
+  getFocusTargetFromEvent,
+  readChildNodes,
+  trapDialogTabNavigation,
+} from './runtime/dom-accessibility.js';
+import {
+  basenamePathBasic,
+  dirnamePathBasic,
+  extnamePathBasic,
+  getNodeBuiltinModule,
+  getNodePath,
+  getNodeProcess,
+  getNodeReadFileSync,
+  getNodeSpawnSync,
+  isAbsolutePathBasic,
+  isNodeRuntime,
+  joinPathBasic,
+  normalizePathBasic,
+  resolvePathBasic,
+} from './runtime/node-platform.js';
 import { createSsgApi } from './runtime/ssg.js';
 import { createTestingFacade } from './runtime/testing-facade.js';
 
@@ -37,217 +58,6 @@ const getEnumPayload = (value: LuminaEnumLike): unknown => {
   if (!values) return undefined;
   if (Array.isArray(values) && values.length === 1) return values[0];
   return values;
-};
-
-const isNodeRuntime = (): boolean =>
-  typeof (globalThis as { process?: unknown }).process !== 'undefined' &&
-  typeof (globalThis as { process?: { versions?: { node?: string } } }).process?.versions?.node === 'string';
-
-const getNodeProcess = (): NodeJS.Process | null => {
-  const candidate = (globalThis as { process?: NodeJS.Process }).process;
-  return candidate ?? null;
-};
-
-type NodeRequireFn = (id: string) => unknown;
-type NodeProcessWithBuiltin = NodeJS.Process & {
-  getBuiltinModule?: (id: string) => unknown;
-  mainModule?: { require?: NodeRequireFn };
-};
-
-interface NodePathLike {
-  join: (...parts: string[]) => string;
-  isAbsolute: (value: string) => boolean;
-  extname: (value: string) => string;
-  dirname: (value: string) => string;
-  basename: (value: string) => string;
-  normalize: (value: string) => string;
-  resolve: (...parts: string[]) => string;
-}
-
-let cachedNodeRequire: NodeRequireFn | null | undefined;
-let cachedNodePath: NodePathLike | null | undefined;
-let cachedReadFileSync: ((fd: number, encoding: BufferEncoding) => string) | null | undefined;
-let cachedSpawnSync:
-  | ((command: string, args?: ReadonlyArray<string>, options?: Record<string, unknown>) => {
-      status: number | null;
-      stdout?: unknown;
-      stderr?: unknown;
-      error?: Error;
-    })
-  | null
-  | undefined;
-
-const getNodeRequire = (): NodeRequireFn | null => {
-  if (cachedNodeRequire !== undefined) return cachedNodeRequire;
-  const fromGlobal = (globalThis as { __luminaRequire?: NodeRequireFn; require?: NodeRequireFn }).__luminaRequire ??
-    (globalThis as { require?: NodeRequireFn }).require;
-  if (typeof fromGlobal === 'function') {
-    cachedNodeRequire = fromGlobal;
-    return cachedNodeRequire;
-  }
-  try {
-    const fromEval = Function('return (typeof require !== "undefined") ? require : undefined;')() as NodeRequireFn | undefined;
-    if (typeof fromEval === 'function') {
-      cachedNodeRequire = fromEval;
-      return cachedNodeRequire;
-    }
-  } catch {
-    // ignore
-  }
-  const mainModuleReq = (
-    getNodeProcess() as NodeProcessWithBuiltin | null
-  )?.mainModule?.require;
-  if (typeof mainModuleReq === 'function') {
-    cachedNodeRequire = mainModuleReq.bind((getNodeProcess() as NodeProcessWithBuiltin | null)?.mainModule);
-    return cachedNodeRequire;
-  }
-  cachedNodeRequire = null;
-  return cachedNodeRequire;
-};
-
-const getNodeBuiltinModule = (id: string): unknown => {
-  const proc = getNodeProcess() as NodeProcessWithBuiltin | null;
-  const getter = proc?.getBuiltinModule;
-  if (typeof getter === 'function') {
-    const direct = getter(id);
-    if (direct) return direct;
-  }
-  const req = getNodeRequire();
-  if (!req) return null;
-  try {
-    return req(id);
-  } catch {
-    return null;
-  }
-};
-
-const getNodePath = (): NodePathLike | null => {
-  if (cachedNodePath !== undefined) return cachedNodePath;
-  const req = getNodeRequire();
-  if (!req && !(getNodeProcess() as NodeProcessWithBuiltin | null)?.getBuiltinModule) {
-    cachedNodePath = null;
-    return cachedNodePath;
-  }
-  try {
-    const mod = (getNodeBuiltinModule('node:path') ?? getNodeBuiltinModule('path')) as
-      | { default?: NodePathLike }
-      | NodePathLike;
-    cachedNodePath = ((mod as { default?: NodePathLike }).default ?? mod) as NodePathLike;
-    return cachedNodePath;
-  } catch {
-    cachedNodePath = null;
-    return cachedNodePath;
-  }
-};
-
-const getNodeReadFileSync = (): ((fd: number, encoding: BufferEncoding) => string) | null => {
-  if (cachedReadFileSync !== undefined) return cachedReadFileSync;
-  if (!getNodeRequire() && !(getNodeProcess() as NodeProcessWithBuiltin | null)?.getBuiltinModule) {
-    cachedReadFileSync = null;
-    return cachedReadFileSync;
-  }
-  try {
-    const mod = (getNodeBuiltinModule('node:fs') ?? getNodeBuiltinModule('fs')) as {
-      readFileSync?: (fd: number, encoding: BufferEncoding) => string;
-    };
-    cachedReadFileSync = typeof mod.readFileSync === 'function' ? mod.readFileSync.bind(mod) : null;
-    return cachedReadFileSync;
-  } catch {
-    cachedReadFileSync = null;
-    return cachedReadFileSync;
-  }
-};
-
-const getNodeSpawnSync = ():
-  | ((command: string, args?: ReadonlyArray<string>, options?: Record<string, unknown>) => {
-      status: number | null;
-      stdout?: unknown;
-      stderr?: unknown;
-      error?: Error;
-    })
-  | null => {
-  if (cachedSpawnSync !== undefined) return cachedSpawnSync;
-  if (!getNodeRequire() && !(getNodeProcess() as NodeProcessWithBuiltin | null)?.getBuiltinModule) {
-    cachedSpawnSync = null;
-    return cachedSpawnSync;
-  }
-  try {
-    const mod = (getNodeBuiltinModule('node:child_process') ?? getNodeBuiltinModule('child_process')) as {
-      spawnSync?: (command: string, args?: ReadonlyArray<string>, options?: Record<string, unknown>) => {
-        status: number | null;
-        stdout?: unknown;
-        stderr?: unknown;
-        error?: Error;
-      };
-    };
-    cachedSpawnSync = typeof mod.spawnSync === 'function' ? mod.spawnSync.bind(mod) : null;
-    return cachedSpawnSync;
-  } catch {
-    cachedSpawnSync = null;
-    return cachedSpawnSync;
-  }
-};
-
-const pathSeparator = (): string => ((getNodeProcess()?.platform ?? '').startsWith('win') ? '\\' : '/');
-
-const normalizePathBasic = (value: string): string => {
-  const sep = pathSeparator();
-  const replaced = String(value).replace(/[\\/]+/g, sep);
-  const isAbs = sep === '\\'
-    ? /^[A-Za-z]:\\/.test(replaced) || replaced.startsWith('\\\\')
-    : replaced.startsWith('/');
-  const drive = sep === '\\' && /^[A-Za-z]:/.test(replaced) ? replaced.slice(0, 2) : '';
-  const body = drive ? replaced.slice(2) : replaced;
-  const parts = body.split(sep).filter((part) => part.length > 0 && part !== '.');
-  const out: string[] = [];
-  for (const part of parts) {
-    if (part === '..') {
-      if (out.length > 0 && out[out.length - 1] !== '..') out.pop();
-      else if (!isAbs) out.push(part);
-      continue;
-    }
-    out.push(part);
-  }
-  const prefix = drive ? `${drive}${sep}` : isAbs ? sep : '';
-  const joined = out.join(sep);
-  return `${prefix}${joined}` || (isAbs ? sep : '.');
-};
-
-const joinPathBasic = (left: string, right: string): string => normalizePathBasic(`${String(left)}${pathSeparator()}${String(right)}`);
-
-const isAbsolutePathBasic = (value: string): boolean => {
-  const text = String(value);
-  if (pathSeparator() === '\\') return /^[A-Za-z]:[\\/]/.test(text) || text.startsWith('\\\\');
-  return text.startsWith('/');
-};
-
-const dirnamePathBasic = (value: string): string => {
-  const normalized = normalizePathBasic(String(value));
-  const sep = pathSeparator();
-  const idx = normalized.lastIndexOf(sep);
-  if (idx <= 0) return '.';
-  return normalized.slice(0, idx);
-};
-
-const basenamePathBasic = (value: string): string => {
-  const normalized = normalizePathBasic(String(value));
-  const sep = pathSeparator();
-  const idx = normalized.lastIndexOf(sep);
-  return idx === -1 ? normalized : normalized.slice(idx + 1);
-};
-
-const extnamePathBasic = (value: string): string => {
-  const base = basenamePathBasic(value);
-  const idx = base.lastIndexOf('.');
-  if (idx <= 0 || idx === base.length - 1) return '';
-  return base.slice(idx);
-};
-
-const resolvePathBasic = (value: string): string => {
-  const text = String(value);
-  if (isAbsolutePathBasic(text)) return normalizePathBasic(text);
-  const cwd = getNodeProcess()?.cwd?.() ?? '.';
-  return normalizePathBasic(`${cwd}${pathSeparator()}${text}`);
 };
 
 const blockedHttpHosts = new Set([
@@ -9307,130 +9117,6 @@ const getRadioIndicatorId = (itemId: string): string => `${itemId}-indicator`;
 const getSelectIndicatorId = (itemId: string): string => `${itemId}-indicator`;
 const getComboboxIndicatorId = (itemId: string): string => `${itemId}-indicator`;
 const getMultiselectIndicatorId = (itemId: string): string => `${itemId}-indicator`;
-
-const getFocusTargetFromEvent = (event: unknown): { focus?: () => void } | null => {
-  if (!event || typeof event !== 'object') return null;
-  const target = (event as { currentTarget?: unknown; target?: unknown }).currentTarget
-    ?? (event as { target?: unknown }).target;
-  return target && typeof target === 'object' ? (target as { focus?: () => void }) : null;
-};
-
-const elementRecord = (element: DomElementLike): Record<string, unknown> =>
-  element as unknown as Record<string, unknown>;
-const readChildNodes = (
-  node: { childNodes?: ArrayLike<DomNodeLike> | Iterable<DomNodeLike> } | null | undefined
-): DomNodeLike[] => Array.from(node?.childNodes ?? []);
-
-const findDomElementById = (root: DomNodeLike | null | undefined, id: string): DomElementLike | null => {
-  if (!root) return null;
-  for (const child of readChildNodes(root)) {
-    const element = child as DomElementLike;
-    if (getDomAttribute(element, 'id') === id) {
-      return element;
-    }
-    const nested = findDomElementById(child, id);
-    if (nested) return nested;
-  }
-  return null;
-};
-
-const getDomAttribute = (element: DomElementLike, name: string): string | null => {
-  if (typeof element.getAttribute === 'function') {
-    const value = element.getAttribute(name);
-    return value == null ? null : String(value);
-  }
-
-  const attributes = (element as { attributes?: { get?: (key: string) => unknown } }).attributes;
-  if (attributes && typeof attributes.get === 'function') {
-    const value = attributes.get(name);
-    return value == null ? null : String(value);
-  }
-
-  const value = elementRecord(element)[name];
-  return value == null ? null : String(value);
-};
-
-const isElementHidden = (element: DomElementLike): boolean =>
-  elementRecord(element).hidden === true || getDomAttribute(element, 'hidden') !== null;
-
-const isElementDisabled = (element: DomElementLike): boolean =>
-  elementRecord(element).disabled === true || getDomAttribute(element, 'disabled') !== null;
-
-const getElementTabIndex = (element: DomElementLike): number | null => {
-  const raw = elementRecord(element).tabIndex ?? getDomAttribute(element, 'tabIndex') ?? getDomAttribute(element, 'tabindex');
-  if (raw === null || raw === undefined || raw === '') return null;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const isFocusableElement = (element: DomElementLike): boolean => {
-  if (isElementHidden(element) || isElementDisabled(element)) return false;
-
-  const tabIndex = getElementTabIndex(element);
-  if (tabIndex !== null) {
-    return tabIndex >= 0;
-  }
-
-  const tag = String(element.tagName ?? '').toLowerCase();
-  if (tag === 'a') {
-    return getDomAttribute(element, 'href') !== null;
-  }
-
-  return tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea';
-};
-
-const collectFocusableDescendants = (root: DomNodeLike): DomElementLike[] => {
-  const focusable: DomElementLike[] = [];
-  const visit = (node: DomNodeLike): void => {
-    for (const child of readChildNodes(node)) {
-      const element = child as DomElementLike;
-      if (typeof element.focus === 'function' && isFocusableElement(element)) {
-        focusable.push(element);
-      }
-      if (readChildNodes(child).length > 0) {
-        visit(child);
-      }
-    }
-  };
-  visit(root);
-  return focusable;
-};
-
-const trapDialogTabNavigation = (event: KeyboardEvent | undefined): boolean => {
-  if (String(event?.key ?? '') !== 'Tab') return false;
-
-  const container = getFocusTargetFromEvent(event) as (DomElementLike & { ownerDocument?: { activeElement?: unknown } }) | null;
-  if (!container) return false;
-
-  const focusable = collectFocusableDescendants(container);
-  if (focusable.length === 0) {
-    event?.preventDefault?.();
-    container.focus?.();
-    return true;
-  }
-
-  const active = container.ownerDocument?.activeElement ?? null;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  const isShift = Boolean((event as { shiftKey?: unknown } | undefined)?.shiftKey);
-
-  if (isShift) {
-    if (active === container || active === first || !focusable.includes(active as DomElementLike)) {
-      event?.preventDefault?.();
-      last.focus?.();
-      return true;
-    }
-    return false;
-  }
-
-  if (active === container || active === last || !focusable.includes(active as DomElementLike)) {
-    event?.preventDefault?.();
-    first.focus?.();
-    return true;
-  }
-
-  return false;
-};
 
 const restoreDialogFocus = (ctx: DialogContextValue): void => {
   const key = ctx.open as object;

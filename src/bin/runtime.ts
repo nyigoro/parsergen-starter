@@ -4,6 +4,11 @@ import path from 'node:path';
 
 export type RuntimeTarget = 'esm' | 'cjs';
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 function resolveRuntimeSource(fileName: string): string | null {
   const argvPath = process.argv[1];
   if (argvPath) {
@@ -29,7 +34,23 @@ export async function ensureRuntimeForOutput(outPath: string, target: RuntimeTar
   const dest = path.join(path.dirname(outPath), fileName);
   if (fs.existsSync(dest)) return;
   if (source) {
-    await fsp.copyFile(source, dest);
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await fsp.copyFile(source, dest);
+        return;
+      } catch (error) {
+        const code = (error as { code?: unknown } | null)?.code;
+        if (code !== 'EBUSY' && code !== 'EPERM') {
+          throw error;
+        }
+        lastError = error;
+        await sleep(20 * (attempt + 1));
+      }
+    }
+    if (lastError) {
+      throw lastError;
+    }
     return;
   }
   const fallback = target === 'cjs' ? runtimeFallbackCjs() : runtimeFallbackEsm();
