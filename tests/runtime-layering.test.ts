@@ -40,9 +40,13 @@ describe('runtime layering boundaries', () => {
   test('main runtime consumes extracted support modules explicitly', () => {
     const runtimeSource = read('src/lumina-runtime.ts');
     expect(runtimeSource).toContain("from './runtime/app-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/algebra-runtime.js'");
     expect(runtimeSource).toContain("from './runtime/browser-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/channel-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/collections-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/core-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/concurrency-runtime.js'");
     expect(runtimeSource).toContain("from './runtime/dom-renderer.js'");
-    expect(runtimeSource).toContain("from './runtime/custom-elements.js'");
     expect(runtimeSource).toContain("from './runtime/devtools.js'");
     expect(runtimeSource).toContain("from './runtime/frame-runtime.js'");
     expect(runtimeSource).toContain("from './runtime/headless-primitives-runtime.js'");
@@ -55,8 +59,17 @@ describe('runtime layering boundaries', () => {
     expect(runtimeSource).toContain("from './runtime/root-runtime.js'");
     expect(runtimeSource).toContain("from './runtime/render-targets.js'");
     expect(runtimeSource).toContain("from './runtime/ssr-renderer.js'");
+    expect(runtimeSource).toContain("from './runtime/system-runtime.js'");
     expect(runtimeSource).toContain("from './runtime/transition-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/value-runtime.js'");
+    expect(runtimeSource).toContain("from './runtime/webgpu-runtime.js'");
     expect(runtimeSource).toContain("from './runtime/node-platform.js'");
     expect(runtimeSource).toContain("from './runtime/vnode-core.js'");
+  });
+
+  test('custom-element support stays below the main runtime facade', () => {
+    expect(read('src/lumina-runtime.ts')).not.toContain("from './runtime/custom-elements.js'");
+    expect(read('src/runtime/app-runtime.ts')).toContain("from './custom-elements.js'");
+    expect(read('src/runtime/render-api.ts')).toContain("from './custom-elements.js'");
   });
 });

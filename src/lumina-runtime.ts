@@ -1,9 +1,4 @@
-import { FrameManager, type ComponentFunction, type ContextToken } from './frame-manager.js';
-import { type TestingDomHarness } from './testing-dom.js';
-import {
-  type CustomElementController,
-  type CustomElementMountOptions,
-} from './runtime/custom-elements.js';
+import { FrameManager, type ComponentFunction } from './frame-manager.js';
 import { createAppRuntime } from './runtime/app-runtime.js';
 import {
   createDevtoolsController,
@@ -12,6 +7,78 @@ import {
   type DevtoolsSnapshot,
 } from './runtime/devtools.js';
 import { createBrowserRuntime } from './runtime/browser-runtime.js';
+import { createChannelRuntime, Receiver, Sender } from './runtime/channel-runtime.js';
+import { createAlgebraRuntime } from './runtime/algebra-runtime.js';
+import {
+  BTreeMap,
+  BTreeSet,
+  Deque,
+  HashMap,
+  HashSet,
+  PriorityQueue,
+  Vec,
+  all_vec,
+  any_vec,
+  btreemap,
+  btreeset,
+  chunk_vec,
+  configureCollectionsRuntime,
+  count_q,
+  count_vec,
+  deque,
+  enumerate_vec,
+  filter_option,
+  filter_vec,
+  find_vec,
+  first_q,
+  flat_map_vec,
+  flatten_vec,
+  group_by_q,
+  group_by_vec,
+  hashset,
+  hashmap,
+  intersperse_vec,
+  iter,
+  join_all,
+  join_q,
+  join_vec,
+  limit_q,
+  list,
+  map_vec,
+  offset_q,
+  order_by_desc_q,
+  order_by_q,
+  partition_vec,
+  priority_queue,
+  query,
+  reverse_vec,
+  select_q,
+  skip_vec,
+  sort_by_desc_vec,
+  sort_by_vec,
+  sort_vec,
+  sum_vec,
+  sum_vec_f64,
+  take_vec,
+  timeout,
+  to_vec_q,
+  unique_vec,
+  vec,
+  where_q,
+  window_vec,
+  zip_vec,
+} from './runtime/collections-runtime.js';
+import {
+  __lumina_array_bounds_check,
+  __lumina_array_literal,
+  __lumina_fixed_array,
+  __set,
+  __lumina_range,
+  __lumina_slice,
+  createCoreRuntime,
+  LuminaPanic,
+} from './runtime/core-runtime.js';
+import { AtomicI32, createConcurrencyRuntime, Thread, ThreadHandle } from './runtime/concurrency-runtime.js';
 import {
   createDomRenderer as createDomRendererBase,
   type DomDocumentLike,
@@ -19,6 +86,7 @@ import {
 } from './runtime/dom-renderer.js';
 import { createFrameRuntime } from './runtime/frame-runtime.js';
 import { createHeadlessPrimitivesRuntime } from './runtime/headless-primitives-runtime.js';
+import { createSystemRuntime } from './runtime/system-runtime.js';
 import {
   isDisposableLike,
   ReactiveRenderRoot as ReactiveRenderRootBase,
@@ -43,6 +111,7 @@ import {
 import { createRootRuntime } from './runtime/root-runtime.js';
 import { createRenderApi } from './runtime/render-api.js';
 import { createTransitionRuntime } from './runtime/transition-runtime.js';
+import { createWebGpuRuntime } from './runtime/webgpu-runtime.js';
 import {
   createRenderTargetsRuntime,
   type CanvasRendererOptions,
@@ -71,25 +140,107 @@ import {
   type VNodeInput,
 } from './runtime/vnode-core.js';
 import {
-  basenamePathBasic,
   dirnamePathBasic,
-  extnamePathBasic,
   getNodeBuiltinModule,
-  getNodePath,
-  getNodeProcess,
-  getNodeReadFileSync,
-  getNodeSpawnSync,
-  isAbsolutePathBasic,
-  isNodeRuntime,
-  joinPathBasic,
-  normalizePathBasic,
   resolvePathBasic,
 } from './runtime/node-platform.js';
 import { createSsrRuntime, escapeHtml } from './runtime/ssr-renderer.js';
+import {
+  __lumina_clone,
+  __lumina_debug,
+  __lumina_eq,
+  __lumina_register_trait_impl,
+  __lumina_stringify,
+  __lumina_struct,
+  formatValue,
+  getEnumPayload,
+  getEnumTag,
+  isEnumLike,
+  runtimeEquals,
+  type FormatOptions,
+  type LuminaEnumLike,
+} from './runtime/value-runtime.js';
 
 export { Effect, Memo, Signal };
 export { ResourceHandle };
 export type { ReactiveCleanup };
+export type { FormatOptions, LuminaEnumLike };
+export {
+  __lumina_clone,
+  __lumina_debug,
+  __lumina_eq,
+  __lumina_register_trait_impl,
+  __lumina_stringify,
+  __lumina_struct,
+  formatValue,
+};
+export {
+  __lumina_array_bounds_check,
+  __lumina_array_literal,
+  __lumina_fixed_array,
+  __set,
+  __lumina_range,
+  __lumina_slice,
+  LuminaPanic,
+};
+export {
+  BTreeMap,
+  BTreeSet,
+  Deque,
+  HashMap,
+  HashSet,
+  PriorityQueue,
+  Vec,
+  all_vec,
+  any_vec,
+  btreemap,
+  btreeset,
+  chunk_vec,
+  count_q,
+  count_vec,
+  deque,
+  enumerate_vec,
+  filter_option,
+  filter_vec,
+  find_vec,
+  first_q,
+  flat_map_vec,
+  flatten_vec,
+  group_by_q,
+  group_by_vec,
+  hashmap,
+  hashset,
+  intersperse_vec,
+  iter,
+  join_all,
+  join_q,
+  join_vec,
+  limit_q,
+  list,
+  map_vec,
+  offset_q,
+  order_by_desc_q,
+  order_by_q,
+  partition_vec,
+  priority_queue,
+  query,
+  reverse_vec,
+  select_q,
+  skip_vec,
+  sort_by_desc_vec,
+  sort_by_vec,
+  sort_vec,
+  sum_vec,
+  sum_vec_f64,
+  take_vec,
+  timeout,
+  to_vec_q,
+  unique_vec,
+  vec,
+  where_q,
+  window_vec,
+  zip_vec,
+};
 export {
   isVNode,
   parseVNode,
@@ -104,2600 +255,71 @@ export {
 };
 export type { ComponentRenderable, VNode, VNodeInput };
 
-export type LuminaEnumLike =
-  | { $tag: string; $payload?: unknown }
-  | { tag: string; values?: unknown[] };
-
-declare const WorkerGlobalScope: (new () => unknown) | undefined;
-
-const isEnumLike = (value: unknown): value is LuminaEnumLike => {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as { $tag?: string; tag?: string };
-  return typeof v.$tag === 'string' || typeof v.tag === 'string';
-};
-
-const getEnumTag = (value: LuminaEnumLike): string =>
-  (value as { $tag?: string }).$tag ?? (value as { tag?: string }).tag ?? 'Unknown';
-
-const getEnumPayload = (value: LuminaEnumLike): unknown => {
-  if ((value as { $payload?: unknown }).$payload !== undefined) {
-    return (value as { $payload?: unknown }).$payload;
-  }
-  const values = (value as { values?: unknown[] }).values;
-  if (!values) return undefined;
-  if (Array.isArray(values) && values.length === 1) return values[0];
-  return values;
-};
-
-const blockedHttpHosts = new Set([
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-  '::1',
-  'metadata.google.internal',
-  '169.254.169.254',
-]);
-
-const isPrivateIpv4Host = (host: string): boolean => {
-  const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!match) return false;
-  const octets = match.slice(1).map((part) => Number(part));
-  if (octets.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
-
-  const [a, b] = octets;
-  if (a === 10) return true;
-  if (a === 127) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 169 && b === 254) return true;
-  return false;
-};
-
-const validateHttpUrl = (rawUrl: string): string => {
-  const parsed = new URL(rawUrl);
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`Blocked protocol '${parsed.protocol}'. Only http and https are allowed.`);
-  }
-
-  const host = parsed.hostname.toLowerCase();
-  if (blockedHttpHosts.has(host)) {
-    throw new Error(`Blocked host '${host}' for security reasons.`);
-  }
-  if (isPrivateIpv4Host(host)) {
-    throw new Error(`Blocked private IP address: ${host}`);
-  }
-  return parsed.toString();
-};
-
-type RuntimeTraitName = 'Hash' | 'Eq' | 'Ord';
-
-const runtimeTraitImpls = {
-  Hash: new Map<string, (self: unknown) => unknown>(),
-  Eq: new Map<string, (self: unknown, other: unknown) => boolean>(),
-  Ord: new Map<string, (self: unknown, other: unknown) => unknown>(),
-} as const;
-
-const normalizeTraitTypeName = (typeName: string): string => {
-  const trimmed = typeName.trim();
-  const idx = trimmed.indexOf('<');
-  return idx === -1 ? trimmed : trimmed.slice(0, idx).trim();
-};
-
-const getRuntimeTypeTag = (value: unknown): string | null => {
-  if (!value || typeof value !== 'object') return null;
-  const candidate = (value as { __lumina_type?: unknown }).__lumina_type;
-  return typeof candidate === 'string' ? candidate : null;
-};
-
-export const __lumina_register_trait_impl = (
-  traitName: RuntimeTraitName,
-  forType: string,
-  impl: ((...args: unknown[]) => unknown) | unknown
-): void => {
-  const targetType = normalizeTraitTypeName(forType);
-  if (!targetType) return;
-  if (traitName === 'Hash' && typeof impl === 'function') {
-    runtimeTraitImpls.Hash.set(targetType, impl as (self: unknown) => unknown);
-    return;
-  }
-  if (traitName === 'Eq' && typeof impl === 'function') {
-    runtimeTraitImpls.Eq.set(targetType, impl as (self: unknown, other: unknown) => boolean);
-    return;
-  }
-  if (traitName === 'Ord' && typeof impl === 'function') {
-    runtimeTraitImpls.Ord.set(targetType, impl as (self: unknown, other: unknown) => unknown);
-  }
-};
-
-const supportsColor = (): boolean => {
-  if (typeof window !== 'undefined') return false;
-  if (!isNodeRuntime()) return false;
-  const stdout = getNodeProcess()?.stdout;
-  return Boolean(stdout && stdout.isTTY);
-};
-
-const colors = {
-  reset: '\x1b[0m',
-  cyan: '\x1b[36m',
-  yellow: '\x1b[33m',
-  green: '\x1b[32m',
-  magenta: '\x1b[35m',
-  gray: '\x1b[90m',
-};
-
-const colorize = (text: string, color: string | null, enabled: boolean): string => {
-  if (!enabled || !color) return text;
-  return `${color}${text}${colors.reset}`;
-};
-
-export type FormatOptions = {
-  indent?: number;
-  maxDepth?: number;
-  color?: boolean;
-};
-
-const defaultFormatOptions: Required<FormatOptions> = {
-  indent: 2,
-  maxDepth: 6,
-  color: supportsColor(),
-};
-
-export function formatValue(value: unknown, options: FormatOptions = {}): string {
-  const config = { ...defaultFormatOptions, ...options };
-  const seen = new WeakSet<object>();
-
-  const formatEnum = (tag: string, payload: unknown, depth: number): string => {
-    if (payload === undefined) return colorize(tag, colors.cyan, config.color);
-    if (Array.isArray(payload)) {
-      const inner = payload.map((item) => format(item, depth + 1));
-      return formatEnumPayload(tag, inner, depth);
-    }
-    return formatEnumPayload(tag, [format(payload, depth + 1)], depth);
-  };
-
-  const formatEnumPayload = (tag: string, parts: string[], depth: number): string => {
-    const name = colorize(tag, colors.cyan, config.color);
-    const multiline = parts.some((part) => part.includes('\n')) || parts.join(', ').length > 60;
-    if (!multiline) {
-      return `${name}(${parts.join(', ')})`;
-    }
-    const indent = ' '.repeat(config.indent * (depth + 1));
-    const closing = ' '.repeat(config.indent * depth);
-    return `${name}(\n${indent}${parts.join(`,\n${indent}`)}\n${closing})`;
-  };
-
-  const formatArray = (items: unknown[], depth: number): string => {
-    if (items.length === 0) return '[]';
-    if (depth >= config.maxDepth) return '[...]';
-    const rendered = items.map((item) => format(item, depth + 1));
-    const multiline = rendered.some((item) => item.includes('\n')) || rendered.join(', ').length > 60;
-    if (!multiline) return `[${rendered.join(', ')}]`;
-    const indent = ' '.repeat(config.indent * (depth + 1));
-    const closing = ' '.repeat(config.indent * depth);
-    return `[\n${indent}${rendered.join(`,\n${indent}`)}\n${closing}]`;
-  };
-
-  const formatObject = (obj: Record<string, unknown>, depth: number): string => {
-    const entries = Object.entries(obj);
-    if (entries.length === 0) return '{}';
-    if (depth >= config.maxDepth) return '{...}';
-    const rendered = entries.map(([key, val]) => `${key}: ${format(val, depth + 1)}`);
-    const multiline = rendered.some((item) => item.includes('\n')) || rendered.join(', ').length > 60;
-    if (!multiline) return `{ ${rendered.join(', ')} }`;
-    const indent = ' '.repeat(config.indent * (depth + 1));
-    const closing = ' '.repeat(config.indent * depth);
-    return `{\n${indent}${rendered.join(`,\n${indent}`)}\n${closing}}`;
-  };
-
-  const format = (val: unknown, depth: number): string => {
-    if (val === null || val === undefined) return colorize(String(val), colors.gray, config.color);
-    if (typeof val === 'string') return colorize(val, colors.green, config.color);
-    if (typeof val === 'number' || typeof val === 'bigint') return colorize(String(val), colors.yellow, config.color);
-    if (typeof val === 'boolean') return colorize(String(val), colors.magenta, config.color);
-    if (typeof val === 'function') return `[Function${val.name ? ` ${val.name}` : ''}]`;
-    if (Array.isArray(val)) return formatArray(val, depth);
-    if (typeof val === 'object') {
-      if (isEnumLike(val)) {
-        const tag = getEnumTag(val);
-        const payload = getEnumPayload(val);
-        return formatEnum(tag, payload, depth);
-      }
-      if (seen.has(val as object)) return '[Circular]';
-      seen.add(val as object);
-      return formatObject(val as Record<string, unknown>, depth);
-    }
-    try {
-      return String(val);
-    } catch {
-      return '[unprintable]';
-    }
-  };
-
-  return format(value, 0);
-}
-
-export const __lumina_stringify = (value: unknown): string => formatValue(value, { color: false });
-
-export const __lumina_range = (
-  start: unknown,
-  end: unknown,
-  inclusive: boolean,
-  hasStart: boolean,
-  hasEnd: boolean
-): { start: number | null; end: number | null; inclusive: boolean } => {
-  const startValue = hasStart ? Number(start) : null;
-  const endValue = hasEnd ? Number(end) : null;
-  return { start: startValue, end: endValue, inclusive: !!inclusive };
-};
-
-export const __lumina_slice = (
-  str: string,
-  start: number | undefined,
-  end: number | undefined,
-  inclusive: boolean
-): string => {
-  const actualStart = start ?? 0;
-  const actualEnd = end ?? str.length;
-  const finalEnd = inclusive ? actualEnd + 1 : actualEnd;
-
-  if (actualStart < 0 || actualStart > str.length) {
-    throw new Error(`String slice start index ${actualStart} out of bounds`);
-  }
-  if (finalEnd < 0 || finalEnd > str.length) {
-    throw new Error(`String slice end index ${finalEnd} out of bounds`);
-  }
-
-  return str.substring(actualStart, finalEnd);
-};
-
-const isRangeValue = (
-  value: unknown
-): value is { start: number | null; end: number | null; inclusive: boolean } =>
-  !!value && typeof value === 'object' && 'start' in value && 'end' in value && 'inclusive' in value;
-
-const clampIndex = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
-
-export const __lumina_fixed_array = <T>(
-  size: number,
-  initializer?: (index: number) => T
-): T[] => {
-  const normalized = Math.max(0, Math.trunc(size));
-  const arr = new Array<T>(normalized);
-  if (initializer) {
-    for (let i = 0; i < normalized; i += 1) {
-      arr[i] = initializer(i);
-    }
-  }
-  return arr;
-};
-
-export const __lumina_array_bounds_check = (
-  array: unknown[],
-  index: number,
-  expectedSize?: number
-): void => {
-  if (expectedSize !== undefined && array.length !== expectedSize) {
-    throw new Error(`Array size mismatch: expected ${expectedSize}, got ${array.length}`);
-  }
-  if (index < 0 || index >= array.length) {
-    throw new Error(`Array index out of bounds: ${index} (array length: ${array.length})`);
-  }
-};
-
-export const __lumina_array_literal = <T>(elements: T[], expectedSize?: number): T[] => {
-  if (expectedSize !== undefined && elements.length !== expectedSize) {
-    throw new Error(`Array literal has wrong size: expected ${expectedSize}, got ${elements.length}`);
-  }
-  return elements;
-};
-
-export const __lumina_index = (target: unknown, index: unknown, expectedSize?: number): unknown => {
-  if (typeof target === 'string' && isRangeValue(index)) {
-    const length = target.length;
-    const start = index.start == null ? 0 : clampIndex(Math.trunc(index.start), 0, length);
-    const endBase = index.end == null ? length : clampIndex(Math.trunc(index.end), 0, length);
-    return __lumina_slice(target, start, endBase, index.inclusive);
-  }
-
-  if (target && typeof (target as { get?: (idx: number) => unknown }).get === 'function') {
-    const result = (target as { get: (idx: number) => unknown }).get(Math.trunc(Number(index)));
-    const tag = result && typeof result === 'object' && isEnumLike(result) ? getEnumTag(result) : '';
-    if (tag === 'Some') return getEnumPayload(result as LuminaEnumLike);
-    const err = new LuminaPanic('Index out of bounds', result);
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(err, __lumina_index);
-    }
-    throw err;
-  }
-
-  if (Array.isArray(target)) {
-    const normalizedIndex = Math.trunc(Number(index));
-    __lumina_array_bounds_check(target, normalizedIndex, expectedSize);
-    return target[normalizedIndex];
-  }
-
-  if (target && typeof target === 'object') {
-    return (target as Record<string, unknown>)[String(index)];
-  }
-
-  return undefined;
-};
-
-export const __lumina_struct = <T extends Record<string, unknown>>(typeName: string, fields: T): T => {
-  try {
-    Object.defineProperty(fields, '__lumina_type', {
-      value: normalizeTraitTypeName(typeName),
-      enumerable: false,
-      writable: false,
-      configurable: false,
-    });
-  } catch {
-    (fields as Record<string, unknown>).__lumina_type = normalizeTraitTypeName(typeName);
-  }
-  return fields;
-};
-
-const normalizeRuntimeValue = (value: unknown): unknown => {
-  if (value === null || value === undefined) return value;
-  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'bigint') return value.toString();
-  if (typeof value === 'function') return `[Function${value.name ? ` ${value.name}` : ''}]`;
-  if (Array.isArray(value)) return value.map((item) => normalizeRuntimeValue(item));
-  if (typeof value === 'object') {
-    if (isEnumLike(value)) {
-      const tag = getEnumTag(value);
-      const payload = getEnumPayload(value);
-      return { $enum: tag, value: normalizeRuntimeValue(payload) };
-    }
-    const typeTag = getRuntimeTypeTag(value);
-    const obj = value as Record<string, unknown>;
-    const keys = Object.keys(obj).sort();
-    const out: Record<string, unknown> = {};
-    if (typeTag) out.__lumina_type = typeTag;
-    for (const key of keys) {
-      out[key] = normalizeRuntimeValue(obj[key]);
-    }
-    return out;
-  }
-  return String(value);
-};
-
-const stableRuntimeHash = (value: unknown): string => JSON.stringify(normalizeRuntimeValue(value));
-
-const deepRuntimeEqual = (a: unknown, b: unknown): boolean => {
-  if (a === b) return true;
-  if (a == null || b == null) return false;
-  if (typeof a !== typeof b) return false;
-  if (typeof a !== 'object') return false;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b)) return false;
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i += 1) {
-      if (!deepRuntimeEqual(a[i], b[i])) return false;
-    }
-    return true;
-  }
-  const aTag = getRuntimeTypeTag(a);
-  const bTag = getRuntimeTypeTag(b);
-  if (aTag !== bTag) return false;
-  if (isEnumLike(a) || isEnumLike(b)) {
-    if (!isEnumLike(a) || !isEnumLike(b)) return false;
-    if (getEnumTag(a) !== getEnumTag(b)) return false;
-    return deepRuntimeEqual(getEnumPayload(a), getEnumPayload(b));
-  }
-  const aObj = a as Record<string, unknown>;
-  const bObj = b as Record<string, unknown>;
-  const aKeys = Object.keys(aObj);
-  const bKeys = Object.keys(bObj);
-  if (aKeys.length !== bKeys.length) return false;
-  aKeys.sort();
-  bKeys.sort();
-  for (let i = 0; i < aKeys.length; i += 1) {
-    if (aKeys[i] !== bKeys[i]) return false;
-  }
-  for (const key of aKeys) {
-    if (!deepRuntimeEqual(aObj[key], bObj[key])) return false;
-  }
-  return true;
-};
-
-const runtimeHashValue = (value: unknown): string => {
-  const typeTag = getRuntimeTypeTag(value);
-  if (typeTag) {
-    const hashImpl = runtimeTraitImpls.Hash.get(typeTag);
-    if (hashImpl) {
-      try {
-        return `${typeTag}:${String(hashImpl(value))}`;
-      } catch {
-        return `${typeTag}:${stableRuntimeHash(value)}`;
-      }
-    }
-  }
-  return stableRuntimeHash(value);
-};
-
-const runtimeEquals = (left: unknown, right: unknown): boolean => {
-  if (left === right) return true;
-  const leftTag = getRuntimeTypeTag(left);
-  const rightTag = getRuntimeTypeTag(right);
-  if (leftTag && rightTag && leftTag === rightTag) {
-    const eqImpl = runtimeTraitImpls.Eq.get(leftTag);
-    if (eqImpl) {
-      try {
-        return !!eqImpl(left, right);
-      } catch {
-        return false;
-      }
-    }
-  }
-  return deepRuntimeEqual(left, right);
-};
-
-const FAST_CLONE_UNSUPPORTED = Symbol('lumina.fast-clone-unsupported');
-
-const isPlainCloneableObject = (value: object): boolean => {
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-};
-
-const cloneFast = (
-  value: unknown,
-  seen: WeakMap<object, unknown> = new WeakMap()
-): unknown | typeof FAST_CLONE_UNSUPPORTED => {
-  if (value === null || value === undefined) return value;
-  if (typeof value !== 'object') return value;
-
-  if (Array.isArray(value)) {
-    const cached = seen.get(value);
-    if (cached) return cached;
-    const out: unknown[] = new Array(value.length);
-    seen.set(value, out);
-    for (let index = 0; index < value.length; index += 1) {
-      const cloned = cloneFast(value[index], seen);
-      if (cloned === FAST_CLONE_UNSUPPORTED) {
-        return FAST_CLONE_UNSUPPORTED;
-      }
-      out[index] = cloned;
-    }
-    return out;
-  }
-
-  if (
-    value instanceof Date
-    || value instanceof RegExp
-    || value instanceof Map
-    || value instanceof Set
-    || value instanceof ArrayBuffer
-    || ArrayBuffer.isView(value)
-  ) {
-    return FAST_CLONE_UNSUPPORTED;
-  }
-
-  if (!isPlainCloneableObject(value)) {
-    return FAST_CLONE_UNSUPPORTED;
-  }
-
-  const cached = seen.get(value);
-  if (cached) return cached;
-  const out: Record<string, unknown> = {};
-  seen.set(value, out);
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    const cloned = cloneFast(entry, seen);
-    if (cloned === FAST_CLONE_UNSUPPORTED) {
-      return FAST_CLONE_UNSUPPORTED;
-    }
-    out[key] = cloned;
-  }
-  const typeTag = getRuntimeTypeTag(value);
-  if (typeTag) {
-    try {
-      Object.defineProperty(out, '__lumina_type', {
-        value: typeTag,
-        enumerable: false,
-        writable: false,
-        configurable: false,
-      });
-    } catch {
-      out.__lumina_type = typeTag;
-    }
-  }
-  return out;
-};
-
-const cloneFallback = (value: unknown): unknown => {
-  const fast = cloneFast(value);
-  if (fast !== FAST_CLONE_UNSUPPORTED) {
-    return fast;
-  }
-  if (value === null || value === undefined) return value;
-  if (typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map((entry) => cloneFallback(entry));
-  const out: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = cloneFallback(entry);
-  }
-  const typeTag = getRuntimeTypeTag(value);
-  if (typeTag) {
-    try {
-      Object.defineProperty(out, '__lumina_type', {
-        value: typeTag,
-        enumerable: false,
-        writable: false,
-        configurable: false,
-      });
-    } catch {
-      out.__lumina_type = typeTag;
-    }
-  }
-  return out;
-};
-
-export const __lumina_clone = <T>(value: T): T => {
-  const fast = cloneFast(value);
-  if (fast !== FAST_CLONE_UNSUPPORTED) {
-    return fast as T;
-  }
-  const cloneFn = (globalThis as { structuredClone?: <U>(entry: U) => U }).structuredClone;
-  if (typeof cloneFn === 'function') {
-    try {
-      return cloneFn(value);
-    } catch {
-      // fallback below
-    }
-  }
-  return cloneFallback(value) as T;
-};
-
-export const __lumina_debug = (value: unknown): string => formatValue(value, { color: false });
-export const __lumina_eq = (left: unknown, right: unknown): boolean => runtimeEquals(left, right);
-
-const orderingToNumber = (value: unknown): number => {
-  if (typeof value === 'number') return value < 0 ? -1 : value > 0 ? 1 : 0;
-  if (typeof value === 'bigint') return value < 0n ? -1 : value > 0n ? 1 : 0;
-  if (typeof value === 'string') {
-    const text = value.toLowerCase();
-    if (text === 'less') return -1;
-    if (text === 'equal') return 0;
-    if (text === 'greater') return 1;
-  }
-  if (isEnumLike(value)) {
-    const tag = getEnumTag(value).toLowerCase();
-    if (tag === 'less') return -1;
-    if (tag === 'equal') return 0;
-    if (tag === 'greater') return 1;
-  }
-  return 0;
-};
-
-const toJsonValue = (value: unknown, seen: WeakSet<object>): unknown => {
-  if (value === null || value === undefined) return value;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'bigint') return value.toString();
-  if (typeof value === 'function') return `[Function${value.name ? ` ${value.name}` : ''}]`;
-  if (Array.isArray(value)) return value.map((item) => toJsonValue(item, seen));
-  if (typeof value === 'object') {
-    if (seen.has(value as object)) return '[Circular]';
-    seen.add(value as object);
-    if (isEnumLike(value)) {
-      const tag = getEnumTag(value);
-      const payload = getEnumPayload(value);
-      return payload === undefined ? { $tag: tag } : { $tag: tag, $payload: toJsonValue(payload, seen) };
-    }
-    const entries = Object.entries(value as Record<string, unknown>).map(([key, val]) => [
-      key,
-      toJsonValue(val, seen),
-    ]);
-    return Object.fromEntries(entries);
-  }
-  return String(value);
-};
-
-export function toJsonString(value: unknown, pretty: boolean = true): string {
-  const normalized = toJsonValue(value, new WeakSet());
-  return JSON.stringify(normalized, null, pretty ? 2 : undefined);
-}
-
-const renderArgs = (args: unknown[]): string => args.map((arg) => formatValue(arg)).join(' ');
-
-const writeStdout = (text: string, newline: boolean) => {
-  if (isNodeRuntime()) {
-    const stdout = getNodeProcess()?.stdout;
-    if (stdout?.write) {
-      stdout.write(text + (newline ? '\n' : ''));
-      return;
-    }
-  }
-  // eslint-disable-next-line no-console -- runtime output
-  console.log(text);
-};
-
-const writeStderr = (text: string, newline: boolean) => {
-  if (isNodeRuntime()) {
-    const stderr = getNodeProcess()?.stderr;
-    if (stderr?.write) {
-      stderr.write(text + (newline ? '\n' : ''));
-      return;
-    }
-  }
-  // eslint-disable-next-line no-console -- runtime output
-  console.error(text);
-};
-
-let stdinCache: string[] | null = null;
-let stdinIndex = 0;
-
-const readStdinLines = (): string[] => {
-  if (stdinCache) return stdinCache;
-  const globalAny = globalThis as { __luminaStdin?: string | string[] };
-  if (globalAny.__luminaStdin !== undefined) {
-    const raw = globalAny.__luminaStdin;
-    stdinCache = Array.isArray(raw) ? raw.map(String) : String(raw).split(/\r?\n/);
-    return stdinCache;
-  }
-  if (isNodeRuntime()) {
-    const stdin = getNodeProcess()?.stdin;
-    const isTty = (stdin as { isTTY?: boolean } | undefined)?.isTTY;
-    if (isTty !== true) {
-      try {
-        const readSync = getNodeReadFileSync();
-        const raw = readSync ? readSync(0, 'utf8') : '';
-        if (raw.length > 0) {
-          stdinCache = raw.split(/\r?\n/);
-          return stdinCache;
-        }
-      } catch {
-        // ignore stdin read errors
-      }
-    }
-    if (stdin?.setEncoding) stdin.setEncoding('utf8');
-    const chunk = stdin?.read?.();
-    if (typeof chunk === 'string') {
-      stdinCache = chunk.split(/\r?\n/);
-      return stdinCache;
-    }
-    if (chunk && typeof (chunk as { toString?: (enc: string) => string }).toString === 'function') {
-      stdinCache = (chunk as { toString: (enc: string) => string }).toString('utf8').split(/\r?\n/);
-      return stdinCache;
-    }
-  }
-  stdinCache = [];
-  return stdinCache;
-};
-
-const unwrapOption = (value: unknown): { isSome: boolean; value?: unknown } => {
-  if (isEnumLike(value)) {
-    const tag = getEnumTag(value);
-    if (tag === 'Some') return { isSome: true, value: getEnumPayload(value) };
-    if (tag === 'None') return { isSome: false };
-  }
-  return { isSome: true, value };
-};
-
-export const io = {
-  print: (...args: unknown[]) => {
-    writeStdout(renderArgs(args), false);
-  },
-  println: (...args: unknown[]) => {
-    writeStdout(renderArgs(args), true);
-  },
-  eprint: (...args: unknown[]) => {
-    writeStderr(renderArgs(args), false);
-  },
-  eprintln: (...args: unknown[]) => {
-    writeStderr(renderArgs(args), true);
-  },
-  readLine: () => {
-    const globalAny = globalThis as { __luminaReadLine?: () => string | null | undefined };
-    if (typeof globalAny.__luminaReadLine === 'function') {
-      const value = globalAny.__luminaReadLine();
-      return value == null ? Option.None : Option.Some(value);
-    }
-    if (typeof (globalThis as { prompt?: (message?: string) => string | null }).prompt === 'function') {
-      const value = (globalThis as { prompt?: (message?: string) => string | null }).prompt?.();
-      return value == null ? Option.None : Option.Some(value);
-    }
-    const lines = readStdinLines();
-    if (stdinIndex >= lines.length) return Option.None;
-    const value = lines[stdinIndex++];
-    return Option.Some(value);
-  },
-  readLineAsync: async () => {
-    const globalAny = globalThis as { __luminaStdin?: string | string[] };
-    if (globalAny.__luminaStdin !== undefined) {
-      const lines = readStdinLines();
-      if (stdinIndex >= lines.length) return Option.None;
-      const value = lines[stdinIndex++];
-      return Option.Some(value);
-    }
-    if (isNodeRuntime()) {
-      const nodeProcess = getNodeProcess();
-      const stdin = nodeProcess?.stdin;
-      if (stdin && stdin.isTTY !== true) {
-        const lines = readStdinLines();
-        if (stdinIndex >= lines.length) return Option.None;
-        const value = lines[stdinIndex++];
-        return Option.Some(value);
-      }
-      if (stdin?.isTTY) {
-        const readline = await import('node:readline');
-        const rl = nodeProcess?.stdout
-          ? readline.createInterface({
-              input: stdin,
-              output: nodeProcess.stdout,
-            })
-          : readline.createInterface({
-              input: stdin,
-            });
-        return await new Promise((resolve) => {
-          rl.question('', (answer) => {
-            rl.close();
-            resolve(Option.Some(answer));
-          });
-        });
-      }
-    }
-    if (typeof (globalThis as { prompt?: (message?: string) => string | null }).prompt === 'function') {
-      const value = (globalThis as { prompt?: (message?: string) => string | null }).prompt?.();
-      return value == null ? Option.None : Option.Some(value);
-    }
-    return Option.None;
-  },
-  printJson: (value: unknown, pretty: boolean = true) => {
-    // eslint-disable-next-line no-console -- runtime output
-    console.log(toJsonString(value, pretty));
-  },
-};
-
-export const str = {
-  length: (value: string) => value.length,
-  concat: (a: string, b: string) => a + b,
-  substring: (value: string, start: number, end: number) => {
-    const safeStart = Math.max(0, Math.trunc(start));
-    const safeEnd = Math.max(safeStart, Math.trunc(end));
-    return value.substring(safeStart, safeEnd);
-  },
-  slice: (
-    value: string,
-    range: { start: number | null; end: number | null; inclusive: boolean }
-  ) => {
-    const start = range?.start ?? undefined;
-    const end = range?.end ?? undefined;
-    return __lumina_slice(value, start ?? undefined, end ?? undefined, !!range?.inclusive);
-  },
-  split: (value: string, sep: string) => value.split(sep),
-  trim: (value: string) => value.trim(),
-  contains: (haystack: string, needle: string) => haystack.includes(needle),
-  eq: (a: string, b: string) => a === b,
-  char_at: (value: string, index: number) => {
-    if (Number.isNaN(index) || index < 0 || index >= value.length) return Option.None;
-    return Option.Some(value.charAt(index));
-  },
-  is_whitespace: (value: string) => value === ' ' || value === '\n' || value === '\t' || value === '\r',
-  is_digit: (value: string) => {
-    if (!value || value.length === 0) return false;
-    const code = value.charCodeAt(0);
-    return code >= 48 && code <= 57;
-  },
-  to_int: (value: string) => {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? Result.Err(`Invalid int: ${value}`) : Result.Ok(parsed);
-  },
-  to_float: (value: string) => {
-    const parsed = Number.parseFloat(value);
-    return Number.isNaN(parsed) ? Result.Err(`Invalid float: ${value}`) : Result.Ok(parsed);
-  },
-  from_int: (value: number) => String(Math.trunc(value)),
-  from_float: (value: number) => String(value),
-};
-
-export const math = {
-  abs: (value: number) => Math.abs(value),
-  min: (a: number, b: number) => Math.min(a, b),
-  max: (a: number, b: number) => Math.max(a, b),
-  absf: (value: number) => Math.abs(value),
-  minf: (a: number, b: number) => Math.min(a, b),
-  maxf: (a: number, b: number) => Math.max(a, b),
-  sqrt: (value: number) => Math.sqrt(value),
-  pow: (base: number, exp: number) => Math.pow(base, exp),
-  powf: (base: number, exp: number) => Math.pow(base, exp),
-  floor: (value: number) => Math.floor(value),
-  ceil: (value: number) => Math.ceil(value),
-  round: (value: number) => Math.round(value),
-  pi: Math.PI,
-  e: Math.E,
-};
-
-interface OpfsFileLike {
-  size: number;
-  lastModified: number;
-  text: () => Promise<string>;
-}
-
-interface OpfsWritableLike {
-  write: (data: string) => Promise<void>;
-  close: () => Promise<void>;
-}
-
-interface OpfsFileHandleLike {
-  getFile: () => Promise<OpfsFileLike>;
-  createWritable: () => Promise<OpfsWritableLike>;
-}
-
-interface OpfsDirectoryLike {
-  getDirectoryHandle: (name: string, options?: { create?: boolean }) => Promise<OpfsDirectoryLike>;
-  getFileHandle: (name: string, options?: { create?: boolean }) => Promise<OpfsFileHandleLike>;
-  removeEntry: (name: string, options?: { recursive?: boolean }) => Promise<void>;
-  entries?: () => AsyncIterable<[string, unknown]>;
-  keys?: () => AsyncIterable<string>;
-}
-
-const hasOpfsSupport = (): boolean => {
-  const nav = (globalThis as { navigator?: { storage?: { getDirectory?: unknown } } }).navigator;
-  return typeof nav?.storage?.getDirectory === 'function';
-};
-
-const getOpfsRoot = async (): Promise<OpfsDirectoryLike> => {
-  const nav = (globalThis as { navigator?: { storage?: { getDirectory?: () => Promise<OpfsDirectoryLike> } } }).navigator;
-  const getter = nav?.storage?.getDirectory;
-  if (typeof getter !== 'function') {
-    throw new Error('OPFS is not available in this environment');
-  }
-  return await getter.call(nav!.storage);
-};
-
-const opfsError = (error: unknown): string => {
-  if (error instanceof Error && error.message) return error.message;
-  return String(error);
-};
-
-const isOpfsNotFoundError = (error: unknown): boolean =>
-  !!error &&
-  typeof error === 'object' &&
-  ((error as { name?: string }).name === 'NotFoundError' || (error as { code?: string }).code === 'ENOENT');
-
-const splitOpfsPath = (path: string): string[] =>
-  String(path)
-    .replace(/\\/g, '/')
-    .split('/')
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0 && segment !== '.');
-
-const walkOpfsDirectory = async (segments: string[], create: boolean): Promise<OpfsDirectoryLike> => {
-  let current = await getOpfsRoot();
-  for (const segment of segments) {
-    if (segment === '..') {
-      throw new Error('OPFS path traversal is not supported');
-    }
-    current = await current.getDirectoryHandle(segment, { create });
-  }
-  return current;
-};
-
-const resolveOpfsParent = async (
-  path: string,
-  createParent: boolean
-): Promise<{ directory: OpfsDirectoryLike; name: string }> => {
-  const segments = splitOpfsPath(path);
-  if (segments.length === 0) {
-    throw new Error('Path must not be empty');
-  }
-  const name = segments[segments.length - 1];
-  const parentSegments = segments.slice(0, -1);
-  const directory = await walkOpfsDirectory(parentSegments, createParent);
-  return { directory, name };
-};
-
-const isLikelyRemotePath = (path: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//i.test(path) || path.startsWith('//');
-
-const opfsReadFile = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
-  try {
-    const { directory, name } = await resolveOpfsParent(path, false);
-    const handle = await directory.getFileHandle(name, { create: false });
-    const file = await handle.getFile();
-    const content = await file.text();
-    return Result.Ok(content);
-  } catch (error) {
-    return Result.Err(opfsError(error));
-  }
-};
-
-const opfsWriteFile = async (path: string, content: string): Promise<{ $tag: string; $payload?: unknown }> => {
-  try {
-    const { directory, name } = await resolveOpfsParent(path, true);
-    const handle = await directory.getFileHandle(name, { create: true });
-    const writable = await handle.createWritable();
-    await writable.write(String(content));
-    await writable.close();
-    return Result.Ok(undefined);
-  } catch (error) {
-    return Result.Err(opfsError(error));
-  }
-};
-
-const opfsReadDir = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
-  try {
-    const segments = splitOpfsPath(path);
-    const directory = await walkOpfsDirectory(segments, false);
-    const entries: string[] = [];
-    if (typeof directory.entries === 'function') {
-      for await (const [name] of directory.entries()) {
-        entries.push(name);
-      }
-      return Result.Ok(entries);
-    }
-    if (typeof directory.keys === 'function') {
-      for await (const name of directory.keys()) {
-        entries.push(name);
-      }
-      return Result.Ok(entries);
-    }
-    return Result.Err('OPFS directory iteration is not available');
-  } catch (error) {
-    return Result.Err(opfsError(error));
-  }
-};
-
-const opfsMetadata = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
-  try {
-    const segments = splitOpfsPath(path);
-    if (segments.length === 0) {
-      return Result.Ok({ isFile: false, isDirectory: true, size: 0, modifiedMs: 0 });
-    }
-    const { directory, name } = await resolveOpfsParent(path, false);
-    try {
-      const fileHandle = await directory.getFileHandle(name, { create: false });
-      const file = await fileHandle.getFile();
-      return Result.Ok({
-        isFile: true,
-        isDirectory: false,
-        size: Math.trunc(file.size),
-        modifiedMs: Math.trunc(file.lastModified),
-      });
-    } catch (fileError) {
-      if (!isOpfsNotFoundError(fileError)) {
-        return Result.Err(opfsError(fileError));
-      }
-    }
-    const dirHandle = await directory.getDirectoryHandle(name, { create: false });
-    if (dirHandle) {
-      return Result.Ok({ isFile: false, isDirectory: true, size: 0, modifiedMs: 0 });
-    }
-    return Result.Err(`Entry not found: ${path}`);
-  } catch (error) {
-    return Result.Err(opfsError(error));
-  }
-};
-
-const opfsExists = async (path: string): Promise<boolean> => {
-  try {
-    const meta = await opfsMetadata(path);
-    return getEnumTag(meta as LuminaEnumLike) === 'Ok';
-  } catch {
-    return false;
-  }
-};
-
-const opfsMkdir = async (path: string, recursive = true): Promise<{ $tag: string; $payload?: unknown }> => {
-  try {
-    const segments = splitOpfsPath(path);
-    if (segments.length === 0) return Result.Ok(undefined);
-    if (recursive) {
-      await walkOpfsDirectory(segments, true);
-      return Result.Ok(undefined);
-    }
-    const parentSegments = segments.slice(0, -1);
-    const parent = await walkOpfsDirectory(parentSegments, false);
-    await parent.getDirectoryHandle(segments[segments.length - 1], { create: true });
-    return Result.Ok(undefined);
-  } catch (error) {
-    return Result.Err(opfsError(error));
-  }
-};
-
-const opfsRemoveFile = async (path: string): Promise<{ $tag: string; $payload?: unknown }> => {
-  try {
-    const { directory, name } = await resolveOpfsParent(path, false);
-    await directory.removeEntry(name, { recursive: false });
-    return Result.Ok(undefined);
-  } catch (error) {
-    return Result.Err(opfsError(error));
-  }
-};
-
-export const opfs = {
-  is_available: (): boolean => hasOpfsSupport(),
-  readFile: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsReadFile(path),
-  writeFile: async (path: string, content: string): Promise<{ $tag: string; $payload?: unknown }> =>
-    opfsWriteFile(path, content),
-  readDir: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsReadDir(path),
-  metadata: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsMetadata(path),
-  exists: async (path: string): Promise<boolean> => opfsExists(path),
-  mkdir: async (path: string, recursive = true): Promise<{ $tag: string; $payload?: unknown }> =>
-    opfsMkdir(path, recursive),
-  removeFile: async (path: string): Promise<{ $tag: string; $payload?: unknown }> => opfsRemoveFile(path),
-};
-
-export const fs = {
-  readFile: async (path: string) => {
-    try {
-      if (isNodeRuntime()) {
-        const fsPromises = await import('node:fs/promises');
-        const content = await fsPromises.readFile(path, 'utf8');
-        return Result.Ok(content);
-      }
-      if (opfs.is_available() && !isLikelyRemotePath(path)) {
-        return await opfs.readFile(path);
-      }
-      if (typeof fetch !== 'undefined') {
-        const response = await fetch(path);
-        if (!response.ok) {
-          return Result.Err(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        const content = await response.text();
-        return Result.Ok(content);
-      }
-      return Result.Err('No file system available');
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  writeFile: async (path: string, content: string) => {
-    try {
-      if (isNodeRuntime()) {
-        const fsPromises = await import('node:fs/promises');
-        await fsPromises.writeFile(path, content, 'utf8');
-        return Result.Ok(undefined);
-      }
-      if (opfs.is_available()) {
-        return await opfs.writeFile(path, content);
-      }
-      return Result.Err('writeFile not supported in browser');
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  readDir: async (path: string) => {
-    try {
-      if (isNodeRuntime()) {
-        const fsPromises = await import('node:fs/promises');
-        const entries = await fsPromises.readdir(path);
-        return Result.Ok(entries);
-      }
-      if (opfs.is_available()) {
-        return await opfs.readDir(path);
-      }
-      if (!isNodeRuntime()) {
-        return Result.Err('readDir is not supported in browser');
-      }
-      return Result.Err('No file system available');
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  metadata: async (path: string) => {
-    try {
-      if (isNodeRuntime()) {
-        const fsPromises = await import('node:fs/promises');
-        const stats = await fsPromises.stat(path);
-        return Result.Ok({
-          isFile: stats.isFile(),
-          isDirectory: stats.isDirectory(),
-          size: Math.trunc(stats.size),
-          modifiedMs: Math.trunc(stats.mtimeMs),
-        });
-      }
-      if (opfs.is_available()) {
-        return await opfs.metadata(path);
-      }
-      return Result.Err('metadata is not supported in browser');
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  exists: async (path: string) => {
-    try {
-      if (isNodeRuntime()) {
-        const fsPromises = await import('node:fs/promises');
-        await fsPromises.access(path);
-        return true;
-      }
-      if (opfs.is_available()) return await opfs.exists(path);
-      return false;
-    } catch {
-      return false;
-    }
-  },
-  mkdir: async (path: string, recursive: boolean = true) => {
-    try {
-      if (isNodeRuntime()) {
-        const fsPromises = await import('node:fs/promises');
-        await fsPromises.mkdir(path, { recursive: !!recursive });
-        return Result.Ok(undefined);
-      }
-      if (opfs.is_available()) {
-        return await opfs.mkdir(path, recursive);
-      }
-      return Result.Err('mkdir is not supported in browser');
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  removeFile: async (path: string) => {
-    try {
-      if (isNodeRuntime()) {
-        const fsPromises = await import('node:fs/promises');
-        await fsPromises.unlink(path);
-        return Result.Ok(undefined);
-      }
-      if (opfs.is_available()) {
-        return await opfs.removeFile(path);
-      }
-      return Result.Err('removeFile is not supported in browser');
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-};
-
-export const path = {
-  join: (left: string, right: string): string => {
-    const nodePath = getNodePath();
-    return nodePath ? nodePath.join(String(left), String(right)) : joinPathBasic(String(left), String(right));
-  },
-  is_absolute: (value: string): boolean => {
-    const nodePath = getNodePath();
-    return nodePath ? nodePath.isAbsolute(String(value)) : isAbsolutePathBasic(String(value));
-  },
-  extension: (value: string) => {
-    const nodePath = getNodePath();
-    const ext = nodePath ? nodePath.extname(String(value)) : extnamePathBasic(String(value));
-    if (!ext) return Option.None;
-    return Option.Some(ext.startsWith('.') ? ext.slice(1) : ext);
-  },
-  dirname: (value: string): string => {
-    const nodePath = getNodePath();
-    return nodePath ? nodePath.dirname(String(value)) : dirnamePathBasic(String(value));
-  },
-  basename: (value: string): string => {
-    const nodePath = getNodePath();
-    return nodePath ? nodePath.basename(String(value)) : basenamePathBasic(String(value));
-  },
-  normalize: (value: string): string => {
-    const nodePath = getNodePath();
-    return nodePath ? nodePath.normalize(String(value)) : normalizePathBasic(String(value));
-  },
-};
-
-export const env = {
-  var: (name: string) => {
-    const nodeProcess = getNodeProcess();
-    if (!nodeProcess) {
-      return Result.Err('Environment variables are not available in this runtime');
-    }
-    const value = nodeProcess.env?.[String(name)];
-    if (value === undefined) {
-      return Result.Err(`Environment variable '${name}' is not set`);
-    }
-    return Result.Ok(String(value));
-  },
-  set_var: (name: string, value: string) => {
-    const nodeProcess = getNodeProcess();
-    if (!nodeProcess) {
-      return Result.Err('Environment variables are not available in this runtime');
-    }
-    nodeProcess.env[String(name)] = String(value);
-    return Result.Ok(undefined);
-  },
-  remove_var: (name: string) => {
-    const nodeProcess = getNodeProcess();
-    if (!nodeProcess) {
-      return Result.Err('Environment variables are not available in this runtime');
-    }
-    delete nodeProcess.env[String(name)];
-    return Result.Ok(undefined);
-  },
-  args: (): string[] => {
-    const nodeProcess = getNodeProcess();
-    if (!nodeProcess) return [];
-    return nodeProcess.argv.slice(2);
-  },
-  cwd: () => {
-    const nodeProcess = getNodeProcess();
-    if (!nodeProcess) {
-      return Result.Err('Current working directory is not available in this runtime');
-    }
-    return Result.Ok(nodeProcess.cwd());
-  },
-};
-
-export const process = {
-  spawn: (command: string, args: unknown = []) => {
-    if (!isNodeRuntime()) {
-      return Result.Err('Process spawning is not available in this runtime');
-    }
-    const commandText = String(command).trim();
-    if (!commandText) {
-      return Result.Err('Process command must be a non-empty string');
-    }
-    const argv = toIterableValues(args).map((part) => String(part));
-    try {
-      const spawn = getNodeSpawnSync();
-      if (!spawn) {
-        return Result.Err('Process spawning is not available in this runtime');
-      }
-      const output = spawn(commandText, argv, {
-        encoding: 'utf8',
-        shell: false,
-        windowsHide: true,
-      });
-      if (output.error) {
-        return Result.Err(output.error.message || String(output.error));
-      }
-      return Result.Ok({
-        status: typeof output.status === 'number' ? Math.trunc(output.status) : -1,
-        success: output.status === 0,
-        stdout: typeof output.stdout === 'string' ? output.stdout : String(output.stdout ?? ''),
-        stderr: typeof output.stderr === 'string' ? output.stderr : String(output.stderr ?? ''),
-      });
-    } catch (error) {
-      return Result.Err(error instanceof Error ? error.message : String(error));
-    }
-  },
-  exit: (code: number = 0) => {
-    const nodeProcess = getNodeProcess();
-    if (!nodeProcess) return;
-    nodeProcess.exit(Math.trunc(code));
-  },
-  cwd: (): string => {
-    const nodeProcess = getNodeProcess();
-    return nodeProcess ? nodeProcess.cwd() : '';
-  },
-  pid: (): number => {
-    const nodeProcess = getNodeProcess();
-    return nodeProcess ? Math.trunc(nodeProcess.pid) : -1;
-  },
-};
-
-export const json = {
-  to_string: (value: unknown) => {
-    try {
-      return Result.Ok(JSON.stringify(value));
-    } catch (error) {
-      return Result.Err(error instanceof Error ? error.message : String(error));
-    }
-  },
-  to_pretty_string: (value: unknown) => {
-    try {
-      return Result.Ok(toJsonString(value, true));
-    } catch (error) {
-      return Result.Err(error instanceof Error ? error.message : String(error));
-    }
-  },
-  from_string: (source: string) => {
-    try {
-      return Result.Ok(JSON.parse(String(source)));
-    } catch (error) {
-      return Result.Err(error instanceof Error ? error.message : String(error));
-    }
-  },
-  parse: (source: string) => {
-    try {
-      return Result.Ok(JSON.parse(String(source)));
-    } catch (error) {
-      return Result.Err(error instanceof Error ? error.message : String(error));
-    }
-  },
-};
-
-export const http = {
-  fetch: async (request: unknown) => {
-    if (typeof fetch !== 'function') {
-      return Result.Err('Fetch API is not available');
-    }
-    if (!request || typeof request !== 'object') {
-      return Result.Err('Invalid request');
-    }
-    const req = request as {
-      url?: unknown;
-      method?: unknown;
-      headers?: unknown;
-      body?: unknown;
-    };
-    const rawUrl = typeof req.url === 'string' ? req.url : '';
-    if (!rawUrl) {
-      return Result.Err('Invalid request url');
-    }
-    let url: string;
-    try {
-      url = validateHttpUrl(rawUrl);
-    } catch (error) {
-      return Result.Err(error instanceof Error ? error.message : String(error));
-    }
-    const method = typeof req.method === 'string' && req.method.length > 0 ? req.method : 'GET';
-    const headerInput = unwrapOption(req.headers).value;
-    const headers: Record<string, string> = {};
-    if (Array.isArray(headerInput)) {
-      for (const entry of headerInput) {
-        if (Array.isArray(entry) && entry.length >= 2) {
-          const [name, value] = entry;
-          if (typeof name === 'string') {
-            headers[name] = typeof value === 'string' ? value : String(value ?? '');
-          }
-          continue;
-        }
-        if (entry && typeof entry === 'object') {
-          const name = (entry as { name?: unknown }).name;
-          const value = (entry as { value?: unknown }).value;
-          if (typeof name === 'string') {
-            headers[name] = typeof value === 'string' ? value : String(value ?? '');
-          }
-        }
-      }
-    }
-    const bodyValue = unwrapOption(req.body).value;
-    const body = typeof bodyValue === 'string' ? bodyValue : bodyValue == null ? undefined : String(bodyValue);
-    try {
-      const response = await fetch(url, { method, headers, body });
-      const text = await response.text();
-      const responseHeaders = Array.from(response.headers.entries()).map(([name, value]) => ({ name, value }));
-      return Result.Ok({
-        status: response.status,
-        statusText: response.statusText,
-        headers: responseHeaders,
-        body: text,
-      });
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  get: async (url: string) =>
-    await http.fetch({
-      url,
-      method: 'GET',
-      headers: Option.None,
-      body: Option.None,
-    }),
-  post: async (url: string, body?: unknown) =>
-    await http.fetch({
-      url,
-      method: 'POST',
-      headers: Option.None,
-      body: body === undefined ? Option.None : Option.Some(typeof body === 'string' ? body : JSON.stringify(body)),
-    }),
-  put: async (url: string, body?: unknown) =>
-    await http.fetch({
-      url,
-      method: 'PUT',
-      headers: Option.None,
-      body: body === undefined ? Option.None : Option.Some(typeof body === 'string' ? body : JSON.stringify(body)),
-    }),
-  del: async (url: string) =>
-    await http.fetch({
-      url,
-      method: 'DELETE',
-      headers: Option.None,
-      body: Option.None,
-    }),
-};
-
-const getMonotonicNow = (): number => {
-  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
-  if (perf && typeof perf.now === 'function') return perf.now();
-  return Date.now();
-};
-
-export const time = {
-  nowMs: () => Math.trunc(Date.now()),
-  nowIso: () => new Date().toISOString(),
-  instantNow: () => Math.trunc(getMonotonicNow()),
-  elapsedMs: (since: number) => Math.max(0, Math.trunc(getMonotonicNow()) - Math.trunc(since)),
-  sleep: async (ms: number) =>
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, Math.max(0, Math.trunc(ms)));
-    }),
-};
-
-const toIterableValues = (value: unknown): unknown[] => {
-  if (Array.isArray(value)) return value;
-  if (value && typeof value === 'object') {
-    const iteratorFn = (value as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
-    if (typeof iteratorFn === 'function') {
-      return Array.from(value as Iterable<unknown>);
-    }
-  }
-  return [];
-};
-
-const compileRegex = (pattern: string, flags: string = ''): RegExp | null => {
-  try {
-    return new RegExp(pattern, flags);
-  } catch {
-    return null;
-  }
-};
-
-export const regex = {
-  isValid: (pattern: string, flags: string = ''): boolean => compileRegex(pattern, flags) !== null,
-  test: (pattern: string, text: string, flags: string = '') => {
-    const re = compileRegex(pattern, flags);
-    if (!re) return Result.Err(`Invalid regex: /${pattern}/${flags}`);
-    return Result.Ok(re.test(text));
-  },
-  find: (pattern: string, text: string, flags: string = '') => {
-    const re = compileRegex(pattern, flags);
-    if (!re) return Option.None;
-    const match = text.match(re);
-    if (!match) return Option.None;
-    return Option.Some(match[0]);
-  },
-  findAll: (pattern: string, text: string, flags: string = '') => {
-    const normalizedFlags = flags.includes('g') ? flags : `${flags}g`;
-    const re = compileRegex(pattern, normalizedFlags);
-    if (!re) return Result.Err(`Invalid regex: /${pattern}/${normalizedFlags}`);
-    const matches = Array.from(text.matchAll(re)).map((m) => m[0]);
-    return Result.Ok(matches);
-  },
-  replace: (pattern: string, text: string, replacement: string, flags: string = '') => {
-    const re = compileRegex(pattern, flags);
-    if (!re) return Result.Err(`Invalid regex: /${pattern}/${flags}`);
-    return Result.Ok(text.replace(re, replacement));
-  },
-};
-
-const toHex = (bytes: Uint8Array): string => Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-
-const toBase64 = (bytes: Uint8Array): string => {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(bytes).toString('base64');
-  }
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
-};
-
-const fromBase64 = (value: string): Uint8Array => {
-  if (typeof Buffer !== 'undefined') {
-    return new Uint8Array(Buffer.from(value, 'base64'));
-  }
-  const binary = atob(value);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
-  return out;
-};
-
-const getWebCrypto = async (): Promise<Crypto | null> => {
-  if (globalThis.crypto && typeof globalThis.crypto.subtle !== 'undefined') {
-    return globalThis.crypto;
-  }
-  if (!isNodeRuntime()) return null;
-  try {
-    const nodeCrypto = await import('node:crypto');
-    return (nodeCrypto as { webcrypto?: Crypto }).webcrypto ?? null;
-  } catch {
-    return null;
-  }
-};
-
-const utf8Encode = (value: string): Uint8Array => new TextEncoder().encode(value);
-const utf8Decode = (value: Uint8Array): string => new TextDecoder().decode(value);
-
-const deriveAesKey = async (web: Crypto, key: string, usage: 'encrypt' | 'decrypt'): Promise<CryptoKey> => {
-  const digest = await web.subtle.digest('SHA-256', utf8Encode(key) as unknown as BufferSource);
-  return await web.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, [usage]);
-};
-
-export const crypto = {
-  isAvailable: async () => (await getWebCrypto()) !== null,
-  sha256: async (value: string) => {
-    try {
-      const web = await getWebCrypto();
-      if (!web) return Result.Err('Crypto API is not available');
-      const digest = await web.subtle.digest('SHA-256', utf8Encode(value) as unknown as BufferSource);
-      return Result.Ok(toHex(new Uint8Array(digest)));
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  hmacSha256: async (key: string, value: string) => {
-    try {
-      const web = await getWebCrypto();
-      if (!web) return Result.Err('Crypto API is not available');
-      const cryptoKey = await web.subtle.importKey(
-        'raw',
-        utf8Encode(key) as unknown as BufferSource,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      const signature = await web.subtle.sign('HMAC', cryptoKey, utf8Encode(value) as unknown as BufferSource);
-      return Result.Ok(toHex(new Uint8Array(signature)));
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  randomBytes: async (length: number) => {
-    try {
-      const web = await getWebCrypto();
-      if (!web) return Result.Err('Crypto API is not available');
-      const n = Math.max(0, Math.trunc(length));
-      const bytes = new Uint8Array(n);
-      web.getRandomValues(bytes);
-      return Result.Ok(Array.from(bytes).map((b) => b | 0));
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  randomInt: async (min: number, max: number) => {
-    const lower = Math.trunc(Math.min(min, max));
-    const upper = Math.trunc(Math.max(min, max));
-    const span = upper - lower + 1;
-    if (span <= 0) return Result.Err('Invalid range');
-    const random = await crypto.randomBytes(4);
-    if (!isEnumLike(random) || getEnumTag(random) !== 'Ok') return random;
-    const bytes = getEnumPayload(random);
-    if (!Array.isArray(bytes) || bytes.length < 4) return Result.Err('Failed to generate randomness');
-    const packed = new Uint8Array([
-      bytes[0] as number,
-      bytes[1] as number,
-      bytes[2] as number,
-      bytes[3] as number,
-    ]);
-    const value = new DataView(packed.buffer).getUint32(0, false);
-    return Result.Ok(lower + (value % span));
-  },
-  aesGcmEncrypt: async (key: string, plaintext: string) => {
-    try {
-      const web = await getWebCrypto();
-      if (!web) return Result.Err('Crypto API is not available');
-      const aesKey = await deriveAesKey(web, key, 'encrypt');
-      const iv = new Uint8Array(12);
-      web.getRandomValues(iv);
-      const encrypted = await web.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        aesKey,
-        utf8Encode(plaintext) as unknown as BufferSource
-      );
-      const cipherBytes = new Uint8Array(encrypted);
-      const packed = new Uint8Array(iv.length + cipherBytes.length);
-      packed.set(iv, 0);
-      packed.set(cipherBytes, iv.length);
-      return Result.Ok(toBase64(packed));
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  aesGcmDecrypt: async (key: string, payloadBase64: string) => {
-    try {
-      const web = await getWebCrypto();
-      if (!web) return Result.Err('Crypto API is not available');
-      const packed = fromBase64(payloadBase64);
-      if (packed.length < 13) return Result.Err('Invalid AES payload');
-      const iv = packed.slice(0, 12);
-      const cipher = packed.slice(12);
-      const aesKey = await deriveAesKey(web, key, 'decrypt');
-      const plain = await web.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, cipher);
-      return Result.Ok(utf8Decode(new Uint8Array(plain)));
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-};
-
-export const list = {
-  map: <A, B>(f: (value: A) => B, xs: A[]): B[] => xs.map(f),
-  filter: <A>(pred: (value: A) => boolean, xs: A[]): A[] => xs.filter(pred),
-  fold: <A, B>(f: (acc: B, value: A) => B, init: B, xs: A[]): B => xs.reduce((acc, val) => f(acc, val), init),
-  reverse: <A>(xs: A[]): A[] => xs.slice().reverse(),
-  length: <A>(xs: A[]): number => xs.length,
-  append: <A>(xs: A[], ys: A[]): A[] => xs.concat(ys),
-  take: <A>(n: number, xs: A[]): A[] => xs.slice(0, Math.max(0, n)),
-  drop: <A>(n: number, xs: A[]): A[] => xs.slice(Math.max(0, n)),
-  find: <A>(pred: (value: A) => boolean, xs: A[]) => {
-    const found = xs.find(pred);
-    return found === undefined ? Option.None : Option.Some(found);
-  },
-  any: <A>(pred: (value: A) => boolean, xs: A[]): boolean => xs.some(pred),
-  all: <A>(pred: (value: A) => boolean, xs: A[]): boolean => xs.every(pred),
-};
-
-export class Vec<T> {
-  private data: T[];
-
-  constructor() {
-    this.data = [];
-  }
-
-  static new<T>(): Vec<T> {
-    return new Vec<T>();
-  }
-
-  static from<T>(items: T[]): Vec<T> {
-    const next = new Vec<T>();
-    next.data = Array.isArray(items) ? [...items] : [];
-    return next;
-  }
-
-  push(value: T): void {
-    this.data.push(value);
-  }
-
-  get(index: number) {
-    if (!Number.isFinite(index)) return Option.None;
-    const idx = Math.trunc(index);
-    return idx >= 0 && idx < this.data.length ? Option.Some(this.data[idx]) : Option.None;
-  }
-
-  len(): number {
-    return this.data.length;
-  }
-
-  pop() {
-    if (this.data.length === 0) return Option.None;
-    const value = this.data.pop() as T;
-    return Option.Some(value);
-  }
-
-  clear(): void {
-    this.data = [];
-  }
-
-  map<U>(mapper: (value: T) => U): Vec<U> {
-    const out = Vec.new<U>();
-    for (const item of this.data) {
-      out.push(mapper(item));
-    }
-    return out;
-  }
-
-  filter(predicate: (value: T) => boolean): Vec<T> {
-    const out = Vec.new<T>();
-    for (const item of this.data) {
-      if (predicate(item)) out.push(item);
-    }
-    return out;
-  }
-
-  fold<U>(init: U, folder: (acc: U, value: T) => U): U {
-    let acc = init;
-    for (const item of this.data) {
-      acc = folder(acc, item);
-    }
-    return acc;
-  }
-
-  for_each(action: (value: T) => void): void {
-    for (const item of this.data) {
-      action(item);
-    }
-  }
-
-  any(predicate: (value: T) => boolean): boolean {
-    return this.data.some(predicate);
-  }
-
-  all(predicate: (value: T) => boolean): boolean {
-    return this.data.every(predicate);
-  }
-
-  find(predicate: (value: T) => boolean) {
-    const found = this.data.find(predicate);
-    return found === undefined ? Option.None : Option.Some(found);
-  }
-
-  position(predicate: (value: T) => boolean) {
-    const idx = this.data.findIndex(predicate);
-    return idx >= 0 ? Option.Some(idx) : Option.None;
-  }
-
-  take(n: number): Vec<T> {
-    const out = Vec.new<T>();
-    const count = Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
-    for (let i = 0; i < Math.min(count, this.data.length); i += 1) {
-      out.push(this.data[i]);
-    }
-    return out;
-  }
-
-  skip(n: number): Vec<T> {
-    const out = Vec.new<T>();
-    const count = Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
-    for (let i = Math.min(count, this.data.length); i < this.data.length; i += 1) {
-      out.push(this.data[i]);
-    }
-    return out;
-  }
-
-  zip<U>(other: Vec<U>): Vec<[T, U]> {
-    const out = Vec.new<[T, U]>();
-    const size = Math.min(this.data.length, other.data.length);
-    for (let i = 0; i < size; i += 1) {
-      out.push([this.data[i], other.data[i]]);
-    }
-    return out;
-  }
-
-  enumerate(): Vec<[number, T]> {
-    const out = Vec.new<[number, T]>();
-    for (let i = 0; i < this.data.length; i += 1) {
-      out.push([i, this.data[i]]);
-    }
-    return out;
-  }
-
-  [Symbol.iterator]() {
-    return this.data[Symbol.iterator]();
-  }
-}
-
-export const timeout = async (ms: number): Promise<void> => {
-  await time.sleep(ms);
-};
-
-export const join_all = async <T>(values: unknown): Promise<Vec<T>> => {
-  const resolved = await Promise.all(toIterableValues(values).map((item) => Promise.resolve(item)));
-  return Vec.from(resolved as T[]);
-};
-
-export const vec = {
-  new: <T>() => Vec.new<T>(),
-  from: <T>(items: T[]) => Vec.from(items),
-  push: <T>(v: Vec<T>, value: T) => v.push(value),
-  get: <T>(v: Vec<T>, index: number) => v.get(index),
-  len: <T>(v: Vec<T>) => v.len(),
-  pop: <T>(v: Vec<T>) => v.pop(),
-  clear: <T>(v: Vec<T>) => v.clear(),
-  map: <T, U>(v: Vec<T>, f: (value: T) => U) => v.map(f),
-  filter: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.filter(pred),
-  fold: <T, U>(v: Vec<T>, init: U, f: (acc: U, value: T) => U) => v.fold(init, f),
-  for_each: <T>(v: Vec<T>, f: (value: T) => void) => v.for_each(f),
-  any: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.any(pred),
-  all: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.all(pred),
-  find: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.find(pred),
-  position: <T>(v: Vec<T>, pred: (value: T) => boolean) => v.position(pred),
-  take: <T>(v: Vec<T>, n: number) => v.take(n),
-  skip: <T>(v: Vec<T>, n: number) => v.skip(n),
-  zip: <T, U>(v: Vec<T>, other: Vec<U>) => v.zip(other),
-  enumerate: <T>(v: Vec<T>) => v.enumerate(),
-  fused_filter_map_fold: <T, U, A>(
-    v: Vec<T>,
-    pred: (value: T) => boolean,
-    mapper: (value: T) => U,
-    init: A,
-    folder: (acc: A, value: U) => A
-  ): A => {
-    let acc = init;
-    for (const item of v) {
-      if (!pred(item)) continue;
-      acc = folder(acc, mapper(item));
-    }
-    return acc;
-  },
-  fused_map_fold: <T, U, A>(
-    v: Vec<T>,
-    mapper: (value: T) => U,
-    init: A,
-    folder: (acc: A, value: U) => A
-  ): A => {
-    let acc = init;
-    for (const item of v) {
-      acc = folder(acc, mapper(item));
-    }
-    return acc;
-  },
-  fused_filter_fold: <T, A>(
-    v: Vec<T>,
-    pred: (value: T) => boolean,
-    init: A,
-    folder: (acc: A, value: T) => A
-  ): A => {
-    let acc = init;
-    for (const item of v) {
-      if (!pred(item)) continue;
-      acc = folder(acc, item);
-    }
-    return acc;
-  },
-  fused_pipeline: <T, A>(
-    v: Vec<T>,
-    stages: Array<{ kind: 'map' | 'filter'; f: (value: unknown) => unknown }>,
-    init: A,
-    folder: (acc: A, value: unknown) => A
-  ): A => {
-    let acc = init;
-    for (const item of v) {
-      let current: unknown = item;
-      let keep = true;
-      for (const stage of stages) {
-        if (stage.kind === 'map') {
-          current = stage.f(current);
-          continue;
-        }
-        if (stage.kind === 'filter') {
-          if (!stage.f(current)) {
-            keep = false;
-            break;
-          }
-          continue;
-        }
-      }
-      if (!keep) continue;
-      acc = folder(acc, current);
-    }
-    return acc;
-  },
-};
-
-const compareOrder = (left: unknown, right: unknown): number => {
-  if (left === right) return 0;
-  const leftComparable = left as string | number | bigint | boolean;
-  const rightComparable = right as string | number | bigint | boolean;
-  return leftComparable < rightComparable ? -1 : 1;
-};
-
-const normalizeCount = (value: number): number => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0);
-
-type QueryRecord<T> = { items: Vec<T> };
-
-export const iter = {
-  map_vec: <A, B>(values: Vec<A>, mapper: (value: A) => B): Vec<B> => vec.map(values, mapper),
-  filter_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): Vec<A> => vec.filter(values, pred),
-  filter_option: <A>(value: unknown, pred: (input: A) => boolean): unknown => {
-    const tag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
-    if (tag !== 'Some') return Option.None;
-    const payload = getEnumPayload(value as LuminaEnumLike) as A;
-    return pred(payload) ? Option.Some(payload) : Option.None;
-  },
-  zip_vec: <A, B>(left: Vec<A>, right: Vec<B>): Vec<[A, B]> => vec.zip(left, right),
-  enumerate_vec: <A>(values: Vec<A>): Vec<[number, A]> => vec.enumerate(values),
-  flatten_vec: <A>(values: Vec<Vec<A>>): Vec<A> => {
-    const out = Vec.new<A>();
-    for (const inner of values) {
-      if (!(inner instanceof Vec)) continue;
-      for (const value of inner) out.push(value);
-    }
-    return out;
-  },
-  flat_map_vec: <A, B>(values: Vec<A>, mapper: (input: A) => Vec<B>): Vec<B> => {
-    const out = Vec.new<B>();
-    for (const value of values) {
-      const mapped = mapper(value);
-      if (!(mapped instanceof Vec)) continue;
-      for (const inner of mapped) out.push(inner);
-    }
-    return out;
-  },
-  chunk_vec: <A>(values: Vec<A>, size: number): Vec<Vec<A>> => {
-    const out = Vec.new<Vec<A>>();
-    const chunkSize = normalizeCount(size);
-    if (chunkSize <= 0) return out;
-    let current = Vec.new<A>();
-    let count = 0;
-    for (const value of values) {
-      current.push(value);
-      count += 1;
-      if (count >= chunkSize) {
-        out.push(current);
-        current = Vec.new<A>();
-        count = 0;
-      }
-    }
-    if (current.len() > 0) out.push(current);
-    return out;
-  },
-  window_vec: <A>(values: Vec<A>, size: number): Vec<Vec<A>> => {
-    const out = Vec.new<Vec<A>>();
-    const windowSize = normalizeCount(size);
-    if (windowSize <= 0 || windowSize > values.len()) return out;
-    const source = Array.from(values);
-    for (let start = 0; start <= values.len() - windowSize; start += 1) {
-      const window = Vec.new<A>();
-      for (let offset = 0; offset < windowSize; offset += 1) {
-        window.push(source[start + offset] as A);
-      }
-      out.push(window);
-    }
-    return out;
-  },
-  partition_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): [Vec<A>, Vec<A>] => {
-    const pass = Vec.new<A>();
-    const fail = Vec.new<A>();
-    for (const value of values) {
-      if (pred(value)) pass.push(value);
-      else fail.push(value);
-    }
-    return [pass, fail];
-  },
-  take_vec: <A>(values: Vec<A>, n: number): Vec<A> => vec.take(values, n),
-  skip_vec: <A>(values: Vec<A>, n: number): Vec<A> => vec.skip(values, n),
-  any_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): boolean => vec.any(values, pred),
-  all_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): boolean => vec.all(values, pred),
-  find_vec: <A>(values: Vec<A>, pred: (value: A) => boolean): unknown => vec.find(values, pred),
-  count_vec: <A>(values: Vec<A>): number => vec.len(values),
-  sum_vec: (values: Vec<number>): number => vec.fold(values, 0, (acc, value) => acc + value),
-  sum_vec_f64: (values: Vec<number>): number => vec.fold(values, 0, (acc, value) => acc + value),
-  unique_vec: <A>(values: Vec<A>): Vec<A> => {
-    const out = Vec.new<A>();
-    for (const value of values) {
-      let seen = false;
-      for (const existing of out) {
-        if (runtimeEquals(existing, value)) {
-          seen = true;
-          break;
-        }
-      }
-      if (!seen) out.push(value);
-    }
-    return out;
-  },
-  reverse_vec: <A>(values: Vec<A>): Vec<A> => Vec.from(Array.from(values).reverse()),
-  sort_vec: <A>(values: Vec<A>, cmp: (left: A, right: A) => number): Vec<A> =>
-    Vec.from(Array.from(values).sort((left, right) => cmp(left, right))),
-  sort_by_vec: <A, K>(values: Vec<A>, key: (value: A) => K): Vec<A> =>
-    Vec.from(Array.from(values).sort((left, right) => compareOrder(key(left), key(right)))),
-  sort_by_desc_vec: <A, K>(values: Vec<A>, key: (value: A) => K): Vec<A> =>
-    Vec.from(Array.from(values).sort((left, right) => compareOrder(key(right), key(left)))),
-  group_by_vec: <A, K>(values: Vec<A>, key: (value: A) => K): HashMap<K, Vec<A>> => {
-    const out = HashMap.new<K, Vec<A>>();
-    for (const value of values) {
-      const groupKey = key(value);
-      const existing = out.get(groupKey);
-      if (existing === Option.None) {
-        const bucket = Vec.new<A>();
-        bucket.push(value);
-        out.insert(groupKey, bucket);
-        continue;
-      }
-      const bucket = getEnumPayload(existing) as Vec<A>;
-      bucket.push(value);
-    }
-    return out;
-  },
-  intersperse_vec: <A>(values: Vec<A>, sep: A): Vec<A> => {
-    const out = Vec.new<A>();
-    let first = true;
-    for (const value of values) {
-      if (!first) out.push(sep);
-      out.push(value);
-      first = false;
-    }
-    return out;
-  },
-  join_vec: <A, B, K>(
-    left: Vec<A>,
-    right: Vec<B>,
-    left_key: (value: A) => K,
-    right_key: (value: B) => K
-  ): Vec<[A, B]> => {
-    const out = Vec.new<[A, B]>();
-    for (const leftValue of left) {
-      const leftKey = left_key(leftValue);
-      for (const rightValue of right) {
-        if (runtimeEquals(leftKey, right_key(rightValue))) {
-          out.push([leftValue, rightValue]);
-        }
-      }
-    }
-    return out;
-  },
-};
-
-export const map_vec = iter.map_vec;
-export const filter_vec = iter.filter_vec;
-export const filter_option = iter.filter_option;
-export const zip_vec = iter.zip_vec;
-export const enumerate_vec = iter.enumerate_vec;
-export const flatten_vec = iter.flatten_vec;
-export const flat_map_vec = iter.flat_map_vec;
-export const chunk_vec = iter.chunk_vec;
-export const window_vec = iter.window_vec;
-export const partition_vec = iter.partition_vec;
-export const take_vec = iter.take_vec;
-export const skip_vec = iter.skip_vec;
-export const any_vec = iter.any_vec;
-export const all_vec = iter.all_vec;
-export const find_vec = iter.find_vec;
-export const count_vec = iter.count_vec;
-export const sum_vec = iter.sum_vec;
-export const sum_vec_f64 = iter.sum_vec_f64;
-export const unique_vec = iter.unique_vec;
-export const reverse_vec = iter.reverse_vec;
-export const sort_vec = iter.sort_vec;
-export const sort_by_vec = iter.sort_by_vec;
-export const sort_by_desc_vec = iter.sort_by_desc_vec;
-export const group_by_vec = iter.group_by_vec;
-export const intersperse_vec = iter.intersperse_vec;
-export const join_vec = iter.join_vec;
-
-export const query = <T>(items: Vec<T>): QueryRecord<T> => ({ items });
-export const where_q = <T>(q: QueryRecord<T>, pred: (value: T) => boolean): QueryRecord<T> => ({
-  items: iter.filter_vec(q.items, pred),
-});
-export const select_q = <T, U>(q: QueryRecord<T>, mapper: (value: T) => U): QueryRecord<U> => ({
-  items: iter.map_vec(q.items, mapper),
-});
-export const order_by_q = <T, K>(q: QueryRecord<T>, key: (value: T) => K): QueryRecord<T> => ({
-  items: iter.sort_by_vec(q.items, key),
-});
-export const order_by_desc_q = <T, K>(q: QueryRecord<T>, key: (value: T) => K): QueryRecord<T> => ({
-  items: iter.sort_by_desc_vec(q.items, key),
-});
-export const limit_q = <T>(q: QueryRecord<T>, n: number): QueryRecord<T> => ({ items: iter.take_vec(q.items, n) });
-export const offset_q = <T>(q: QueryRecord<T>, n: number): QueryRecord<T> => ({ items: iter.skip_vec(q.items, n) });
-export const group_by_q = <T, K>(q: QueryRecord<T>, key: (value: T) => K): HashMap<K, Vec<T>> =>
-  iter.group_by_vec(q.items, key);
-export const count_q = <T>(q: QueryRecord<T>): number => iter.count_vec(q.items);
-export const first_q = <T>(q: QueryRecord<T>): unknown => vec.get(q.items, 0);
-export const to_vec_q = <T>(q: QueryRecord<T>): Vec<T> => q.items;
-export const join_q = <T, U, K>(
-  left: QueryRecord<T>,
-  right: QueryRecord<U>,
-  left_key: (value: T) => K,
-  right_key: (value: U) => K
-): QueryRecord<[T, U]> => ({
-  items: iter.join_vec(left.items, right.items, left_key, right_key),
+const coreRuntime = createCoreRuntime({
+  formatValue,
+  isEnumLike,
+  getEnumTag,
+  getEnumPayload,
 });
 
-export class HashMap<K, V> {
-  private buckets: Map<string, Array<{ key: K; value: V }>>;
-  private sizeValue: number;
-
-  constructor() {
-    this.buckets = new Map();
-    this.sizeValue = 0;
-  }
-
-  static new<K, V>(): HashMap<K, V> {
-    return new HashMap<K, V>();
-  }
-
-  private getBucket(key: K): Array<{ key: K; value: V }> {
-    const hash = runtimeHashValue(key);
-    const existing = this.buckets.get(hash);
-    if (existing) return existing;
-    const next: Array<{ key: K; value: V }> = [];
-    this.buckets.set(hash, next);
-    return next;
-  }
-
-  private lookupBucket(key: K): Array<{ key: K; value: V }> | null {
-    const hash = runtimeHashValue(key);
-    return this.buckets.get(hash) ?? null;
-  }
-
-  insert(key: K, value: V) {
-    const bucket = this.getBucket(key);
-    for (let i = 0; i < bucket.length; i += 1) {
-      const current = bucket[i];
-      if (runtimeEquals(current.key, key)) {
-        const old = current.value;
-        current.value = value;
-        return Option.Some(old);
-      }
-    }
-    bucket.push({ key, value });
-    this.sizeValue += 1;
-    return Option.None;
-  }
-
-  get(key: K) {
-    const bucket = this.lookupBucket(key);
-    if (!bucket) return Option.None;
-    for (const entry of bucket) {
-      if (runtimeEquals(entry.key, key)) {
-        return Option.Some(entry.value);
-      }
-    }
-    return Option.None;
-  }
-
-  remove(key: K) {
-    const hash = runtimeHashValue(key);
-    const bucket = this.buckets.get(hash);
-    if (!bucket || bucket.length === 0) return Option.None;
-    for (let i = 0; i < bucket.length; i += 1) {
-      if (runtimeEquals(bucket[i].key, key)) {
-        const [removed] = bucket.splice(i, 1);
-        if (bucket.length === 0) this.buckets.delete(hash);
-        this.sizeValue -= 1;
-        return Option.Some(removed.value);
-      }
-    }
-    return Option.None;
-  }
-
-  contains_key(key: K): boolean {
-    const bucket = this.lookupBucket(key);
-    if (!bucket) return false;
-    for (const entry of bucket) {
-      if (runtimeEquals(entry.key, key)) return true;
-    }
-    return false;
-  }
-
-  len(): number {
-    return this.sizeValue;
-  }
-
-  clear(): void {
-    this.buckets.clear();
-    this.sizeValue = 0;
-  }
-
-  keys(): Vec<K> {
-    const v = Vec.new<K>();
-    for (const bucket of this.buckets.values()) {
-      for (const entry of bucket) {
-        v.push(entry.key);
-      }
-    }
-    return v;
-  }
-
-  values(): Vec<V> {
-    const v = Vec.new<V>();
-    for (const bucket of this.buckets.values()) {
-      for (const entry of bucket) {
-        v.push(entry.value);
-      }
-    }
-    return v;
-  }
-}
-
-export const hashmap = {
-  new: <K, V>() => HashMap.new<K, V>(),
-  insert: <K, V>(m: HashMap<K, V>, k: K, v: V) => m.insert(k, v),
-  get: <K, V>(m: HashMap<K, V>, k: K) => m.get(k),
-  remove: <K, V>(m: HashMap<K, V>, k: K) => m.remove(k),
-  contains_key: <K, V>(m: HashMap<K, V>, k: K) => m.contains_key(k),
-  len: <K, V>(m: HashMap<K, V>) => m.len(),
-  clear: <K, V>(m: HashMap<K, V>) => m.clear(),
-  keys: <K, V>(m: HashMap<K, V>) => m.keys(),
-  values: <K, V>(m: HashMap<K, V>) => m.values(),
-};
-
-export class HashSet<T> {
-  private map: HashMap<T, undefined>;
-
-  constructor() {
-    this.map = HashMap.new<T, undefined>();
-  }
-
-  static new<T>(): HashSet<T> {
-    return new HashSet<T>();
-  }
-
-  insert(value: T): boolean {
-    const result = this.map.insert(value, undefined);
-    return result === Option.None;
-  }
-
-  contains(value: T): boolean {
-    return this.map.contains_key(value);
-  }
-
-  remove(value: T): boolean {
-    const result = this.map.remove(value);
-    return result !== Option.None;
-  }
-
-  len(): number {
-    return this.map.len();
-  }
-
-  clear(): void {
-    this.map.clear();
-  }
-
-  values(): Vec<T> {
-    return this.map.keys();
-  }
-}
-
-export const hashset = {
-  new: <T>() => HashSet.new<T>(),
-  insert: <T>(s: HashSet<T>, v: T) => s.insert(v),
-  contains: <T>(s: HashSet<T>, v: T) => s.contains(v),
-  remove: <T>(s: HashSet<T>, v: T) => s.remove(v),
-  len: <T>(s: HashSet<T>) => s.len(),
-  clear: <T>(s: HashSet<T>) => s.clear(),
-  values: <T>(s: HashSet<T>) => s.values(),
-};
-
-export class Deque<T> {
-  private data: T[];
-
-  constructor() {
-    this.data = [];
-  }
-
-  static new<T>(): Deque<T> {
-    return new Deque<T>();
-  }
-
-  push_front(value: T): void {
-    this.data.unshift(value);
-  }
-
-  push_back(value: T): void {
-    this.data.push(value);
-  }
-
-  pop_front() {
-    if (this.data.length === 0) return Option.None;
-    const value = this.data.shift() as T;
-    return Option.Some(value);
-  }
-
-  pop_back() {
-    if (this.data.length === 0) return Option.None;
-    const value = this.data.pop() as T;
-    return Option.Some(value);
-  }
-
-  len(): number {
-    return this.data.length;
-  }
-
-  clear(): void {
-    this.data = [];
-  }
-}
-
-export const deque = {
-  new: <T>() => Deque.new<T>(),
-  push_front: <T>(d: Deque<T>, value: T) => d.push_front(value),
-  push_back: <T>(d: Deque<T>, value: T) => d.push_back(value),
-  pop_front: <T>(d: Deque<T>) => d.pop_front(),
-  pop_back: <T>(d: Deque<T>) => d.pop_back(),
-  len: <T>(d: Deque<T>) => d.len(),
-  clear: <T>(d: Deque<T>) => d.clear(),
-};
-
-const compareBTreeKeys = (left: unknown, right: unknown): number => {
-  if (left === right) return 0;
-  const leftTag = getRuntimeTypeTag(left);
-  const rightTag = getRuntimeTypeTag(right);
-  if (leftTag && rightTag && leftTag === rightTag) {
-    const ordImpl = runtimeTraitImpls.Ord.get(leftTag);
-    if (ordImpl) {
-      try {
-        return orderingToNumber(ordImpl(left, right));
-      } catch {
-        // fall through to default compare
-      }
-    }
-  }
-  if (left == null && right != null) return -1;
-  if (left != null && right == null) return 1;
-  const leftType = typeof left;
-  const rightType = typeof right;
-  if (leftType === rightType && (leftType === 'number' || leftType === 'bigint' || leftType === 'string' || leftType === 'boolean')) {
-    const leftComparable = left as string | number | bigint | boolean;
-    const rightComparable = right as string | number | bigint | boolean;
-    return leftComparable < rightComparable ? -1 : 1;
-  }
-  const leftText = formatValue(left, { color: false });
-  const rightText = formatValue(right, { color: false });
-  if (leftText === rightText) return 0;
-  return leftText < rightText ? -1 : 1;
-};
-
-type BTreeEntry<K, V> = { key: K; value: V };
-
-export class BTreeMap<K, V> {
-  private entries: Array<BTreeEntry<K, V>>;
-
-  constructor() {
-    this.entries = [];
-  }
-
-  static new<K, V>(): BTreeMap<K, V> {
-    return new BTreeMap<K, V>();
-  }
-
-  private lowerBound(key: K): number {
-    let lo = 0;
-    let hi = this.entries.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (compareBTreeKeys(this.entries[mid].key, key) < 0) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-
-  insert(key: K, value: V) {
-    const idx = this.lowerBound(key);
-    if (idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0) {
-      const previous = this.entries[idx].value;
-      this.entries[idx].value = value;
-      return Option.Some(previous);
-    }
-    this.entries.splice(idx, 0, { key, value });
-    return Option.None;
-  }
-
-  get(key: K) {
-    const idx = this.lowerBound(key);
-    if (idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0) {
-      return Option.Some(this.entries[idx].value);
-    }
-    return Option.None;
-  }
-
-  remove(key: K) {
-    const idx = this.lowerBound(key);
-    if (idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0) {
-      const [removed] = this.entries.splice(idx, 1);
-      return Option.Some(removed.value);
-    }
-    return Option.None;
-  }
-
-  contains_key(key: K): boolean {
-    const idx = this.lowerBound(key);
-    return idx < this.entries.length && compareBTreeKeys(this.entries[idx].key, key) === 0;
-  }
-
-  len(): number {
-    return this.entries.length;
-  }
-
-  clear(): void {
-    this.entries = [];
-  }
-
-  keys(): Vec<K> {
-    const out = Vec.new<K>();
-    for (const entry of this.entries) out.push(entry.key);
-    return out;
-  }
-
-  values(): Vec<V> {
-    const out = Vec.new<V>();
-    for (const entry of this.entries) out.push(entry.value);
-    return out;
-  }
-
-  entries_vec(): Vec<[K, V]> {
-    const out = Vec.new<[K, V]>();
-    for (const entry of this.entries) out.push([entry.key, entry.value]);
-    return out;
-  }
-}
-
-export const btreemap = {
-  new: <K, V>() => BTreeMap.new<K, V>(),
-  insert: <K, V>(m: BTreeMap<K, V>, k: K, v: V) => m.insert(k, v),
-  get: <K, V>(m: BTreeMap<K, V>, k: K) => m.get(k),
-  remove: <K, V>(m: BTreeMap<K, V>, k: K) => m.remove(k),
-  contains_key: <K, V>(m: BTreeMap<K, V>, k: K) => m.contains_key(k),
-  len: <K, V>(m: BTreeMap<K, V>) => m.len(),
-  clear: <K, V>(m: BTreeMap<K, V>) => m.clear(),
-  keys: <K, V>(m: BTreeMap<K, V>) => m.keys(),
-  values: <K, V>(m: BTreeMap<K, V>) => m.values(),
-  entries: <K, V>(m: BTreeMap<K, V>) => m.entries_vec(),
-};
-
-export class BTreeSet<T> {
-  private map: BTreeMap<T, undefined>;
-
-  constructor() {
-    this.map = BTreeMap.new<T, undefined>();
-  }
-
-  static new<T>(): BTreeSet<T> {
-    return new BTreeSet<T>();
-  }
-
-  insert(value: T): boolean {
-    const old = this.map.insert(value, undefined);
-    return old === Option.None;
-  }
-
-  contains(value: T): boolean {
-    return this.map.contains_key(value);
-  }
-
-  remove(value: T): boolean {
-    return this.map.remove(value) !== Option.None;
-  }
-
-  len(): number {
-    return this.map.len();
-  }
-
-  clear(): void {
-    this.map.clear();
-  }
-
-  values(): Vec<T> {
-    return this.map.keys();
-  }
-}
-
-export const btreeset = {
-  new: <T>() => BTreeSet.new<T>(),
-  insert: <T>(s: BTreeSet<T>, v: T) => s.insert(v),
-  contains: <T>(s: BTreeSet<T>, v: T) => s.contains(v),
-  remove: <T>(s: BTreeSet<T>, v: T) => s.remove(v),
-  len: <T>(s: BTreeSet<T>) => s.len(),
-  clear: <T>(s: BTreeSet<T>) => s.clear(),
-  values: <T>(s: BTreeSet<T>) => s.values(),
-};
-
-export class PriorityQueue<T> {
-  private heap: T[];
-
-  constructor() {
-    this.heap = [];
-  }
-
-  static new<T>(): PriorityQueue<T> {
-    return new PriorityQueue<T>();
-  }
-
-  private swap(i: number, j: number): void {
-    const tmp = this.heap[i];
-    this.heap[i] = this.heap[j];
-    this.heap[j] = tmp;
-  }
-
-  private bubbleUp(index: number): void {
-    let idx = index;
-    while (idx > 0) {
-      const parent = (idx - 1) >> 1;
-      if (compareBTreeKeys(this.heap[parent], this.heap[idx]) <= 0) break;
-      this.swap(parent, idx);
-      idx = parent;
-    }
-  }
-
-  private bubbleDown(index: number): void {
-    let idx = index;
-    const size = this.heap.length;
-    while (true) {
-      const left = (idx << 1) + 1;
-      const right = left + 1;
-      let smallest = idx;
-      if (left < size && compareBTreeKeys(this.heap[left], this.heap[smallest]) < 0) smallest = left;
-      if (right < size && compareBTreeKeys(this.heap[right], this.heap[smallest]) < 0) smallest = right;
-      if (smallest === idx) break;
-      this.swap(idx, smallest);
-      idx = smallest;
-    }
-  }
-
-  push(value: T): void {
-    this.heap.push(value);
-    this.bubbleUp(this.heap.length - 1);
-  }
-
-  pop() {
-    if (this.heap.length === 0) return Option.None;
-    const head = this.heap[0];
-    const last = this.heap.pop() as T;
-    if (this.heap.length > 0) {
-      this.heap[0] = last;
-      this.bubbleDown(0);
-    }
-    return Option.Some(head);
-  }
-
-  peek() {
-    if (this.heap.length === 0) return Option.None;
-    return Option.Some(this.heap[0]);
-  }
-
-  len(): number {
-    return this.heap.length;
-  }
-
-  clear(): void {
-    this.heap = [];
-  }
-}
-
-export const priority_queue = {
-  new: <T>() => PriorityQueue.new<T>(),
-  push: <T>(q: PriorityQueue<T>, value: T) => q.push(value),
-  pop: <T>(q: PriorityQueue<T>) => q.pop(),
-  peek: <T>(q: PriorityQueue<T>) => q.peek(),
-  len: <T>(q: PriorityQueue<T>) => q.len(),
-  clear: <T>(q: PriorityQueue<T>) => q.clear(),
-};
-
-export class LuminaPanic extends Error {
-  value?: unknown;
-  constructor(message: string, value?: unknown) {
-    super(message);
-    this.name = 'LuminaPanic';
-    this.value = value;
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, LuminaPanic);
-    }
-  }
-}
-
-export const Option = {
-  Some: (value: unknown) => ({ $tag: 'Some', $payload: value }),
-  None: { $tag: 'None' },
-  map: (fn: (value: unknown) => unknown, opt: unknown) => {
-    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
-    if (tag === 'Some') return Option.Some(fn(getEnumPayload(opt as LuminaEnumLike)));
-    return Option.None;
-  },
-  and_then: (fn: (value: unknown) => unknown, opt: unknown) => {
-    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
-    if (tag === 'Some') return fn(getEnumPayload(opt as LuminaEnumLike));
-    return Option.None;
-  },
-  or_else: (fallback: () => unknown, opt: unknown) => {
-    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
-    if (tag === 'Some') return opt;
-    return fallback();
-  },
-  unwrap_or: (fallback: unknown, opt: unknown) => {
-    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
-    if (tag === 'Some') return getEnumPayload(opt as LuminaEnumLike);
-    return fallback;
-  },
-  is_some: (opt: unknown) => {
-    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
-    return tag === 'Some';
-  },
-  is_none: (opt: unknown) => {
-    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
-    return tag !== 'Some';
-  },
-  unwrap: (opt: unknown, message?: string) => {
-    const tag = opt && typeof opt === 'object' && isEnumLike(opt) ? getEnumTag(opt) : '';
-    if (tag === 'Some') return getEnumPayload(opt as LuminaEnumLike);
-    const rendered = formatValue(opt);
-    const msg = message ?? `Tried to unwrap None: ${rendered}`;
-    const err = new LuminaPanic(msg, opt);
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(err, Option.unwrap);
-    }
-    throw err;
-  },
-};
-
-export const Result = {
-  Ok: (value: unknown) => ({ $tag: 'Ok', $payload: value }),
-  Err: (error: unknown) => ({ $tag: 'Err', $payload: error }),
-  map: (fn: (value: unknown) => unknown, res: unknown) => {
-    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
-    if (tag === 'Ok') return Result.Ok(fn(getEnumPayload(res as LuminaEnumLike)));
-    return res;
-  },
-  and_then: (fn: (value: unknown) => unknown, res: unknown) => {
-    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
-    if (tag === 'Ok') return fn(getEnumPayload(res as LuminaEnumLike));
-    return res;
-  },
-  or_else: (fn: (error: unknown) => unknown, res: unknown) => {
-    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
-    if (tag === 'Ok') return res;
-    return fn(getEnumPayload(res as LuminaEnumLike));
-  },
-  unwrap_or: (fallback: unknown, res: unknown) => {
-    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
-    if (tag === 'Ok') return getEnumPayload(res as LuminaEnumLike);
-    return fallback;
-  },
-  is_ok: (res: unknown) => {
-    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
-    return tag === 'Ok';
-  },
-  is_err: (res: unknown) => {
-    const tag = res && typeof res === 'object' && isEnumLike(res) ? getEnumTag(res) : '';
-    return tag !== 'Ok';
-  },
-};
+export const __lumina_index = coreRuntime.__lumina_index;
+export const Option = coreRuntime.Option;
+export const Result = coreRuntime.Result;
+
+const systemRuntime = createSystemRuntime({
+  formatValue,
+  getOption: () => Option,
+  getResult: () => Result,
+  isEnumLike,
+  getEnumTag,
+  getEnumPayload,
+});
+
+configureCollectionsRuntime({
+  getOption: () => Option,
+  timeSleep: (ms: number) => systemRuntime.time.sleep(ms),
+});
+
+export const toJsonString = systemRuntime.toJsonString;
+export const io = systemRuntime.io;
+export const str = systemRuntime.str;
+export const math = systemRuntime.math;
+export const opfs = systemRuntime.opfs;
+export const fs = systemRuntime.fs;
+export const path = systemRuntime.path;
+export const env = systemRuntime.env;
+export const process = systemRuntime.process;
+export const json = systemRuntime.json;
+export const http = systemRuntime.http;
+export const time = systemRuntime.time;
+export const regex = systemRuntime.regex;
+export const crypto = systemRuntime.crypto;
+
+export const channel = createChannelRuntime({
+  getOption: () => Option,
+  getResult: () => Result,
+  isEnumLike,
+  getEnumTag,
+});
+
+export const async_channel = channel;
+
+const concurrencyRuntime = createConcurrencyRuntime({
+  getOption: () => Option,
+  getResult: () => Result,
+  getChannel: () => channel,
+  isEnumLike,
+  getEnumTag,
+  getEnumPayload,
+});
+
+export { AtomicI32, Thread, ThreadHandle };
+export { Receiver, Sender };
+export const sync = concurrencyRuntime.sync;
+export const sab_channel = concurrencyRuntime.sab_channel;
+export const thread = concurrencyRuntime.thread;
+export const web_worker = concurrencyRuntime.web_worker;
+export const web_streams = concurrencyRuntime.web_streams;
 
 const browserRuntime = createBrowserRuntime({
   optionSome: (value) => Option.Some(value),
@@ -2712,2293 +334,13 @@ export const web_storage = browserRuntime.web_storage;
 export const dom = browserRuntime.dom;
 export const router = browserRuntime.router;
 
-type ChannelMessage =
-  | { __lumina_channel_value: unknown }
-  | { __lumina_channel_close: true }
-  | { __lumina_channel_ack: number };
-
-const isChannelValue = (value: unknown): value is { __lumina_channel_value: unknown } =>
-  !!value && typeof value === 'object' && '__lumina_channel_value' in value;
-
-const isChannelClose = (value: unknown): value is { __lumina_channel_close: true } =>
-  !!value && typeof value === 'object' && (value as { __lumina_channel_close?: unknown }).__lumina_channel_close === true;
-
-const isChannelAck = (value: unknown): value is { __lumina_channel_ack: number } =>
-  !!value && typeof value === 'object' && typeof (value as { __lumina_channel_ack?: unknown }).__lumina_channel_ack === 'number';
-
-const resolveMessageChannel = (): typeof MessageChannel | null => {
-  if (typeof MessageChannel === 'function') return MessageChannel;
-  return null;
-};
-
-interface SenderSharedState {
-  port: MessagePort;
-  credits: number | null;
-  refs: number;
-  closed: boolean;
-  receiverClosed: boolean;
-  pending: Array<{ value: unknown; resolve: (ok: boolean) => void }>;
-  flushing: boolean;
-}
-
-const createSenderSharedState = (port: MessagePort, capacity: number | null): SenderSharedState => {
-  const state: SenderSharedState = {
-    port,
-    credits: capacity,
-    refs: 1,
-    closed: false,
-    receiverClosed: false,
-    pending: [],
-    flushing: false,
-  };
-  return state;
-};
-
-const senderPostNow = (state: SenderSharedState, value: unknown): boolean => {
-  if (state.closed || state.receiverClosed) return false;
-  if (state.credits !== null && state.credits <= 0) return false;
-  if (state.credits !== null) {
-    state.credits -= 1;
-  }
-  const payload: ChannelMessage = { __lumina_channel_value: value };
-  try {
-    state.port.postMessage(payload);
-    return true;
-  } catch {
-    state.closed = true;
-    return false;
-  }
-};
-
-const drainPendingSends = (state: SenderSharedState): void => {
-  if (state.flushing) return;
-  state.flushing = true;
-  try {
-    while (state.pending.length > 0) {
-      if (state.closed || state.receiverClosed) {
-        while (state.pending.length > 0) {
-          const item = state.pending.shift();
-          if (item) item.resolve(false);
-        }
-        return;
-      }
-      if (state.credits !== null && state.credits <= 0) {
-        return;
-      }
-      const next = state.pending.shift();
-      if (!next) return;
-      next.resolve(senderPostNow(state, next.value));
-    }
-  } finally {
-    state.flushing = false;
-  }
-};
-
-export class Sender<T> {
-  private closedLocal = false;
-
-  constructor(private readonly shared: SenderSharedState) {}
-
-  static create<T>(port: MessagePort, capacity: number | null): Sender<T> {
-    const shared = createSenderSharedState(port, capacity);
-    const sender = new Sender<T>(shared);
-    shared.port.start?.();
-    shared.port.onmessage = (event: MessageEvent<ChannelMessage>) => {
-      const data = event.data;
-      if (isChannelClose(data)) {
-        shared.receiverClosed = true;
-        shared.closed = true;
-        drainPendingSends(shared);
-        return;
-      }
-      if (isChannelAck(data) && shared.credits !== null) {
-        shared.credits += data.__lumina_channel_ack;
-        drainPendingSends(shared);
-      }
-    };
-    return sender;
-  }
-
-  clone(): Sender<T> {
-    const clone = new Sender<T>(this.shared);
-    if (this.closedLocal || this.shared.closed || this.shared.receiverClosed) {
-      clone.closedLocal = true;
-      return clone;
-    }
-    this.shared.refs += 1;
-    return clone;
-  }
-
-  private sendFailureReason(): string {
-    if (this.shared.receiverClosed) return 'receiver closed';
-    if (this.closedLocal || this.shared.closed) return 'sender closed';
-    if (this.shared.credits !== null && this.shared.credits <= 0) return 'channel full';
-    return 'send failed';
-  }
-
-  send(value: T): Promise<boolean> {
-    if (this.closedLocal || this.shared.closed || this.shared.receiverClosed) {
-      return Promise.resolve(false);
-    }
-    if (senderPostNow(this.shared, value)) {
-      return Promise.resolve(true);
-    }
-    if (this.shared.closed || this.shared.receiverClosed) {
-      return Promise.resolve(false);
-    }
-    return new Promise<boolean>((resolve) => {
-      this.shared.pending.push({ value, resolve });
-      drainPendingSends(this.shared);
-    });
-  }
-
-  try_send(value: T): boolean {
-    if (this.closedLocal || this.shared.closed || this.shared.receiverClosed) return false;
-    return senderPostNow(this.shared, value);
-  }
-
-  send_result(value: T): { $tag: string; $payload?: unknown } {
-    if (this.try_send(value)) return Result.Ok(undefined);
-    return Result.Err(this.sendFailureReason());
-  }
-
-  async send_async_result(value: T): Promise<{ $tag: string; $payload?: unknown }> {
-    const ok = await this.send(value);
-    if (ok) return Result.Ok(undefined);
-    return Result.Err(this.sendFailureReason());
-  }
-
-  is_closed(): boolean {
-    return this.closedLocal || this.shared.closed || this.shared.receiverClosed;
-  }
-
-  drop(): void {
-    this.close();
-  }
-
-  close(): void {
-    if (this.closedLocal) return;
-    this.closedLocal = true;
-    if (this.shared.refs > 0) this.shared.refs -= 1;
-    if (this.shared.refs > 0) return;
-
-    const shouldSendClose = !this.shared.closed;
-    this.shared.closed = true;
-    while (this.shared.pending.length > 0) {
-      const item = this.shared.pending.shift();
-      if (item) item.resolve(false);
-    }
-    if (shouldSendClose) {
-      const payload: ChannelMessage = { __lumina_channel_close: true };
-      try {
-        this.shared.port.postMessage(payload);
-      } catch {
-        // ignore close failures
-      }
-    }
-    try {
-      this.shared.port.close();
-    } catch {
-      // ignore close failures
-    }
-  }
-}
-
-export class Receiver<T> {
-  private queue: T[] = [];
-  private waiters: Array<(value: { $tag: string; $payload?: T }) => void> = [];
-  private closed = false;
-  private errorMessage: string | null = null;
-  private readonly capacity: number | null;
-  private readonly ackOnConsume: boolean;
-
-  constructor(
-    private readonly port: MessagePort,
-    capacity: number | null
-  ) {
-    this.capacity = capacity;
-    this.ackOnConsume = this.capacity !== null && this.capacity > 0;
-    this.port.onmessage = (event: MessageEvent<ChannelMessage>) => {
-      const data = event.data;
-      if (isChannelClose(data)) {
-        this.closed = true;
-        this.flushWaiters(Option.None as { $tag: string; $payload?: T });
-        return;
-      }
-      if (isChannelAck(data)) {
-        return;
-      }
-      const value = (isChannelValue(data) ? data.__lumina_channel_value : data) as T;
-      const waiter = this.waiters.shift();
-      if (waiter) {
-        waiter(Option.Some(value) as { $tag: string; $payload?: T });
-        this.sendAckIfNeeded();
-      } else {
-        this.queue.push(value);
-      }
-    };
-    this.port.onmessageerror = () => {
-      this.closed = true;
-      this.errorMessage = 'channel message error';
-      this.flushWaiters(Option.None as { $tag: string; $payload?: T });
-    };
-    this.port.start?.();
-  }
-
-  private flushWaiters(value: { $tag: string; $payload?: T }): void {
-    while (this.waiters.length > 0) {
-      const waiter = this.waiters.shift();
-      if (waiter) waiter(value);
-    }
-  }
-
-  private sendAckIfNeeded(): void {
-    if (!this.ackOnConsume) return;
-    const payload: ChannelMessage = { __lumina_channel_ack: 1 };
-    this.port.postMessage(payload);
-  }
-
-  recv(): Promise<{ $tag: string; $payload?: T }> {
-    if (this.queue.length > 0) {
-      const value = this.queue.shift();
-      this.sendAckIfNeeded();
-      return Promise.resolve(Option.Some(value as T) as { $tag: string; $payload?: T });
-    }
-    if (this.closed) {
-      return Promise.resolve(Option.None);
-    }
-    return new Promise((resolve) => {
-      this.waiters.push(resolve);
-      if (this.capacity === 0) {
-        const payload: ChannelMessage = { __lumina_channel_ack: 1 };
-        this.port.postMessage(payload);
-      }
-    });
-  }
-
-  try_recv(): { $tag: string; $payload?: T } {
-    if (this.queue.length > 0) {
-      const value = this.queue.shift();
-      this.sendAckIfNeeded();
-      return Option.Some(value as T) as { $tag: string; $payload?: T };
-    }
-    return Option.None;
-  }
-
-  async recv_result(): Promise<{ $tag: string; $payload?: unknown }> {
-    if (this.errorMessage && this.queue.length === 0) {
-      return Result.Err(this.errorMessage);
-    }
-    const value = await this.recv();
-    const tag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
-    if (tag === 'None' && this.errorMessage) {
-      return Result.Err(this.errorMessage);
-    }
-    return Result.Ok(value);
-  }
-
-  try_recv_result(): { $tag: string; $payload?: unknown } {
-    if (this.errorMessage && this.queue.length === 0) {
-      return Result.Err(this.errorMessage);
-    }
-    return Result.Ok(this.try_recv());
-  }
-
-  is_closed(): boolean {
-    return this.closed;
-  }
-
-  drop(): void {
-    this.close();
-  }
-
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    const payload: ChannelMessage = { __lumina_channel_close: true };
-    try {
-      this.port.postMessage(payload);
-    } catch {
-      // ignore close failures
-    }
-    this.port.close();
-    this.flushWaiters(Option.None);
-  }
-}
-
-export const channel = {
-  is_available: (): boolean => resolveMessageChannel() !== null,
-  new: <T>(): { sender: Sender<T>; receiver: Receiver<T> } => {
-    return channel.bounded<T>(-1);
-  },
-  bounded: <T>(capacity: number): { sender: Sender<T>; receiver: Receiver<T> } => {
-    const ChannelCtor = resolveMessageChannel();
-    if (!ChannelCtor) {
-      throw new Error('MessageChannel is not available in this environment');
-    }
-    const normalized = Number.isFinite(capacity) ? Math.trunc(capacity) : -1;
-    const cap = normalized < 0 ? null : normalized;
-    const { port1, port2 } = new ChannelCtor();
-    return { sender: Sender.create<T>(port1, cap), receiver: new Receiver<T>(port2, cap) };
-  },
-  send: <T>(sender: Sender<T>, value: T): boolean => sender.try_send(value),
-  try_send: <T>(sender: Sender<T>, value: T): boolean => sender.try_send(value),
-  send_async: <T>(sender: Sender<T>, value: T): Promise<boolean> => sender.send(value),
-  send_result: <T>(sender: Sender<T>, value: T): { $tag: string; $payload?: unknown } => sender.send_result(value),
-  send_async_result: <T>(sender: Sender<T>, value: T): Promise<{ $tag: string; $payload?: unknown }> =>
-    sender.send_async_result(value),
-  clone_sender: <T>(sender: Sender<T>): Sender<T> => sender.clone(),
-  recv: <T>(receiver: Receiver<T>): Promise<unknown> => receiver.recv(),
-  try_recv: <T>(receiver: Receiver<T>): unknown => receiver.try_recv(),
-  recv_result: <T>(receiver: Receiver<T>): Promise<{ $tag: string; $payload?: unknown }> => receiver.recv_result(),
-  try_recv_result: <T>(receiver: Receiver<T>): { $tag: string; $payload?: unknown } => receiver.try_recv_result(),
-  is_sender_closed: <T>(sender: Sender<T>): boolean => sender.is_closed(),
-  is_receiver_closed: <T>(receiver: Receiver<T>): boolean => receiver.is_closed(),
-  close_sender: <T>(sender: Sender<T>): void => sender.close(),
-  close_receiver: <T>(receiver: Receiver<T>): void => receiver.close(),
-  drop_sender: <T>(sender: Sender<T>): void => sender.drop(),
-  drop_receiver: <T>(receiver: Receiver<T>): void => receiver.drop(),
-  close: <T>(ch: { sender: Sender<T>; receiver: Receiver<T> }): void => {
-    ch.sender.close();
-    ch.receiver.close();
-  },
-};
-
-export const async_channel = channel;
-
-type OptionLike = { $tag: string; $payload?: unknown };
-
-interface NodeWorkerLike {
-  postMessage(value: unknown): void;
-  terminate(): Promise<number>;
-  on(event: 'message', listener: (value: unknown) => void): void;
-  on(event: 'error', listener: (error: Error) => void): void;
-  on(event: 'exit', listener: (code: number) => void): void;
-}
-
-interface WebWorkerLike {
-  postMessage(value: unknown): void;
-  terminate(): void;
-  addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void;
-  addEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
-}
-
-type ThreadWorker = { kind: 'node'; worker: NodeWorkerLike } | { kind: 'web'; worker: WebWorkerLike };
-
-const isUrlLike = (specifier: string): boolean => /^[a-z]+:/i.test(specifier);
-
-const resolveNodeWorkerSpecifier = (specifier: string): string => {
-  if (isUrlLike(specifier)) return specifier;
-  const nodePath = getNodePath();
-  return nodePath ? nodePath.resolve(specifier) : resolvePathBasic(specifier);
-};
-
-const createThreadWorker = async (specifier: string): Promise<ThreadWorker> => {
-  if (isNodeRuntime()) {
-    try {
-      const nodeWorkers = await import('node:worker_threads');
-      const WorkerCtor = (nodeWorkers as { Worker?: new (file: string, options?: { type?: string }) => NodeWorkerLike })
-        .Worker;
-      if (typeof WorkerCtor === 'function') {
-        const worker = new WorkerCtor(resolveNodeWorkerSpecifier(specifier), { type: 'module' });
-        return { kind: 'node', worker };
-      }
-    } catch {
-      // fall through to web worker path
-    }
-  }
-
-  if (typeof Worker === 'function') {
-    const worker = new Worker(specifier, { type: 'module' }) as unknown as WebWorkerLike;
-    return { kind: 'web', worker };
-  }
-
-  throw new Error('Worker API is not available in this environment');
-};
-
-export class Thread {
-  private queue: unknown[] = [];
-  private waiters: Array<(value: OptionLike) => void> = [];
-  private closed = false;
-  private exitCode: number | null = null;
-  private joinWaiters: Array<(code: number) => void> = [];
-
-  constructor(private readonly entry: ThreadWorker) {
-    if (entry.kind === 'node') {
-      entry.worker.on('message', (value) => this.onMessage(value));
-      entry.worker.on('error', () => this.finish(-1));
-      entry.worker.on('exit', (code) => this.finish(code | 0));
-    } else {
-      entry.worker.addEventListener('message', (event) => this.onMessage(event.data));
-      entry.worker.addEventListener('error', () => this.finish(-1));
-    }
-  }
-
-  private onMessage(value: unknown): void {
-    if (this.closed) return;
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      waiter(Option.Some(value) as OptionLike);
-      return;
-    }
-    this.queue.push(value);
-  }
-
-  private finish(code: number): void {
-    if (this.exitCode !== null) return;
-    this.exitCode = code | 0;
-    this.closed = true;
-    this.flushWaiters(Option.None as OptionLike);
-    while (this.joinWaiters.length > 0) {
-      const waiter = this.joinWaiters.shift();
-      if (waiter) waiter(this.exitCode);
-    }
-  }
-
-  private flushWaiters(value: OptionLike): void {
-    while (this.waiters.length > 0) {
-      const waiter = this.waiters.shift();
-      if (waiter) waiter(value);
-    }
-  }
-
-  post(value: unknown): boolean {
-    if (this.closed) return false;
-    try {
-      this.entry.worker.postMessage(value);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  recv(): Promise<OptionLike> {
-    if (this.queue.length > 0) {
-      return Promise.resolve(Option.Some(this.queue.shift()) as OptionLike);
-    }
-    if (this.closed) {
-      return Promise.resolve(Option.None as OptionLike);
-    }
-    return new Promise((resolve) => {
-      this.waiters.push(resolve);
-    });
-  }
-
-  try_recv(): OptionLike {
-    if (this.queue.length > 0) {
-      return Option.Some(this.queue.shift()) as OptionLike;
-    }
-    return Option.None as OptionLike;
-  }
-
-  async terminate(): Promise<void> {
-    if (this.exitCode !== null) return;
-    if (this.entry.kind === 'node') {
-      const code = await this.entry.worker.terminate();
-      this.finish(code | 0);
-      return;
-    }
-    this.entry.worker.terminate();
-    this.finish(0);
-  }
-
-  join(): Promise<number> {
-    if (this.exitCode !== null) return Promise.resolve(this.exitCode);
-    return new Promise((resolve) => {
-      this.joinWaiters.push(resolve);
-    });
-  }
-}
-
-export class ThreadHandle<T = unknown> {
-  private readonly result: Promise<unknown>;
-
-  constructor(task: () => T | Promise<T>) {
-    this.result = Promise.resolve()
-      .then(() => task())
-      .then(
-        (value) => Result.Ok(value),
-        (error) => Result.Err(error instanceof Error ? error.message : String(error))
-      );
-  }
-
-  join(): Promise<unknown> {
-    return this.result;
-  }
-}
-
-export const thread = {
-  is_available: (): boolean => isNodeRuntime() || typeof Worker === 'function',
-  spawn: (task: unknown): unknown => {
-    if (typeof task === 'function') {
-      return new ThreadHandle(() => (task as () => unknown)());
-    }
-    return thread.spawn_worker(task);
-  },
-  spawn_worker: async (specifier: unknown): Promise<unknown> => {
-    if (typeof specifier !== 'string' || specifier.length === 0) {
-      return Result.Err('Thread specifier must be a non-empty string');
-    }
-    try {
-      const worker = await createThreadWorker(specifier);
-      return Result.Ok(new Thread(worker));
-    } catch (error) {
-      return Result.Err(String(error));
-    }
-  },
-  post: (handle: Thread, value: unknown): boolean => handle.post(value),
-  recv: (handle: Thread): Promise<unknown> => handle.recv(),
-  try_recv: (handle: Thread): unknown => handle.try_recv(),
-  terminate: async (handle: Thread): Promise<void> => {
-    await handle.terminate();
-  },
-  join: (handle: unknown): unknown => {
-    if (handle instanceof ThreadHandle) return handle.join();
-    if (handle instanceof Thread) return handle.join();
-    throw new Error('Invalid thread handle');
-  },
-  join_worker: (handle: Thread): Promise<number> => handle.join(),
-};
-
-type WebWorkerRecord = {
-  id: number;
-  entry: ThreadWorker;
-  inlineUrl: string | null;
-};
-
-let webWorkerNextHandle = 1;
-const webWorkerHandles = new Map<number, WebWorkerRecord>();
-
-const toWorkerMessageString = (value: unknown): string => {
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-};
-
-const getWebWorkerRecord = (handle: number): WebWorkerRecord | null =>
-  webWorkerHandles.get(Math.trunc(handle)) ?? null;
-
-const registerWebWorker = (entry: ThreadWorker, inlineUrl: string | null = null): number => {
-  const id = webWorkerNextHandle++;
-  webWorkerHandles.set(id, { id, entry, inlineUrl });
-  return id;
-};
-
-const createInlineWorker = async (source: string): Promise<{ worker: ThreadWorker; inlineUrl: string | null }> => {
-  if (isNodeRuntime()) {
-    try {
-      const nodeWorkers = await import('node:worker_threads');
-      const WorkerCtor = (nodeWorkers as {
-        Worker?: new (script: string, options?: { eval?: boolean }) => NodeWorkerLike;
-      }).Worker;
-      if (typeof WorkerCtor === 'function') {
-        return {
-          worker: { kind: 'node', worker: new WorkerCtor(String(source), { eval: true }) },
-          inlineUrl: null,
-        };
-      }
-    } catch {
-      // fall through to browser worker path
-    }
-  }
-  if (typeof Worker === 'function' && typeof Blob === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-    const blob = new Blob([String(source)], { type: 'application/javascript' });
-    const inlineUrl = URL.createObjectURL(blob);
-    const worker = new Worker(inlineUrl, { type: 'module' }) as unknown as WebWorkerLike;
-    return { worker: { kind: 'web', worker }, inlineUrl };
-  }
-  throw new Error('Worker API is not available in this environment');
-};
-
-const cleanupWebWorkerRecord = (record: WebWorkerRecord | null): void => {
-  if (!record) return;
-  webWorkerHandles.delete(record.id);
-  if (record.inlineUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
-    try {
-      URL.revokeObjectURL(record.inlineUrl);
-    } catch {
-      // ignore revoke failures
-    }
-  }
-};
-
-const isWorkerContextBrowser = (): boolean =>
-  typeof WorkerGlobalScope !== 'undefined' &&
-  typeof self !== 'undefined' &&
-  self instanceof WorkerGlobalScope;
-
-const isWorkerContextNode = (): boolean => {
-  if (!isNodeRuntime()) return false;
-  const workerThreads = getNodeBuiltinModule('node:worker_threads') as { isMainThread?: unknown } | null;
-  return workerThreads != null && typeof workerThreads.isMainThread === 'boolean' ? !workerThreads.isMainThread : false;
-};
-
-export const web_worker = {
-  is_available: (): boolean => isNodeRuntime() || typeof Worker === 'function',
-  spawn: async (specifier: string): Promise<{ $tag: string; $payload?: unknown }> => {
-    const input = String(specifier ?? '').trim();
-    if (!input) return Result.Err('Worker specifier must be a non-empty string');
-    try {
-      const worker = await createThreadWorker(input);
-      return Result.Ok(registerWebWorker(worker));
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  spawn_inline: async (source: string): Promise<{ $tag: string; $payload?: unknown }> => {
-    const input = String(source ?? '');
-    if (!input.trim()) return Result.Err('Inline worker source must be a non-empty string');
-    try {
-      const worker = await createInlineWorker(input);
-      return Result.Ok(registerWebWorker(worker.worker, worker.inlineUrl));
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  post: (handle: number, msg: string): { $tag: string; $payload?: unknown } => {
-    const record = getWebWorkerRecord(handle);
-    if (!record) return Result.Err(`Unknown worker handle ${handle}`);
-    try {
-      record.entry.worker.postMessage(String(msg));
-      return Result.Ok(undefined);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  on_message: (handle: number, handler: unknown): void => {
-    const record = getWebWorkerRecord(handle);
-    if (!record || typeof handler !== 'function') return;
-    if (record.entry.kind === 'node') {
-      record.entry.worker.on('message', (value) => {
-        (handler as (msg: string) => void)(toWorkerMessageString(value));
-      });
-      return;
-    }
-    record.entry.worker.addEventListener('message', (event) => {
-      (handler as (msg: string) => void)(toWorkerMessageString(event.data));
-    });
-  },
-  on_error: (handle: number, handler: unknown): void => {
-    const record = getWebWorkerRecord(handle);
-    if (!record || typeof handler !== 'function') return;
-    if (record.entry.kind === 'node') {
-      record.entry.worker.on('error', (error) => {
-        (handler as (msg: string) => void)(error instanceof Error ? error.message : String(error));
-      });
-      return;
-    }
-    record.entry.worker.addEventListener('error', (event) => {
-      const error = event.error;
-      const message = error instanceof Error ? error.message : event.message || String(error ?? '');
-      (handler as (msg: string) => void)(message);
-    });
-  },
-  terminate: (handle: number): void => {
-    const record = getWebWorkerRecord(handle);
-    if (!record) return;
-    try {
-      if (record.entry.kind === 'node') {
-        void record.entry.worker.terminate();
-      } else {
-        record.entry.worker.terminate();
-      }
-    } finally {
-      cleanupWebWorkerRecord(record);
-    }
-  },
-  is_worker_context: (): boolean => isWorkerContextBrowser() || isWorkerContextNode(),
-  self_post: (msg: string): void => {
-    if (isWorkerContextBrowser() && typeof postMessage === 'function') {
-      postMessage(String(msg));
-      return;
-    }
-    if (isWorkerContextNode()) {
-      const workerThreads = getNodeBuiltinModule('node:worker_threads') as {
-        parentPort?: { postMessage?: (value: unknown) => void };
-      } | null;
-      if (typeof workerThreads?.parentPort?.postMessage === 'function') {
-        workerThreads.parentPort.postMessage(String(msg));
-      }
-    }
-  },
-  self_on_message: (handler: unknown): void => {
-    if (typeof handler !== 'function') return;
-    if (isWorkerContextBrowser() && typeof addEventListener === 'function') {
-      addEventListener('message', (event) => {
-        (handler as (msg: string) => void)(toWorkerMessageString((event as MessageEvent<unknown>).data));
-      });
-      return;
-    }
-    if (isWorkerContextNode()) {
-      const workerThreads = getNodeBuiltinModule('node:worker_threads') as {
-        parentPort?: { on?: (event: string, listener: (value: unknown) => void) => void };
-      } | null;
-      if (typeof workerThreads?.parentPort?.on === 'function') {
-        workerThreads.parentPort.on('message', (value) => {
-          (handler as (msg: string) => void)(toWorkerMessageString(value));
-        });
-      }
-    }
-  },
-};
-
-type RuntimeStreamBuffer = {
-  kind: 'buffer';
-  data: Uint8Array;
-  offset: number;
-  chunkSize: number;
-};
-
-type RuntimeStreamReader = {
-  kind: 'reader';
-  reader: {
-    read: () => Promise<{ done?: boolean; value?: unknown }>;
-    cancel?: () => Promise<void> | void;
-  };
-  done: boolean;
-};
-
-type RuntimeStreamPipe = {
-  kind: 'pipe';
-  sourceHandle: number;
-  transform: (chunk: number[]) => unknown;
-};
-
-type RuntimeStreamRecord = {
-  id: number;
-  state: RuntimeStreamBuffer | RuntimeStreamReader | RuntimeStreamPipe;
-};
-
-type StreamChunkRead =
-  | { ok: true; chunk: number[] | null }
-  | { ok: false; error: string };
-
-let runtimeStreamNextHandle = 1;
-const runtimeStreams = new Map<number, RuntimeStreamRecord>();
-const STREAM_DEFAULT_CHUNK_SIZE = 16 * 1024;
-
-const toByteNumber = (value: unknown): number => {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  return Math.max(0, Math.min(255, Math.trunc(num)));
-};
-
-const toByteArray = (value: unknown): Uint8Array => {
-  if (value instanceof Uint8Array) return value;
-  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
-    return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
-  }
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (Array.isArray(value)) return Uint8Array.from(value.map((entry) => toByteNumber(entry)));
-  if (value && typeof value === 'object') {
-    const iterator = (value as { [Symbol.iterator]?: () => Iterator<unknown> })[Symbol.iterator];
-    if (typeof iterator === 'function') {
-      return Uint8Array.from(Array.from(value as Iterable<unknown>).map((entry) => toByteNumber(entry)));
-    }
-  }
-  return new Uint8Array(0);
-};
-
-const registerRuntimeStream = (state: RuntimeStreamRecord['state']): number => {
-  const id = runtimeStreamNextHandle++;
-  runtimeStreams.set(id, { id, state });
-  return id;
-};
-
-const cleanupRuntimeStreamHandle = (handle: number, seen: Set<number> = new Set()): void => {
-  const normalized = Math.trunc(handle);
-  if (seen.has(normalized)) return;
-  seen.add(normalized);
-  const record = runtimeStreams.get(normalized);
-  if (!record) return;
-  if (record.state.kind === 'reader' && typeof record.state.reader.cancel === 'function') {
-    try {
-      void record.state.reader.cancel();
-    } catch {
-      // ignore cancellation failures
-    }
-  }
-  runtimeStreams.delete(normalized);
-  if (record.state.kind === 'pipe') {
-    cleanupRuntimeStreamHandle(record.state.sourceHandle, seen);
-  }
-};
-
-const readChunkFromRuntimeStream = async (handle: number, seen: Set<number> = new Set()): Promise<StreamChunkRead> => {
-  const normalized = Math.trunc(handle);
-  if (seen.has(normalized)) {
-    return { ok: false, error: 'Detected cyclic stream pipeline' };
-  }
-  const record = runtimeStreams.get(normalized);
-  if (!record) return { ok: false, error: `Unknown stream handle ${handle}` };
-  if (record.state.kind === 'buffer') {
-    const state = record.state;
-    if (state.offset >= state.data.length) return { ok: true, chunk: null };
-    const nextEnd = Math.min(state.data.length, state.offset + state.chunkSize);
-    const chunk = Array.from(state.data.subarray(state.offset, nextEnd));
-    state.offset = nextEnd;
-    return { ok: true, chunk };
-  }
-  if (record.state.kind === 'reader') {
-    const state = record.state;
-    if (state.done) return { ok: true, chunk: null };
-    try {
-      const next = await state.reader.read();
-      if (next.done) {
-        state.done = true;
-        return { ok: true, chunk: null };
-      }
-      return { ok: true, chunk: Array.from(toByteArray(next.value)) };
-    } catch (error) {
-      return { ok: false, error: opfsError(error) };
-    }
-  }
-  const pipeState = record.state;
-  const nestedSeen = new Set(seen);
-  nestedSeen.add(normalized);
-  const source = await readChunkFromRuntimeStream(pipeState.sourceHandle, nestedSeen);
-  if (!source.ok) return source;
-  if (source.chunk == null) return source;
-  try {
-    return { ok: true, chunk: Array.from(toByteArray(pipeState.transform(source.chunk))) };
-  } catch (error) {
-    return { ok: false, error: opfsError(error) };
-  }
-};
-
-const decodeTextFromBytes = (bytes: number[]): string => {
-  const data = Uint8Array.from(bytes);
-  if (typeof TextDecoder === 'function') {
-    return new TextDecoder().decode(data);
-  }
-  return String.fromCharCode(...Array.from(data));
-};
-
-export const web_streams = {
-  is_available: (): boolean => typeof ReadableStream === 'function' || typeof fetch === 'function' || isNodeRuntime(),
-  from_fetch: async (url: string): Promise<{ $tag: string; $payload?: unknown }> => {
-    if (typeof fetch !== 'function') return Result.Err('Fetch API is not available in this environment');
-    try {
-      const response = await fetch(String(url));
-      const body = (response as { body?: { getReader?: () => unknown } }).body;
-      if (body && typeof body.getReader === 'function') {
-        const reader = body.getReader() as RuntimeStreamReader['reader'];
-        return Result.Ok(registerRuntimeStream({ kind: 'reader', reader, done: false }));
-      }
-      if (typeof response.arrayBuffer === 'function') {
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        return Result.Ok(registerRuntimeStream({ kind: 'buffer', data: bytes, offset: 0, chunkSize: STREAM_DEFAULT_CHUNK_SIZE }));
-      }
-      return Result.Err('Response body stream is not available');
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  from_string: (source: string): number => {
-    const bytes = typeof TextEncoder === 'function' ? new TextEncoder().encode(String(source)) : Uint8Array.from(String(source).split('').map((ch) => ch.charCodeAt(0) & 0xff));
-    return registerRuntimeStream({ kind: 'buffer', data: bytes, offset: 0, chunkSize: STREAM_DEFAULT_CHUNK_SIZE });
-  },
-  from_bytes: (data: unknown): number =>
-    registerRuntimeStream({
-      kind: 'buffer',
-      data: toByteArray(data),
-      offset: 0,
-      chunkSize: STREAM_DEFAULT_CHUNK_SIZE,
-    }),
-  read_chunk: async (streamHandle: number): Promise<{ $tag: string; $payload?: unknown }> => {
-    const next = await readChunkFromRuntimeStream(streamHandle);
-    if (!next.ok) return Result.Err(next.error);
-    if (next.chunk == null) return Result.Ok(Option.None);
-    return Result.Ok(Option.Some(next.chunk));
-  },
-  read_all: async (streamHandle: number): Promise<{ $tag: string; $payload?: unknown }> => {
-    const all: number[] = [];
-    for (;;) {
-      const next = await readChunkFromRuntimeStream(streamHandle);
-      if (!next.ok) {
-        cleanupRuntimeStreamHandle(streamHandle);
-        return Result.Err(next.error);
-      }
-      if (next.chunk == null) {
-        cleanupRuntimeStreamHandle(streamHandle);
-        return Result.Ok(all);
-      }
-      all.push(...next.chunk);
-    }
-  },
-  read_text: async (streamHandle: number): Promise<{ $tag: string; $payload?: unknown }> => {
-    const all = await web_streams.read_all(streamHandle);
-    if (getEnumTag(all as LuminaEnumLike) === 'Err') return all;
-    const payload = getEnumPayload(all as LuminaEnumLike);
-    const bytes = Array.isArray(payload) ? payload.map((entry) => toByteNumber(entry)) : [];
-    return Result.Ok(decodeTextFromBytes(bytes));
-  },
-  pipe: (streamHandle: number, transform: unknown): number => {
-    const record = runtimeStreams.get(Math.trunc(streamHandle));
-    if (!record || typeof transform !== 'function') return 0;
-    return registerRuntimeStream({
-      kind: 'pipe',
-      sourceHandle: Math.trunc(streamHandle),
-      transform: transform as (chunk: number[]) => unknown,
-    });
-  },
-  cancel: (streamHandle: number): void => {
-    cleanupRuntimeStreamHandle(streamHandle);
-  },
-};
-
-export class Mutex {
-  private locked = false;
-  private waiters: Array<(acquired: boolean) => void> = [];
-
-  async acquire(): Promise<boolean> {
-    if (!this.locked) {
-      this.locked = true;
-      return true;
-    }
-    return new Promise((resolve) => {
-      this.waiters.push(resolve);
-    });
-  }
-
-  try_acquire(): boolean {
-    if (this.locked) return false;
-    this.locked = true;
-    return true;
-  }
-
-  release(): boolean {
-    if (!this.locked) return false;
-    const next = this.waiters.shift();
-    if (next) {
-      // Direct hand-off keeps the lock held by the next waiter.
-      next(true);
-      return true;
-    }
-    this.locked = false;
-    return true;
-  }
-
-  is_locked(): boolean {
-    return this.locked;
-  }
-}
-
-export class Semaphore {
-  private permits: number;
-  private waiters: Array<(acquired: boolean) => void> = [];
-
-  constructor(initialPermits: number) {
-    this.permits = Math.max(0, Math.trunc(initialPermits));
-  }
-
-  async acquire(): Promise<boolean> {
-    if (this.permits > 0) {
-      this.permits -= 1;
-      return true;
-    }
-    return new Promise((resolve) => {
-      this.waiters.push(resolve);
-    });
-  }
-
-  try_acquire(): boolean {
-    if (this.permits <= 0) return false;
-    this.permits -= 1;
-    return true;
-  }
-
-  release(count = 1): void {
-    const n = Math.max(1, Math.trunc(count));
-    for (let i = 0; i < n; i += 1) {
-      const next = this.waiters.shift();
-      if (next) {
-        next(true);
-      } else {
-        this.permits += 1;
-      }
-    }
-  }
-
-  available(): number {
-    return this.permits;
-  }
-}
-
-export class AtomicI32 {
-  private storage: Int32Array | null = null;
-  private fallback = 0;
-
-  constructor(initial: number) {
-    const value = Math.trunc(initial) | 0;
-    const hasSharedMemory = typeof SharedArrayBuffer === 'function' && typeof Atomics !== 'undefined';
-    if (hasSharedMemory) {
-      this.storage = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-      Atomics.store(this.storage, 0, value);
-      return;
-    }
-    this.fallback = value;
-  }
-
-  static is_available(): boolean {
-    return typeof SharedArrayBuffer === 'function' && typeof Atomics !== 'undefined';
-  }
-
-  load(): number {
-    if (!this.storage) return this.fallback;
-    return Atomics.load(this.storage, 0);
-  }
-
-  store(value: number): number {
-    const next = Math.trunc(value) | 0;
-    if (!this.storage) {
-      this.fallback = next;
-      return next;
-    }
-    Atomics.store(this.storage, 0, next);
-    return next;
-  }
-
-  add(delta: number): number {
-    const d = Math.trunc(delta) | 0;
-    if (!this.storage) {
-      const prev = this.fallback;
-      this.fallback = (this.fallback + d) | 0;
-      return prev;
-    }
-    return Atomics.add(this.storage, 0, d);
-  }
-
-  sub(delta: number): number {
-    const d = Math.trunc(delta) | 0;
-    if (!this.storage) {
-      const prev = this.fallback;
-      this.fallback = (this.fallback - d) | 0;
-      return prev;
-    }
-    return Atomics.sub(this.storage, 0, d);
-  }
-
-  compare_exchange(expected: number, replacement: number): number {
-    const exp = Math.trunc(expected) | 0;
-    const rep = Math.trunc(replacement) | 0;
-    if (!this.storage) {
-      const prev = this.fallback;
-      if (prev === exp) this.fallback = rep;
-      return prev;
-    }
-    return Atomics.compareExchange(this.storage, 0, exp, rep);
-  }
-}
-
-export const sync = {
-  mutex_new: (): Mutex => new Mutex(),
-  mutex_acquire: async (mutex: Mutex): Promise<boolean> => mutex.acquire(),
-  mutex_try_acquire: (mutex: Mutex): boolean => mutex.try_acquire(),
-  mutex_release: (mutex: Mutex): boolean => mutex.release(),
-  mutex_is_locked: (mutex: Mutex): boolean => mutex.is_locked(),
-  semaphore_new: (permits: number): Semaphore => new Semaphore(permits),
-  semaphore_acquire: async (semaphore: Semaphore): Promise<boolean> => semaphore.acquire(),
-  semaphore_try_acquire: (semaphore: Semaphore): boolean => semaphore.try_acquire(),
-  semaphore_release: (semaphore: Semaphore, count = 1): void => semaphore.release(count),
-  semaphore_available: (semaphore: Semaphore): number => semaphore.available(),
-  atomic_i32_new: (initial: number): AtomicI32 => new AtomicI32(initial),
-  atomic_i32_is_available: (): boolean => AtomicI32.is_available(),
-  atomic_i32_load: (value: AtomicI32): number => value.load(),
-  atomic_i32_store: (value: AtomicI32, next: number): number => value.store(next),
-  atomic_i32_add: (value: AtomicI32, delta: number): number => value.add(delta),
-  atomic_i32_sub: (value: AtomicI32, delta: number): number => value.sub(delta),
-  atomic_i32_compare_exchange: (value: AtomicI32, expected: number, replacement: number): number =>
-    value.compare_exchange(expected, replacement),
-};
-
-type SABChannelKind = 'i32' | 'u32' | 'f32' | 'f64';
-
-interface SABChannelState {
-  mode: 'sab' | 'fallback';
-  kind: SABChannelKind;
-  capacity: number;
-  control?: Int32Array;
-  dataI32?: Int32Array;
-  dataU32?: Uint32Array;
-  dataF32?: Float32Array;
-  dataF64?: Float64Array;
-  fallbackSender?: Sender<number>;
-  fallbackReceiver?: Receiver<number>;
-}
-
-const SAB_HEAD = 0;
-const SAB_TAIL = 1;
-const SAB_COUNT = 2;
-const SAB_SENDER_CLOSED = 3;
-const SAB_RECEIVER_CLOSED = 4;
-const SAB_CLOSE_FLAG = 5;
-const SAB_CONTROL_WORDS = 6;
-const SAB_DATA_OFFSET_BYTES = Int32Array.BYTES_PER_ELEMENT * SAB_CONTROL_WORDS;
-
-const sabElementSize = (kind: SABChannelKind): number => (kind === 'f64' ? 8 : 4);
-
-const normalizeSabValue = (kind: SABChannelKind, value: number): number => {
-  const n = Number(value);
-  switch (kind) {
-    case 'u32':
-      return Math.trunc(n) >>> 0;
-    case 'f32':
-      return Math.fround(n);
-    case 'f64':
-      return Number(n);
-    case 'i32':
-    default:
-      return Math.trunc(n) | 0;
-  }
-};
-
-const createSABChannelState = (capacity: number, kind: SABChannelKind): SABChannelState => {
-  const cap = Math.max(1, Math.trunc(capacity));
-  if (AtomicI32.is_available()) {
-    const totalBytes = SAB_DATA_OFFSET_BYTES + cap * sabElementSize(kind);
-    const buffer = new SharedArrayBuffer(totalBytes);
-    const control = new Int32Array(buffer, 0, SAB_CONTROL_WORDS);
-    Atomics.store(control, SAB_HEAD, 0);
-    Atomics.store(control, SAB_TAIL, 0);
-    Atomics.store(control, SAB_COUNT, 0);
-    Atomics.store(control, SAB_SENDER_CLOSED, 0);
-    Atomics.store(control, SAB_RECEIVER_CLOSED, 0);
-    Atomics.store(control, SAB_CLOSE_FLAG, 0);
-    const state: SABChannelState = {
-      mode: 'sab',
-      kind,
-      capacity: cap,
-      control,
-    };
-    if (kind === 'i32') {
-      state.dataI32 = new Int32Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
-    } else if (kind === 'u32') {
-      state.dataU32 = new Uint32Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
-    } else if (kind === 'f32') {
-      state.dataF32 = new Float32Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
-    } else {
-      state.dataF64 = new Float64Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
-    }
-    return state;
-  }
-
-  if (channel.is_available()) {
-    const fallback = channel.bounded<number>(cap);
-    return {
-      mode: 'fallback',
-      kind,
-      capacity: cap,
-      fallbackSender: fallback.sender,
-      fallbackReceiver: fallback.receiver,
-    };
-  }
-
-  throw new Error('SharedArrayBuffer + Atomics or MessageChannel fallback is not available in this environment');
-};
-
-const writeSabStateValue = (state: SABChannelState, index: number, value: number): void => {
-  const normalized = normalizeSabValue(state.kind, value);
-  switch (state.kind) {
-    case 'u32':
-      state.dataU32![index] = normalized >>> 0;
-      return;
-    case 'f32':
-      state.dataF32![index] = Math.fround(normalized);
-      return;
-    case 'f64':
-      state.dataF64![index] = Number(normalized);
-      return;
-    case 'i32':
-    default:
-      state.dataI32![index] = Math.trunc(normalized) | 0;
-      return;
-  }
-};
-
-const readSabStateValue = (state: SABChannelState, index: number): number => {
-  switch (state.kind) {
-    case 'u32':
-      return (state.dataU32![index] >>> 0);
-    case 'f32':
-      return Math.fround(state.dataF32![index]);
-    case 'f64':
-      return Number(state.dataF64![index]);
-    case 'i32':
-    default:
-      return Math.trunc(state.dataI32![index]) | 0;
-  }
-};
-
-const sabYield = async (): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-};
-
-class SABSenderBase {
-  constructor(private readonly state: SABChannelState) {}
-
-  try_send(value: number): boolean {
-    const normalized = normalizeSabValue(this.state.kind, value);
-    if (this.state.mode === 'fallback') {
-      if (!this.state.fallbackSender) return false;
-      return channel.try_send(this.state.fallbackSender, normalized);
-    }
-    const control = this.state.control!;
-    if (Atomics.load(control, SAB_SENDER_CLOSED) !== 0) return false;
-    if (Atomics.load(control, SAB_RECEIVER_CLOSED) !== 0) return false;
-    const count = Atomics.load(control, SAB_COUNT);
-    if (count >= this.state.capacity) return false;
-    const tail = Atomics.load(control, SAB_TAIL);
-    writeSabStateValue(this.state, tail, normalized);
-    Atomics.store(control, SAB_TAIL, (tail + 1) % this.state.capacity);
-    Atomics.store(control, SAB_COUNT, count + 1);
-    Atomics.notify(control, SAB_COUNT, 1);
-    return true;
-  }
-
-  async send(value: number): Promise<boolean> {
-    for (;;) {
-      if (this.try_send(value)) return true;
-      if (this.is_closed()) return false;
-      await sabYield();
-    }
-  }
-
-  async send_timeout(value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> {
-    const deadline = Date.now() + Math.max(0, Math.trunc(timeoutMs));
-    for (;;) {
-      if (this.try_send(value)) return Result.Ok(undefined);
-      if (this.is_closed()) return Result.Err('closed');
-      if (Date.now() >= deadline) return Result.Err('timeout');
-      await sabYield();
-    }
-  }
-
-  is_closed(): boolean {
-    if (this.state.mode === 'fallback') {
-      if (!this.state.fallbackSender) return true;
-      return channel.is_sender_closed(this.state.fallbackSender);
-    }
-    const control = this.state.control!;
-    return Atomics.load(control, SAB_SENDER_CLOSED) !== 0 || Atomics.load(control, SAB_RECEIVER_CLOSED) !== 0;
-  }
-
-  close(): void {
-    if (this.state.mode === 'fallback') {
-      if (!this.state.fallbackSender) return;
-      channel.close_sender(this.state.fallbackSender);
-      return;
-    }
-    const control = this.state.control!;
-    Atomics.store(control, SAB_SENDER_CLOSED, 1);
-    Atomics.store(control, SAB_CLOSE_FLAG, 1);
-    Atomics.notify(control, SAB_COUNT);
-  }
-
-  drop(): void {
-    this.close();
-  }
-}
-
-class SABReceiverBase {
-  constructor(private readonly state: SABChannelState) {}
-
-  try_recv(): OptionLike {
-    if (this.state.mode === 'fallback') {
-      if (!this.state.fallbackReceiver) return Option.None as OptionLike;
-      const value = channel.try_recv(this.state.fallbackReceiver) as OptionLike;
-      if (getEnumTag(value as LuminaEnumLike) !== 'Some') return Option.None as OptionLike;
-      return Option.Some(normalizeSabValue(this.state.kind, Number(getEnumPayload(value as LuminaEnumLike)))) as OptionLike;
-    }
-    const control = this.state.control!;
-    const count = Atomics.load(control, SAB_COUNT);
-    if (count <= 0) return Option.None as OptionLike;
-    const head = Atomics.load(control, SAB_HEAD);
-    const value = readSabStateValue(this.state, head);
-    Atomics.store(control, SAB_HEAD, (head + 1) % this.state.capacity);
-    Atomics.store(control, SAB_COUNT, count - 1);
-    Atomics.notify(control, SAB_COUNT, 1);
-    return Option.Some(value) as OptionLike;
-  }
-
-  async recv(): Promise<OptionLike> {
-    if (this.state.mode === 'fallback') {
-      if (!this.state.fallbackReceiver) return Option.None as OptionLike;
-      for (;;) {
-        const value = await channel.recv(this.state.fallbackReceiver) as OptionLike;
-        if (getEnumTag(value as LuminaEnumLike) === 'Some') {
-          return Option.Some(normalizeSabValue(this.state.kind, Number(getEnumPayload(value as LuminaEnumLike)))) as OptionLike;
-        }
-        if (this.is_closed()) return Option.None as OptionLike;
-        await sabYield();
-      }
-    }
-    for (;;) {
-      const value = this.try_recv();
-      if (getEnumTag(value as LuminaEnumLike) === 'Some') return value;
-      if (this.is_closed()) return Option.None as OptionLike;
-      await sabYield();
-    }
-  }
-
-  is_closed(): boolean {
-    if (this.state.mode === 'fallback') {
-      if (!this.state.fallbackReceiver) return true;
-      return channel.is_receiver_closed(this.state.fallbackReceiver);
-    }
-    const control = this.state.control!;
-    if (Atomics.load(control, SAB_RECEIVER_CLOSED) !== 0) return true;
-    if (Atomics.load(control, SAB_SENDER_CLOSED) !== 0 && Atomics.load(control, SAB_COUNT) <= 0) return true;
-    return false;
-  }
-
-  close(): void {
-    if (this.state.mode === 'fallback') {
-      if (!this.state.fallbackReceiver) return;
-      channel.close_receiver(this.state.fallbackReceiver);
-      return;
-    }
-    const control = this.state.control!;
-    Atomics.store(control, SAB_RECEIVER_CLOSED, 1);
-    Atomics.store(control, SAB_CLOSE_FLAG, 1);
-    Atomics.notify(control, SAB_COUNT);
-  }
-
-  drop(): void {
-    this.close();
-  }
-}
-
-export class SABSenderI32 extends SABSenderBase {}
-export class SABReceiverI32 extends SABReceiverBase {}
-export class SABSenderU32 extends SABSenderBase {}
-export class SABReceiverU32 extends SABReceiverBase {}
-export class SABSenderF32 extends SABSenderBase {}
-export class SABReceiverF32 extends SABReceiverBase {}
-export class SABSenderF64 extends SABSenderBase {}
-export class SABReceiverF64 extends SABReceiverBase {}
-
-export const sab_channel = {
-  is_available: (): boolean => AtomicI32.is_available() || channel.is_available(),
-  bounded_i32: (capacity: number): { sender: SABSenderI32; receiver: SABReceiverI32 } => {
-    const state = createSABChannelState(capacity, 'i32');
-    return { sender: new SABSenderI32(state), receiver: new SABReceiverI32(state) };
-  },
-  bounded_u32: (capacity: number): { sender: SABSenderU32; receiver: SABReceiverU32 } => {
-    const state = createSABChannelState(capacity, 'u32');
-    return { sender: new SABSenderU32(state), receiver: new SABReceiverU32(state) };
-  },
-  bounded_f32: (capacity: number): { sender: SABSenderF32; receiver: SABReceiverF32 } => {
-    const state = createSABChannelState(capacity, 'f32');
-    return { sender: new SABSenderF32(state), receiver: new SABReceiverF32(state) };
-  },
-  bounded_f64: (capacity: number): { sender: SABSenderF64; receiver: SABReceiverF64 } => {
-    const state = createSABChannelState(capacity, 'f64');
-    return { sender: new SABSenderF64(state), receiver: new SABReceiverF64(state) };
-  },
-  send_i32: (sender: SABSenderI32, value: number): boolean => sender.try_send(value),
-  try_send_i32: (sender: SABSenderI32, value: number): boolean => sender.try_send(value),
-  send_async_i32: (sender: SABSenderI32, value: number): Promise<boolean> => sender.send(value),
-  send_timeout_i32: (sender: SABSenderI32, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
-    sender.send_timeout(value, timeoutMs),
-  recv_i32: (receiver: SABReceiverI32): Promise<OptionLike> => receiver.recv(),
-  try_recv_i32: (receiver: SABReceiverI32): OptionLike => receiver.try_recv(),
-  close_sender_i32: (sender: SABSenderI32): void => sender.close(),
-  close_receiver_i32: (receiver: SABReceiverI32): void => receiver.close(),
-  is_sender_closed_i32: (sender: SABSenderI32): boolean => sender.is_closed(),
-  is_receiver_closed_i32: (receiver: SABReceiverI32): boolean => receiver.is_closed(),
-  close_i32: (ch: { sender: SABSenderI32; receiver: SABReceiverI32 }): void => {
-    ch.sender.close();
-    ch.receiver.close();
-  },
-  send_u32: (sender: SABSenderU32, value: number): boolean => sender.try_send(value),
-  try_send_u32: (sender: SABSenderU32, value: number): boolean => sender.try_send(value),
-  send_async_u32: (sender: SABSenderU32, value: number): Promise<boolean> => sender.send(value),
-  send_timeout_u32: (sender: SABSenderU32, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
-    sender.send_timeout(value, timeoutMs),
-  recv_u32: (receiver: SABReceiverU32): Promise<OptionLike> => receiver.recv(),
-  try_recv_u32: (receiver: SABReceiverU32): OptionLike => receiver.try_recv(),
-  close_sender_u32: (sender: SABSenderU32): void => sender.close(),
-  close_receiver_u32: (receiver: SABReceiverU32): void => receiver.close(),
-  is_sender_closed_u32: (sender: SABSenderU32): boolean => sender.is_closed(),
-  is_receiver_closed_u32: (receiver: SABReceiverU32): boolean => receiver.is_closed(),
-  close_u32: (ch: { sender: SABSenderU32; receiver: SABReceiverU32 }): void => {
-    ch.sender.close();
-    ch.receiver.close();
-  },
-  send_f32: (sender: SABSenderF32, value: number): boolean => sender.try_send(value),
-  try_send_f32: (sender: SABSenderF32, value: number): boolean => sender.try_send(value),
-  send_async_f32: (sender: SABSenderF32, value: number): Promise<boolean> => sender.send(value),
-  send_timeout_f32: (sender: SABSenderF32, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
-    sender.send_timeout(value, timeoutMs),
-  recv_f32: (receiver: SABReceiverF32): Promise<OptionLike> => receiver.recv(),
-  try_recv_f32: (receiver: SABReceiverF32): OptionLike => receiver.try_recv(),
-  close_sender_f32: (sender: SABSenderF32): void => sender.close(),
-  close_receiver_f32: (receiver: SABReceiverF32): void => receiver.close(),
-  is_sender_closed_f32: (sender: SABSenderF32): boolean => sender.is_closed(),
-  is_receiver_closed_f32: (receiver: SABReceiverF32): boolean => receiver.is_closed(),
-  close_f32: (ch: { sender: SABSenderF32; receiver: SABReceiverF32 }): void => {
-    ch.sender.close();
-    ch.receiver.close();
-  },
-  send_f64: (sender: SABSenderF64, value: number): boolean => sender.try_send(value),
-  try_send_f64: (sender: SABSenderF64, value: number): boolean => sender.try_send(value),
-  send_async_f64: (sender: SABSenderF64, value: number): Promise<boolean> => sender.send(value),
-  send_timeout_f64: (sender: SABSenderF64, value: number, timeoutMs: number): Promise<{ $tag: string; $payload?: unknown }> =>
-    sender.send_timeout(value, timeoutMs),
-  recv_f64: (receiver: SABReceiverF64): Promise<OptionLike> => receiver.recv(),
-  try_recv_f64: (receiver: SABReceiverF64): OptionLike => receiver.try_recv(),
-  close_sender_f64: (sender: SABSenderF64): void => sender.close(),
-  close_receiver_f64: (receiver: SABReceiverF64): void => receiver.close(),
-  is_sender_closed_f64: (sender: SABSenderF64): boolean => sender.is_closed(),
-  is_receiver_closed_f64: (receiver: SABReceiverF64): boolean => receiver.is_closed(),
-  close_f64: (ch: { sender: SABSenderF64; receiver: SABReceiverF64 }): void => {
-    ch.sender.close();
-    ch.receiver.close();
-  },
-};
-
-type WebGpuAdapterLike = {
-  requestDevice: () => Promise<unknown>;
-};
-
-type WebGpuLike = {
-  requestAdapter: () => Promise<WebGpuAdapterLike | null>;
-  getPreferredCanvasFormat?: () => string;
-};
-
-const getWebGpu = (): WebGpuLike | null => {
-  const nav = (globalThis as { navigator?: { gpu?: WebGpuLike } }).navigator;
-  const gpu = nav?.gpu;
-  if (!gpu || typeof gpu.requestAdapter !== 'function') return null;
-  return gpu;
-};
-
-const WEBGPU_BUFFER_USAGE = {
-  MAP_READ: 0x0001,
-  MAP_WRITE: 0x0002,
-  COPY_SRC: 0x0004,
-  COPY_DST: 0x0008,
-  INDEX: 0x0010,
-  VERTEX: 0x0020,
-  UNIFORM: 0x0040,
-  STORAGE: 0x0080,
-} as const;
-
-const WEBGPU_MAP_MODE = {
-  READ: 0x0001,
-  WRITE: 0x0002,
-} as const;
-
-type GpuElementType = 'i32' | 'u32' | 'f32' | 'f64' | 'u8';
-
-type WebGpuBufferLike = {
-  mapAsync?: (mode: number) => Promise<void>;
-  getMappedRange?: () => ArrayBuffer;
-  unmap?: () => void;
-  destroy?: () => void;
-};
-
-type WebGpuPipelineLike = {
-  getBindGroupLayout?: (index: number) => unknown;
-};
-
-type WebGpuCanvasContextLike = {
-  configure?: (descriptor: { device: unknown; format: string; alphaMode?: string }) => void;
-  getCurrentTexture?: () => { createView: () => unknown };
-};
-
-type WebGpuDeviceLike = {
-  createShaderModule: (descriptor: { code: string }) => unknown;
-  createBuffer: (descriptor: { size: number; usage: number }) => WebGpuBufferLike;
-  createComputePipeline?: (descriptor: {
-    layout: 'auto' | unknown;
-    compute: { module: unknown; entryPoint: string };
-  }) => WebGpuPipelineLike;
-  createComputePipelineAsync?: (descriptor: {
-    layout: 'auto' | unknown;
-    compute: { module: unknown; entryPoint: string };
-  }) => Promise<WebGpuPipelineLike>;
-  createRenderPipeline?: (descriptor: {
-    layout: 'auto' | unknown;
-    vertex: { module: unknown; entryPoint: string; buffers?: unknown[] };
-    fragment?: { module: unknown; entryPoint: string; targets: Array<{ format: string }> };
-    primitive?: { topology?: string };
-    depthStencil?: unknown;
-  }) => WebGpuPipelineLike;
-  createRenderPipelineAsync?: (descriptor: {
-    layout: 'auto' | unknown;
-    vertex: { module: unknown; entryPoint: string; buffers?: unknown[] };
-    fragment?: { module: unknown; entryPoint: string; targets: Array<{ format: string }> };
-    primitive?: { topology?: string };
-    depthStencil?: unknown;
-  }) => Promise<WebGpuPipelineLike>;
-  createBindGroup?: (descriptor: {
-    layout: unknown;
-    entries: Array<{ binding: number; resource: { buffer: unknown } }>;
-  }) => unknown;
-  createCommandEncoder: () => {
-    beginComputePass?: () => {
-      setPipeline: (pipeline: unknown) => void;
-      setBindGroup: (index: number, bindGroup: unknown) => void;
-      dispatchWorkgroups: (x: number, y?: number, z?: number) => void;
-      end: () => void;
-    };
-    beginRenderPass?: (descriptor: {
-      colorAttachments: Array<{
-        view: unknown;
-        clearValue: { r: number; g: number; b: number; a: number };
-        loadOp: 'clear' | 'load';
-        storeOp: 'store';
-      }>;
-      depthStencilAttachment?: unknown;
-    }) => {
-      setPipeline?: (pipeline: unknown) => void;
-      setVertexBuffer?: (slot: number, buffer: unknown) => void;
-      setIndexBuffer?: (buffer: unknown, format: 'uint16' | 'uint32') => void;
-      draw?: (vertexCount: number, instanceCount?: number, firstVertex?: number, firstInstance?: number) => void;
-      drawIndexed?: (
-        indexCount: number,
-        instanceCount?: number,
-        firstIndex?: number,
-        baseVertex?: number,
-        firstInstance?: number
-      ) => void;
-      end: () => void;
-    };
-    copyBufferToBuffer: (
-      source: unknown,
-      sourceOffset: number,
-      target: unknown,
-      targetOffset: number,
-      size: number
-    ) => void;
-    finish: () => unknown;
-  };
-  queue: {
-    writeBuffer: (
-      buffer: unknown,
-      bufferOffset: number,
-      data: ArrayBufferLike | ArrayBufferView,
-      dataOffset?: number,
-      size?: number
-    ) => void;
-    submit: (commands: unknown[]) => void;
-    onSubmittedWorkDone?: () => Promise<void>;
-  };
-};
-
-type WebGpuBufferKind = 'buffer' | 'uniform' | 'vertex' | 'index';
-
-type WebGpuBufferRecord = {
-  id: number;
-  kind: WebGpuBufferKind;
-  device: WebGpuDeviceLike;
-  buffer: WebGpuBufferLike;
-  usage: number;
-  size: number;
-  elementType: GpuElementType;
-  elementCount: number;
-};
-
-type WebGpuPipelineRecord = {
-  id: number;
-  device: WebGpuDeviceLike;
-  pipeline: WebGpuPipelineLike;
-  config: {
-    vertex_buffers?: number[];
-    index_buffer?: number | null;
-    uniforms?: number[];
-    format?: string;
-    topology?: string;
-  };
-};
-
-type WebGpuCanvasRecord = {
-  id: number;
-  canvas: unknown;
-  context: WebGpuCanvasContextLike;
-  format: string;
-  configuredDevice: WebGpuDeviceLike | null;
-  hasSubmittedFrame: boolean;
-};
-
-let webgpuNextHandle = 1;
-const webgpuBuffers = new Map<number, WebGpuBufferRecord>();
-const webgpuPipelines = new Map<number, WebGpuPipelineRecord>();
-const webgpuCanvases = new Map<number, WebGpuCanvasRecord>();
-
-const newWebGpuHandle = (): number => {
-  const handle = webgpuNextHandle;
-  webgpuNextHandle += 1;
-  return handle;
-};
-
-const normalizeElementType = (typeHint: unknown): GpuElementType => {
-  const value = String(typeHint ?? 'i32').toLowerCase();
-  switch (value) {
-    case 'u32':
-      return 'u32';
-    case 'f32':
-      return 'f32';
-    case 'f64':
-      return 'f64';
-    case 'u8':
-      return 'u8';
-    case 'i32':
-    default:
-      return 'i32';
-  }
-};
-
-const elementSize = (elementType: GpuElementType): number => {
-  switch (elementType) {
-    case 'u8':
-      return 1;
-    case 'f64':
-      return 8;
-    case 'i32':
-    case 'u32':
-    case 'f32':
-    default:
-      return 4;
-  }
-};
-
-const inferElementType = (data: ArrayBufferView): GpuElementType => {
-  if (data instanceof Uint8Array) return 'u8';
-  if (data instanceof Uint32Array) return 'u32';
-  if (data instanceof Float32Array) return 'f32';
-  if (data instanceof Float64Array) return 'f64';
-  return 'i32';
-};
-
-const numberArrayToView = (values: number[], elementType: GpuElementType): ArrayBufferView => {
-  switch (elementType) {
-    case 'u8':
-      return Uint8Array.from(values.map((value) => Math.trunc(value) & 0xff));
-    case 'u32':
-      return Uint32Array.from(values.map((value) => Math.trunc(value) >>> 0));
-    case 'f32':
-      return Float32Array.from(values);
-    case 'f64':
-      return Float64Array.from(values);
-    case 'i32':
-    default:
-      return Int32Array.from(values.map((value) => Math.trunc(value) | 0));
-  }
-};
-
-const toTypedArray = (
-  data: unknown,
-  typeHint: unknown,
-): { view: ArrayBufferView; elementType: GpuElementType; elementCount: number } => {
-  if (ArrayBuffer.isView(data) && !(data instanceof DataView)) {
-    const view = data as ArrayBufferView;
-    const elementType = inferElementType(view);
-    const elementCount = Math.max(0, Math.floor(view.byteLength / elementSize(elementType)));
-    return { view, elementType, elementCount };
-  }
-  const elementType = normalizeElementType(typeHint);
-  const source = Array.isArray(data) ? data.map((value) => Number(value)) : [];
-  const view = numberArrayToView(source, elementType);
-  const elementCount = Math.max(0, Math.floor(view.byteLength / elementSize(elementType)));
-  return { view, elementType, elementCount };
-};
-
-const readTypedArray = (buffer: ArrayBuffer, elementType: GpuElementType, elementCount: number): number[] => {
-  const maxCount = Math.max(0, elementCount);
-  switch (elementType) {
-    case 'u8':
-      return Array.from(new Uint8Array(buffer).subarray(0, maxCount));
-    case 'u32':
-      return Array.from(new Uint32Array(buffer).subarray(0, maxCount));
-    case 'f32':
-      return Array.from(new Float32Array(buffer).subarray(0, maxCount));
-    case 'f64':
-      return Array.from(new Float64Array(buffer).subarray(0, maxCount));
-    case 'i32':
-    default:
-      return Array.from(new Int32Array(buffer).subarray(0, maxCount));
-  }
-};
-
-const resolveWebGpuDevice = (device: unknown): WebGpuDeviceLike | null => {
-  if (device && typeof (device as { createBuffer?: unknown }).createBuffer === 'function') {
-    return device as WebGpuDeviceLike;
-  }
-  return null;
-};
-
-const alignTo4 = (value: number): number => {
-  const v = Math.max(4, Math.trunc(value));
-  const mod = v % 4;
-  return mod === 0 ? v : v + (4 - mod);
-};
-
-const hasWgslStageEntryPoint = (source: string, stage: 'compute' | 'vertex' | 'fragment', entryPoint: string): boolean => {
-  const escaped = entryPoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`@${stage}[\\s\\S]*\\bfn\\s+${escaped}\\s*\\(`, 'm');
-  return pattern.test(source);
-};
-
-export const webgpu = {
-  GPU_BUFFER_USAGE_STORAGE: WEBGPU_BUFFER_USAGE.STORAGE,
-  GPU_BUFFER_USAGE_UNIFORM: WEBGPU_BUFFER_USAGE.UNIFORM,
-  GPU_BUFFER_USAGE_VERTEX: WEBGPU_BUFFER_USAGE.VERTEX,
-  GPU_BUFFER_USAGE_INDEX: WEBGPU_BUFFER_USAGE.INDEX,
-  GPU_BUFFER_USAGE_COPY_SRC: WEBGPU_BUFFER_USAGE.COPY_SRC,
-  GPU_BUFFER_USAGE_COPY_DST: WEBGPU_BUFFER_USAGE.COPY_DST,
-  is_available: (): boolean => getWebGpu() !== null,
-  request_adapter: async (): Promise<{ $tag: string; $payload?: unknown }> => {
-    try {
-      const gpu = getWebGpu();
-      if (!gpu) return Result.Err('WebGPU is not available in this environment');
-      const adapter = await gpu.requestAdapter();
-      if (!adapter) return Result.Err('No WebGPU adapter available');
-      return Result.Ok(adapter);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  request_device: async (adapter: unknown): Promise<{ $tag: string; $payload?: unknown }> => {
-    try {
-      const source = (adapter as WebGpuAdapterLike | null) ?? null;
-      const resolved =
-        source && typeof source.requestDevice === 'function'
-          ? source
-          : ((await webgpu.request_adapter()) as LuminaEnumLike);
-      if (isEnumLike(resolved) && getEnumTag(resolved) === 'Err') return resolved as { $tag: string; $payload?: unknown };
-      const adapterLike = (isEnumLike(resolved) ? getEnumPayload(resolved as LuminaEnumLike) : resolved) as WebGpuAdapterLike;
-      if (!adapterLike || typeof adapterLike.requestDevice !== 'function') {
-        return Result.Err('Invalid WebGPU adapter');
-      }
-      const device = await adapterLike.requestDevice();
-      return Result.Ok(device);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  buffer_create: (
-    device: unknown,
-    size: number,
-    usage: number
-  ): { $tag: string; $payload?: unknown } => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
-      const byteSize = alignTo4(Math.max(0, Math.trunc(size)));
-      const buffer = resolvedDevice.createBuffer({
-        size: byteSize,
-        usage: Number.isFinite(usage) ? Math.trunc(usage) : WEBGPU_BUFFER_USAGE.STORAGE,
-      });
-      const id = newWebGpuHandle();
-      webgpuBuffers.set(id, {
-        id,
-        kind: 'buffer',
-        device: resolvedDevice,
-        buffer,
-        usage: Number.isFinite(usage) ? Math.trunc(usage) : WEBGPU_BUFFER_USAGE.STORAGE,
-        size: byteSize,
-        elementType: 'i32',
-        elementCount: 0,
-      });
-      return Result.Ok(id);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  buffer_write: (
-    device: unknown,
-    bufferHandle: number,
-    data: unknown,
-    offset: number = 0,
-    typeHint: unknown = 'i32'
-  ): { $tag: string; $payload?: unknown } => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      const entry = webgpuBuffers.get(Math.trunc(bufferHandle));
-      if (!entry) return Result.Err(`Unknown WebGPU buffer handle ${bufferHandle}`);
-      if (resolvedDevice && entry.device !== resolvedDevice) {
-        return Result.Err('WebGPU buffer handle does not belong to provided device');
-      }
-      const typed = toTypedArray(data, typeHint);
-      const byteOffset = Math.max(0, Math.trunc(offset));
-      entry.device.queue.writeBuffer(entry.buffer, byteOffset, typed.view, 0, typed.view.byteLength);
-      entry.elementType = typed.elementType;
-      entry.elementCount = typed.elementCount;
-      return Result.Ok(undefined);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  buffer_read: async (
-    device: unknown,
-    bufferHandle: number,
-    size: number,
-    typeHint: unknown = 'i32'
-  ): Promise<{ $tag: string; $payload?: unknown }> => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      const entry = webgpuBuffers.get(Math.trunc(bufferHandle));
-      if (!entry) return Result.Err(`Unknown WebGPU buffer handle ${bufferHandle}`);
-      if (resolvedDevice && entry.device !== resolvedDevice) {
-        return Result.Err('WebGPU buffer handle does not belong to provided device');
-      }
-      const readDevice = entry.device;
-      const bytes = alignTo4(Math.max(0, Math.trunc(size)));
-      const readBuffer = readDevice.createBuffer({
-        size: bytes,
-        usage: WEBGPU_BUFFER_USAGE.COPY_DST | WEBGPU_BUFFER_USAGE.MAP_READ,
-      });
-      const encoder = readDevice.createCommandEncoder();
-      encoder.copyBufferToBuffer(entry.buffer, 0, readBuffer, 0, bytes);
-      readDevice.queue.submit([encoder.finish()]);
-      if (typeof readDevice.queue.onSubmittedWorkDone === 'function') {
-        await readDevice.queue.onSubmittedWorkDone();
-      }
-      if (typeof readBuffer.mapAsync !== 'function' || typeof readBuffer.getMappedRange !== 'function') {
-        return Result.Err('WebGPU readback buffer does not support mapAsync');
-      }
-      await readBuffer.mapAsync(WEBGPU_MAP_MODE.READ);
-      const mapped = readBuffer.getMappedRange();
-      const elementType = normalizeElementType(typeHint ?? entry.elementType);
-      const count = Math.max(0, Math.floor(bytes / elementSize(elementType)));
-      const result = readTypedArray(mapped, elementType, count);
-      readBuffer.unmap?.();
-      readBuffer.destroy?.();
-      return Result.Ok(result);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  buffer_destroy: (bufferHandle: number): void => {
-    const entry = webgpuBuffers.get(Math.trunc(bufferHandle));
-    if (!entry) return;
-    entry.buffer.destroy?.();
-    webgpuBuffers.delete(Math.trunc(bufferHandle));
-  },
-  uniform_create: (
-    device: unknown,
-    data: unknown,
-    typeHint: unknown = 'f32'
-  ): { $tag: string; $payload?: unknown } => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
-      const typed = toTypedArray(data, typeHint);
-      const byteSize = alignTo4(Math.max(typed.view.byteLength, 4));
-      const buffer = resolvedDevice.createBuffer({
-        size: byteSize,
-        usage: WEBGPU_BUFFER_USAGE.UNIFORM | WEBGPU_BUFFER_USAGE.COPY_DST,
-      });
-      resolvedDevice.queue.writeBuffer(buffer, 0, typed.view, 0, typed.view.byteLength);
-      const id = newWebGpuHandle();
-      webgpuBuffers.set(id, {
-        id,
-        kind: 'uniform',
-        device: resolvedDevice,
-        buffer,
-        usage: WEBGPU_BUFFER_USAGE.UNIFORM | WEBGPU_BUFFER_USAGE.COPY_DST,
-        size: byteSize,
-        elementType: typed.elementType,
-        elementCount: typed.elementCount,
-      });
-      return Result.Ok(id);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  uniform_update: (
-    device: unknown,
-    uniformHandle: number,
-    data: unknown,
-    typeHint: unknown = 'f32'
-  ): { $tag: string; $payload?: unknown } => {
-    const entry = webgpuBuffers.get(Math.trunc(uniformHandle));
-    if (!entry || entry.kind !== 'uniform') return Result.Err(`Unknown WebGPU uniform handle ${uniformHandle}`);
-    return webgpu.buffer_write(device, uniformHandle, data, 0, typeHint);
-  },
-  uniform_destroy: (uniformHandle: number): void => {
-    webgpu.buffer_destroy(uniformHandle);
-  },
-  vertex_buffer: (
-    device: unknown,
-    data: unknown,
-    typeHint: unknown = 'f32'
-  ): { $tag: string; $payload?: unknown } => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
-      const typed = toTypedArray(data, typeHint);
-      const byteSize = alignTo4(Math.max(typed.view.byteLength, 4));
-      const buffer = resolvedDevice.createBuffer({
-        size: byteSize,
-        usage: WEBGPU_BUFFER_USAGE.VERTEX | WEBGPU_BUFFER_USAGE.COPY_DST,
-      });
-      resolvedDevice.queue.writeBuffer(buffer, 0, typed.view, 0, typed.view.byteLength);
-      const id = newWebGpuHandle();
-      webgpuBuffers.set(id, {
-        id,
-        kind: 'vertex',
-        device: resolvedDevice,
-        buffer,
-        usage: WEBGPU_BUFFER_USAGE.VERTEX | WEBGPU_BUFFER_USAGE.COPY_DST,
-        size: byteSize,
-        elementType: typed.elementType,
-        elementCount: typed.elementCount,
-      });
-      return Result.Ok(id);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  index_buffer: (
-    device: unknown,
-    data: unknown,
-    typeHint: unknown = 'u32'
-  ): { $tag: string; $payload?: unknown } => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
-      const typed = toTypedArray(data, typeHint);
-      const byteSize = alignTo4(Math.max(typed.view.byteLength, 4));
-      const buffer = resolvedDevice.createBuffer({
-        size: byteSize,
-        usage: WEBGPU_BUFFER_USAGE.INDEX | WEBGPU_BUFFER_USAGE.COPY_DST,
-      });
-      resolvedDevice.queue.writeBuffer(buffer, 0, typed.view, 0, typed.view.byteLength);
-      const id = newWebGpuHandle();
-      webgpuBuffers.set(id, {
-        id,
-        kind: 'index',
-        device: resolvedDevice,
-        buffer,
-        usage: WEBGPU_BUFFER_USAGE.INDEX | WEBGPU_BUFFER_USAGE.COPY_DST,
-        size: byteSize,
-        elementType: typed.elementType,
-        elementCount: typed.elementCount,
-      });
-      return Result.Ok(id);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  vertex_buffer_destroy: (handle: number): void => {
-    webgpu.buffer_destroy(handle);
-  },
-  index_buffer_destroy: (handle: number): void => {
-    webgpu.buffer_destroy(handle);
-  },
-  canvas: (selector: string): { $tag: string; $payload?: unknown } => {
-    try {
-      const documentRef = (globalThis as { document?: { querySelector?: (query: string) => unknown } }).document;
-      if (!documentRef || typeof documentRef.querySelector !== 'function') {
-        return Result.Err('DOM is not available in this environment');
-      }
-      const canvas = documentRef.querySelector(String(selector));
-      if (!canvas || typeof (canvas as { getContext?: unknown }).getContext !== 'function') {
-        return Result.Err(`Canvas not found for selector '${selector}'`);
-      }
-      const context = (canvas as { getContext: (name: string) => WebGpuCanvasContextLike | null }).getContext('webgpu');
-      if (!context) {
-        return Result.Err('Canvas does not support WebGPU context');
-      }
-      const format = getWebGpu()?.getPreferredCanvasFormat?.() ?? 'bgra8unorm';
-      const id = newWebGpuHandle();
-      webgpuCanvases.set(id, {
-        id,
-        canvas,
-        context,
-        format,
-        configuredDevice: null,
-        hasSubmittedFrame: false,
-      });
-      return Result.Ok(id);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  canvas_destroy: (canvasHandle: number): void => {
-    webgpuCanvases.delete(Math.trunc(canvasHandle));
-  },
-  present: (
-    device: unknown,
-    canvasHandle: number,
-    _pipelineHandle?: number | null
-  ): { $tag: string; $payload?: unknown } => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
-      const canvasEntry = webgpuCanvases.get(Math.trunc(canvasHandle));
-      if (!canvasEntry) return Result.Err(`Unknown WebGPU canvas handle ${canvasHandle}`);
-      if (!canvasEntry.hasSubmittedFrame) {
-        return Result.Err('No submitted render frame available for present');
-      }
-      if (typeof canvasEntry.context.configure === 'function' && canvasEntry.configuredDevice !== resolvedDevice) {
-        canvasEntry.context.configure({
-          device: resolvedDevice,
-          format: canvasEntry.format,
-          alphaMode: 'opaque',
-        });
-        canvasEntry.configuredDevice = resolvedDevice;
-      }
-      canvasEntry.hasSubmittedFrame = false;
-      return Result.Ok(undefined);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  render_pipeline: async (
-    device: unknown,
-    config: {
-      vertex_shader?: string;
-      fragment_shader?: string;
-      vertex_buffers?: number[];
-      index_buffer?: number | null;
-      uniforms?: number[];
-      vertex_layout?: Array<{ attribute: number; format: string; offset: number; stride: number }>;
-      format?: string;
-      topology?: string;
-    }
-  ): Promise<{ $tag: string; $payload?: unknown }> => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
-      const vertexShader = String(config?.vertex_shader ?? '');
-      const fragmentShader = String(config?.fragment_shader ?? '');
-      if (!vertexShader || !fragmentShader) return Result.Err('Render pipeline requires vertex and fragment shaders');
-      if (!hasWgslStageEntryPoint(vertexShader, 'vertex', 'main')) {
-        return Result.Err('Invalid WGSL vertex shader: expected @vertex fn main(...)');
-      }
-      if (!hasWgslStageEntryPoint(fragmentShader, 'fragment', 'main')) {
-        return Result.Err('Invalid WGSL fragment shader: expected @fragment fn main(...)');
-      }
-      const vertexModule = resolvedDevice.createShaderModule({ code: vertexShader });
-      const fragmentModule = resolvedDevice.createShaderModule({ code: fragmentShader });
-      const vertexLayouts = Array.isArray(config?.vertex_layout) ? config.vertex_layout : [];
-      const buffers = vertexLayouts.length
-        ? vertexLayouts.map((layout) => ({
-            arrayStride: Math.max(0, Math.trunc(layout.stride)),
-            attributes: [
-              {
-                shaderLocation: Math.max(0, Math.trunc(layout.attribute)),
-                offset: Math.max(0, Math.trunc(layout.offset)),
-                format: String(layout.format ?? 'float32x4'),
-              },
-            ],
-          }))
-        : [];
-      const descriptor = {
-        layout: 'auto' as const,
-        vertex: { module: vertexModule, entryPoint: 'main', buffers },
-        fragment: {
-          module: fragmentModule,
-          entryPoint: 'main',
-          targets: [{ format: String(config?.format ?? 'bgra8unorm') }],
-        },
-        primitive: {
-          topology: String(config?.topology ?? 'triangle-list'),
-        },
-      };
-      const pipeline = resolvedDevice.createRenderPipelineAsync
-        ? await resolvedDevice.createRenderPipelineAsync(descriptor)
-        : resolvedDevice.createRenderPipeline?.(descriptor);
-      if (!pipeline) return Result.Err('WebGPU device does not support render pipelines');
-      const id = newWebGpuHandle();
-      webgpuPipelines.set(id, {
-        id,
-        device: resolvedDevice,
-        pipeline,
-        config: {
-          vertex_buffers: Array.isArray(config?.vertex_buffers) ? config.vertex_buffers.map((v) => Math.trunc(v)) : [],
-          index_buffer: config?.index_buffer == null ? null : Math.trunc(config.index_buffer),
-          uniforms: Array.isArray(config?.uniforms) ? config.uniforms.map((v) => Math.trunc(v)) : [],
-          format: config?.format ? String(config.format) : undefined,
-          topology: config?.topology ? String(config.topology) : undefined,
-        },
-      });
-      return Result.Ok(id);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  render_pipeline_destroy: (pipelineHandle: number): void => {
-    webgpuPipelines.delete(Math.trunc(pipelineHandle));
-  },
-  render_frame: (
-    device: unknown,
-    pipelineHandle: number,
-    config: { canvas: number; clear_color?: [number, number, number, number]; draw_count?: number; indexed?: boolean }
-  ): { $tag: string; $payload?: unknown } => {
-    try {
-      const resolvedDevice = resolveWebGpuDevice(device);
-      if (!resolvedDevice) return Result.Err('Invalid WebGPU device');
-      const pipelineEntry = webgpuPipelines.get(Math.trunc(pipelineHandle));
-      if (!pipelineEntry) return Result.Err(`Unknown WebGPU pipeline handle ${pipelineHandle}`);
-      const canvasEntry = webgpuCanvases.get(Math.trunc(config?.canvas));
-      if (!canvasEntry) return Result.Err(`Unknown WebGPU canvas handle ${config?.canvas}`);
-      if (typeof canvasEntry.context.configure === 'function' && canvasEntry.configuredDevice !== resolvedDevice) {
-        canvasEntry.context.configure({
-          device: resolvedDevice,
-          format: canvasEntry.format,
-          alphaMode: 'opaque',
-        });
-        canvasEntry.configuredDevice = resolvedDevice;
-      }
-      const currentTexture = canvasEntry.context.getCurrentTexture?.();
-      if (!currentTexture || typeof currentTexture.createView !== 'function') {
-        return Result.Err('Canvas context does not provide current texture');
-      }
-      const encoder = resolvedDevice.createCommandEncoder();
-      const pass = encoder.beginRenderPass?.({
-        colorAttachments: [
-          {
-            view: currentTexture.createView(),
-            clearValue: {
-              r: Number(config?.clear_color?.[0] ?? 0),
-              g: Number(config?.clear_color?.[1] ?? 0),
-              b: Number(config?.clear_color?.[2] ?? 0),
-              a: Number(config?.clear_color?.[3] ?? 1),
-            },
-            loadOp: 'clear',
-            storeOp: 'store',
-          },
-        ],
-      });
-      if (!pass) return Result.Err('WebGPU command encoder does not support render passes');
-      pass.setPipeline?.(pipelineEntry.pipeline);
-      for (const [slot, bufferHandle] of (pipelineEntry.config.vertex_buffers ?? []).entries()) {
-        const bufferEntry = webgpuBuffers.get(Math.trunc(bufferHandle));
-        if (!bufferEntry) return Result.Err(`Unknown WebGPU vertex buffer handle ${bufferHandle}`);
-        pass.setVertexBuffer?.(slot, bufferEntry.buffer);
-      }
-      for (const uniformHandle of pipelineEntry.config.uniforms ?? []) {
-        const uniformEntry = webgpuBuffers.get(Math.trunc(uniformHandle));
-        if (!uniformEntry || uniformEntry.kind !== 'uniform') {
-          return Result.Err(`Unknown WebGPU uniform handle ${uniformHandle}`);
-        }
-      }
-      const indexHandle = pipelineEntry.config.index_buffer;
-      const shouldIndexed = !!config?.indexed || (indexHandle !== null && indexHandle !== undefined);
-      const drawCount = Math.max(0, Math.trunc(config?.draw_count ?? 0));
-      if (shouldIndexed && indexHandle !== null && indexHandle !== undefined) {
-        const indexEntry = webgpuBuffers.get(Math.trunc(indexHandle));
-        if (!indexEntry) return Result.Err(`Unknown WebGPU index buffer handle ${indexHandle}`);
-        pass.setIndexBuffer?.(indexEntry.buffer, 'uint32');
-        pass.drawIndexed?.(drawCount || indexEntry.elementCount || 0, 1, 0, 0, 0);
-      } else {
-        pass.draw?.(drawCount, 1, 0, 0);
-      }
-      pass.end();
-      resolvedDevice.queue.submit([encoder.finish()]);
-      canvasEntry.hasSubmittedFrame = true;
-      return webgpu.present(resolvedDevice, canvasEntry.id, pipelineHandle);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  compute: async (
-    wgsl: string,
-    entryPoint: string,
-    input: unknown,
-    outputLength?: number,
-    workgroupSize: number = 64,
-    typeHint: unknown = 'i32'
-  ): Promise<{ $tag: string; $payload?: unknown }> => {
-    try {
-      const deviceResult = await webgpu.request_device(null);
-      if (isEnumLike(deviceResult) && getEnumTag(deviceResult) === 'Err') return deviceResult;
-      const device = getEnumPayload(deviceResult as LuminaEnumLike) as WebGpuDeviceLike;
-
-      const typedInput = toTypedArray(input, typeHint);
-      const outLen = Math.max(0, Math.trunc(outputLength ?? typedInput.elementCount));
-      const inputType = normalizeElementType(typeHint ?? typedInput.elementType);
-      const inBytes = alignTo4(Math.max(typedInput.view.byteLength, 4));
-      const outBytes = alignTo4(outLen * elementSize(inputType));
-      const safeWorkgroupSize = Math.max(1, Math.trunc(workgroupSize));
-      const dispatchCount = Math.max(1, Math.ceil(outLen / safeWorkgroupSize));
-
-      const shaderSource = String(wgsl);
-      if (!hasWgslStageEntryPoint(shaderSource, 'compute', String(entryPoint))) {
-        return Result.Err(`Invalid WGSL compute shader: expected @compute fn ${String(entryPoint)}(...)`);
-      }
-      const shaderModule = device.createShaderModule({ code: shaderSource });
-      const inputBuffer = device.createBuffer({
-        size: inBytes,
-        usage: WEBGPU_BUFFER_USAGE.STORAGE | WEBGPU_BUFFER_USAGE.COPY_DST,
-      });
-      const outputBuffer = device.createBuffer({
-        size: outBytes,
-        usage: WEBGPU_BUFFER_USAGE.STORAGE | WEBGPU_BUFFER_USAGE.COPY_SRC,
-      });
-      const readBuffer = device.createBuffer({
-        size: outBytes,
-        usage: WEBGPU_BUFFER_USAGE.COPY_DST | WEBGPU_BUFFER_USAGE.MAP_READ,
-      });
-
-      device.queue.writeBuffer(inputBuffer, 0, typedInput.view, 0, typedInput.view.byteLength);
-      const pipeline = device.createComputePipelineAsync
-        ? await device.createComputePipelineAsync({
-            layout: 'auto',
-            compute: { module: shaderModule, entryPoint: String(entryPoint) },
-          })
-        : device.createComputePipeline!({
-            layout: 'auto',
-            compute: { module: shaderModule, entryPoint: String(entryPoint) },
-          });
-
-      const bindGroup = device.createBindGroup!({
-        layout: (pipeline as { getBindGroupLayout: (index: number) => unknown }).getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: inputBuffer } },
-          { binding: 1, resource: { buffer: outputBuffer } },
-        ],
-      });
-
-      const encoder = device.createCommandEncoder();
-      const pass = encoder.beginComputePass!();
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup);
-      pass.dispatchWorkgroups(dispatchCount, 1, 1);
-      pass.end();
-      encoder.copyBufferToBuffer(outputBuffer, 0, readBuffer, 0, outBytes);
-      device.queue.submit([encoder.finish()]);
-      if (typeof device.queue.onSubmittedWorkDone === 'function') {
-        await device.queue.onSubmittedWorkDone();
-      }
-      if (typeof readBuffer.mapAsync !== 'function' || typeof readBuffer.getMappedRange !== 'function') {
-        return Result.Err('WebGPU readback buffer does not support mapAsync');
-      }
-      await readBuffer.mapAsync(WEBGPU_MAP_MODE.READ);
-      const mapped = readBuffer.getMappedRange();
-      const result = readTypedArray(mapped, inputType, outLen);
-      readBuffer.unmap?.();
-      inputBuffer.destroy?.();
-      outputBuffer.destroy?.();
-      readBuffer.destroy?.();
-      return Result.Ok(result);
-    } catch (error) {
-      return Result.Err(opfsError(error));
-    }
-  },
-  compute_i32: async (
-    wgsl: string,
-    entryPoint: string,
-    input: number[],
-    outputLength?: number,
-    workgroupSize: number = 64
-  ): Promise<{ $tag: string; $payload?: unknown }> =>
-    webgpu.compute(wgsl, entryPoint, input, outputLength, workgroupSize, 'i32'),
-  __debug_counts: (): { buffers: number; pipelines: number; canvases: number } => ({
-    buffers: webgpuBuffers.size,
-    pipelines: webgpuPipelines.size,
-    canvases: webgpuCanvases.size,
-  }),
-};
+export const webgpu = createWebGpuRuntime({
+  resultOk: (value: unknown) => Result.Ok(value),
+  resultErr: (message: string) => Result.Err(message),
+  isEnumLike,
+  getEnumTag,
+  getEnumPayload,
+});
 
 const runMicrotask = (fn: () => void): void => {
   const queue = (globalThis as { queueMicrotask?: (cb: () => void) => void }).queueMicrotask;
@@ -5268,386 +610,299 @@ export const render = createRenderApi<
   scheduleDevtoolsNotify,
 });
 
-export const createSignal = <T>(initial: T): Signal<T> => render.signal(initial);
-export const get = <T>(signal: Signal<T>): T => render.get(signal);
-export const set = <T>(signal: Signal<T>, value: T): boolean => render.set(signal, value);
-export const createMemo = <T>(compute: () => T): Memo<T> => render.memo(compute);
-export const createEffect = (fn: (onCleanup: (cleanup: ReactiveCleanup) => void) => void | ReactiveCleanup): Effect =>
-  render.effect(fn);
-export const batch = <T>(fn: () => T): T => render.batch(fn);
-export const untrack = <T>(fn: () => T): T => render.untrack(fn);
-export const component = <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P, key?: unknown): VNode =>
-  render.component(componentFn, props, key);
-export const component_keyed = <P>(
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P,
-  key: unknown
-): VNode => render.component_keyed(componentFn, props, key);
-export const renderApp = <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P): VNode =>
-  render.render_app(componentFn, props);
-export const renderToStringApp = <P>(
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P
-): string => render.render_to_string_app(componentFn, props);
-export const createContext = <T>(defaultValue?: T): ContextToken<T> => render.create_context(defaultValue);
-export const create_required_context = <T>(): ContextToken<T> => render.create_required_context<T>();
-export const withContext = <T>(context: ContextToken<T>, value: T, renderChildren: () => ComponentRenderable): VNode =>
-  render.with_context(context, value, renderChildren);
-export const useContext = <T>(context: ContextToken<T>): T => render.use_context(context);
-export const state = <T>(initial: T): Signal<T> => render.state(initial);
-export const remember = <T>(compute: () => T): T => render.remember(compute);
-export const createResource = <T>(
-  key: unknown,
-  loader: (() => Promise<T>) | (() => T),
-  options?: unknown
-): ResourceHandle<T> => render.resource_create(key, loader, options);
-export const resourceStatus = (resource: unknown): string => render.resource_status(resource);
-export const resourceData = (resource: unknown): unknown => render.resource_data(resource);
-export const resourceError = (resource: unknown): unknown => render.resource_error(resource);
-export const resourceRead = <T>(resource: unknown): T => render.resource_read<T>(resource);
-export const resourceRefresh = <T>(resource: unknown): Promise<T> => render.resource_refresh<T>(resource);
-export const resourceInvalidate = (resource: unknown): void => render.resource_invalidate(resource);
-export const resourceMutate = <T>(resource: unknown, value: T): T => render.resource_mutate(resource, value);
-export const suspense = (fallback: unknown, renderChildren: () => ComponentRenderable): VNode =>
-  render.suspense(fallback, renderChildren);
-export const errorBoundary = (fallback: unknown, renderChildren: () => ComponentRenderable): VNode =>
-  render.error_boundary(fallback, renderChildren);
-export const show = (
-  condition: unknown,
-  renderChildren: () => ComponentRenderable,
-  fallback: unknown = []
-): VNode => render.show(condition, renderChildren, fallback);
-export const mountApp = <P>(
-  renderer: unknown,
-  container: unknown,
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P
-): ReactiveRenderRoot | { $tag: string; $payload?: unknown } =>
-  render.mount_app(renderer, container, componentFn, props);
-export const hydrateApp = <P>(
-  renderer: unknown,
-  container: unknown,
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P
-): ReactiveRenderRoot | { $tag: string; $payload?: unknown } =>
-  render.hydrate_app(renderer, container, componentFn, props);
-export const testingCreateDomHarness = (): TestingDomHarness => render.testing_create_dom_harness();
-export const testingMountApp = <P>(
-  harness: TestingDomHarness,
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P
-): ReactiveRenderRoot | { $tag: string; $payload?: unknown } =>
-  render.testing_mount_app(harness, componentFn, props);
-export const testingHydrateApp = <P>(
-  harness: TestingDomHarness,
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P
-): ReactiveRenderRoot | { $tag: string; $payload?: unknown } =>
-  render.testing_hydrate_app(harness, componentFn, props);
-export const testingContainer = (harness: unknown): unknown => render.testing_container(harness);
-export const testingBody = (harness: unknown): unknown => render.testing_body(harness);
-export const testingGetById = (harness: unknown, id: string): unknown => render.testing_get_by_id(harness, id);
-export const testingTextContent = (node: unknown): string => render.testing_text_content(node);
-export const testingClick = (node: unknown): void => render.testing_click(node);
-export const testingInput = (node: unknown, value: string): void => render.testing_input(node, value);
-export const testingChangeChecked = (node: unknown, checked: boolean): void =>
-  render.testing_change_checked(node, checked);
-export const testingKeydown = (node: unknown, key: string, shiftKey?: boolean): void =>
-  render.testing_keydown(node, key, shiftKey);
-export const testingSubmit = (node: unknown): void => render.testing_submit(node);
-export const mountCustomElement = <P>(
-  host: unknown,
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  options?: CustomElementMountOptions<P>
-): CustomElementController<P> => render.mount_custom_element(host, componentFn, options);
-export const defineCustomElement = <P>(
-  tagName: string,
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  options?: CustomElementMountOptions<P>
-): new () => unknown => render.define_custom_element(tagName, componentFn, options);
-export const children = (input: unknown): VNode[] => render.children(input);
-export const slot = <P>(
-  slotValue: ((props: P) => ComponentRenderable) | VNodeInput | null | undefined,
-  props: P,
-  fallback?: VNodeInput
-): VNode => render.slot(slotValue, props, fallback);
-export const slot_or = <P>(
-  slotValue: ((props: P) => ComponentRenderable) | VNodeInput | null | undefined,
-  props: P,
-  fallback: VNodeInput
-): VNode => render.slot_or(slotValue, props, fallback);
-export const compose_handlers = <Args extends unknown[]>(
-  left: ((...args: Args) => unknown) | null | undefined,
-  right: ((...args: Args) => unknown) | null | undefined
-): ((...args: Args) => unknown) | undefined => render.compose_handlers(left, right);
-export const portal = (target: string | null | undefined, children: VNodeInput = []): VNode =>
-  render.portal(target, children);
-export const portalBody = (children: VNodeInput = []): VNode => render.portal_body(children);
-export const tabsRoot = (value: Signal<string>, renderChildren: () => ComponentRenderable): VNode =>
-  render.tabs_root(value, renderChildren);
-export const tabsList = (
-  props: Record<string, unknown> | null | undefined,
-  renderChildren: () => ComponentRenderable
-): VNode => render.tabs_list(props, renderChildren);
-export const tabsTrigger = (
-  value: string,
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.tabs_trigger(value, props, children);
-export const tabsPanel = (
-  value: string,
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.tabs_panel(value, props, children);
-export const dialogRoot = (open: Signal<boolean>, renderChildren: () => ComponentRenderable): VNode =>
-  render.dialog_root(open, renderChildren);
-export const dialogPortal = (children: VNodeInput = []): VNode => render.dialog_portal(children);
-export const dialogTrigger = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.dialog_trigger(props, children);
-export const dialogOverlay = (props: Record<string, unknown> | null | undefined): VNode =>
-  render.dialog_overlay(props);
-export const dialogContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.dialog_content(props, children);
-export const dialogTitle = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.dialog_title(props, children);
-export const dialogDescription = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.dialog_description(props, children);
-export const dialogClose = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.dialog_close(props, children);
-export const popoverRoot = (open: Signal<boolean>, renderChildren: () => ComponentRenderable): VNode =>
-  render.popover_root(open, renderChildren);
-export const popoverPortal = (children: VNodeInput = []): VNode => render.popover_portal(children);
-export const popoverTrigger = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.popover_trigger(props, children);
-export const popoverContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.popover_content(props, children);
-export const tooltipRoot = (open: Signal<boolean>, renderChildren: () => ComponentRenderable): VNode =>
-  render.tooltip_root(open, renderChildren);
-export const tooltipPortal = (children: VNodeInput = []): VNode => render.tooltip_portal(children);
-export const tooltipTrigger = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.tooltip_trigger(props, children);
-export const tooltipContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.tooltip_content(props, children);
-export const toastRoot = (open: Signal<boolean>, renderChildren: () => ComponentRenderable): VNode =>
-  render.toast_root(open, renderChildren);
-export const toastPortal = (children: VNodeInput = []): VNode => render.toast_portal(children);
-export const toastContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.toast_content(props, children);
-export const toastTitle = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.toast_title(props, children);
-export const toastDescription = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.toast_description(props, children);
-export const toastClose = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.toast_close(props, children);
-export const menuRoot = (open: Signal<boolean>, renderChildren: () => ComponentRenderable): VNode =>
-  render.menu_root(open, renderChildren);
-export const menuPortal = (children: VNodeInput = []): VNode => render.menu_portal(children);
-export const menuTrigger = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.menu_trigger(props, children);
-export const menuContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.menu_content(props, children);
-export const menuItem = (
-  value: string,
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.menu_item(value, props, children);
-export const selectRoot = (
-  open: Signal<boolean>,
-  value: Signal<string>,
-  renderChildren: () => ComponentRenderable
-): VNode => render.select_root(open, value, renderChildren);
-export const selectPortal = (children: VNodeInput = []): VNode => render.select_portal(children);
-export const selectTrigger = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.select_trigger(props, children);
-export const selectContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.select_content(props, children);
-export const selectItem = (
-  value: string,
-  props: Record<string, unknown> | null | undefined,
-  renderChildren: () => ComponentRenderable
-): VNode => render.select_item(value, props, renderChildren);
-export const selectIndicator = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.select_indicator(props, children);
-export const comboboxRoot = (
-  open: Signal<boolean>,
-  value: Signal<string>,
-  query: Signal<string>,
-  renderChildren: () => ComponentRenderable
-): VNode => render.combobox_root(open, value, query, renderChildren);
-export const comboboxPortal = (children: VNodeInput = []): VNode => render.combobox_portal(children);
-export const comboboxInput = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.combobox_input(props, children);
-export const comboboxContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.combobox_content(props, children);
-export const comboboxItem = (
-  value: string,
-  props: Record<string, unknown> | null | undefined,
-  renderChildren: () => ComponentRenderable
-): VNode => render.combobox_item(value, props, renderChildren);
-export const comboboxIndicator = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.combobox_indicator(props, children);
-export const multiselectRoot = (
-  open: Signal<boolean>,
-  values: Signal<string[]>,
-  renderChildren: () => ComponentRenderable
-): VNode => render.multiselect_root(open, values, renderChildren);
-export const multiselectPortal = (children: VNodeInput = []): VNode => render.multiselect_portal(children);
-export const multiselectTrigger = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.multiselect_trigger(props, children);
-export const multiselectContent = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.multiselect_content(props, children);
-export const multiselectItem = (
-  value: string,
-  props: Record<string, unknown> | null | undefined,
-  renderChildren: () => ComponentRenderable
-): VNode => render.multiselect_item(value, props, renderChildren);
-export const multiselectIndicator = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.multiselect_indicator(props, children);
-export const checkboxRoot = (
-  checked: Signal<boolean>,
-  props: Record<string, unknown> | null | undefined,
-  renderChildren: () => ComponentRenderable
-): VNode => render.checkbox_root(checked, props, renderChildren);
-export const checkboxIndicator = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.checkbox_indicator(props, children);
-export const radioGroup = (
-  value: Signal<string>,
-  props: Record<string, unknown> | null | undefined,
-  renderChildren: () => ComponentRenderable
-): VNode => render.radio_group(value, props, renderChildren);
-export const radioItem = (
-  value: string,
-  props: Record<string, unknown> | null | undefined,
-  renderChildren: () => ComponentRenderable
-): VNode => render.radio_item(value, props, renderChildren);
-export const radioIndicator = (
-  props: Record<string, unknown> | null | undefined,
-  children: VNodeInput = []
-): VNode => render.radio_indicator(props, children);
-export const vnode = (tag: string, attrs?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
-  render.element(tag, attrs, children);
-export const text = (value: unknown): VNode => render.text(value);
-export const liveText = (signal: Signal<unknown> | Memo<unknown>): VNode => render.liveText(signal);
-export const indexList = (
-  itemsSignal: Signal<unknown>,
-  renderItem: (item: Signal<unknown>, index: number) => VNodeInput
-): VNode => render.indexList(itemsSignal, renderItem);
-export const forList = (
-  itemsSignal: Signal<unknown>,
-  keyOf: (item: unknown, index: number) => string | number,
-  renderItem: (item: Signal<unknown>, index: Signal<number>) => VNodeInput
-): VNode => render.forList(itemsSignal, keyOf, renderItem);
-export const mount_reactive = (
-  renderer: unknown,
-  container: unknown,
-  view: () => VNode
-): ReturnType<typeof render.mount_reactive> =>
-  render.mount_reactive(renderer, container, view);
-export const props_empty = (): Record<string, unknown> => render.props_empty();
-export const props_class = (className: string): Record<string, unknown> => render.props_class(className);
-export const props_on_click = (handler: (() => unknown) | null | undefined): Record<string, unknown> =>
-  render.props_on_click(handler);
-export const props_on_click_delta = (signal: Signal<number>, delta: number): Record<string, unknown> =>
-  render.props_on_click_delta(signal, delta);
-export const props_on_click_inc = (signal: Signal<number>): Record<string, unknown> => render.props_on_click_inc(signal);
-export const props_on_click_dec = (signal: Signal<number>): Record<string, unknown> => render.props_on_click_dec(signal);
-export const props_id = (id: string): Record<string, unknown> => render.props_id(id);
-export const props_style = (style: string): Record<string, unknown> => render.props_style(style);
-export const props_value = (value: string): Record<string, unknown> => render.props_value(value);
-export const props_checked = (checked: boolean): Record<string, unknown> => render.props_checked(checked);
-export const props_type = (type: string): Record<string, unknown> => render.props_type(type);
-export const props_name = (name: string): Record<string, unknown> => render.props_name(name);
-export const props_placeholder = (placeholder: string): Record<string, unknown> => render.props_placeholder(placeholder);
-export const props_href = (href: string): Record<string, unknown> => render.props_href(href);
-export const props_disabled = (disabled: boolean): Record<string, unknown> => render.props_disabled(disabled);
-export const props_on_input = (handler: (value: string) => unknown): Record<string, unknown> => render.props_on_input(handler);
-export const props_on_change = (handler: (value: string) => unknown): Record<string, unknown> => render.props_on_change(handler);
-export const props_on_checked_change = (handler: (checked: boolean) => unknown): Record<string, unknown> =>
-  render.props_on_checked_change(handler);
-export const props_on_submit = (handler: (() => unknown) | null | undefined): Record<string, unknown> =>
-  render.props_on_submit(handler);
-export const props_key = (key: unknown): Record<string, unknown> => render.props_key(key);
-export const props_attr = (name: string, value: unknown): Record<string, unknown> => render.props_attr(name, value);
-export const props_when = (condition: unknown, props: unknown): Record<string, unknown> =>
-  render.props_when(condition, props);
-export const props_merge = (left: unknown, right: unknown): Record<string, unknown> => render.props_merge(left, right);
-export const dom_get_element_by_id = (id: string): unknown => render.dom_get_element_by_id(id);
-export const transitionPresence = (
-  open: Signal<boolean>,
-  props: Record<string, unknown> | null | undefined,
-  durationMs: number,
-  renderChildren: () => ComponentRenderable
-): VNode => render.transition_presence(open, props, durationMs, renderChildren);
-export const testingGetByText = (scope: unknown, value: string): unknown => render.testing_get_by_text(scope, value);
-export const testingGetByRole = (scope: unknown, role: string): unknown => render.testingGetByRole(scope, role);
-export const testingQueryAllByRole = (scope: unknown, role: string): unknown =>
-  render.testing_query_all_by_role(scope, role);
-export const devtoolsSnapshot = (): DevtoolsSnapshot => render.devtools_snapshot();
-export const installDevtools = (key?: string): Record<string, unknown> => render.install_devtools(key);
-export const ssgPage = (body: unknown, options?: unknown): string => render.ssg_page(body, options);
-export const ssgRenderApp = <P>(
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P,
-  options?: unknown
-): string => render.ssg_render_app(componentFn, props, options);
-export const ssgWritePage = (filePath: string, body: unknown, options?: unknown): string =>
-  render.ssg_write_page(filePath, body, options);
-export const ssgWriteApp = <P>(
-  filePath: string,
-  componentFn: ComponentFunction<P, ComponentRenderable>,
-  props: P,
-  options?: unknown
-): string => render.ssg_write_app(filePath, componentFn, props, options);
+const renderSurface = {
+  createSignal: render.signal,
+  get: render.get,
+  set: render.set,
+  createMemo: render.memo,
+  createEffect: render.effect,
+  batch: render.batch,
+  untrack: render.untrack,
+  component: render.component,
+  component_keyed: render.component_keyed,
+  renderApp: render.render_app,
+  renderToStringApp: render.render_to_string_app,
+  createContext: render.create_context,
+  create_required_context: render.create_required_context,
+  withContext: render.with_context,
+  useContext: render.use_context,
+  state: render.state,
+  remember: render.remember,
+  createResource: render.resource_create,
+  resourceStatus: render.resource_status,
+  resourceData: render.resource_data,
+  resourceError: render.resource_error,
+  resourceRead: render.resource_read,
+  resourceRefresh: render.resource_refresh,
+  resourceInvalidate: render.resource_invalidate,
+  resourceMutate: render.resource_mutate,
+  suspense: render.suspense,
+  errorBoundary: render.error_boundary,
+  show: render.show,
+  mountApp: render.mount_app,
+  hydrateApp: render.hydrate_app,
+  testingCreateDomHarness: render.testing_create_dom_harness,
+  testingMountApp: render.testing_mount_app,
+  testingHydrateApp: render.testing_hydrate_app,
+  testingContainer: render.testing_container,
+  testingBody: render.testing_body,
+  testingGetById: render.testing_get_by_id,
+  testingTextContent: render.testing_text_content,
+  testingClick: render.testing_click,
+  testingInput: render.testing_input,
+  testingChangeChecked: render.testing_change_checked,
+  testingKeydown: render.testing_keydown,
+  testingSubmit: render.testing_submit,
+  mountCustomElement: render.mount_custom_element,
+  defineCustomElement: render.define_custom_element,
+  children: render.children,
+  slot: render.slot,
+  slot_or: render.slot_or,
+  compose_handlers: render.compose_handlers,
+  portal: render.portal,
+  portalBody: render.portal_body,
+  tabsRoot: render.tabs_root,
+  tabsList: render.tabs_list,
+  tabsTrigger: render.tabs_trigger,
+  tabsPanel: render.tabs_panel,
+  dialogRoot: render.dialog_root,
+  dialogPortal: render.dialog_portal,
+  dialogTrigger: render.dialog_trigger,
+  dialogOverlay: render.dialog_overlay,
+  dialogContent: render.dialog_content,
+  dialogTitle: render.dialog_title,
+  dialogDescription: render.dialog_description,
+  dialogClose: render.dialog_close,
+  popoverRoot: render.popover_root,
+  popoverPortal: render.popover_portal,
+  popoverTrigger: render.popover_trigger,
+  popoverContent: render.popover_content,
+  tooltipRoot: render.tooltip_root,
+  tooltipPortal: render.tooltip_portal,
+  tooltipTrigger: render.tooltip_trigger,
+  tooltipContent: render.tooltip_content,
+  toastRoot: render.toast_root,
+  toastPortal: render.toast_portal,
+  toastContent: render.toast_content,
+  toastTitle: render.toast_title,
+  toastDescription: render.toast_description,
+  toastClose: render.toast_close,
+  menuRoot: render.menu_root,
+  menuPortal: render.menu_portal,
+  menuTrigger: render.menu_trigger,
+  menuContent: render.menu_content,
+  menuItem: render.menu_item,
+  selectRoot: render.select_root,
+  selectPortal: render.select_portal,
+  selectTrigger: render.select_trigger,
+  selectContent: render.select_content,
+  selectItem: render.select_item,
+  selectIndicator: render.select_indicator,
+  comboboxRoot: render.combobox_root,
+  comboboxPortal: render.combobox_portal,
+  comboboxInput: render.combobox_input,
+  comboboxContent: render.combobox_content,
+  comboboxItem: render.combobox_item,
+  comboboxIndicator: render.combobox_indicator,
+  multiselectRoot: render.multiselect_root,
+  multiselectPortal: render.multiselect_portal,
+  multiselectTrigger: render.multiselect_trigger,
+  multiselectContent: render.multiselect_content,
+  multiselectItem: render.multiselect_item,
+  multiselectIndicator: render.multiselect_indicator,
+  checkboxRoot: render.checkbox_root,
+  checkboxIndicator: render.checkbox_indicator,
+  radioGroup: render.radio_group,
+  radioItem: render.radio_item,
+  radioIndicator: render.radio_indicator,
+  vnode: render.element,
+  text: render.text,
+  liveText: render.liveText,
+  indexList: render.indexList,
+  forList: render.forList,
+  mount_reactive: render.mount_reactive,
+  props_empty: render.props_empty,
+  props_class: render.props_class,
+  props_on_click: render.props_on_click,
+  props_on_click_delta: render.props_on_click_delta,
+  props_on_click_inc: render.props_on_click_inc,
+  props_on_click_dec: render.props_on_click_dec,
+  props_id: render.props_id,
+  props_style: render.props_style,
+  props_value: render.props_value,
+  props_checked: render.props_checked,
+  props_type: render.props_type,
+  props_name: render.props_name,
+  props_placeholder: render.props_placeholder,
+  props_href: render.props_href,
+  props_disabled: render.props_disabled,
+  props_on_input: render.props_on_input,
+  props_on_change: render.props_on_change,
+  props_on_checked_change: render.props_on_checked_change,
+  props_on_submit: render.props_on_submit,
+  props_key: render.props_key,
+  props_attr: render.props_attr,
+  props_when: render.props_when,
+  props_merge: render.props_merge,
+  dom_get_element_by_id: render.dom_get_element_by_id,
+  transitionPresence: render.transition_presence,
+  testingGetByText: render.testing_get_by_text,
+  testingGetByRole: render.testingGetByRole,
+  testingQueryAllByRole: render.testing_query_all_by_role,
+  devtoolsSnapshot: render.devtools_snapshot,
+  installDevtools: render.install_devtools,
+  ssgPage: render.ssg_page,
+  ssgRenderApp: render.ssg_render_app,
+  ssgWritePage: render.ssg_write_page,
+  ssgWriteApp: render.ssg_write_app,
+};
+
+export const {
+  createSignal,
+  get,
+  set,
+  createMemo,
+  createEffect,
+  batch,
+  untrack,
+  component,
+  component_keyed,
+  renderApp,
+  renderToStringApp,
+  createContext,
+  create_required_context,
+  withContext,
+  useContext,
+  state,
+  remember,
+  createResource,
+  resourceStatus,
+  resourceData,
+  resourceError,
+  resourceRead,
+  resourceRefresh,
+  resourceInvalidate,
+  resourceMutate,
+  suspense,
+  errorBoundary,
+  show,
+  mountApp,
+  hydrateApp,
+  testingCreateDomHarness,
+  testingMountApp,
+  testingHydrateApp,
+  testingContainer,
+  testingBody,
+  testingGetById,
+  testingTextContent,
+  testingClick,
+  testingInput,
+  testingChangeChecked,
+  testingKeydown,
+  testingSubmit,
+  mountCustomElement,
+  defineCustomElement,
+  children,
+  slot,
+  slot_or,
+  compose_handlers,
+  portal,
+  portalBody,
+  tabsRoot,
+  tabsList,
+  tabsTrigger,
+  tabsPanel,
+  dialogRoot,
+  dialogPortal,
+  dialogTrigger,
+  dialogOverlay,
+  dialogContent,
+  dialogTitle,
+  dialogDescription,
+  dialogClose,
+  popoverRoot,
+  popoverPortal,
+  popoverTrigger,
+  popoverContent,
+  tooltipRoot,
+  tooltipPortal,
+  tooltipTrigger,
+  tooltipContent,
+  toastRoot,
+  toastPortal,
+  toastContent,
+  toastTitle,
+  toastDescription,
+  toastClose,
+  menuRoot,
+  menuPortal,
+  menuTrigger,
+  menuContent,
+  menuItem,
+  selectRoot,
+  selectPortal,
+  selectTrigger,
+  selectContent,
+  selectItem,
+  selectIndicator,
+  comboboxRoot,
+  comboboxPortal,
+  comboboxInput,
+  comboboxContent,
+  comboboxItem,
+  comboboxIndicator,
+  multiselectRoot,
+  multiselectPortal,
+  multiselectTrigger,
+  multiselectContent,
+  multiselectItem,
+  multiselectIndicator,
+  checkboxRoot,
+  checkboxIndicator,
+  radioGroup,
+  radioItem,
+  radioIndicator,
+  vnode,
+  text,
+  liveText,
+  indexList,
+  forList,
+  mount_reactive,
+  props_empty,
+  props_class,
+  props_on_click,
+  props_on_click_delta,
+  props_on_click_inc,
+  props_on_click_dec,
+  props_id,
+  props_style,
+  props_value,
+  props_checked,
+  props_type,
+  props_name,
+  props_placeholder,
+  props_href,
+  props_disabled,
+  props_on_input,
+  props_on_change,
+  props_on_checked_change,
+  props_on_submit,
+  props_key,
+  props_attr,
+  props_when,
+  props_merge,
+  dom_get_element_by_id,
+  transitionPresence,
+  testingGetByText,
+  testingGetByRole,
+  testingQueryAllByRole,
+  devtoolsSnapshot,
+  installDevtools,
+  ssgPage,
+  ssgRenderApp,
+  ssgWritePage,
+  ssgWriteApp,
+} = renderSurface;
 
 export const reactive = {
   createSignal,
@@ -5661,202 +916,19 @@ export const reactive = {
   untrack: render.untrack,
 };
 
-const mapHashMapValues = <K, V, U>(map: HashMap<K, V>, mapper: (value: V) => U): HashMap<K, U> => {
-  const out = HashMap.new<K, U>();
-  for (const key of map.keys()) {
-    const current = map.get(key);
-    if (current && typeof current === 'object' && (current as { $tag?: string }).$tag === 'Some') {
-      out.insert(key, mapper((current as unknown as { $payload: V }).$payload));
-    }
-  }
-  return out;
-};
+const algebraRuntime = createAlgebraRuntime({
+  Option,
+  Result,
+  isEnumLike,
+  getEnumTag,
+  getEnumPayload,
+});
 
-const pureHashMap = <K, V>(key: K, value: V): HashMap<K, V> => {
-  const out = HashMap.new<K, V>();
-  out.insert(key, value);
-  return out;
-};
-
-const apHashMapValues = <K, A, B>(
-  fns: HashMap<K, (input: A) => B>,
-  values: HashMap<K, A>
-): HashMap<K, B> => {
-  const out = HashMap.new<K, B>();
-  for (const key of fns.keys()) {
-    const fnEntry = fns.get(key);
-    const valueEntry = values.get(key);
-    if (
-      !fnEntry ||
-      typeof fnEntry !== 'object' ||
-      (fnEntry as { $tag?: string }).$tag !== 'Some' ||
-      !valueEntry ||
-      typeof valueEntry !== 'object' ||
-      (valueEntry as { $tag?: string }).$tag !== 'Some'
-    ) {
-      continue;
-    }
-    const fn = (fnEntry as unknown as { $payload: unknown }).$payload;
-    if (typeof fn !== 'function') continue;
-    out.insert(key, (fn as (input: A) => B)((valueEntry as unknown as { $payload: A }).$payload));
-  }
-  return out;
-};
-
-const flatMapHashMapValues = <K, A, B>(
-  values: HashMap<K, A>,
-  mapper: (input: A) => HashMap<K, B>
-): HashMap<K, B> => {
-  const out = HashMap.new<K, B>();
-  for (const key of values.keys()) {
-    const current = values.get(key);
-    if (!current || typeof current !== 'object' || (current as { $tag?: string }).$tag !== 'Some') continue;
-    const mapped = mapper((current as unknown as { $payload: A }).$payload);
-    if (!(mapped instanceof HashMap)) continue;
-    for (const mappedKey of mapped.keys()) {
-      const mappedValue = mapped.get(mappedKey);
-      if (
-        mappedValue &&
-        typeof mappedValue === 'object' &&
-        (mappedValue as { $tag?: string }).$tag === 'Some'
-      ) {
-        out.insert(mappedKey, (mappedValue as unknown as { $payload: B }).$payload);
-      }
-    }
-  }
-  return out;
-};
-
-export const functor = {
-  map_option: <A, B>(value: unknown, mapper: (input: A) => B): unknown => Option.map(mapper as (x: unknown) => unknown, value),
-  map_result: <A, B>(value: unknown, mapper: (input: A) => B): unknown =>
-    Result.map(mapper as (x: unknown) => unknown, value),
-  map_vec: <A, B>(values: Vec<A>, mapper: (input: A) => B): Vec<B> => vec.map(values, mapper),
-  map_hashmap_values: <K, V, U>(values: HashMap<K, V>, mapper: (input: V) => U): HashMap<K, U> =>
-    mapHashMapValues(values, mapper),
-};
-
-export const applicative = {
-  pure_option: <A>(value: A): unknown => Option.Some(value),
-  pure_result: <A>(value: A): unknown => Result.Ok(value),
-  pure_vec: <A>(value: A): Vec<A> => Vec.from([value]),
-  pure_hashmap: <K, V>(key: K, value: V): HashMap<K, V> => pureHashMap(key, value),
-  ap_option: <A, B>(fns: unknown, value: unknown): unknown => {
-    const fnTag = fns && typeof fns === 'object' && isEnumLike(fns) ? getEnumTag(fns) : '';
-    const valueTag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
-    if (fnTag !== 'Some' || valueTag !== 'Some') return Option.None;
-    const fn = getEnumPayload(fns as LuminaEnumLike);
-    if (typeof fn !== 'function') return Option.None;
-    return Option.Some((fn as (arg: A) => B)(getEnumPayload(value as LuminaEnumLike) as A));
-  },
-  ap_result: <A, B>(fns: unknown, value: unknown): unknown => {
-    const fnTag = fns && typeof fns === 'object' && isEnumLike(fns) ? getEnumTag(fns) : '';
-    if (fnTag !== 'Ok') return fns;
-    const valueTag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
-    if (valueTag !== 'Ok') return value;
-    const fn = getEnumPayload(fns as LuminaEnumLike);
-    if (typeof fn !== 'function') return Result.Err('Result ap expected Ok(function)');
-    return Result.Ok((fn as (arg: A) => B)(getEnumPayload(value as LuminaEnumLike) as A));
-  },
-  ap_vec: <A, B>(fns: Vec<(input: A) => B>, values: Vec<A>): Vec<B> => {
-    const out = Vec.new<B>();
-    for (const fn of fns) {
-      for (const value of values) {
-        out.push(fn(value));
-      }
-    }
-    return out;
-  },
-  ap_hashmap_values: <K, A, B>(fns: HashMap<K, (input: A) => B>, values: HashMap<K, A>): HashMap<K, B> =>
-    apHashMapValues(fns, values),
-};
-
-export const monad = {
-  flat_map_option: <A>(value: unknown, mapper: (input: A) => unknown): unknown =>
-    Option.and_then(mapper as (x: unknown) => unknown, value),
-  flat_map_result: <A>(value: unknown, mapper: (input: A) => unknown): unknown =>
-    Result.and_then(mapper as (x: unknown) => unknown, value),
-  flat_map_vec: <A, B>(values: Vec<A>, mapper: (input: A) => Vec<B>): Vec<B> => {
-    const out = Vec.new<B>();
-    for (const value of values) {
-      const mapped = mapper(value);
-      if (!(mapped instanceof Vec)) continue;
-      for (const inner of mapped) out.push(inner);
-    }
-    return out;
-  },
-  flat_map_hashmap_values: <K, A, B>(values: HashMap<K, A>, mapper: (input: A) => HashMap<K, B>): HashMap<K, B> =>
-    flatMapHashMapValues(values, mapper),
-  join_option: (value: unknown): unknown => Option.and_then((v) => v, value),
-  join_result: (value: unknown): unknown => Result.and_then((v) => v, value),
-  join_vec: <A>(values: Vec<Vec<A>>): Vec<A> => {
-    const out = Vec.new<A>();
-    for (const inner of values) {
-      if (!(inner instanceof Vec)) continue;
-      for (const value of inner) out.push(value);
-    }
-    return out;
-  },
-  join_hashmap_values: <K, A>(values: HashMap<K, HashMap<K, A>>): HashMap<K, A> =>
-    flatMapHashMapValues(values, (inner) => inner),
-};
-
-export const foldable = {
-  fold_option: <A, B>(value: unknown, init: B, folder: (acc: B, input: A) => B): B => {
-    const tag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
-    if (tag !== 'Some') return init;
-    return folder(init, getEnumPayload(value as LuminaEnumLike) as A);
-  },
-  fold_result: <A, B>(value: unknown, init: B, folder: (acc: B, input: A) => B): B => {
-    const tag = value && typeof value === 'object' && isEnumLike(value) ? getEnumTag(value) : '';
-    if (tag !== 'Ok') return init;
-    return folder(init, getEnumPayload(value as LuminaEnumLike) as A);
-  },
-  fold_vec: <A, B>(values: Vec<A>, init: B, folder: (acc: B, input: A) => B): B => vec.fold(values, init, folder),
-  fold_hashmap_values: <K, V, B>(
-    values: HashMap<K, V>,
-    init: B,
-    folder: (acc: B, input: V) => B
-  ): B => {
-    let acc = init;
-    for (const value of values.values()) {
-      acc = folder(acc, value);
-    }
-    return acc;
-  },
-};
-
-export const traversable = {
-  traverse_vec_option: <A, B>(values: Vec<A>, mapper: (input: A) => unknown): unknown => {
-    const out = Vec.new<B>();
-    for (const value of values) {
-      const mapped = mapper(value);
-      const tag = mapped && typeof mapped === 'object' && isEnumLike(mapped) ? getEnumTag(mapped) : '';
-      if (tag !== 'Some') return Option.None;
-      out.push(getEnumPayload(mapped as LuminaEnumLike) as B);
-    }
-    return Option.Some(out);
-  },
-  traverse_vec_result: <A, B>(values: Vec<A>, mapper: (input: A) => unknown): unknown => {
-    const out = Vec.new<B>();
-    for (const value of values) {
-      const mapped = mapper(value);
-      const tag = mapped && typeof mapped === 'object' && isEnumLike(mapped) ? getEnumTag(mapped) : '';
-      if (tag !== 'Ok') return mapped;
-      out.push(getEnumPayload(mapped as LuminaEnumLike) as B);
-    }
-    return Result.Ok(out);
-  },
-  sequence_vec_option: (values: Vec<unknown>): unknown =>
-    traversable.traverse_vec_option(values, (item: unknown) => item as unknown),
-  sequence_vec_result: (values: Vec<unknown>): unknown =>
-    traversable.traverse_vec_result(values, (item: unknown) => item as unknown),
-};
-
-export function __set(obj: Record<string, unknown>, prop: string, value: unknown) {
-  obj[prop] = value;
-  return value;
-}
+export const functor = algebraRuntime.functor;
+export const applicative = algebraRuntime.applicative;
+export const monad = algebraRuntime.monad;
+export const foldable = algebraRuntime.foldable;
+export const traversable = algebraRuntime.traversable;
 
 
 
