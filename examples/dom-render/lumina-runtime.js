@@ -5823,6 +5823,128 @@ var hasVNodeKey = /* @__PURE__ */ __name((node) => typeof node.key === "string" 
 var hasKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasKeyedChildren");
 var duplicateKeyError = /* @__PURE__ */ __name((key) => new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`), "duplicateKeyError");
 var areAllChildrenKeyed = /* @__PURE__ */ __name((children2) => children2.every((child) => hasVNodeKey(child)), "areAllChildrenKeyed");
+var tryReadTextLeaf = /* @__PURE__ */ __name((node) => {
+  if (node.kind === "text") {
+    return {
+      kind: "text",
+      text: node.text ?? ""
+    };
+  }
+  if (node.kind === "live_text") {
+    return {
+      kind: "live_text",
+      signal: node.signal
+    };
+  }
+  if (node.kind !== "element" && node.kind !== "fragment") {
+    return null;
+  }
+  const children2 = asDomChildren(node);
+  if (children2.length !== 1) {
+    return null;
+  }
+  const child = children2[0];
+  if (child.kind === "text") {
+    return {
+      kind: "text",
+      text: child.text ?? ""
+    };
+  }
+  if (child.kind === "live_text") {
+    return {
+      kind: "live_text",
+      signal: child.signal
+    };
+  }
+  return null;
+}, "tryReadTextLeaf");
+var trySkipStableKeyedChildFast = /* @__PURE__ */ __name((prevNode, nextNode) => {
+  if (prevNode === nextNode) return true;
+  if (prevNode.kind !== nextNode.kind) return false;
+  if (prevNode.kind === "text" && nextNode.kind === "text") {
+    return prevNode.text === nextNode.text;
+  }
+  if (prevNode.kind === "live_text" && nextNode.kind === "live_text") {
+    return prevNode.signal === nextNode.signal;
+  }
+  if (prevNode.kind === "portal" || nextNode.kind === "portal") {
+    return null;
+  }
+  if (prevNode.kind === "index_list" && nextNode.kind === "index_list") {
+    return prevNode.itemsSignal === nextNode.itemsSignal && prevNode.listRender === nextNode.listRender;
+  }
+  if (prevNode.kind === "for_list" && nextNode.kind === "for_list") {
+    return prevNode.itemsSignal === nextNode.itemsSignal && prevNode.listKey === nextNode.listKey && prevNode.listIndexedRender === nextNode.listIndexedRender;
+  }
+  if (prevNode.kind !== "element" && prevNode.kind !== "fragment") {
+    return null;
+  }
+  if (prevNode.kind === "element" && nextNode.kind === "element") {
+    if (prevNode.tag !== nextNode.tag) {
+      return false;
+    }
+    if (!hasShallowEqualProps(prevNode.props, nextNode.props)) {
+      return false;
+    }
+  }
+  const prevChildren = asDomChildren(prevNode);
+  const nextChildren = asDomChildren(nextNode);
+  if (prevChildren.length !== nextChildren.length) {
+    return false;
+  }
+  if (prevChildren.length === 0) {
+    return true;
+  }
+  if (prevChildren.length > 4) {
+    return null;
+  }
+  for (let index = 0; index < prevChildren.length; index += 1) {
+    const prevChild = prevChildren[index];
+    const nextChild = nextChildren[index];
+    if (prevChild.kind === "text" && nextChild.kind === "text") {
+      if ((prevChild.text ?? "") !== (nextChild.text ?? "")) {
+        return false;
+      }
+      continue;
+    }
+    if (prevChild.kind === "live_text" && nextChild.kind === "live_text") {
+      if (prevChild.signal !== nextChild.signal) {
+        return false;
+      }
+      continue;
+    }
+    if (prevChild.kind !== nextChild.kind) {
+      return false;
+    }
+    if (prevChild.kind !== "element" && prevChild.kind !== "fragment") {
+      return null;
+    }
+    if (prevChild.kind === "element" && nextChild.kind === "element") {
+      if (prevChild.tag !== nextChild.tag || !hasShallowEqualProps(prevChild.props, nextChild.props)) {
+        return false;
+      }
+    }
+    const prevLeaf = tryReadTextLeaf(prevChild);
+    const nextLeaf = tryReadTextLeaf(nextChild);
+    if (!prevLeaf || !nextLeaf || prevLeaf.kind !== nextLeaf.kind) {
+      return null;
+    }
+    if (prevLeaf.kind === "text" && nextLeaf.kind === "text") {
+      if (prevLeaf.text !== nextLeaf.text) {
+        return false;
+      }
+      continue;
+    }
+    if (prevLeaf.kind === "live_text" && nextLeaf.kind === "live_text") {
+      if (prevLeaf.signal !== nextLeaf.signal) {
+        return false;
+      }
+      continue;
+    }
+    return null;
+  }
+  return true;
+}, "trySkipStableKeyedChildFast");
 var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChildren, equalsValue) => {
   if (prevChildren.length !== nextChildren.length) {
     return {
@@ -5853,7 +5975,8 @@ var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChil
     }
     seenNextKeys.add(nextKey);
     if (prevKey === nextKey) {
-      if (!canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+      const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
+      if (fastSkip !== true && (fastSkip === false || !canSkipDomPatch(prevChild, nextChild, equalsValue))) {
         stableDirtyIndices.push(index);
       }
       continue;
