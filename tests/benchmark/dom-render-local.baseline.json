@@ -1,0 +1,1055 @@
+{
+  "schemaVersion": 4,
+  "suiteVersion": "2026-04-29-benchmark-quality-v5",
+  "manifest": {
+    "version": 4,
+    "suiteVersion": "2026-04-29-benchmark-quality-v5",
+    "tier": "local",
+    "smokeMode": false,
+    "localOnly": true,
+    "warmupRuns": 1,
+    "measuredRuns": 3,
+    "listSize": 1000,
+    "scenarios": [
+      "whole-list patch",
+      "initial mount",
+      "indexed list patch",
+      "stable signal list patch",
+      "keyed reorder",
+      "single keyed move",
+      "complex keyed reorder window",
+      "keyed structure diff",
+      "fine-grained row update"
+    ]
+  },
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+    "hardwareConcurrency": 8,
+    "deviceMemory": 8,
+    "language": "en-US",
+    "languages": [
+      "en-US"
+    ],
+    "platform": "Win32"
+  },
+  "latest": {
+    "runId": "1777478261263-kjoam0",
+    "recordedAt": "2026-04-29T15:57:41.263Z",
+    "environment": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "hardwareConcurrency": 8,
+      "deviceMemory": 8,
+      "language": "en-US",
+      "languages": [
+        "en-US"
+      ],
+      "platform": "Win32"
+    },
+    "listSize": 1000,
+    "warmupRuns": 1,
+    "measuredRuns": 3,
+    "scenarios": {
+      "wholeList": [
+        {
+          "name": "Lumina generic rerender",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            962.5750000029802,
+            1034.984999999404,
+            1097.905000001192
+          ],
+          "minMs": 962.5750000029802,
+          "medianMs": 1034.984999999404,
+          "maxMs": 1097.905000001192,
+          "meanMs": 1031.8216666678588,
+          "avgMsPerIteration": 3.449949999998013
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            0.5349999964237213,
+            0.5350000038743019,
+            0.5949999988079071
+          ],
+          "minMs": 0.5349999964237213,
+          "medianMs": 0.5350000038743019,
+          "maxMs": 0.5949999988079071,
+          "meanMs": 0.5549999997019768,
+          "avgMsPerIteration": 0.0017833333462476731
+        }
+      ],
+      "mount": [
+        {
+          "name": "Lumina render DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 40,
+          "samplesMs": [
+            782.4399999976158,
+            762.6999999955297,
+            738.0300000011921
+          ],
+          "minMs": 738.0300000011921,
+          "medianMs": 762.6999999955297,
+          "maxMs": 782.4399999976158,
+          "meanMs": 761.0566666647792,
+          "avgMsPerIteration": 19.06749999988824
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 40,
+          "samplesMs": [
+            178.01500000059605,
+            168.7449999973178,
+            200.7800000011921
+          ],
+          "minMs": 168.7449999973178,
+          "medianMs": 178.01500000059605,
+          "maxMs": 200.7800000011921,
+          "meanMs": 182.51333333303532,
+          "avgMsPerIteration": 4.450375000014901
+        }
+      ],
+      "indexList": [
+        {
+          "name": "Lumina indexList",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            12.03999999910593,
+            10.024999998509884,
+            8.240000002086163
+          ],
+          "minMs": 8.240000002086163,
+          "medianMs": 10.024999998509884,
+          "maxMs": 12.03999999910593,
+          "meanMs": 10.101666666567326,
+          "avgMsPerIteration": 0.033416666661699616
+        },
+        {
+          "name": "Lumina indexList (compiled)",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            10.600000001490116,
+            8.280000001192093,
+            18.969999998807907
+          ],
+          "minMs": 8.280000001192093,
+          "medianMs": 10.600000001490116,
+          "maxMs": 18.969999998807907,
+          "meanMs": 12.616666667163372,
+          "avgMsPerIteration": 0.03533333333830039
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            0.8049999997019768,
+            0.5850000008940697,
+            1.005000002682209
+          ],
+          "minMs": 0.5850000008940697,
+          "medianMs": 0.8049999997019768,
+          "maxMs": 1.005000002682209,
+          "meanMs": 0.7983333344260851,
+          "avgMsPerIteration": 0.0026833333323399225
+        }
+      ],
+      "forList": [
+        {
+          "name": "Lumina forList",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            20.41499999910593,
+            13.744999997317791,
+            18.09000000357628
+          ],
+          "minMs": 13.744999997317791,
+          "medianMs": 18.09000000357628,
+          "maxMs": 20.41499999910593,
+          "meanMs": 17.416666666666668,
+          "avgMsPerIteration": 0.06030000001192093
+        },
+        {
+          "name": "Lumina forList (compiled)",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            15.484999999403954,
+            14.989999994635582,
+            15.950000002980232
+          ],
+          "minMs": 14.989999994635582,
+          "medianMs": 15.484999999403954,
+          "maxMs": 15.950000002980232,
+          "meanMs": 15.47499999900659,
+          "avgMsPerIteration": 0.051616666664679844
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            0.4400000050663948,
+            0.760000005364418,
+            0.369999997317791
+          ],
+          "minMs": 0.369999997317791,
+          "medianMs": 0.4400000050663948,
+          "maxMs": 0.760000005364418,
+          "meanMs": 0.5233333359162012,
+          "avgMsPerIteration": 0.0014666666835546494
+        }
+      ],
+      "reorder": [
+        {
+          "name": "Lumina generic keyed patch",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            1407.25,
+            1390.469999998808,
+            1428.0599999949336
+          ],
+          "minMs": 1390.469999998808,
+          "medianMs": 1407.25,
+          "maxMs": 1428.0599999949336,
+          "meanMs": 1408.593333331247,
+          "avgMsPerIteration": 4.690833333333333
+        },
+        {
+          "name": "Lumina keyed list",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            309.07499999552965,
+            285.67000000178814,
+            272.54500000178814
+          ],
+          "minMs": 272.54500000178814,
+          "medianMs": 285.67000000178814,
+          "maxMs": 309.07499999552965,
+          "meanMs": 289.09666666636866,
+          "avgMsPerIteration": 0.9522333333392938
+        },
+        {
+          "name": "Lumina keyed list (compiled)",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            294.9800000041723,
+            309.054999999702,
+            318.3799999952316
+          ],
+          "minMs": 294.9800000041723,
+          "medianMs": 309.054999999702,
+          "maxMs": 318.3799999952316,
+          "meanMs": 307.47166666636866,
+          "avgMsPerIteration": 1.03018333333234
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            0.8350000008940697,
+            0.9299999997019768,
+            1.4500000029802322
+          ],
+          "minMs": 0.8350000008940697,
+          "medianMs": 0.9299999997019768,
+          "maxMs": 1.4500000029802322,
+          "meanMs": 1.0716666678587596,
+          "avgMsPerIteration": 0.0030999999990065892
+        }
+      ],
+      "singleMove": [
+        {
+          "name": "Lumina generic keyed patch",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 240,
+          "samplesMs": [
+            1024.8549999967217,
+            1109.8799999952316,
+            1074.3849999979138
+          ],
+          "minMs": 1024.8549999967217,
+          "medianMs": 1074.3849999979138,
+          "maxMs": 1109.8799999952316,
+          "meanMs": 1069.706666663289,
+          "avgMsPerIteration": 4.476604166657975
+        },
+        {
+          "name": "Lumina keyed list",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 240,
+          "samplesMs": [
+            283.3149999976158,
+            282.9650000035763,
+            280.29499999433756
+          ],
+          "minMs": 280.29499999433756,
+          "medianMs": 282.9650000035763,
+          "maxMs": 283.3149999976158,
+          "meanMs": 282.19166666517657,
+          "avgMsPerIteration": 1.1790208333482346
+        },
+        {
+          "name": "Lumina keyed list (compiled)",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 240,
+          "samplesMs": [
+            281.07500000298023,
+            265.8500000014901,
+            299.91499999910593
+          ],
+          "minMs": 265.8500000014901,
+          "medianMs": 281.07500000298023,
+          "maxMs": 299.91499999910593,
+          "meanMs": 282.2800000011921,
+          "avgMsPerIteration": 1.171145833345751
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 240,
+          "samplesMs": [
+            0.7100000008940697,
+            1.280000001192093,
+            9.669999994337559
+          ],
+          "minMs": 0.7100000008940697,
+          "medianMs": 1.280000001192093,
+          "maxMs": 9.669999994337559,
+          "meanMs": 3.8866666654745736,
+          "avgMsPerIteration": 0.005333333338300387
+        }
+      ],
+      "complexReorder": [
+        {
+          "name": "Lumina generic keyed patch",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            782.4750000014901,
+            868.2599999979138,
+            914.015000000596
+          ],
+          "minMs": 782.4750000014901,
+          "medianMs": 868.2599999979138,
+          "maxMs": 914.015000000596,
+          "meanMs": 854.9166666666666,
+          "avgMsPerIteration": 5.788399999986092
+        },
+        {
+          "name": "Lumina keyed list",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            222.1849999949336,
+            214.64499999582767,
+            223.1199999973178
+          ],
+          "minMs": 214.64499999582767,
+          "medianMs": 222.1849999949336,
+          "maxMs": 223.1199999973178,
+          "meanMs": 219.98333332935968,
+          "avgMsPerIteration": 1.4812333332995573
+        },
+        {
+          "name": "Lumina keyed list (compiled)",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            215.76999999582767,
+            227.20499999821186,
+            232.72999999672174
+          ],
+          "minMs": 215.76999999582767,
+          "medianMs": 227.20499999821186,
+          "maxMs": 232.72999999672174,
+          "meanMs": 225.23499999692044,
+          "avgMsPerIteration": 1.514699999988079
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            219.7199999988079,
+            210.38499999791384,
+            236.48999999463558
+          ],
+          "minMs": 210.38499999791384,
+          "medianMs": 219.7199999988079,
+          "maxMs": 236.48999999463558,
+          "meanMs": 222.19833333045244,
+          "avgMsPerIteration": 1.4647999999920527
+        }
+      ],
+      "structureDiff": [
+        {
+          "name": "Lumina generic keyed patch",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            890.4500000029802,
+            829.1000000014901,
+            844.1900000050664
+          ],
+          "minMs": 829.1000000014901,
+          "medianMs": 844.1900000050664,
+          "maxMs": 890.4500000029802,
+          "meanMs": 854.580000003179,
+          "avgMsPerIteration": 5.6279333333671095
+        },
+        {
+          "name": "Lumina keyed list",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            303.4100000038743,
+            298.38499999791384,
+            289.01500000059605
+          ],
+          "minMs": 289.01500000059605,
+          "medianMs": 298.38499999791384,
+          "maxMs": 303.4100000038743,
+          "meanMs": 296.9366666674614,
+          "avgMsPerIteration": 1.9892333333194256
+        },
+        {
+          "name": "Lumina keyed list (compiled)",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            295.45000000298023,
+            282.17000000178814,
+            292.21000000089407
+          ],
+          "minMs": 282.17000000178814,
+          "medianMs": 292.21000000089407,
+          "maxMs": 295.45000000298023,
+          "meanMs": 289.9433333352208,
+          "avgMsPerIteration": 1.9480666666726272
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 150,
+          "samplesMs": [
+            334.88499999791384,
+            373.42499999701977,
+            346.1149999946356
+          ],
+          "minMs": 334.88499999791384,
+          "medianMs": 346.1149999946356,
+          "maxMs": 373.42499999701977,
+          "meanMs": 351.4749999965231,
+          "avgMsPerIteration": 2.3074333332975705
+        }
+      ],
+      "fineGrained": [
+        {
+          "name": "Lumina signals + DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            1.239999994635582,
+            1.5549999997019768,
+            1.130000002682209
+          ],
+          "minMs": 1.130000002682209,
+          "medianMs": 1.239999994635582,
+          "maxMs": 1.5549999997019768,
+          "meanMs": 1.3083333323399227,
+          "avgMsPerIteration": 0.00413333331545194
+        },
+        {
+          "name": "Vanilla DOM",
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "iterations": 300,
+          "samplesMs": [
+            0.41499999910593033,
+            0.4599999934434891,
+            0.39000000059604645
+          ],
+          "minMs": 0.39000000059604645,
+          "medianMs": 0.41499999910593033,
+          "maxMs": 0.4599999934434891,
+          "meanMs": 0.42166666438182193,
+          "avgMsPerIteration": 0.001383333330353101
+        }
+      ]
+    },
+    "manifest": {
+      "version": 4,
+      "suiteVersion": "2026-04-29-benchmark-quality-v5",
+      "tier": "local",
+      "smokeMode": false,
+      "localOnly": true,
+      "warmupRuns": 1,
+      "measuredRuns": 3,
+      "listSize": 1000,
+      "scenarios": [
+        "whole-list patch",
+        "initial mount",
+        "indexed list patch",
+        "stable signal list patch",
+        "keyed reorder",
+        "single keyed move",
+        "complex keyed reorder window",
+        "keyed structure diff",
+        "fine-grained row update"
+      ]
+    }
+  },
+  "history": [
+    {
+      "runId": "1777478261263-kjoam0",
+      "recordedAt": "2026-04-29T15:57:41.263Z",
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+        "hardwareConcurrency": 8,
+        "deviceMemory": 8,
+        "language": "en-US",
+        "languages": [
+          "en-US"
+        ],
+        "platform": "Win32"
+      },
+      "listSize": 1000,
+      "warmupRuns": 1,
+      "measuredRuns": 3,
+      "scenarios": {
+        "wholeList": [
+          {
+            "name": "Lumina generic rerender",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              962.5750000029802,
+              1034.984999999404,
+              1097.905000001192
+            ],
+            "minMs": 962.5750000029802,
+            "medianMs": 1034.984999999404,
+            "maxMs": 1097.905000001192,
+            "meanMs": 1031.8216666678588,
+            "avgMsPerIteration": 3.449949999998013
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              0.5349999964237213,
+              0.5350000038743019,
+              0.5949999988079071
+            ],
+            "minMs": 0.5349999964237213,
+            "medianMs": 0.5350000038743019,
+            "maxMs": 0.5949999988079071,
+            "meanMs": 0.5549999997019768,
+            "avgMsPerIteration": 0.0017833333462476731
+          }
+        ],
+        "mount": [
+          {
+            "name": "Lumina render DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 40,
+            "samplesMs": [
+              782.4399999976158,
+              762.6999999955297,
+              738.0300000011921
+            ],
+            "minMs": 738.0300000011921,
+            "medianMs": 762.6999999955297,
+            "maxMs": 782.4399999976158,
+            "meanMs": 761.0566666647792,
+            "avgMsPerIteration": 19.06749999988824
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 40,
+            "samplesMs": [
+              178.01500000059605,
+              168.7449999973178,
+              200.7800000011921
+            ],
+            "minMs": 168.7449999973178,
+            "medianMs": 178.01500000059605,
+            "maxMs": 200.7800000011921,
+            "meanMs": 182.51333333303532,
+            "avgMsPerIteration": 4.450375000014901
+          }
+        ],
+        "indexList": [
+          {
+            "name": "Lumina indexList",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              12.03999999910593,
+              10.024999998509884,
+              8.240000002086163
+            ],
+            "minMs": 8.240000002086163,
+            "medianMs": 10.024999998509884,
+            "maxMs": 12.03999999910593,
+            "meanMs": 10.101666666567326,
+            "avgMsPerIteration": 0.033416666661699616
+          },
+          {
+            "name": "Lumina indexList (compiled)",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              10.600000001490116,
+              8.280000001192093,
+              18.969999998807907
+            ],
+            "minMs": 8.280000001192093,
+            "medianMs": 10.600000001490116,
+            "maxMs": 18.969999998807907,
+            "meanMs": 12.616666667163372,
+            "avgMsPerIteration": 0.03533333333830039
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              0.8049999997019768,
+              0.5850000008940697,
+              1.005000002682209
+            ],
+            "minMs": 0.5850000008940697,
+            "medianMs": 0.8049999997019768,
+            "maxMs": 1.005000002682209,
+            "meanMs": 0.7983333344260851,
+            "avgMsPerIteration": 0.0026833333323399225
+          }
+        ],
+        "forList": [
+          {
+            "name": "Lumina forList",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              20.41499999910593,
+              13.744999997317791,
+              18.09000000357628
+            ],
+            "minMs": 13.744999997317791,
+            "medianMs": 18.09000000357628,
+            "maxMs": 20.41499999910593,
+            "meanMs": 17.416666666666668,
+            "avgMsPerIteration": 0.06030000001192093
+          },
+          {
+            "name": "Lumina forList (compiled)",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              15.484999999403954,
+              14.989999994635582,
+              15.950000002980232
+            ],
+            "minMs": 14.989999994635582,
+            "medianMs": 15.484999999403954,
+            "maxMs": 15.950000002980232,
+            "meanMs": 15.47499999900659,
+            "avgMsPerIteration": 0.051616666664679844
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              0.4400000050663948,
+              0.760000005364418,
+              0.369999997317791
+            ],
+            "minMs": 0.369999997317791,
+            "medianMs": 0.4400000050663948,
+            "maxMs": 0.760000005364418,
+            "meanMs": 0.5233333359162012,
+            "avgMsPerIteration": 0.0014666666835546494
+          }
+        ],
+        "reorder": [
+          {
+            "name": "Lumina generic keyed patch",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              1407.25,
+              1390.469999998808,
+              1428.0599999949336
+            ],
+            "minMs": 1390.469999998808,
+            "medianMs": 1407.25,
+            "maxMs": 1428.0599999949336,
+            "meanMs": 1408.593333331247,
+            "avgMsPerIteration": 4.690833333333333
+          },
+          {
+            "name": "Lumina keyed list",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              309.07499999552965,
+              285.67000000178814,
+              272.54500000178814
+            ],
+            "minMs": 272.54500000178814,
+            "medianMs": 285.67000000178814,
+            "maxMs": 309.07499999552965,
+            "meanMs": 289.09666666636866,
+            "avgMsPerIteration": 0.9522333333392938
+          },
+          {
+            "name": "Lumina keyed list (compiled)",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              294.9800000041723,
+              309.054999999702,
+              318.3799999952316
+            ],
+            "minMs": 294.9800000041723,
+            "medianMs": 309.054999999702,
+            "maxMs": 318.3799999952316,
+            "meanMs": 307.47166666636866,
+            "avgMsPerIteration": 1.03018333333234
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              0.8350000008940697,
+              0.9299999997019768,
+              1.4500000029802322
+            ],
+            "minMs": 0.8350000008940697,
+            "medianMs": 0.9299999997019768,
+            "maxMs": 1.4500000029802322,
+            "meanMs": 1.0716666678587596,
+            "avgMsPerIteration": 0.0030999999990065892
+          }
+        ],
+        "singleMove": [
+          {
+            "name": "Lumina generic keyed patch",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 240,
+            "samplesMs": [
+              1024.8549999967217,
+              1109.8799999952316,
+              1074.3849999979138
+            ],
+            "minMs": 1024.8549999967217,
+            "medianMs": 1074.3849999979138,
+            "maxMs": 1109.8799999952316,
+            "meanMs": 1069.706666663289,
+            "avgMsPerIteration": 4.476604166657975
+          },
+          {
+            "name": "Lumina keyed list",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 240,
+            "samplesMs": [
+              283.3149999976158,
+              282.9650000035763,
+              280.29499999433756
+            ],
+            "minMs": 280.29499999433756,
+            "medianMs": 282.9650000035763,
+            "maxMs": 283.3149999976158,
+            "meanMs": 282.19166666517657,
+            "avgMsPerIteration": 1.1790208333482346
+          },
+          {
+            "name": "Lumina keyed list (compiled)",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 240,
+            "samplesMs": [
+              281.07500000298023,
+              265.8500000014901,
+              299.91499999910593
+            ],
+            "minMs": 265.8500000014901,
+            "medianMs": 281.07500000298023,
+            "maxMs": 299.91499999910593,
+            "meanMs": 282.2800000011921,
+            "avgMsPerIteration": 1.171145833345751
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 240,
+            "samplesMs": [
+              0.7100000008940697,
+              1.280000001192093,
+              9.669999994337559
+            ],
+            "minMs": 0.7100000008940697,
+            "medianMs": 1.280000001192093,
+            "maxMs": 9.669999994337559,
+            "meanMs": 3.8866666654745736,
+            "avgMsPerIteration": 0.005333333338300387
+          }
+        ],
+        "complexReorder": [
+          {
+            "name": "Lumina generic keyed patch",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              782.4750000014901,
+              868.2599999979138,
+              914.015000000596
+            ],
+            "minMs": 782.4750000014901,
+            "medianMs": 868.2599999979138,
+            "maxMs": 914.015000000596,
+            "meanMs": 854.9166666666666,
+            "avgMsPerIteration": 5.788399999986092
+          },
+          {
+            "name": "Lumina keyed list",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              222.1849999949336,
+              214.64499999582767,
+              223.1199999973178
+            ],
+            "minMs": 214.64499999582767,
+            "medianMs": 222.1849999949336,
+            "maxMs": 223.1199999973178,
+            "meanMs": 219.98333332935968,
+            "avgMsPerIteration": 1.4812333332995573
+          },
+          {
+            "name": "Lumina keyed list (compiled)",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              215.76999999582767,
+              227.20499999821186,
+              232.72999999672174
+            ],
+            "minMs": 215.76999999582767,
+            "medianMs": 227.20499999821186,
+            "maxMs": 232.72999999672174,
+            "meanMs": 225.23499999692044,
+            "avgMsPerIteration": 1.514699999988079
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              219.7199999988079,
+              210.38499999791384,
+              236.48999999463558
+            ],
+            "minMs": 210.38499999791384,
+            "medianMs": 219.7199999988079,
+            "maxMs": 236.48999999463558,
+            "meanMs": 222.19833333045244,
+            "avgMsPerIteration": 1.4647999999920527
+          }
+        ],
+        "structureDiff": [
+          {
+            "name": "Lumina generic keyed patch",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              890.4500000029802,
+              829.1000000014901,
+              844.1900000050664
+            ],
+            "minMs": 829.1000000014901,
+            "medianMs": 844.1900000050664,
+            "maxMs": 890.4500000029802,
+            "meanMs": 854.580000003179,
+            "avgMsPerIteration": 5.6279333333671095
+          },
+          {
+            "name": "Lumina keyed list",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              303.4100000038743,
+              298.38499999791384,
+              289.01500000059605
+            ],
+            "minMs": 289.01500000059605,
+            "medianMs": 298.38499999791384,
+            "maxMs": 303.4100000038743,
+            "meanMs": 296.9366666674614,
+            "avgMsPerIteration": 1.9892333333194256
+          },
+          {
+            "name": "Lumina keyed list (compiled)",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              295.45000000298023,
+              282.17000000178814,
+              292.21000000089407
+            ],
+            "minMs": 282.17000000178814,
+            "medianMs": 292.21000000089407,
+            "maxMs": 295.45000000298023,
+            "meanMs": 289.9433333352208,
+            "avgMsPerIteration": 1.9480666666726272
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 150,
+            "samplesMs": [
+              334.88499999791384,
+              373.42499999701977,
+              346.1149999946356
+            ],
+            "minMs": 334.88499999791384,
+            "medianMs": 346.1149999946356,
+            "maxMs": 373.42499999701977,
+            "meanMs": 351.4749999965231,
+            "avgMsPerIteration": 2.3074333332975705
+          }
+        ],
+        "fineGrained": [
+          {
+            "name": "Lumina signals + DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              1.239999994635582,
+              1.5549999997019768,
+              1.130000002682209
+            ],
+            "minMs": 1.130000002682209,
+            "medianMs": 1.239999994635582,
+            "maxMs": 1.5549999997019768,
+            "meanMs": 1.3083333323399227,
+            "avgMsPerIteration": 0.00413333331545194
+          },
+          {
+            "name": "Vanilla DOM",
+            "warmupRuns": 1,
+            "measuredRuns": 3,
+            "iterations": 300,
+            "samplesMs": [
+              0.41499999910593033,
+              0.4599999934434891,
+              0.39000000059604645
+            ],
+            "minMs": 0.39000000059604645,
+            "medianMs": 0.41499999910593033,
+            "maxMs": 0.4599999934434891,
+            "meanMs": 0.42166666438182193,
+            "avgMsPerIteration": 0.001383333330353101
+          }
+        ]
+      },
+      "schemaVersion": 4,
+      "suiteVersion": "2026-04-29-benchmark-quality-v5",
+      "manifest": {
+        "version": 4,
+        "suiteVersion": "2026-04-29-benchmark-quality-v5",
+        "tier": "local",
+        "smokeMode": false,
+        "localOnly": true,
+        "warmupRuns": 1,
+        "measuredRuns": 3,
+        "listSize": 1000,
+        "scenarios": [
+          "whole-list patch",
+          "initial mount",
+          "indexed list patch",
+          "stable signal list patch",
+          "keyed reorder",
+          "single keyed move",
+          "complex keyed reorder window",
+          "keyed structure diff",
+          "fine-grained row update"
+        ]
+      }
+    }
+  ],
+  "historyMeta": {
+    "storageKey": "lumina.dom.benchmark.history.v5.local",
+    "compatibleRuns": 1
+  }
+}

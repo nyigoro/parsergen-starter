@@ -4,6 +4,7 @@ import path from 'node:path';
 export type BenchmarkManifest = {
   version: number;
   suiteVersion: string;
+  tier: 'smoke' | 'local' | 'full';
   smokeMode: boolean;
   localOnly: boolean;
   warmupRuns: number;
@@ -143,6 +144,8 @@ const isPositiveInteger = (value: unknown): value is number => Number.isInteger(
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+const isBenchmarkTier = (value: unknown): value is BenchmarkManifest['tier'] =>
+  value === 'smoke' || value === 'local' || value === 'full';
 
 const approxEqual = (left: number, right: number, epsilon = SUMMARY_EPSILON) => Math.abs(left - right) <= epsilon;
 
@@ -254,6 +257,7 @@ const validateManifest = (
   const manifest = rawManifest as Partial<BenchmarkManifest>;
   assert(manifest.version === schemaVersion, 'Benchmark manifest.version must match schemaVersion');
   assert(manifest.suiteVersion === suiteVersion, 'Benchmark manifest.suiteVersion must match suiteVersion');
+  assert(isBenchmarkTier(manifest.tier), 'Benchmark manifest.tier must be one of smoke, local, or full');
   assert(isBoolean(manifest.smokeMode), 'Benchmark manifest.smokeMode must be a boolean');
   assert(isBoolean(manifest.localOnly), 'Benchmark manifest.localOnly must be a boolean');
   assert(isPositiveInteger(manifest.warmupRuns), 'Benchmark manifest.warmupRuns must be a positive integer');

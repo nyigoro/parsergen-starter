@@ -111,6 +111,76 @@ const getDomDocument = (options?: DomRendererOptions): DomDocumentLike => {
 
 const asDomChildren = (node: VNode): VNode[] => node.children ?? [];
 
+type FingerprintedVNode = VNode & {
+  __luminaPatchFingerprint?: string | null;
+};
+
+const serializeFingerprintProps = (
+  props: Record<string, unknown> | undefined
+): string | null => {
+  if (!props) {
+    return '';
+  }
+
+  let out = '';
+  for (const key in props) {
+    if (!Object.prototype.hasOwnProperty.call(props, key) || key === 'key') {
+      continue;
+    }
+    const value = props[key];
+    if (
+      value !== null
+      && value !== undefined
+      && typeof value !== 'string'
+      && typeof value !== 'number'
+      && typeof value !== 'boolean'
+    ) {
+      return null;
+    }
+    out += `|${key}:${String(value ?? '')}`;
+  }
+  return out;
+};
+
+const getStablePatchFingerprint = (node: VNode): string | null => {
+  const fingerprinted = node as FingerprintedVNode;
+  if (fingerprinted.__luminaPatchFingerprint !== undefined) {
+    return fingerprinted.__luminaPatchFingerprint;
+  }
+
+  let fingerprint: string | null = null;
+  if (node.kind === 'text') {
+    fingerprint = `t:${node.text ?? ''}`;
+  } else if (node.kind === 'element' || node.kind === 'fragment') {
+    const children = asDomChildren(node);
+    if (children.length <= 6) {
+      const propsFingerprint =
+        node.kind === 'element'
+          ? serializeFingerprintProps(node.props)
+          : '';
+      if (propsFingerprint !== null) {
+        const head =
+          node.kind === 'element'
+            ? `e:${node.tag ?? ''}:${String(node.key ?? '')}${propsFingerprint}`
+            : `f:${String(node.key ?? '')}`;
+        let composed = head;
+        for (const child of children) {
+          const childFingerprint = getStablePatchFingerprint(child);
+          if (childFingerprint === null) {
+            composed = '';
+            break;
+          }
+          composed += `[${childFingerprint}]`;
+        }
+        fingerprint = composed === '' ? null : composed;
+      }
+    }
+  }
+
+  fingerprinted.__luminaPatchFingerprint = fingerprint;
+  return fingerprint;
+};
+
 const isEventProp = (name: string): boolean => /^on[A-Z]/.test(name);
 const isForcedAttributeProp = (name: string): boolean =>
   name === 'role' || name.startsWith('aria-') || name.startsWith('data-');
@@ -541,76 +611,6 @@ const duplicateKeyError = (key: string | number): Error =>
 
 const areAllChildrenKeyed = (children: VNode[]): children is Array<VNode & { key: string | number }> =>
   children.every((child) => hasVNodeKey(child));
-
-type FingerprintedVNode = VNode & {
-  __luminaPatchFingerprint?: string | null;
-};
-
-const serializeFingerprintProps = (
-  props: Record<string, unknown> | undefined
-): string | null => {
-  if (!props) {
-    return '';
-  }
-
-  let out = '';
-  for (const key in props) {
-    if (!Object.prototype.hasOwnProperty.call(props, key) || key === 'key') {
-      continue;
-    }
-    const value = props[key];
-    if (
-      value !== null
-      && value !== undefined
-      && typeof value !== 'string'
-      && typeof value !== 'number'
-      && typeof value !== 'boolean'
-    ) {
-      return null;
-    }
-    out += `|${key}=${String(value)}`;
-  }
-  return out;
-};
-
-const getStablePatchFingerprint = (node: VNode): string | null => {
-  const fingerprinted = node as FingerprintedVNode;
-  if (fingerprinted.__luminaPatchFingerprint !== undefined) {
-    return fingerprinted.__luminaPatchFingerprint;
-  }
-
-  let fingerprint: string | null = null;
-  if (node.kind === 'text') {
-    fingerprint = `t:${node.text ?? ''}`;
-  } else if (node.kind === 'element' || node.kind === 'fragment') {
-    const children = asDomChildren(node);
-    if (children.length <= 6) {
-      const propsFingerprint =
-        node.kind === 'element'
-          ? serializeFingerprintProps(node.props)
-          : '';
-      if (propsFingerprint !== null) {
-        const head =
-          node.kind === 'element'
-            ? `e:${node.tag ?? ''}:${String(node.key ?? '')}${propsFingerprint}`
-            : `f:${String(node.key ?? '')}`;
-        let composed = head;
-        for (const child of children) {
-          const childFingerprint = getStablePatchFingerprint(child);
-          if (childFingerprint === null) {
-            composed = '';
-            break;
-          }
-          composed += `[${childFingerprint}]`;
-        }
-        fingerprint = composed === '' ? null : composed;
-      }
-    }
-  }
-
-  fingerprinted.__luminaPatchFingerprint = fingerprint;
-  return fingerprint;
-};
 
 const analyzeKeyedChildTransition = (
   prevChildren: VNode[],
@@ -1530,7 +1530,7 @@ const patchDomChildrenPositionally = (
 };
 
 const patchStableKeyedChildAt = (
-  currentDomChildren: DomNodeLike[],
+  currentDomChildren: ArrayLike<DomNodeLike>,
   prevChildren: VNode[],
   nextChildren: VNode[],
   index: number,
@@ -1555,7 +1555,7 @@ const patchStableKeyedChildAt = (
 };
 
 const patchTransitionAffectedRange = (
-  currentDomChildren: DomNodeLike[],
+  currentDomChildren: ArrayLike<DomNodeLike>,
   prevChildren: VNode[],
   nextChildren: VNode[],
   transition: Extract<KeyedListTransition, { kind: 'adjacent_swap' | 'single_move' }>,
@@ -1628,13 +1628,12 @@ const patchDomChildrenWithKeys = (
   }
 
   if (keyedTransition?.kind === 'adjacent_swap') {
-    const currentDomChildren = readChildNodes(element);
+    const currentDomChildren = element.childNodes as ArrayLike<DomNodeLike>;
     const leftDom = currentDomChildren[keyedTransition.left] as DomNodeLike | undefined;
     const rightDom = currentDomChildren[keyedTransition.right] as DomNodeLike | undefined;
     if (leftDom && rightDom && typeof element.insertBefore === 'function') {
-      element.insertBefore(rightDom, leftDom);
       patchTransitionAffectedRange(
-        currentDomChildren as DomNodeLike[],
+        currentDomChildren,
         prevChildren,
         nextChildren,
         keyedTransition,
@@ -1646,7 +1645,7 @@ const patchDomChildrenWithKeys = (
       );
       for (const index of keyedAnalysis.stableDirtyIndices) {
         patchStableKeyedChildAt(
-          currentDomChildren as DomNodeLike[],
+          currentDomChildren,
           prevChildren,
           nextChildren,
           index,
@@ -1657,19 +1656,19 @@ const patchDomChildrenWithKeys = (
           equalsValue
         );
       }
+      element.insertBefore(rightDom, leftDom);
       return;
     }
   }
 
   if (keyedTransition?.kind === 'single_move') {
-    const currentDomChildren = readChildNodes(element) as DomNodeLike[];
+    const currentDomChildren = element.childNodes as ArrayLike<DomNodeLike>;
     const movingDom = currentDomChildren[keyedTransition.from];
     if (movingDom && typeof element.insertBefore === 'function') {
       const reference =
         keyedTransition.from < keyedTransition.to
           ? (currentDomChildren[keyedTransition.to + 1] ?? null)
           : (currentDomChildren[keyedTransition.to] ?? null);
-      element.insertBefore(movingDom, reference);
       patchTransitionAffectedRange(
         currentDomChildren,
         prevChildren,
@@ -1698,41 +1697,37 @@ const patchDomChildrenWithKeys = (
           equalsValue
         );
       }
+      element.insertBefore(movingDom, reference);
       return;
     }
   }
 
-  if (keyedTransition?.kind === 'complex_reorder' && areAllChildrenKeyed(prevChildren) && areAllChildrenKeyed(nextChildren)) {
+  if (areAllChildrenKeyed(prevChildren) && areAllChildrenKeyed(nextChildren)) {
     const currentDomChildren = readChildNodes(element) as DomNodeLike[];
-    const window = findStableSequenceWindow(prevChildren, nextChildren, (left, right) => left.key === right.key);
+    const window =
+      keyedTransition?.kind === 'complex_reorder'
+      && typeof keyedTransition.start === 'number'
+      && typeof keyedTransition.end === 'number'
+      && prevChildren.length === nextChildren.length
+        ? {
+            currentStart: keyedTransition.start,
+            currentEnd: keyedTransition.end,
+            nextStart: keyedTransition.start,
+            nextEnd: keyedTransition.end,
+          }
+        : findStableSequenceWindow(prevChildren, nextChildren, (left, right) => left.key === right.key);
     if (window) {
-      for (let index = 0; index < window.currentStart; index += 1) {
-        patchStableKeyedChildAt(
-          currentDomChildren,
-          prevChildren,
-          nextChildren,
-          index,
-          documentLike,
-          eventStore,
-          portalStore,
-          liveTextStore,
-          equalsValue
-        );
-      }
+      const nextDomChildren: DomNodeLike[] = new Array(nextChildren.length);
 
-      const suffixLength = prevChildren.length - (window.currentEnd + 1);
-      for (let offset = 0; offset < suffixLength; offset += 1) {
-        const currentIndex = window.currentEnd + 1 + offset;
-        const nextIndex = window.nextEnd + 1 + offset;
-        const domChild = currentDomChildren[currentIndex];
-        const prevChild = prevChildren[currentIndex];
-        const nextChild = nextChildren[nextIndex];
-        if (
-          !domChild
-          || !prevChild
-          || !nextChild
-          || canSkipDomPatch(prevChild, nextChild, equalsValue)
-        ) {
+      for (let index = 0; index < window.currentStart; index += 1) {
+        const domChild = currentDomChildren[index];
+        const prevChild = prevChildren[index];
+        const nextChild = nextChildren[index];
+        if (!domChild || !prevChild || !nextChild) {
+          continue;
+        }
+        nextDomChildren[index] = domChild;
+        if (canSkipDomPatch(prevChild, nextChild, equalsValue)) {
           continue;
         }
         patchDomNode(
@@ -1747,7 +1742,32 @@ const patchDomChildrenWithKeys = (
         );
       }
 
-      const nextDomChildren = currentDomChildren.slice();
+      const stableSuffixCount = prevChildren.length - (window.currentEnd + 1);
+      for (let offset = 1; offset <= stableSuffixCount; offset += 1) {
+        const currentIndex = prevChildren.length - offset;
+        const nextIndex = nextChildren.length - offset;
+        const domChild = currentDomChildren[currentIndex];
+        const prevChild = prevChildren[currentIndex];
+        const nextChild = nextChildren[nextIndex];
+        if (!domChild || !prevChild || !nextChild) {
+          continue;
+        }
+        nextDomChildren[nextIndex] = domChild;
+        if (canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+          continue;
+        }
+        patchDomNode(
+          domChild,
+          prevChild,
+          nextChild,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
+      }
+
       const prevKeyedWindow = new Map<string | number, { vnode: VNode; domNode: DomNodeLike }>();
       for (let index = window.currentStart; index <= window.currentEnd; index += 1) {
         const prevChild = prevChildren[index];
@@ -1756,7 +1776,8 @@ const patchDomChildrenWithKeys = (
         prevKeyedWindow.set(prevChild.key, { vnode: prevChild, domNode: domChild });
       }
 
-      let structureChanged = false;
+      let structureChanged = prevChildren.length !== nextChildren.length;
+      const alreadyDisposedStaleNodes = new WeakSet<DomNodeLike>();
       for (let nextIndex = window.nextStart; nextIndex <= window.nextEnd; nextIndex += 1) {
         const nextChild = nextChildren[nextIndex];
         const prevEntry = prevKeyedWindow.get(nextChild.key);
@@ -1791,16 +1812,28 @@ const patchDomChildrenWithKeys = (
       for (const stale of prevKeyedWindow.values()) {
         structureChanged = true;
         disposeDomNode(stale.domNode, eventStore, portalStore, liveTextStore);
+        alreadyDisposedStaleNodes.add(stale.domNode);
+        if (stale.domNode.parentNode === element) {
+          element.removeChild(stale.domNode);
+        }
       }
 
       reorderChildren(
         element,
         nextDomChildren,
-        (child) => disposeDomNode(child as DomNodeLike, eventStore, portalStore, liveTextStore),
-        {
-          transition: keyedTransition,
-          structureChanged,
-        }
+        (child) => {
+          const domChild = child as DomNodeLike;
+          if (alreadyDisposedStaleNodes.has(domChild)) {
+            return;
+          }
+          disposeDomNode(domChild, eventStore, portalStore, liveTextStore);
+        },
+        structureChanged
+          ? { structureChanged: false }
+          : {
+              transition: keyedTransition?.kind === 'complex_reorder' ? keyedTransition : null,
+              structureChanged: false,
+            }
       );
       return;
     }

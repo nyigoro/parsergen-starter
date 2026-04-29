@@ -37,12 +37,12 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: mkdir -p .tmp/dom-render-benchmark
       - run: npm run test:browser -- --grep-invert "DOM render benchmark contract"
-      - run: npm run test:browser:benchmark
-      - run: npm run bench:dom-render:check -- --input .tmp/dom-render-benchmark/export.json --out-dir .tmp/dom-render-benchmark/history --summary-path .tmp/dom-render-benchmark/gate-summary.json
+      - run: npm run test:browser:benchmark:smoke
+      - run: npm run bench:dom-render:smoke:check -- --input .tmp/dom-render-benchmark/export.json --out-dir .tmp/dom-render-benchmark/history --summary-path .tmp/dom-render-benchmark/gate-summary.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: dom-render-benchmark
+          name: dom-render-benchmark-smoke
           path: .tmp/dom-render-benchmark/
           retention-days: 7
       - uses: actions/upload-artifact@v4
@@ -51,4 +51,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
-

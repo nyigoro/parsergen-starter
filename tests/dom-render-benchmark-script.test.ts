@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const fixturePath = path.resolve(__dirname, './benchmark/dom-render-smoke.baseline.json');
+const localFixturePath = path.resolve(__dirname, './benchmark/dom-render-local.baseline.json');
 const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8')) as {
   suiteVersion: string;
   historyMeta: { storageKey: string; compatibleRuns: number };
@@ -39,6 +40,7 @@ const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8')) as {
     >;
   }>;
 };
+const localFixture = JSON.parse(fs.readFileSync(localFixturePath, 'utf-8')) as typeof fixture;
 
 const clonePayload = () => JSON.parse(JSON.stringify(fixture)) as typeof fixture;
 
@@ -131,9 +133,10 @@ describe('dom-render benchmark history script', () => {
 
     expect(result.status).toBe(0);
     const summary = JSON.parse(result.stdout);
-    expect(summary.schemaVersion).toBe(3);
+    expect(summary.schemaVersion).toBe(4);
     expect(summary.suiteVersion).toBe(fixture.suiteVersion);
     expect(summary.runId).toBe(fixture.latest.runId);
+    expect(summary.manifest.tier).toBe('smoke');
     expect(summary.manifest.localOnly).toBe(true);
     expect(summary.contract.domShape.listClassName).toBe('bench-list');
     expect(summary.contract.timing.measure).toBe('performance.measure()');
@@ -199,6 +202,35 @@ describe('dom-render benchmark history script', () => {
         (total, entries) => total + entries.length,
         0
       ),
+      passed: true,
+      regressions: [],
+    });
+    expect(JSON.parse(fs.readFileSync(summaryPath, 'utf-8')).baselineCheck.passed).toBe(true);
+  });
+
+  test('compares a local-tier benchmark export to the checked-in local baseline fixture', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lumina-dom-render-bench-'));
+    const inputPath = path.join(root, 'local-export.json');
+    const outDir = path.join(root, 'history');
+    const summaryPath = path.join(root, 'summary.json');
+
+    fs.writeFileSync(inputPath, JSON.stringify(localFixture, null, 2), 'utf-8');
+
+    const result = runImport(inputPath, outDir, [
+      '--baseline',
+      localFixturePath,
+      '--summary-path',
+      summaryPath,
+    ]);
+
+    expect(result.status).toBe(0);
+    const summary = JSON.parse(result.stdout);
+    expect(summary.manifest.tier).toBe('local');
+    expect(summary.manifest.localOnly).toBe(true);
+    expect(summary.manifest.listSize).toBe(1000);
+    expect(summary.measuredRuns).toBe(3);
+    expect(summary.baselineCheck).toMatchObject({
+      baselinePath: localFixturePath,
       passed: true,
       regressions: [],
     });

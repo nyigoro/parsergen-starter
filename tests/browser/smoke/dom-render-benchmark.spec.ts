@@ -5,10 +5,13 @@ import { startSmokeServer } from '../fixtures/serve';
 
 const runSmoke = process.env.LUMINA_BROWSER_SMOKE === '1';
 const benchmarkExportPath = process.env.LUMINA_DOM_RENDER_BENCHMARK_EXPORT_PATH;
-const suiteVersion = '2026-04-29-benchmark-quality-v4';
-const historyKey = 'lumina.dom.benchmark.history.v4';
-const smokeListSize = 32;
-const measuredRuns = 2;
+const suiteVersion = '2026-04-29-benchmark-quality-v5';
+const benchmarkTier =
+  process.env.LUMINA_DOM_RENDER_BENCHMARK_TIER === 'local'
+    ? 'local'
+    : process.env.LUMINA_DOM_RENDER_BENCHMARK_TIER === 'full'
+      ? 'full'
+      : 'smoke';
 const expectedDomShape = {
   listTag: 'ul',
   listClassName: 'bench-list',
@@ -40,28 +43,107 @@ const expectedManifestScenarios = [
   'fine-grained row update',
 ];
 
+const benchmarkTierConfig = {
+  smoke: {
+    historyKey: 'lumina.dom.benchmark.history.v5.smoke',
+    listSize: 32,
+    warmupRuns: 1,
+    measuredRuns: 2,
+    smokeMode: true,
+    localOnly: true,
+    query: '?tier=smoke&measuredRuns=2&warmupRuns=1&preserveHosts=1',
+    scenarioIterations: {
+      wholeList: 12,
+      mount: 6,
+      indexList: 12,
+      forList: 12,
+      reorder: 12,
+      singleMove: 10,
+      complexReorder: 8,
+      structureDiff: 8,
+      fineGrained: 12,
+    },
+  },
+  local: {
+    historyKey: 'lumina.dom.benchmark.history.v5.local',
+    listSize: 1000,
+    warmupRuns: 1,
+    measuredRuns: 3,
+    smokeMode: false,
+    localOnly: true,
+    query: '?tier=local&warmupRuns=1&measuredRuns=3&preserveHosts=1',
+    scenarioIterations: {
+      wholeList: 300,
+      mount: 40,
+      indexList: 300,
+      forList: 300,
+      reorder: 300,
+      singleMove: 240,
+      complexReorder: 150,
+      structureDiff: 150,
+      fineGrained: 300,
+    },
+  },
+  full: {
+    historyKey: 'lumina.dom.benchmark.history.v5.full',
+    listSize: 1000,
+    warmupRuns: 1,
+    measuredRuns: 3,
+    smokeMode: false,
+    localOnly: false,
+    query: '?tier=full&warmupRuns=1&measuredRuns=3&preserveHosts=1',
+    scenarioIterations: {
+      wholeList: 300,
+      mount: 40,
+      indexList: 300,
+      forList: 300,
+      reorder: 300,
+      singleMove: 240,
+      complexReorder: 150,
+      structureDiff: 150,
+      fineGrained: 300,
+    },
+  },
+} as const;
+
+const tierConfig = benchmarkTierConfig[benchmarkTier];
+const historyKey = tierConfig.historyKey;
+const benchmarkListSize = tierConfig.listSize;
+const warmupRuns = tierConfig.warmupRuns;
+const measuredRuns = tierConfig.measuredRuns;
+const benchmarkTestTimeoutMs = benchmarkTier === 'smoke' ? 60_000 : 180_000;
+
 const expectedScenarioSuites: Record<string, string[]> = {
-  wholeList: ['Lumina generic rerender', 'Vanilla DOM'],
-  mount: ['Lumina render DOM', 'Vanilla DOM'],
-  indexList: ['Lumina indexList', 'Lumina indexList (compiled)', 'Vanilla DOM'],
-  forList: ['Lumina forList', 'Lumina forList (compiled)', 'Vanilla DOM'],
-  reorder: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
-  singleMove: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
-  complexReorder: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
-  structureDiff: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
-  fineGrained: ['Lumina signals + DOM', 'Vanilla DOM'],
+  wholeList: ['Lumina generic rerender', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19', 'Solid 1'])],
+  mount: ['Lumina render DOM', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19', 'Solid 1'])],
+  indexList: ['Lumina indexList', 'Lumina indexList (compiled)', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19 memo rows', 'Solid 1 Index'])],
+  forList: ['Lumina forList', 'Lumina forList (compiled)', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19 memo rows', 'Solid 1 Index'])],
+  reorder: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19'])],
+  singleMove: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19'])],
+  complexReorder: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19'])],
+  structureDiff: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['React 19'])],
+  fineGrained: ['Lumina signals + DOM', 'Vanilla DOM', ...(tierConfig.localOnly ? [] : ['Solid signals'])],
 };
 
-const expectedScenarioIterations: Record<string, number> = {
-  wholeList: 12,
-  mount: 6,
-  indexList: 12,
-  forList: 12,
-  reorder: 12,
-  singleMove: 10,
-  complexReorder: 8,
-  structureDiff: 8,
-  fineGrained: 12,
+const expectedScenarioIterations: Record<string, number> = tierConfig.scenarioIterations;
+
+const expectedRelativeOrdering: Record<string, Array<{ faster: string; slower: string }>> = {
+  reorder: [
+    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+  ],
+  singleMove: [
+    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+  ],
+  complexReorder: [
+    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+  ],
+  structureDiff: [
+    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+  ],
 };
 
 type BenchmarkScenarioEntry = {
@@ -94,6 +176,7 @@ type BenchmarkRun = {
   manifest: {
     version: number;
     suiteVersion: string;
+    tier: string;
     smokeMode: boolean;
     localOnly: boolean;
     warmupRuns: number;
@@ -212,12 +295,26 @@ type BenchmarkPageState = {
 };
 
 const benchmarkUrl = (baseUrl: string) =>
-  `${baseUrl}/dom-render/benchmark.html?smoke=1&localOnly=1&measuredRuns=${measuredRuns}&warmupRuns=1&listSize=${smokeListSize}`;
+  `${baseUrl}/dom-render/benchmark.html${tierConfig.query}`;
 
 const median = (values: number[]) => {
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+const expectRelativeScenarioPerformance = (
+  entries: BenchmarkScenarioEntry[],
+  rules: Array<{ faster: string; slower: string }>
+) => {
+  const byName = new Map(entries.map((entry) => [entry.name, entry]));
+  for (const rule of rules) {
+    const faster = byName.get(rule.faster);
+    const slower = byName.get(rule.slower);
+    expect(faster, `Missing faster suite ${rule.faster}`).toBeDefined();
+    expect(slower, `Missing slower suite ${rule.slower}`).toBeDefined();
+    expect((faster as BenchmarkScenarioEntry).medianMs).toBeLessThan((slower as BenchmarkScenarioEntry).medianMs);
+  }
 };
 
 const buildRows = (size: number) => Array.from({ length: size }, (_, index) => `row-${index}`);
@@ -278,6 +375,11 @@ const restructureKeyedRows = <T extends { id: string; label: string }>(rows: T[]
   const insertIndex = (step * 7) % (next.length + 1);
   const freshId = `fresh-${step}`;
   next.splice(insertIndex, 0, { id: freshId, label: freshId } as T);
+  const mutateIndex = next.findIndex((row) => row.id !== freshId);
+  if (mutateIndex >= 0) {
+    const row = next[mutateIndex] as T;
+    next[mutateIndex] = { ...row, label: `${row.label}*` } as T;
+  }
   return next;
 };
 
@@ -292,19 +394,19 @@ const applySteps = <T>(initial: T[], iterations: number, stepper: (rows: T[], st
   return current;
 };
 
-const expectedMutatedRows = applySteps(buildRows(smokeListSize), expectedScenarioIterations.indexList, mutateRows);
-const expectedMountedRows = buildRows(smokeListSize);
-const expectedAdjacentSwapRows = applySteps(buildRows(smokeListSize), expectedScenarioIterations.reorder, swapAdjacentRows);
-const expectedSingleMoveRows = applySteps(buildRows(smokeListSize), expectedScenarioIterations.singleMove, (rows) =>
+const expectedMutatedRows = applySteps(buildRows(benchmarkListSize), expectedScenarioIterations.indexList, mutateRows);
+const expectedMountedRows = buildRows(benchmarkListSize);
+const expectedAdjacentSwapRows = applySteps(buildRows(benchmarkListSize), expectedScenarioIterations.reorder, swapAdjacentRows);
+const expectedSingleMoveRows = applySteps(buildRows(benchmarkListSize), expectedScenarioIterations.singleMove, (rows) =>
   moveHeadToTailRows(rows)
 );
 const expectedComplexReorderRows = applySteps(
-  buildRows(smokeListSize),
+  buildRows(benchmarkListSize),
   expectedScenarioIterations.complexReorder,
   (rows) => reorderMiddleWindowRows(rows)
 );
 const expectedStructureDiffRows = applySteps(
-  buildKeyedRows(smokeListSize),
+  buildKeyedRows(benchmarkListSize),
   expectedScenarioIterations.structureDiff,
   (rows, step) => restructureKeyedRows(rows, step)
 ).map((row) => row.label);
@@ -379,7 +481,7 @@ const expectedContract: BenchmarkContract = {
 };
 
 const expectValidSamples = (entry: BenchmarkScenarioEntry, scenarioName: string) => {
-  expect(entry.warmupRuns).toBe(1);
+  expect(entry.warmupRuns).toBe(warmupRuns);
   expect(entry.measuredRuns).toBe(measuredRuns);
   expect(entry.iterations).toBe(expectedScenarioIterations[scenarioName]);
   expect(entry.samplesMs).toHaveLength(measuredRuns);
@@ -433,8 +535,9 @@ const expectBenchHostParity = (actual: BenchHostShape, baseline: BenchHostShape,
 
 test.describe('DOM render benchmark contract', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
+  test.setTimeout(benchmarkTestTimeoutMs);
 
-  test('exports versioned local-only benchmark JSON and keeps benchmark DOM parity', async ({ page }, testInfo) => {
+  test('exports versioned tiered benchmark JSON and keeps benchmark DOM parity', async ({ page }, testInfo) => {
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -458,7 +561,9 @@ test.describe('DOM render benchmark contract', () => {
       }
 
       await page.getByRole('button', { name: 'Run all benchmarks' }).click();
-      await page.waitForFunction(() => Boolean((window as Record<string, unknown>).__luminaBenchmarkExport));
+      await page.waitForFunction(() => Boolean((window as Record<string, unknown>).__luminaBenchmarkExport), {
+        timeout: benchmarkTestTimeoutMs - 5_000,
+      });
       await expect(page.locator('#status')).toHaveText('Done');
 
       const state: BenchmarkPageState = await page.evaluate(() => {
@@ -564,16 +669,17 @@ test.describe('DOM render benchmark contract', () => {
       expect(consoleErrors).toEqual([]);
       expect(pageErrors).toEqual([]);
       expect(state.exportDisabled).toBe(false);
-      expect(state.payload.schemaVersion).toBe(3);
+      expect(state.payload.schemaVersion).toBe(4);
       expect(state.payload.suiteVersion).toBe(suiteVersion);
       expect(state.payload.manifest).toEqual({
-        version: 3,
+        version: 4,
         suiteVersion,
-        smokeMode: true,
-        localOnly: true,
-        warmupRuns: 1,
+        tier: benchmarkTier,
+        smokeMode: tierConfig.smokeMode,
+        localOnly: tierConfig.localOnly,
+        warmupRuns,
         measuredRuns,
-        listSize: smokeListSize,
+        listSize: benchmarkListSize,
         scenarios: expectedManifestScenarios,
       });
       expect(state.payload.environment.userAgent).toContain('Headless');
@@ -584,13 +690,13 @@ test.describe('DOM render benchmark contract', () => {
       expect(state.payload.latest.manifest).toEqual(state.payload.manifest);
       expect(state.payload.latest.runId).toMatch(/^\d+-[a-z0-9]{6}$/);
       expect(state.payload.latest.recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-      expect(state.payload.latest.listSize).toBe(smokeListSize);
-      expect(state.payload.latest.warmupRuns).toBe(1);
+      expect(state.payload.latest.listSize).toBe(benchmarkListSize);
+      expect(state.payload.latest.warmupRuns).toBe(warmupRuns);
       expect(state.payload.latest.measuredRuns).toBe(measuredRuns);
       expect(state.payload.latest.environment).toEqual(state.payload.environment);
       expect(state.payload.history).toHaveLength(1);
       expect(state.historyLength).toBe(1);
-      expect(state.payload.history[0].schemaVersion).toBe(3);
+      expect(state.payload.history[0].schemaVersion).toBe(4);
       expect(state.payload.history[0].suiteVersion).toBe(suiteVersion);
       expect(state.payload.history[0].manifest).toEqual(state.payload.manifest);
       expect(state.payload.history[0].environment).toEqual(state.payload.environment);
@@ -608,6 +714,10 @@ test.describe('DOM render benchmark contract', () => {
         expect(entries.map((entry) => entry.name)).toEqual(expectedSuites);
         for (const entry of entries) {
           expectValidSamples(entry, scenarioName);
+        }
+        const orderingRules = expectedRelativeOrdering[scenarioName];
+        if (orderingRules) {
+          expectRelativeScenarioPerformance(entries, orderingRules);
         }
       }
 

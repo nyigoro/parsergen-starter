@@ -1,9 +1,9 @@
-import { render as luminaRender } from './lumina-runtime.js?v=2026-04-29-benchmark-quality-v3';
+import { render as luminaRender } from './lumina-runtime.js?v=2026-04-29-benchmark-quality-v5';
 import {
   compiledForList,
   compiledIndexList,
   compiledReorder,
-} from './benchmark-compiled.generated.js?v=2026-04-29-benchmark-quality-v4';
+} from './benchmark-compiled.generated.js?v=2026-04-29-benchmark-quality-v5';
 
 const benchmarkQuery =
   typeof globalThis.location?.search === 'string' ? new URLSearchParams(globalThis.location.search) : new URLSearchParams();
@@ -14,30 +14,102 @@ const parsePositiveInt = (rawValue, fallback) => {
 };
 
 const readFlag = (name) => benchmarkQuery.get(name) === '1';
+const BENCHMARK_TIER_PRESETS = Object.freeze({
+  smoke: Object.freeze({
+    tier: 'smoke',
+    smokeMode: true,
+    localOnly: true,
+    listSize: 32,
+    wholeListIterations: 12,
+    indexListIterations: 12,
+    forListIterations: 12,
+    reorderIterations: 12,
+    singleMoveIterations: 10,
+    complexReorderIterations: 8,
+    structureDiffIterations: 8,
+    fineGrainedIterations: 12,
+    mountIterations: 6,
+    warmupRuns: 1,
+    measuredRuns: 2,
+  }),
+  local: Object.freeze({
+    tier: 'local',
+    smokeMode: false,
+    localOnly: true,
+    listSize: 1000,
+    wholeListIterations: 300,
+    indexListIterations: 300,
+    forListIterations: 300,
+    reorderIterations: 300,
+    singleMoveIterations: 240,
+    complexReorderIterations: 150,
+    structureDiffIterations: 150,
+    fineGrainedIterations: 300,
+    mountIterations: 40,
+    warmupRuns: 1,
+    measuredRuns: 3,
+  }),
+  full: Object.freeze({
+    tier: 'full',
+    smokeMode: false,
+    localOnly: false,
+    listSize: 1000,
+    wholeListIterations: 300,
+    indexListIterations: 300,
+    forListIterations: 300,
+    reorderIterations: 300,
+    singleMoveIterations: 240,
+    complexReorderIterations: 150,
+    structureDiffIterations: 150,
+    fineGrainedIterations: 300,
+    mountIterations: 40,
+    warmupRuns: 1,
+    measuredRuns: 3,
+  }),
+});
 
-const SMOKE_MODE = readFlag('smoke');
-const LOCAL_ONLY = SMOKE_MODE || readFlag('localOnly');
-const LIST_SIZE = parsePositiveInt(benchmarkQuery.get('listSize'), SMOKE_MODE ? 64 : 1000);
-const WHOLE_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('wholeListIterations'), SMOKE_MODE ? 12 : 300);
-const INDEX_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('indexListIterations'), SMOKE_MODE ? 12 : 300);
-const FOR_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('forListIterations'), SMOKE_MODE ? 12 : 300);
-const REORDER_ITERATIONS = parsePositiveInt(benchmarkQuery.get('reorderIterations'), SMOKE_MODE ? 12 : 300);
-const SINGLE_MOVE_ITERATIONS = parsePositiveInt(benchmarkQuery.get('singleMoveIterations'), SMOKE_MODE ? 10 : 240);
+const isBenchmarkTier = (value) => value === 'smoke' || value === 'local' || value === 'full';
+
+const resolveBenchmarkTier = () => {
+  const explicitTier = benchmarkQuery.get('tier');
+  if (isBenchmarkTier(explicitTier)) {
+    return explicitTier;
+  }
+  if (readFlag('smoke')) {
+    return 'smoke';
+  }
+  if (readFlag('localOnly')) {
+    return 'local';
+  }
+  return 'full';
+};
+
+const BENCHMARK_TIER = resolveBenchmarkTier();
+const BENCHMARK_PRESET = BENCHMARK_TIER_PRESETS[BENCHMARK_TIER];
+const SMOKE_MODE = BENCHMARK_PRESET.smokeMode;
+const LOCAL_ONLY = BENCHMARK_PRESET.localOnly;
+const PRESERVE_HOSTS = SMOKE_MODE || readFlag('preserveHosts');
+const LIST_SIZE = parsePositiveInt(benchmarkQuery.get('listSize'), BENCHMARK_PRESET.listSize);
+const WHOLE_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('wholeListIterations'), BENCHMARK_PRESET.wholeListIterations);
+const INDEX_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('indexListIterations'), BENCHMARK_PRESET.indexListIterations);
+const FOR_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('forListIterations'), BENCHMARK_PRESET.forListIterations);
+const REORDER_ITERATIONS = parsePositiveInt(benchmarkQuery.get('reorderIterations'), BENCHMARK_PRESET.reorderIterations);
+const SINGLE_MOVE_ITERATIONS = parsePositiveInt(benchmarkQuery.get('singleMoveIterations'), BENCHMARK_PRESET.singleMoveIterations);
 const COMPLEX_REORDER_ITERATIONS = parsePositiveInt(
   benchmarkQuery.get('complexReorderIterations'),
-  SMOKE_MODE ? 8 : 150
+  BENCHMARK_PRESET.complexReorderIterations
 );
 const STRUCTURE_DIFF_ITERATIONS = parsePositiveInt(
   benchmarkQuery.get('structureDiffIterations'),
-  SMOKE_MODE ? 8 : 150
+  BENCHMARK_PRESET.structureDiffIterations
 );
-const FINE_GRAINED_ITERATIONS = parsePositiveInt(benchmarkQuery.get('fineGrainedIterations'), SMOKE_MODE ? 12 : 300);
-const MOUNT_ITERATIONS = parsePositiveInt(benchmarkQuery.get('mountIterations'), SMOKE_MODE ? 6 : 40);
-const WARMUP_RUNS = parsePositiveInt(benchmarkQuery.get('warmupRuns'), SMOKE_MODE ? 1 : 1);
-const MEASURED_RUNS = parsePositiveInt(benchmarkQuery.get('measuredRuns'), SMOKE_MODE ? 2 : 3);
-const BENCHMARK_HISTORY_KEY = 'lumina.dom.benchmark.history.v4';
-const BENCHMARK_SCHEMA_VERSION = 3;
-const BENCHMARK_SUITE_VERSION = '2026-04-29-benchmark-quality-v4';
+const FINE_GRAINED_ITERATIONS = parsePositiveInt(benchmarkQuery.get('fineGrainedIterations'), BENCHMARK_PRESET.fineGrainedIterations);
+const MOUNT_ITERATIONS = parsePositiveInt(benchmarkQuery.get('mountIterations'), BENCHMARK_PRESET.mountIterations);
+const WARMUP_RUNS = parsePositiveInt(benchmarkQuery.get('warmupRuns'), BENCHMARK_PRESET.warmupRuns);
+const MEASURED_RUNS = parsePositiveInt(benchmarkQuery.get('measuredRuns'), BENCHMARK_PRESET.measuredRuns);
+const BENCHMARK_HISTORY_KEY = `lumina.dom.benchmark.history.v5.${BENCHMARK_TIER}`;
+const BENCHMARK_SCHEMA_VERSION = 4;
+const BENCHMARK_SUITE_VERSION = '2026-04-29-benchmark-quality-v5';
 const BENCHMARK_DOM_SHAPE = Object.freeze({
   listTag: 'ul',
   listClassName: 'bench-list',
@@ -175,6 +247,7 @@ const BENCHMARK_CONTRACT = Object.freeze({
 const BENCHMARK_MANIFEST = Object.freeze({
   version: BENCHMARK_SCHEMA_VERSION,
   suiteVersion: BENCHMARK_SUITE_VERSION,
+  tier: BENCHMARK_TIER,
   smokeMode: SMOKE_MODE,
   localOnly: LOCAL_ONLY,
   warmupRuns: WARMUP_RUNS,
@@ -218,7 +291,7 @@ const setStatus = (message) => {
   statusNode.textContent = message;
 };
 
-const captureHostSnapshot = (host) => (SMOKE_MODE ? host.innerHTML : null);
+const captureHostSnapshot = (host) => (PRESERVE_HOSTS ? host.innerHTML : null);
 const unmountWithSmokeSnapshot = (host, teardown) => {
   const snapshot = captureHostSnapshot(host);
   teardown();
@@ -230,7 +303,7 @@ const restoreHostSnapshot = (host, snapshot) => {
   }
 };
 const preserveMountedHostSnapshot = (host, mountOnce) => {
-  if (!SMOKE_MODE) {
+  if (!PRESERVE_HOSTS) {
     return;
   }
   unmountWithSmokeSnapshot(host, mountOnce());
@@ -434,6 +507,11 @@ const restructureKeyedRows = (rows, step) => {
   const insertIndex = (step * 7) % (next.length + 1);
   const freshId = `fresh-${step}`;
   next.splice(insertIndex, 0, { id: freshId, label: freshId });
+  const mutateIndex = next.findIndex((row) => row.id !== freshId);
+  if (mutateIndex >= 0) {
+    const row = next[mutateIndex];
+    next[mutateIndex] = { ...row, label: `${row.label}*` };
+  }
   return next;
 };
 
@@ -1406,9 +1484,9 @@ const benchmarkVanillaStructureDiff = async () => {
   ul.className = 'bench-list';
   const nodeById = new Map();
   for (const row of rows) {
-    const { li } = createBenchRowDom(row.label);
-    nodeById.set(row.id, li);
-    ul.appendChild(li);
+    const benchRow = createBenchRowDom(row.label);
+    nodeById.set(row.id, benchRow);
+    ul.appendChild(benchRow.li);
   }
   host.appendChild(ul);
 
@@ -1418,17 +1496,19 @@ const benchmarkVanillaStructureDiff = async () => {
     const desiredIds = new Set(rows.map((row) => row.id));
     for (const [id, node] of Array.from(nodeById.entries())) {
       if (!desiredIds.has(id)) {
-        node.remove();
+        node.li.remove();
         nodeById.delete(id);
       }
     }
     for (const row of rows) {
       let node = nodeById.get(row.id);
       if (!node) {
-        node = createBenchRowDom(row.label).li;
+        node = createBenchRowDom(row.label);
         nodeById.set(row.id, node);
+      } else if (node.content.textContent !== row.label) {
+        node.content.textContent = row.label;
       }
-      ul.appendChild(node);
+      ul.appendChild(node.li);
     }
     await nextTick();
   }

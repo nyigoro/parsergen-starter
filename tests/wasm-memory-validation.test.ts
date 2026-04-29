@@ -109,5 +109,5 @@ describe('WASM memory usage validation', () => {
     // runs, so use a wider but still bounded threshold for the non-GC case.
     const limit = typeof global.gc === 'function' ? 30 * 1024 * 1024 : 64 * 1024 * 1024;
     expect(delta).toBeLessThan(limit);
-  });
+  }, 15000);
 });

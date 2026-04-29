@@ -1921,7 +1921,7 @@ describe('render DOM renderer', () => {
       { id: 'd', label: 'D' },
       { id: 'b', label: 'B' },
       { id: 'f', label: 'F' },
-      { id: 'e', label: 'E' },
+      { id: 'e', label: 'E!' },
     ]);
     await Promise.resolve();
 
@@ -1930,6 +1930,7 @@ describe('render DOM renderer', () => {
     expect(host.childNodes[2]).toBe(rowB);
     expect((host.childNodes[3] as FakeElement).getAttribute('data-id')).toBe('f');
     expect(host.childNodes[4]).toBe(rowE);
+    expect((host.childNodes[4] as FakeElement).childNodes[0].textContent).toBe('E!');
 
     render.dispose_reactive(mounted);
   });
