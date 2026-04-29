@@ -250,6 +250,7 @@ export const createHeadlessUiRuntime = () => {
   const toastTimers = new WeakMap<object, unknown>();
   const menuAnchorTargets = new WeakMap<object, AnchorElementLike>();
   const menuRestoreTargets = new WeakMap<object, FocusTargetLike>();
+  const menuActiveValues = new WeakMap<object, Signal<string>>();
   const selectAnchorTargets = new WeakMap<object, AnchorElementLike>();
   const selectRestoreTargets = new WeakMap<object, FocusTargetLike>();
   const selectActiveValues = new WeakMap<object, Signal<string>>();
@@ -473,6 +474,27 @@ export const createHeadlessUiRuntime = () => {
     registerOrderedValue(ctx.order, value);
   };
 
+  const getMenuActiveSignal = (ctx: MenuContextValue): Signal<string> => {
+    const key = ctx.open as object;
+    const existing = menuActiveValues.get(key);
+    if (existing) return existing;
+    const created = new Signal('');
+    menuActiveValues.set(key, created);
+    return created;
+  };
+
+  const setMenuActiveValue = (ctx: MenuContextValue, value: string | null | undefined): void => {
+    getMenuActiveSignal(ctx).set(typeof value === 'string' ? value : '');
+  };
+
+  const getMenuActiveValue = (ctx: MenuContextValue): string => {
+    const explicit = getMenuActiveSignal(ctx).get();
+    if (explicit) {
+      return explicit;
+    }
+    return ctx.order[0] ?? explicit ?? '';
+  };
+
   const registerRadioValue = (ctx: RadioGroupContextValue, value: string): void => {
     registerOrderedValue(ctx.order, value);
   };
@@ -628,6 +650,7 @@ export const createHeadlessUiRuntime = () => {
   ): boolean => focusElementById(documentLike, getMultiselectItemId(ctx, value), fallbackRoot);
 
   const closeMenu = (ctx: MenuContextValue): void => {
+    setMenuActiveValue(ctx, '');
     ctx.open.set(false);
     restoreMenuFocus(ctx);
   };
@@ -841,6 +864,8 @@ export const createHeadlessUiRuntime = () => {
     registerSelectValue,
     registerComboboxValue,
     registerMultiselectValue,
+    getMenuActiveValue,
+    setMenuActiveValue,
     getMenuNavigationTarget,
     getRadioNavigationTarget,
     getSelectNavigationTarget,

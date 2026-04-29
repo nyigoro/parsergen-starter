@@ -150,6 +150,29 @@ describe('runtime headless primitives', () => {
       expect(preventDefault).toHaveBeenCalledTimes(1);
       expect(clicks).toEqual(['profile']);
       expect(menuOpen.get()).toBe(false);
+
+      const menuOpenByKey = new Signal(false);
+      const triggerTarget = { focus: jest.fn() };
+      const renderMenuTree = () =>
+        runtime.menu_root(menuOpenByKey, () => [
+          runtime.menu_item('profile', null, ['Profile']),
+          runtime.menu_item('settings', null, ['Settings']),
+          runtime.menu_trigger(null, ['Open']),
+        ]);
+      let tree = renderMenuTree();
+      let trigger = (tree.children ?? [])[2];
+      (trigger?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+        key: 'ArrowUp',
+        currentTarget: triggerTarget,
+        target: triggerTarget,
+        preventDefault: jest.fn(),
+      } as unknown as KeyboardEvent);
+      expect(menuOpenByKey.get()).toBe(true);
+      tree = renderMenuTree();
+      const firstItem = (tree.children ?? [])[0];
+      const lastItem = (tree.children ?? [])[1];
+      expect(firstItem?.props?.autoFocus).toBe(false);
+      expect(lastItem?.props?.autoFocus).toBe(true);
     } finally {
       jest.useRealTimers();
     }
@@ -225,9 +248,14 @@ describe('runtime headless primitives', () => {
 
     const multiselectOpen = new Signal(true);
     const multiselectValues = new Signal<string[]>(['alpha']);
-    const multiselectItem = runtime.multiselect_root(multiselectOpen, multiselectValues, () =>
-      runtime.multiselect_item('beta', null, () => ['Beta'])
-    );
+    const multiselectTree = runtime.multiselect_root(multiselectOpen, multiselectValues, () => [
+      runtime.multiselect_trigger(null, []),
+      runtime.multiselect_item('beta', null, () => ['Beta']),
+    ]);
+    const multiselectTrigger = (multiselectTree.children ?? [])[0];
+    const multiselectItem = (multiselectTree.children ?? [])[1];
+    expect(multiselectTrigger?.props?.role).toBeUndefined();
+    expect(multiselectTrigger?.props?.['aria-haspopup']).toBe('listbox');
     (multiselectItem.props?.onClick as (() => void) | undefined)?.();
     expect(multiselectValues.get()).toEqual(['alpha', 'beta']);
     expect(multiselectOpen.get()).toBe(true);

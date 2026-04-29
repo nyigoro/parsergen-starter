@@ -2286,6 +2286,22 @@ describe('render DOM renderer', () => {
     expect(isHidden(content)).toBe(true);
     expect(fakeDocument.activeElement).toBe(trigger);
 
+    const preventUpOpen = jest.fn();
+    trigger.listeners.get('keydown')?.({
+      key: 'ArrowUp',
+      currentTarget: trigger,
+      target: trigger,
+      preventDefault: preventUpOpen,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    const reopenedHost = fakeDocument.body.childNodes[0] as FakeElement;
+    const reopenedContent = reopenedHost.childNodes[1] as FakeElement;
+    const reopenedDelete = reopenedContent.childNodes[2] as FakeElement;
+    expect(preventUpOpen).toHaveBeenCalledTimes(1);
+    expect(render.get(open)).toBe(true);
+    expect(fakeDocument.activeElement).toBe(reopenedDelete);
+
     trigger.listeners.get('click')?.({ currentTarget: trigger } as unknown as Event);
     await Promise.resolve();
     dismiss.listeners.get('click')?.({} as Event);
@@ -2559,6 +2575,8 @@ describe('render DOM renderer', () => {
     const indicatorSms = itemSms.childNodes[0] as FakeElement;
 
     expect(render.get(open)).toBe(true);
+    expect(trigger.attributes.get('role')).toBeUndefined();
+    expect(trigger.attributes.get('aria-haspopup')).toBe('listbox');
     expect(content.attributes.get('aria-multiselectable')).toBe('true');
     expect(isHidden(indicatorEmail)).toBe(false);
     expect(isHidden(indicatorSms)).toBe(true);

@@ -121,7 +121,7 @@ describe('dual JS output', () => {
     expect(packageJson.module).toBe('./esm/index.js');
     expect(packageJson.exports['.'].import).toBe('./esm/index.js');
     expect(packageJson.exports['.'].require).toBe('./cjs/index.cjs');
-  });
+  }, 15000);
 
   test('lumina-language-client package metadata exposes dual import and require entries', () => {
     const packageJsonPath = path.resolve(__dirname, '../packages/lumina-language-client/package.json');

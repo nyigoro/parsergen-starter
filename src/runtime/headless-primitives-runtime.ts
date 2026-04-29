@@ -114,6 +114,8 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
     registerComboboxValue,
     registerMultiselectValue,
     getMenuItemId,
+    getMenuActiveValue,
+    setMenuActiveValue,
     getMenuNavigationTarget,
     getRadioNavigationTarget,
     getSelectNavigationTarget,
@@ -739,10 +741,28 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 setMenuAnchorTarget(ctx, target as DomElementLike);
               }
               const nextOpen = !ctx.open.get();
+              if (nextOpen) {
+                setMenuActiveValue(ctx, '');
+              }
               ctx.open.set(nextOpen);
               if (!nextOpen) {
                 restoreMenuFocus(ctx);
               }
+            },
+            onKeyDown: (event?: KeyboardEvent) => {
+              const key = String(event?.key ?? '');
+              const target = getFocusTargetFromEvent(event);
+              if (key !== 'Enter' && key !== ' ' && key !== 'ArrowDown' && key !== 'ArrowUp') {
+                return undefined;
+              }
+              event?.preventDefault?.();
+              if (target) {
+                setMenuRestoreTarget(ctx, target);
+                setMenuAnchorTarget(ctx, target as DomElementLike);
+              }
+              setMenuActiveValue(ctx, key === 'ArrowUp' ? (ctx.order[ctx.order.length - 1] ?? '') : '');
+              ctx.open.set(true);
+              return false;
             },
           },
           props
@@ -781,6 +801,7 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
               }
               if (key === 'ArrowDown' || key === 'Home') {
                 event?.preventDefault?.();
+                setMenuActiveValue(ctx, ctx.order[0] ?? '');
                 focusMenuItem(
                   (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
                   ctx,
@@ -790,6 +811,7 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
               }
               if (key === 'ArrowUp' || key === 'End') {
                 event?.preventDefault?.();
+                setMenuActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? '');
                 focusMenuItem(
                   (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
                   ctx,
@@ -814,28 +836,31 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
       const ctx = frameManager.useContext(menuContext);
       registerMenuValue(ctx, value);
       const open = ctx.open.get();
-      const isFirst = ctx.order[0] === value;
+      const active = getMenuActiveValue(ctx);
       const itemId = getMenuItemId(ctx, value);
       return vnodeElement(
         'button',
         mergeProps(
           {
-            type: 'button',
-            id: itemId,
-            role: 'menuitem',
-            hidden: !open,
-            tabIndex: open ? 0 : -1,
-            autoFocus: open && isFirst,
-            'data-lumina-menu-item': 'true',
-            'data-state': open ? 'open' : 'closed',
-            onClick: () => {
-              closeMenu(ctx);
-            },
-            onKeyDown: (event?: KeyboardEvent) => {
-              const key = String(event?.key ?? '');
-              if (key === 'Escape') {
-                event?.preventDefault?.();
-                closeMenu(ctx);
+                type: 'button',
+                id: itemId,
+                role: 'menuitem',
+                hidden: !open,
+                tabIndex: open ? 0 : -1,
+                autoFocus: open && active === value,
+                'data-lumina-menu-item': 'true',
+                'data-state': open ? 'open' : 'closed',
+                onClick: () => {
+                  closeMenu(ctx);
+                },
+                onMouseEnter: () => {
+                  setMenuActiveValue(ctx, value);
+                },
+                onKeyDown: (event?: KeyboardEvent) => {
+                  const key = String(event?.key ?? '');
+                  if (key === 'Escape') {
+                    event?.preventDefault?.();
+                    closeMenu(ctx);
                 return false;
               }
               if (key === 'Enter' || key === ' ') {
@@ -846,15 +871,16 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 }
                 closeMenu(ctx);
                 return false;
-              }
-              const nextValue = getMenuNavigationTarget(ctx, value, key);
-              if (!nextValue) return undefined;
-              event?.preventDefault?.();
-              focusMenuItem(
-                (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
-                ctx,
-                nextValue
-              );
+                  }
+                  const nextValue = getMenuNavigationTarget(ctx, value, key);
+                  if (!nextValue) return undefined;
+                  event?.preventDefault?.();
+                  setMenuActiveValue(ctx, nextValue);
+                  focusMenuItem(
+                    (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
+                    ctx,
+                    nextValue
+                  );
               return false;
             },
           },
@@ -1482,7 +1508,6 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
           {
             type: 'button',
             id: triggerId,
-            role: 'combobox',
             'aria-haspopup': 'listbox',
             'aria-expanded': open ? 'true' : 'false',
             'aria-controls': contentId,

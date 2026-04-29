@@ -49,6 +49,9 @@ describe('runtime headless ui helpers', () => {
     const menu = { open: new Signal(true), baseId: 'menu', order: ['one', 'two', 'three'] };
     expect(runtime.getMenuNavigationTarget(menu, 'one', 'End')).toBe('three');
     expect(runtime.getMenuNavigationTarget(menu, 'three', 'ArrowDown')).toBe('one');
+    expect(runtime.getMenuActiveValue(menu)).toBe('one');
+    runtime.setMenuActiveValue(menu, 'three');
+    expect(runtime.getMenuActiveValue(menu)).toBe('three');
 
     const multiselect = {
       open: new Signal(true),
