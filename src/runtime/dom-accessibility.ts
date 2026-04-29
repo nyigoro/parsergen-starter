@@ -68,6 +68,18 @@ export const isElementHidden = (element: AccessibleDomElementLike): boolean =>
 export const isElementDisabled = (element: AccessibleDomElementLike): boolean =>
   elementRecord(element).disabled === true || getDomAttribute(element, 'disabled') !== null;
 
+export const isElementInert = (element: AccessibleDomElementLike | null | undefined): boolean => {
+  let current = element as AccessibleDomNodeLike | null | undefined;
+  while (current) {
+    const candidate = current as AccessibleDomElementLike;
+    if (elementRecord(candidate).inert === true || getDomAttribute(candidate, 'inert') !== null) {
+      return true;
+    }
+    current = current.parentNode;
+  }
+  return false;
+};
+
 export const getElementTabIndex = (element: AccessibleDomElementLike): number | null => {
   const raw = elementRecord(element).tabIndex ?? getDomAttribute(element, 'tabIndex') ?? getDomAttribute(element, 'tabindex');
   if (raw === null || raw === undefined || raw === '') return null;
@@ -76,7 +88,7 @@ export const getElementTabIndex = (element: AccessibleDomElementLike): number | 
 };
 
 export const isFocusableElement = (element: AccessibleDomElementLike): boolean => {
-  if (isElementHidden(element) || isElementDisabled(element)) return false;
+  if (isElementHidden(element) || isElementDisabled(element) || isElementInert(element)) return false;
 
   const tabIndex = getElementTabIndex(element);
   if (tabIndex !== null) {
@@ -96,6 +108,9 @@ export const collectFocusableDescendants = <T extends AccessibleDomElementLike>(
   const visit = (node: AccessibleDomNodeLike): void => {
     for (const child of readChildNodes(node)) {
       const element = child as T;
+      if (isElementInert(element)) {
+        continue;
+      }
       if (typeof element.focus === 'function' && isFocusableElement(element)) {
         focusable.push(element);
       }
@@ -107,6 +122,10 @@ export const collectFocusableDescendants = <T extends AccessibleDomElementLike>(
   visit(root);
   return focusable;
 };
+
+export const findFirstFocusableDescendant = <T extends AccessibleDomElementLike>(
+  root: AccessibleDomNodeLike
+): T | null => collectFocusableDescendants<T>(root)[0] ?? null;
 
 export const getFocusTargetFromEvent = <T extends { focus?: () => void } = { focus?: () => void }>(
   event: unknown

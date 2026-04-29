@@ -118,15 +118,18 @@
         <div class="controls">
           <button id="run">Run all benchmarks</button>
           <span id="status" class="status">Idle</span>
+          <span id="history-count" class="status muted">Saved compatible runs: 0</span>
         </div>
         <ul>
-          <li><code>Whole-list patch</code> measures raw JS fallback render cost plus the compiler-promoted Lumina path.</li>
+          <li><code>Whole-list patch</code> measures raw whole-tree rerender cost through the generic JS fallback path.</li>
           <li><code>Indexed list patch</code> measures a whole-array signal fanning out into stable row signals.</li>
-          <li><code>Keyed signal list patch</code> measures keyed row signals plus stable keyed DOM identity.</li>
+          <li><code>Stable signal list patch</code> measures stable row signal updates with persistent row identity.</li>
           <li><code>Compiled Lumina rows</code> measure the compiler-lowered DOM path with static template hoists and direct live text bindings.</li>
           <li><code>Initial mount</code> measures first render cost for a 1,000-row list.</li>
-          <li><code>Keyed reorder</code> measures moving keyed rows without changing content, including the compiled keyed-list path.</li>
+          <li><code>Keyed reorder</code> measures generic keyed patching against the compiled specialized keyed-list host.</li>
+          <li><code>Complex keyed reorder window</code> measures a middle-window keyed reshuffle so the deeper reorder planner work is visible.</li>
           <li><code>Fine-grained row update</code> measures direct row-level reactivity instead of full rerender.</li>
+          <li>Each suite now does one untimed warmup plus three measured runs, shows the median result, and saves only manifest-compatible history locally.</li>
         </ul>
       </section>
 
@@ -184,8 +187,8 @@
 
         <article class="card">
           <div class="stack">
-            <h2>Keyed signal list patch</h2>
-            <p class="muted">300 iterations. Update keyed rows through stable keyed item signals.</p>
+            <h2>Stable signal list patch</h2>
+            <p class="muted">300 iterations. Update stable row signals while preserving row identity.</p>
             <table>
               <thead>
                 <tr>
@@ -232,11 +235,28 @@
             </table>
           </div>
         </article>
+
+        <article class="card">
+          <div class="stack">
+            <h2>Complex keyed reorder window</h2>
+            <p class="muted">150 iterations. Reshuffle a stable middle keyed window and preserve the outer prefix/suffix.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Library</th>
+                  <th>Total (ms)</th>
+                  <th>Avg / iter (ms)</th>
+                </tr>
+              </thead>
+              <tbody id="results-complex-reorder"></tbody>
+            </table>
+          </div>
+        </article>
       </section>
 
       <div id="workspace" class="hidden"></div>
     </main>
 
-    <script type="module" src="./benchmark.js"></script>
+    <script type="module" src="./benchmark.js?v=2026-04-29-benchmark-trust-v2"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-import { readChildNodes } from './dom-accessibility.js';
+import { findFirstFocusableDescendant, getDomAttribute, isElementHidden, readChildNodes } from './dom-accessibility.js';
 import {
   analyzeSequenceTransition,
   getTransitionAffectedRange,
@@ -46,6 +46,7 @@ export interface DomElementLike extends DomNodeLike {
   setAttribute?: (name: string, value: string) => void;
   removeAttribute?: (name: string) => void;
   getAttribute?: (name: string) => string | null;
+  ownerDocument?: { activeElement?: unknown };
   className?: string;
   style?: Record<string, unknown> & { setProperty?: (name: string, value: string) => void };
   tagName?: string;
@@ -89,8 +90,14 @@ interface DomPortalState {
   host: DomElementLike | null;
 }
 type DomPortalStore = WeakMap<DomNodeLike, DomPortalState>;
+type DomModalInertStore = WeakMap<DomElementLike, DomElementLike[]>;
+type DomInertCountStore = WeakMap<DomElementLike, number>;
+type DomInertStateStore = WeakMap<DomElementLike, { hadAttribute: boolean; previousValue: unknown }>;
 
 const domTemplateCache = new WeakMap<DomDocumentLike, Map<string, DomTemplateLike>>();
+const dialogModalInertTargets: DomModalInertStore = new WeakMap();
+const inertCounts: DomInertCountStore = new WeakMap();
+const inertStates: DomInertStateStore = new WeakMap();
 
 const getDomDocument = (options?: DomRendererOptions): DomDocumentLike => {
   if (options?.document) return options.document;
@@ -104,6 +111,141 @@ const getDomDocument = (options?: DomRendererOptions): DomDocumentLike => {
 const asDomChildren = (node: VNode): VNode[] => node.children ?? [];
 
 const isEventProp = (name: string): boolean => /^on[A-Z]/.test(name);
+const isForcedAttributeProp = (name: string): boolean =>
+  name === 'role' || name.startsWith('aria-') || name.startsWith('data-');
+const isHiddenPropValue = (value: unknown): boolean => value === true || value === 'true';
+const isPortalHostElement = (node: DomNodeLike | null | undefined): node is DomElementLike =>
+  node != null && String((node as DomElementLike).tagName ?? '').toLowerCase() === 'lumina-portal-host';
+
+const isDialogOverlayElement = (node: DomNodeLike | null | undefined): node is DomElementLike =>
+  node != null && getDomAttribute(node as DomElementLike, 'data-lumina-dialog-overlay') === 'true';
+
+const isModalDialogElement = (element: DomElementLike): boolean =>
+  getDomAttribute(element, 'role') === 'dialog' && getDomAttribute(element, 'aria-modal') === 'true';
+
+const containsDomNode = (root: DomNodeLike, target: DomNodeLike | null | undefined): boolean => {
+  if (!target) return false;
+  if (root === target) return true;
+  for (const child of readChildNodes(root)) {
+    if (containsDomNode(child as DomNodeLike, target)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const findMarkedDialogInitialFocus = (root: DomNodeLike): DomElementLike | null => {
+  for (const child of readChildNodes(root)) {
+    const element = child as DomElementLike;
+    if (getDomAttribute(element, 'data-lumina-dialog-initial-focus') === 'true') {
+      return element;
+    }
+    const nested = findMarkedDialogInitialFocus(child as DomNodeLike);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+};
+
+const focusInitialDialogTarget = (element: DomElementLike): void => {
+  const activeElement = element.ownerDocument?.activeElement as DomNodeLike | null | undefined;
+  if (activeElement && activeElement !== element && containsDomNode(element, activeElement)) {
+    return;
+  }
+  const marked = findMarkedDialogInitialFocus(element);
+  if (marked?.focus) {
+    marked.focus();
+    return;
+  }
+  const firstFocusable = findFirstFocusableDescendant<DomElementLike>(element);
+  if (firstFocusable?.focus) {
+    firstFocusable.focus();
+    return;
+  }
+  element.focus?.();
+};
+
+const setElementInert = (element: DomElementLike, active: boolean): void => {
+  const record = element as unknown as Record<string, unknown>;
+  if (active) {
+    const count = inertCounts.get(element) ?? 0;
+    inertCounts.set(element, count + 1);
+    if (count > 0) {
+      return;
+    }
+    inertStates.set(element, {
+      hadAttribute: getDomAttribute(element, 'inert') !== null,
+      previousValue: record.inert,
+    });
+    if (element.setAttribute) {
+      element.setAttribute('inert', '');
+    }
+    record.inert = true;
+    return;
+  }
+
+  const count = inertCounts.get(element) ?? 0;
+  if (count <= 1) {
+    inertCounts.delete(element);
+    const previous = inertStates.get(element);
+    inertStates.delete(element);
+    if (previous?.hadAttribute) {
+      if (element.setAttribute) {
+        element.setAttribute('inert', '');
+      }
+    } else if (element.removeAttribute) {
+      element.removeAttribute('inert');
+    }
+    record.inert = previous?.previousValue;
+    return;
+  }
+  inertCounts.set(element, count - 1);
+};
+
+const collectModalInertTargets = (dialog: DomElementLike): DomElementLike[] => {
+  const parent = dialog.parentNode;
+  if (!parent) return [];
+
+  const scopeParent = isPortalHostElement(parent) && parent.parentNode ? parent.parentNode : parent;
+  const exempt = new Set<DomNodeLike>();
+  if (isPortalHostElement(parent)) {
+    exempt.add(parent);
+  } else {
+    exempt.add(dialog);
+  }
+
+  const targets: DomElementLike[] = [];
+  for (const sibling of readChildNodes(scopeParent)) {
+    const element = sibling as DomElementLike;
+    if (exempt.has(sibling as DomNodeLike) || isDialogOverlayElement(sibling as DomNodeLike)) {
+      continue;
+    }
+    targets.push(element);
+  }
+  return targets;
+};
+
+const syncModalDialogInertState = (dialog: DomElementLike, active: boolean): void => {
+  const previousTargets = dialogModalInertTargets.get(dialog) ?? [];
+  if (!active) {
+    for (const target of previousTargets) {
+      setElementInert(target, false);
+    }
+    dialogModalInertTargets.delete(dialog);
+    return;
+  }
+
+  if (previousTargets.length > 0) {
+    return;
+  }
+
+  const targets = collectModalInertTargets(dialog);
+  for (const target of targets) {
+    setElementInert(target, true);
+  }
+  dialogModalInertTargets.set(dialog, targets);
+};
 
 const cloneStaticTemplateElement = (
   documentLike: DomDocumentLike,
@@ -219,11 +361,15 @@ const setDomProperty = (
 
   if (value === false || value === null || value === undefined) {
     if (element.removeAttribute) element.removeAttribute(name);
-    (element as unknown as Record<string, unknown>)[name] = value as never;
+    if (!isForcedAttributeProp(name)) {
+      (element as unknown as Record<string, unknown>)[name] = value as never;
+    }
     return;
   }
 
-  if (name in element) {
+  if (isForcedAttributeProp(name) && element.setAttribute) {
+    element.setAttribute(name, String(value));
+  } else if (name in element) {
     (element as unknown as Record<string, unknown>)[name] = value;
   } else if (element.setAttribute) {
     element.setAttribute(name, String(value));
@@ -263,8 +409,20 @@ const updateDomProperties = (
     setDomProperty(element, key, value, eventStore);
   }
 
-  if (nxt.autoFocus && prev.autoFocus !== nxt.autoFocus) {
-    element.focus?.();
+  if (isModalDialogElement(element)) {
+    syncModalDialogInertState(element, !isElementHidden(element));
+  }
+
+  if (
+    nxt.autoFocus
+    && (
+      prev.autoFocus !== nxt.autoFocus
+      || (isModalDialogElement(element) && isHiddenPropValue(prev.hidden) && !isElementHidden(element))
+    )
+  ) {
+    if (!isModalDialogElement(element)) {
+      element.focus?.();
+    }
   }
 };
 
@@ -275,6 +433,14 @@ const setChildren = (container: DomNodeLike, children: DomNodeLike[]): void => {
   }
   for (const child of children) {
     container.appendChild(child);
+    const childElement = child as DomElementLike;
+    if (childElement.getAttribute && isModalDialogElement(childElement)) {
+      const open = !isElementHidden(childElement);
+      syncModalDialogInertState(childElement, open);
+      if (open) {
+        focusInitialDialogTarget(childElement);
+      }
+    }
   }
 };
 
@@ -295,6 +461,9 @@ const disposeDomNode = (
   portalStore: DomPortalStore,
   liveTextStore: DomLiveTextStore
 ): void => {
+  if ((node as DomElementLike).getAttribute && isModalDialogElement(node as DomElementLike)) {
+    syncModalDialogInertState(node as DomElementLike, false);
+  }
   const liveTextEffect = liveTextStore.get(node);
   if (liveTextEffect) {
     liveTextEffect.dispose();
@@ -348,6 +517,14 @@ const replaceChildren = (
   }
   for (const child of children) {
     container.appendChild(child);
+    const childElement = child as DomElementLike;
+    if (childElement.getAttribute && isModalDialogElement(childElement)) {
+      const open = !isElementHidden(childElement);
+      syncModalDialogInertState(childElement, open);
+      if (open) {
+        focusInitialDialogTarget(childElement);
+      }
+    }
   }
 };
 
@@ -361,32 +538,71 @@ const hasKeyedChildren = (children: VNode[]): boolean => children.some((child) =
 const duplicateKeyError = (key: string | number): Error =>
   new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`);
 
-const analyzeKeyedChildTransition = (prevChildren: VNode[], nextChildren: VNode[]): KeyedListTransition | null => {
-  if (
-    prevChildren.length !== nextChildren.length
-    || !prevChildren.every((child) => hasVNodeKey(child))
-    || !nextChildren.every((child) => hasVNodeKey(child))
-  ) {
+const analyzeKeyedChildTransition = (
+  prevChildren: VNode[],
+  nextChildren: VNode[]
+): KeyedListTransition | null => {
+  if (prevChildren.length !== nextChildren.length) {
     return null;
   }
 
-  const assertUniqueKeys = (children: VNode[]): void => {
-    const seenKeys = new Set<string | number>();
-    for (const child of children) {
-      if (hasVNodeKey(child)) {
-        if (seenKeys.has(child.key)) {
-          throw duplicateKeyError(child.key);
-        }
-        seenKeys.add(child.key);
+  const seenPrevKeys = new Set<string | number>();
+  const seenNextKeys = new Set<string | number>();
+  let firstMismatch = -1;
+
+  for (let index = 0; index < prevChildren.length; index += 1) {
+    const prevChild = prevChildren[index];
+    const nextChild = nextChildren[index];
+    if (!hasVNodeKey(prevChild) || !hasVNodeKey(nextChild)) {
+      return null;
+    }
+
+    const prevKey = prevChild.key;
+    const nextKey = nextChild.key;
+    if (seenPrevKeys.has(prevKey)) {
+      throw duplicateKeyError(prevKey);
+    }
+    if (seenNextKeys.has(nextKey)) {
+      throw duplicateKeyError(nextKey);
+    }
+    seenPrevKeys.add(prevKey);
+    seenNextKeys.add(nextKey);
+
+    if (firstMismatch < 0 && prevKey !== nextKey) {
+      firstMismatch = index;
+    }
+  }
+
+  if (firstMismatch < 0) {
+    return { kind: 'same_order' };
+  }
+
+  const swapRight = firstMismatch + 1;
+  if (
+    swapRight < prevChildren.length
+    && (prevChildren[firstMismatch] as VNode & { key: string | number }).key
+      === (nextChildren[swapRight] as VNode & { key: string | number }).key
+    && (prevChildren[swapRight] as VNode & { key: string | number }).key
+      === (nextChildren[firstMismatch] as VNode & { key: string | number }).key
+  ) {
+    let restMatches = true;
+    for (let index = swapRight + 1; index < prevChildren.length; index += 1) {
+      if (
+        (prevChildren[index] as VNode & { key: string | number }).key
+        !== (nextChildren[index] as VNode & { key: string | number }).key
+      ) {
+        restMatches = false;
+        break;
       }
     }
-  };
-  assertUniqueKeys(prevChildren);
-  assertUniqueKeys(nextChildren);
+    if (restMatches) {
+      return { kind: 'adjacent_swap', left: firstMismatch, right: swapRight };
+    }
+  }
 
-  return analyzeSequenceTransition(prevChildren, nextChildren, (left, right) =>
-    hasVNodeKey(left) && hasVNodeKey(right) ? left.key === right.key : false
-  );
+  const prevKeys = prevChildren.map((child) => (child as VNode & { key: string | number }).key);
+  const nextKeys = nextChildren.map((child) => (child as VNode & { key: string | number }).key);
+  return analyzeSequenceTransition(prevKeys, nextKeys, (left, right) => left === right);
 };
 
 interface ForListEntry {
@@ -427,6 +643,67 @@ const buildKeyedOrder = (
   return order;
 };
 
+const analyzeKeyedOrderTransition = (
+  items: unknown[],
+  previousOrder: Array<string | number>,
+  keyOf: (item: unknown, index: number) => string | number
+): { transition: KeyedListTransition; nextOrder: Array<string | number> | null } => {
+  if (items.length !== previousOrder.length) {
+    return { transition: { kind: 'complex_reorder' }, nextOrder: null };
+  }
+
+  let firstMismatch = -1;
+  let firstMismatchKey: string | number | null = null;
+
+  for (let index = 0; index < items.length; index += 1) {
+    const key = coerceListKey(keyOf(items[index], index), index);
+    if (previousOrder[index] !== key) {
+      firstMismatch = index;
+      firstMismatchKey = key;
+      break;
+    }
+  }
+
+  if (firstMismatch < 0) {
+    return { transition: { kind: 'same_order' }, nextOrder: null };
+  }
+
+  const swapRight = firstMismatch + 1;
+  if (swapRight < items.length) {
+    const rightKey = coerceListKey(keyOf(items[swapRight], swapRight), swapRight);
+    if (
+      previousOrder[firstMismatch] === rightKey
+      && previousOrder[swapRight] === firstMismatchKey
+    ) {
+      let restMatches = true;
+      for (let index = swapRight + 1; index < items.length; index += 1) {
+        const key = coerceListKey(keyOf(items[index], index), index);
+        if (previousOrder[index] !== key) {
+          restMatches = false;
+          break;
+        }
+      }
+      if (restMatches) {
+        return {
+          transition: { kind: 'adjacent_swap', left: firstMismatch, right: swapRight },
+          nextOrder: null,
+        };
+      }
+    }
+  }
+
+  const nextOrder = previousOrder.slice();
+  nextOrder[firstMismatch] = firstMismatchKey as string | number;
+  for (let index = firstMismatch + 1; index < items.length; index += 1) {
+    nextOrder[index] = coerceListKey(keyOf(items[index], index), index);
+  }
+
+  return {
+    transition: analyzeSequenceTransition(previousOrder, nextOrder, (left, right) => left === right),
+    nextOrder,
+  };
+};
+
 const hasShallowEqualProps = (
   left: Record<string, unknown> | undefined,
   right: Record<string, unknown> | undefined
@@ -434,16 +711,87 @@ const hasShallowEqualProps = (
   if (left === right) return true;
   if (!left || !right) return !left && !right;
 
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) return false;
-
-  for (const key of leftKeys) {
+  let leftCount = 0;
+  for (const key in left) {
+    if (!Object.prototype.hasOwnProperty.call(left, key)) continue;
+    leftCount += 1;
     if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
     if (left[key] !== right[key]) return false;
   }
 
-  return true;
+  let rightCount = 0;
+  for (const key in right) {
+    if (!Object.prototype.hasOwnProperty.call(right, key)) continue;
+    rightCount += 1;
+  }
+
+  return leftCount === rightCount;
+};
+
+const canSkipStableKeyedChildPatch = (prevNode: VNode, nextNode: VNode): boolean => {
+  if (prevNode === nextNode) return true;
+  if (prevNode.kind !== nextNode.kind) return false;
+
+  if (prevNode.kind === 'text' && nextNode.kind === 'text') {
+    return prevNode.text === nextNode.text;
+  }
+
+  if (prevNode.kind === 'live_text' && nextNode.kind === 'live_text') {
+    return prevNode.signal === nextNode.signal;
+  }
+
+  if (prevNode.kind === 'portal' || nextNode.kind === 'portal') {
+    return false;
+  }
+
+  if (prevNode.tag !== nextNode.tag || prevNode.key !== nextNode.key) {
+    return false;
+  }
+
+  if (!hasShallowEqualProps(prevNode.props, nextNode.props)) {
+    return false;
+  }
+
+  const prevChildren = asDomChildren(prevNode);
+  const nextChildren = asDomChildren(nextNode);
+  if (prevChildren.length !== nextChildren.length) {
+    return false;
+  }
+
+  if (prevChildren.length === 0) {
+    return true;
+  }
+
+  if (prevChildren.length !== 1) {
+    return false;
+  }
+
+  const prevChild = prevChildren[0];
+  const nextChild = nextChildren[0];
+  if (prevChild === nextChild) {
+    return true;
+  }
+  if (prevChild.kind === 'text' && nextChild.kind === 'text') {
+    return prevChild.text === nextChild.text;
+  }
+  if (prevChild.kind === 'live_text' && nextChild.kind === 'live_text') {
+    return prevChild.signal === nextChild.signal;
+  }
+  return false;
+};
+
+const remapMovedIndex = (index: number, from: number, to: number): number => {
+  if (from === to) {
+    return index;
+  }
+  if (from < to) {
+    if (index < from || index > to) return index;
+    if (index === to) return from;
+    return index + 1;
+  }
+  if (index < to || index > from) return index;
+  if (index === to) return from;
+  return index - 1;
 };
 
 const canSkipDomPatch = (
@@ -726,6 +1074,39 @@ const bindForListHost = (
     }
   };
 
+  const hasPureEntryValueReuse = (
+    items: unknown[],
+    nextEntries: ForListEntry[]
+  ): boolean => {
+    if (items.length !== nextEntries.length) {
+      return false;
+    }
+    for (let index = 0; index < items.length; index += 1) {
+      if (nextEntries[index]?.currentValue !== items[index]) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const swapItems = <T>(entries: T[], left: number, right: number): T[] => {
+    const nextEntries = entries.slice();
+    const previousLeft = nextEntries[left];
+    nextEntries[left] = nextEntries[right] as T;
+    nextEntries[right] = previousLeft as T;
+    return nextEntries;
+  };
+
+  const moveItems = <T>(entries: T[], from: number, to: number): T[] => {
+    const nextEntries = entries.slice();
+    const moving = nextEntries.splice(from, 1)[0];
+    if (!moving) {
+      return nextEntries;
+    }
+    nextEntries.splice(to, 0, moving);
+    return nextEntries;
+  };
+
   const syncIndicesForRange = (
     nextEntries: ForListEntry[],
     transition: KeyedListTransition
@@ -773,54 +1154,50 @@ const bindForListHost = (
 
   host.__luminaForListEffect = new Effect(() => {
     const nextItems = readIndexListValues(source, true);
-    if (nextItems.length === state.order.length) {
-      let sameOrder = true;
-      for (let index = 0; index < nextItems.length; index += 1) {
-        const key = coerceListKey(keyOf(nextItems[index], index), index);
-        if (state.order[index] !== key) {
-          sameOrder = false;
-          break;
-        }
-      }
-
-      if (sameOrder) {
-        runBatched(() => {
-          for (let index = 0; index < nextItems.length; index += 1) {
-            const entry = state.entries[index];
-            if (!entry) continue;
-            syncEntryValue(entry, nextItems[index]);
-          }
-        });
-        return;
-      }
-    }
-
-    const nextOrder = buildKeyedOrder(nextItems, keyOf);
-    const transition = analyzeSequenceTransition(state.order, nextOrder, (left, right) => left === right);
+    const analyzedTransition = analyzeKeyedOrderTransition(nextItems, state.order, keyOf);
+    const transition = analyzedTransition.transition;
+    const nextOrder =
+      analyzedTransition.nextOrder
+      ?? (transition.kind === 'adjacent_swap'
+        ? swapItems(state.order, transition.left, transition.right)
+        : null);
 
     if (transition.kind === 'same_order') {
       runBatched(() => {
-        syncValuesForOrder(nextItems, nextOrder);
+        for (let index = 0; index < nextItems.length; index += 1) {
+          const entry = state.entries[index];
+          if (!entry) continue;
+          syncEntryValue(entry, nextItems[index]);
+        }
       });
       return;
     }
 
     if (transition.kind === 'adjacent_swap' || transition.kind === 'single_move') {
-      const nextEntries = nextOrder.map((key) => {
-        const entry = state.entriesByKey.get(key);
-        if (!entry) {
-          throw new Error(`Missing keyed list entry '${String(key)}' during transition`);
+      const nextEntries =
+        transition.kind === 'adjacent_swap'
+          ? swapItems(state.entries, transition.left, transition.right)
+          : moveItems(state.entries, transition.from, transition.to);
+
+      for (let index = 0; index < nextEntries.length; index += 1) {
+        if (!nextEntries[index]) {
+          throw new Error(`Missing keyed list entry '${String((nextOrder?.[index]) ?? index)}' during transition`);
         }
-        return entry;
-      });
+      }
 
       runBatched(() => {
-        syncValuesForOrder(nextItems, nextOrder);
+        if (nextOrder && !hasPureEntryValueReuse(nextItems, nextEntries)) {
+          syncValuesForOrder(nextItems, nextOrder);
+        }
         syncIndicesForRange(nextEntries, transition);
       });
 
       state.entries = nextEntries;
-      state.order = nextOrder;
+      state.order =
+        nextOrder
+        ?? (transition.kind === 'adjacent_swap'
+          ? swapItems(state.order, transition.left, transition.right)
+          : moveItems(state.order, transition.from, transition.to));
       reorderChildren(
         host,
         nextEntries.map((entry) => entry.domNode),
@@ -835,15 +1212,16 @@ const bindForListHost = (
 
     let nextEntries: ForListEntry[] = [];
     let structureChanged = false;
+    const resolvedNextOrder = nextOrder ?? buildKeyedOrder(nextItems, keyOf);
     runBatched(() => {
-      const built = buildNextEntries(nextItems, nextOrder);
+      const built = buildNextEntries(nextItems, resolvedNextOrder);
       nextEntries = built.nextEntries;
       structureChanged = built.structureChanged;
       syncIndicesForRange(nextEntries, transition);
     });
 
     state.entries = nextEntries;
-    state.order = nextOrder;
+    state.order = resolvedNextOrder;
     reorderChildren(
       host,
       nextEntries.map((entry) => entry.domNode),
@@ -922,6 +1300,9 @@ const createDomNode = (
     createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue)
   );
   setChildren(element, children);
+  if (node.props?.autoFocus && isModalDialogElement(element) && !isElementHidden(element)) {
+    focusInitialDialogTarget(element);
+  }
   return element;
 };
 
@@ -982,7 +1363,10 @@ const patchDomChildrenWithKeys = (
         element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
         continue;
       }
-      if (canSkipDomPatch(prevChildren[i], nextChildren[i], equalsValue)) {
+      if (
+        canSkipStableKeyedChildPatch(prevChildren[i], nextChildren[i])
+        || canSkipDomPatch(prevChildren[i], nextChildren[i], equalsValue)
+      ) {
         continue;
       }
       patchDomNode(domChild, prevChildren[i], nextChildren[i], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
@@ -998,7 +1382,10 @@ const patchDomChildrenWithKeys = (
       element.insertBefore(rightDom, leftDom);
       for (let index = 0; index < nextChildren.length; index += 1) {
         if (index === keyedTransition.left) {
-          if (!canSkipDomPatch(prevChildren[keyedTransition.right], nextChildren[index], equalsValue)) {
+          if (
+            !canSkipStableKeyedChildPatch(prevChildren[keyedTransition.right], nextChildren[index])
+            && !canSkipDomPatch(prevChildren[keyedTransition.right], nextChildren[index], equalsValue)
+          ) {
             patchDomNode(
               rightDom,
               prevChildren[keyedTransition.right],
@@ -1013,7 +1400,10 @@ const patchDomChildrenWithKeys = (
           continue;
         }
         if (index === keyedTransition.right) {
-          if (!canSkipDomPatch(prevChildren[keyedTransition.left], nextChildren[index], equalsValue)) {
+          if (
+            !canSkipStableKeyedChildPatch(prevChildren[keyedTransition.left], nextChildren[index])
+            && !canSkipDomPatch(prevChildren[keyedTransition.left], nextChildren[index], equalsValue)
+          ) {
             patchDomNode(
               leftDom,
               prevChildren[keyedTransition.left],
@@ -1028,10 +1418,50 @@ const patchDomChildrenWithKeys = (
           continue;
         }
         const domChild = currentDomChildren[index] as DomNodeLike | undefined;
-        if (!domChild || canSkipDomPatch(prevChildren[index], nextChildren[index], equalsValue)) {
+        if (
+          !domChild
+          || canSkipStableKeyedChildPatch(prevChildren[index], nextChildren[index])
+          || canSkipDomPatch(prevChildren[index], nextChildren[index], equalsValue)
+        ) {
           continue;
         }
         patchDomNode(domChild, prevChildren[index], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      }
+      return;
+    }
+  }
+
+  if (keyedTransition?.kind === 'single_move') {
+    const currentDomChildren = readChildNodes(element) as DomNodeLike[];
+    const movingDom = currentDomChildren[keyedTransition.from];
+    if (movingDom && typeof element.insertBefore === 'function') {
+      const reference =
+        keyedTransition.from < keyedTransition.to
+          ? (currentDomChildren[keyedTransition.to + 1] ?? null)
+          : (currentDomChildren[keyedTransition.to] ?? null);
+      element.insertBefore(movingDom, reference);
+      for (let index = 0; index < nextChildren.length; index += 1) {
+        const sourceIndex = remapMovedIndex(index, keyedTransition.from, keyedTransition.to);
+        const domChild = currentDomChildren[sourceIndex];
+        const prevChild = prevChildren[sourceIndex];
+        if (
+          !domChild
+          || !prevChild
+          || canSkipStableKeyedChildPatch(prevChild, nextChildren[index])
+          || canSkipDomPatch(prevChild, nextChildren[index], equalsValue)
+        ) {
+          continue;
+        }
+        patchDomNode(
+          domChild,
+          prevChild,
+          nextChildren[index],
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
       }
       return;
     }
@@ -1212,6 +1642,16 @@ const patchDomNode = (
     patchDomChildrenWithKeys(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
   } else {
     patchDomChildrenPositionally(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+  }
+
+  if (
+    nextNode.kind === 'element'
+    && nextNode.props?.autoFocus
+    && isModalDialogElement(element)
+    && isHiddenPropValue(prevNode.props?.hidden)
+    && !isElementHidden(element)
+  ) {
+    focusInitialDialogTarget(element);
   }
 
   return element;

@@ -4,7 +4,7 @@ import {
   type AccessibleDomElementLike,
   type AccessibleDomNodeLike,
 } from './dom-accessibility.js';
-import { type Signal } from './reactive-core.js';
+import { Signal } from './reactive-core.js';
 
 export interface TabsContextValue {
   value: Signal<string>;
@@ -84,6 +84,7 @@ export interface ComboboxItemContextValue {
   value: string;
   itemId: string;
   selected: boolean;
+  active: boolean;
 }
 
 export interface MultiselectContextValue {
@@ -251,8 +252,10 @@ export const createHeadlessUiRuntime = () => {
   const menuRestoreTargets = new WeakMap<object, FocusTargetLike>();
   const selectAnchorTargets = new WeakMap<object, AnchorElementLike>();
   const selectRestoreTargets = new WeakMap<object, FocusTargetLike>();
+  const selectActiveValues = new WeakMap<object, Signal<string>>();
   const comboboxAnchorTargets = new WeakMap<object, AnchorElementLike>();
   const comboboxRestoreTargets = new WeakMap<object, FocusTargetLike>();
+  const comboboxActiveValues = new WeakMap<object, Signal<string>>();
   const multiselectAnchorTargets = new WeakMap<object, AnchorElementLike>();
   const multiselectRestoreTargets = new WeakMap<object, FocusTargetLike>();
 
@@ -478,8 +481,89 @@ export const createHeadlessUiRuntime = () => {
     registerOrderedValue(ctx.order, value);
   };
 
+  const getSelectActiveSignal = (ctx: SelectContextValue): Signal<string> => {
+    const key = ctx.value as object;
+    const existing = selectActiveValues.get(key);
+    if (existing) return existing;
+    const created = new Signal('');
+    selectActiveValues.set(key, created);
+    return created;
+  };
+
+  const setSelectActiveValue = (ctx: SelectContextValue, value: string | null | undefined): void => {
+    getSelectActiveSignal(ctx).set(typeof value === 'string' ? value : '');
+  };
+
+  const resolveSelectActiveValue = (ctx: SelectContextValue): string => {
+    const explicit = getSelectActiveSignal(ctx).get();
+    if (explicit && (ctx.order.length === 0 || ctx.order.includes(explicit))) {
+      return explicit;
+    }
+    const selected = ctx.value.get();
+    if (selected && (ctx.order.length === 0 || ctx.order.includes(selected))) {
+      return selected;
+    }
+    return ctx.order[0] ?? explicit ?? selected ?? '';
+  };
+
+  const getSelectActiveValue = (ctx: SelectContextValue): string => resolveSelectActiveValue(ctx);
+
+  const getSelectActiveDescendantId = (ctx: SelectContextValue): string | null => {
+    const activeValue = resolveSelectActiveValue(ctx);
+    return activeValue ? getSelectItemId(ctx, activeValue) : null;
+  };
+
+  const acceptSelectActiveValue = (ctx: SelectContextValue): string => {
+    const nextValue = resolveSelectActiveValue(ctx);
+    if (!nextValue) return '';
+    ctx.value.set(nextValue);
+    setSelectActiveValue(ctx, nextValue);
+    return nextValue;
+  };
+
   const registerComboboxValue = (ctx: ComboboxContextValue, value: string): void => {
     registerOrderedValue(ctx.order, value);
+  };
+
+  const getComboboxActiveSignal = (ctx: ComboboxContextValue): Signal<string> => {
+    const key = ctx.value as object;
+    const existing = comboboxActiveValues.get(key);
+    if (existing) return existing;
+    const created = new Signal('');
+    comboboxActiveValues.set(key, created);
+    return created;
+  };
+
+  const setComboboxActiveValue = (ctx: ComboboxContextValue, value: string | null | undefined): void => {
+    getComboboxActiveSignal(ctx).set(typeof value === 'string' ? value : '');
+  };
+
+  const resolveComboboxActiveValue = (ctx: ComboboxContextValue): string => {
+    const explicit = getComboboxActiveSignal(ctx).get();
+    if (explicit && (ctx.order.length === 0 || ctx.order.includes(explicit))) {
+      return explicit;
+    }
+    const selected = ctx.value.get();
+    if (selected && (ctx.order.length === 0 || ctx.order.includes(selected))) {
+      return selected;
+    }
+    return ctx.order[0] ?? explicit ?? selected ?? '';
+  };
+
+  const getComboboxActiveValue = (ctx: ComboboxContextValue): string => resolveComboboxActiveValue(ctx);
+
+  const getComboboxActiveDescendantId = (ctx: ComboboxContextValue): string | null => {
+    const activeValue = resolveComboboxActiveValue(ctx);
+    return activeValue ? getComboboxItemId(ctx, activeValue) : null;
+  };
+
+  const acceptComboboxActiveValue = (ctx: ComboboxContextValue): string => {
+    const nextValue = resolveComboboxActiveValue(ctx);
+    if (!nextValue) return '';
+    ctx.value.set(nextValue);
+    ctx.query.set(nextValue);
+    setComboboxActiveValue(ctx, nextValue);
+    return nextValue;
   };
 
   const registerMultiselectValue = (ctx: MultiselectContextValue, value: string): void => {
@@ -549,11 +633,13 @@ export const createHeadlessUiRuntime = () => {
   };
 
   const closeSelect = (ctx: SelectContextValue): void => {
+    setSelectActiveValue(ctx, ctx.value.get());
     ctx.open.set(false);
     restoreSelectFocus(ctx);
   };
 
   const closeCombobox = (ctx: ComboboxContextValue): void => {
+    setComboboxActiveValue(ctx, ctx.value.get());
     ctx.open.set(false);
     restoreComboboxFocus(ctx);
   };
@@ -760,6 +846,14 @@ export const createHeadlessUiRuntime = () => {
     getSelectNavigationTarget,
     getComboboxNavigationTarget,
     getMultiselectNavigationTarget,
+    getSelectActiveValue,
+    getSelectActiveDescendantId,
+    setSelectActiveValue,
+    acceptSelectActiveValue,
+    getComboboxActiveValue,
+    getComboboxActiveDescendantId,
+    setComboboxActiveValue,
+    acceptComboboxActiveValue,
     focusMenuItem,
     focusRadioItem,
     focusSelectItem,

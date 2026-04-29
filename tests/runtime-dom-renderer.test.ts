@@ -55,4 +55,23 @@ describe('runtime dom renderer', () => {
     renderer.patch?.(node, next, container);
     expect(childText(hydrated)).toBe('Hydrated');
   });
+
+  test('keeps aria and role props on the attribute path when they become defined later', () => {
+    const document = new TestingDocument();
+    const container = document.createElement('div');
+    const renderer = createDomRenderer({ document }, Object.is);
+
+    const prev = vnodeElement('input', { role: 'combobox', 'aria-activedescendant': undefined }, []);
+    const next = vnodeElement('input', { role: 'combobox', 'aria-activedescendant': 'opt-2' }, []);
+
+    renderer.mount(prev, container);
+    const mounted = readChildNodes(container)[0] as TestingElement;
+    expect(mounted.getAttribute('role')).toBe('combobox');
+    expect(mounted.getAttribute('aria-activedescendant')).toBeNull();
+
+    renderer.patch?.(prev, next, container);
+
+    expect(mounted.getAttribute('role')).toBe('combobox');
+    expect(mounted.getAttribute('aria-activedescendant')).toBe('opt-2');
+  });
 });

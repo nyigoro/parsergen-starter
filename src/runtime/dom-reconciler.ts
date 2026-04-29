@@ -25,6 +25,40 @@ const setChildren = <TNode extends ReorderableDomNodeLike>(container: TNode, chi
   }
 };
 
+const findStableWindow = <TNode>(
+  currentChildren: TNode[],
+  nextChildren: TNode[]
+): { currentStart: number; currentEnd: number; nextStart: number; nextEnd: number } | null => {
+  let currentStart = 0;
+  let nextStart = 0;
+
+  while (
+    currentStart < currentChildren.length
+    && nextStart < nextChildren.length
+    && currentChildren[currentStart] === nextChildren[nextStart]
+  ) {
+    currentStart += 1;
+    nextStart += 1;
+  }
+
+  let currentEnd = currentChildren.length - 1;
+  let nextEnd = nextChildren.length - 1;
+  while (
+    currentEnd >= currentStart
+    && nextEnd >= nextStart
+    && currentChildren[currentEnd] === nextChildren[nextEnd]
+  ) {
+    currentEnd -= 1;
+    nextEnd -= 1;
+  }
+
+  if (currentStart > currentEnd && nextStart > nextEnd) {
+    return null;
+  }
+
+  return { currentStart, currentEnd, nextStart, nextEnd };
+};
+
 export const getTransitionAffectedRange = (
   transition: KeyedListTransition,
   length: number
@@ -47,29 +81,13 @@ export const getTransitionAffectedRange = (
 const findSingleMove = <T>(
   previous: T[],
   next: T[],
-  equals: (left: T, right: T) => boolean
+  equals: (left: T, right: T) => boolean,
+  first: number,
+  last: number
 ): { from: number; to: number } | null => {
-  if (previous.length !== next.length || previous.length < 2) {
+  if (previous.length !== next.length || previous.length < 2 || last <= first) {
     return null;
   }
-
-  let first = -1;
-  for (let index = 0; index < previous.length; index += 1) {
-    if (!equals(previous[index], next[index])) {
-      first = index;
-      break;
-    }
-  }
-  if (first < 0) return null;
-
-  let last = -1;
-  for (let index = previous.length - 1; index >= 0; index -= 1) {
-    if (!equals(previous[index], next[index])) {
-      last = index;
-      break;
-    }
-  }
-  if (last <= first) return null;
 
   for (let from = first + 1; from <= last; from += 1) {
     if (!equals(previous[from], next[first])) continue;
@@ -125,34 +143,32 @@ export const analyzeSequenceTransition = <T>(
     return { kind: 'complex_reorder' };
   }
 
-  let identical = true;
+  let firstMismatch = -1;
   for (let index = 0; index < previous.length; index += 1) {
     if (!equals(previous[index], next[index])) {
-      identical = false;
+      firstMismatch = index;
       break;
     }
   }
-  if (identical) {
+  if (firstMismatch < 0) {
     return { kind: 'same_order' };
   }
 
+  let lastMismatch = previous.length - 1;
+  while (lastMismatch > firstMismatch && equals(previous[lastMismatch], next[lastMismatch])) {
+    lastMismatch -= 1;
+  }
+
   if (previous.length >= 2) {
-    let left = -1;
-    for (let index = 0; index < previous.length; index += 1) {
-      if (!equals(previous[index], next[index])) {
-        left = index;
-        break;
-      }
-    }
+    const left = firstMismatch;
     const right = left + 1;
     if (
-      left >= 0
-      && right < previous.length
+      right <= lastMismatch
       && equals(previous[left], next[right])
       && equals(previous[right], next[left])
     ) {
       let restMatches = true;
-      for (let index = right + 1; index < previous.length; index += 1) {
+      for (let index = right + 1; index <= lastMismatch; index += 1) {
         if (!equals(previous[index], next[index])) {
           restMatches = false;
           break;
@@ -164,7 +180,7 @@ export const analyzeSequenceTransition = <T>(
     }
   }
 
-  const singleMove = findSingleMove(previous, next, equals);
+  const singleMove = findSingleMove(previous, next, equals, firstMismatch, lastMismatch);
   if (singleMove) {
     return { kind: 'single_move', from: singleMove.from, to: singleMove.to };
   }
@@ -230,17 +246,19 @@ export const reorderChildren = <TNode extends ReorderableDomNodeLike>(
   }
 
   const structureChanged = options?.structureChanged ?? true;
+  let currentChildren = readChildNodes(container) as TNode[];
   if (structureChanged) {
     const desired = new Set(children);
-    for (const child of readChildNodes(container)) {
-      if (!desired.has(child as TNode)) {
-        disposeChild(child as TNode);
-        container.removeChild(child as TNode);
+    currentChildren = currentChildren.filter((child) => {
+      if (desired.has(child as TNode)) {
+        return true;
       }
-    }
+      disposeChild(child as TNode);
+      container.removeChild(child as TNode);
+      return false;
+    });
   }
 
-  const currentChildren = readChildNodes(container) as TNode[];
   const transition = options?.transition ?? analyzeDomChildTransition(currentChildren, children);
   if (transition.kind === 'same_order') {
     return;
@@ -260,20 +278,37 @@ export const reorderChildren = <TNode extends ReorderableDomNodeLike>(
     return;
   }
 
+  const window = findStableWindow(currentChildren, children);
+  if (!window) {
+    return;
+  }
+
+  const {
+    currentStart,
+    currentEnd,
+    nextStart,
+    nextEnd,
+  } = window;
+
+  const currentWindow = currentChildren.slice(currentStart, currentEnd + 1);
+  const nextWindow = children.slice(nextStart, nextEnd + 1);
   const currentOrder = new Map<TNode, number>();
-  currentChildren.forEach((child, index) => {
+  currentWindow.forEach((child, index) => {
     currentOrder.set(child, index);
   });
 
-  const sequence = children.map((child) => currentOrder.get(child) ?? -1);
+  const sequence = nextWindow.map((child) => currentOrder.get(child) ?? -1);
   const keepIndices = longestIncreasingSubsequenceIndices(sequence);
-  const keepIndexSet = new Set(keepIndices);
+  const keepMarks = new Array<boolean>(nextWindow.length).fill(false);
+  for (const index of keepIndices) {
+    keepMarks[index] = true;
+  }
 
-  let anchor: TNode | null = null;
-  for (let index = children.length - 1; index >= 0; index -= 1) {
-    const nextChild = children[index];
-    const currentIndex = sequence[index];
-    if (currentIndex >= 0 && keepIndexSet.has(index)) {
+  let anchor = (children[nextEnd + 1] as TNode | undefined) ?? null;
+  for (let localIndex = nextWindow.length - 1; localIndex >= 0; localIndex -= 1) {
+    const nextChild = nextWindow[localIndex];
+    const currentIndex = sequence[localIndex];
+    if (currentIndex >= 0 && keepMarks[localIndex]) {
       anchor = nextChild;
       continue;
     }

@@ -59,6 +59,34 @@ describe('runtime headless ui helpers', () => {
     expect(runtime.getMultiselectNavigationTarget(multiselect, 'beta', 'ArrowLeft')).toBe('alpha');
     expect(runtime.toggleMultiselectValue(multiselect, 'beta')).toEqual(['alpha', 'beta']);
     expect(runtime.toggleMultiselectValue(multiselect, 'alpha')).toEqual(['beta']);
+
+    const select = {
+      open: new Signal(true),
+      value: new Signal('beta'),
+      baseId: 'select',
+      order: ['alpha', 'beta', 'gamma'],
+    };
+    expect(runtime.getSelectActiveDescendantId(select)).toBe('select-item-beta');
+    runtime.setSelectActiveValue(select, 'gamma');
+    expect(runtime.getSelectActiveValue(select)).toBe('gamma');
+    expect(runtime.getSelectActiveDescendantId(select)).toBe('select-item-gamma');
+    runtime.acceptSelectActiveValue(select);
+    expect(select.value.get()).toBe('gamma');
+
+    const combobox = {
+      open: new Signal(true),
+      value: new Signal('beta'),
+      query: new Signal(''),
+      baseId: 'combo',
+      order: ['alpha', 'beta', 'gamma'],
+    };
+    expect(runtime.getComboboxActiveDescendantId(combobox)).toBe('combo-item-beta');
+    runtime.setComboboxActiveValue(combobox, 'gamma');
+    expect(runtime.getComboboxActiveValue(combobox)).toBe('gamma');
+    expect(runtime.getComboboxActiveDescendantId(combobox)).toBe('combo-item-gamma');
+    runtime.acceptComboboxActiveValue(combobox);
+    expect(combobox.value.get()).toBe('gamma');
+    expect(combobox.query.get()).toBe('gamma');
   });
 
   test('restores focus and reads anchor-based popover layout', () => {

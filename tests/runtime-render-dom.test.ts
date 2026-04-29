@@ -702,6 +702,56 @@ describe('render DOM renderer', () => {
     root.unmount();
   });
 
+  test('forList adjacent keyed swaps only rerun affected row memos', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+    ]);
+    const runs = { a: 0, b: 0, c: 0 };
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', null, [
+              render.liveText(
+                render.memo(() => {
+                  const value = render.get(row);
+                  runs[value.id as 'a' | 'b' | 'c'] += 1;
+                  return `${value.label}:${render.get(index)}`;
+                })
+              ),
+            ])
+        ),
+      ])
+    );
+
+    runs.a = 0;
+    runs.b = 0;
+    runs.c = 0;
+
+    render.set(rows, [
+      { id: 'b', label: 'Beta' },
+      { id: 'a', label: 'Alpha' },
+      { id: 'c', label: 'Gamma' },
+    ]);
+    await Promise.resolve();
+
+    expect(runs.a).toBeGreaterThan(0);
+    expect(runs.b).toBeGreaterThan(0);
+    expect(runs.c).toBe(0);
+
+    root.unmount();
+  });
+
   test('forList single keyed move updates only the moved range without rebuild', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -771,6 +821,60 @@ describe('render DOM renderer', () => {
     expect(appendCount).toBe(0);
     expect(removeCount).toBe(0);
     expect(insertCount).toBe(1);
+
+    root.unmount();
+  });
+
+  test('forList single keyed move leaves unaffected trailing rows untouched', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'd', label: 'Delta' },
+    ]);
+    const runs = { a: 0, b: 0, c: 0, d: 0 };
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', null, [
+              render.liveText(
+                render.memo(() => {
+                  const value = render.get(row);
+                  runs[value.id as 'a' | 'b' | 'c' | 'd'] += 1;
+                  return `${value.label}:${render.get(index)}`;
+                })
+              ),
+            ])
+        ),
+      ])
+    );
+
+    runs.a = 0;
+    runs.b = 0;
+    runs.c = 0;
+    runs.d = 0;
+
+    render.set(rows, [
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'a', label: 'Alpha' },
+      { id: 'd', label: 'Delta' },
+    ]);
+    await Promise.resolve();
+
+    expect(runs.a).toBeGreaterThan(0);
+    expect(runs.b).toBeGreaterThan(0);
+    expect(runs.c).toBeGreaterThan(0);
+    expect(runs.d).toBe(0);
 
     root.unmount();
   });
@@ -965,6 +1069,247 @@ describe('render DOM renderer', () => {
     render.dispose_reactive(mounted);
   });
 
+  test('reorders keyed children with a long stable tail using one DOM move', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+      { id: 'e', label: 'E' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element('section', null, render.get(items).map((item) =>
+        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+      ))
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = host.appendChild.bind(host);
+    const removeChild = host.removeChild.bind(host);
+    const insertBefore = host.insertBefore.bind(host);
+    host.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof host.appendChild;
+    host.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof host.removeChild;
+    host.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof host.insertBefore;
+
+    render.set(items, [
+      { id: 'a', label: 'A' },
+      { id: 'c', label: 'C' },
+      { id: 'b', label: 'B' },
+      { id: 'd', label: 'D' },
+      { id: 'e', label: 'E' },
+    ]);
+    await Promise.resolve();
+
+    expect((host.childNodes[0] as FakeElement).getAttribute('data-id')).toBe('a');
+    expect((host.childNodes[1] as FakeElement).getAttribute('data-id')).toBe('c');
+    expect((host.childNodes[2] as FakeElement).getAttribute('data-id')).toBe('b');
+    expect((host.childNodes[3] as FakeElement).getAttribute('data-id')).toBe('d');
+    expect((host.childNodes[4] as FakeElement).getAttribute('data-id')).toBe('e');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(1);
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('reorders adjacent keyed children and still patches changed moved content', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element('section', null, render.get(items).map((item) =>
+        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+      ))
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const buttonA = host.childNodes[0] as FakeElement;
+    const buttonB = host.childNodes[1] as FakeElement;
+
+    render.set(items, [
+      { id: 'b', label: 'B!' },
+      { id: 'a', label: 'A' },
+      { id: 'c', label: 'C' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(buttonB);
+    expect(host.childNodes[1]).toBe(buttonA);
+    expect((host.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('B!');
+    expect((host.childNodes[1] as FakeElement).childNodes[0].textContent).toBe('A');
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('reorders adjacent keyed children and still patches unchanged-position siblings', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element('section', null, render.get(items).map((item) =>
+        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+      ))
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const buttonC = host.childNodes[2] as FakeElement;
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'a', label: 'A' },
+      { id: 'c', label: 'C!' },
+      { id: 'd', label: 'D' },
+    ]);
+    await Promise.resolve();
+
+    expect((host.childNodes[0] as FakeElement).getAttribute('data-id')).toBe('b');
+    expect((host.childNodes[1] as FakeElement).getAttribute('data-id')).toBe('a');
+    expect(host.childNodes[2]).toBe(buttonC);
+    expect((host.childNodes[2] as FakeElement).childNodes[0].textContent).toBe('C!');
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('reorders a tail-edge adjacent keyed pair with one DOM move', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element('section', null, render.get(items).map((item) =>
+        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+      ))
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const buttonC = host.childNodes[2] as FakeElement;
+    const buttonD = host.childNodes[3] as FakeElement;
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = host.appendChild.bind(host);
+    const removeChild = host.removeChild.bind(host);
+    const insertBefore = host.insertBefore.bind(host);
+    host.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof host.appendChild;
+    host.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof host.removeChild;
+    host.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof host.insertBefore;
+
+    render.set(items, [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'd', label: 'D' },
+      { id: 'c', label: 'C' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[2]).toBe(buttonD);
+    expect(host.childNodes[3]).toBe(buttonC);
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(1);
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('reorders keyed children across consecutive adjacent swaps without losing identity', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element('section', null, render.get(items).map((item) =>
+        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+      ))
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const buttonA = host.childNodes[0] as FakeElement;
+    const buttonB = host.childNodes[1] as FakeElement;
+    const buttonC = host.childNodes[2] as FakeElement;
+    const buttonD = host.childNodes[3] as FakeElement;
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'a', label: 'A' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+    ]);
+    await Promise.resolve();
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'a', label: 'A' },
+      { id: 'd', label: 'D' },
+    ]);
+    await Promise.resolve();
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+      { id: 'a', label: 'A' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(buttonB);
+    expect(host.childNodes[1]).toBe(buttonC);
+    expect(host.childNodes[2]).toBe(buttonD);
+    expect(host.childNodes[3]).toBe(buttonA);
+
+    render.dispose_reactive(mounted);
+  });
+
   test('moves one keyed child without rebuilding the whole list', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -1021,6 +1366,87 @@ describe('render DOM renderer', () => {
     expect(appendCount).toBe(0);
     expect(removeCount).toBe(0);
     expect(insertCount).toBe(1);
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('moves one keyed child and still patches changed moved content', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element(
+        'ul',
+        null,
+        render.get(items).map((item) =>
+          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+        )
+      )
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const itemA = host.childNodes[0] as FakeElement;
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'a', label: 'A!' },
+      { id: 'd', label: 'D' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[2]).toBe(itemA);
+    expect((host.childNodes[2] as FakeElement).childNodes[0].textContent).toBe('A!');
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('moves one keyed child and still patches unchanged-position siblings', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+      { id: 'e', label: 'E' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element(
+        'ul',
+        null,
+        render.get(items).map((item) =>
+          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+        )
+      )
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const itemE = host.childNodes[4] as FakeElement;
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'a', label: 'A' },
+      { id: 'd', label: 'D' },
+      { id: 'e', label: 'E!' },
+    ]);
+    await Promise.resolve();
+
+    expect((host.childNodes[0] as FakeElement).getAttribute('data-id')).toBe('b');
+    expect((host.childNodes[1] as FakeElement).getAttribute('data-id')).toBe('c');
+    expect((host.childNodes[2] as FakeElement).getAttribute('data-id')).toBe('a');
+    expect(host.childNodes[4]).toBe(itemE);
+    expect((host.childNodes[4] as FakeElement).childNodes[0].textContent).toBe('E!');
 
     render.dispose_reactive(mounted);
   });
@@ -1402,6 +1828,9 @@ describe('render DOM renderer', () => {
 
     trigger.listeners.get('click')?.({ currentTarget: trigger } as unknown as Event);
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(externalTriggerClick).toHaveBeenCalledTimes(1);
     expect(render.get(open)).toBe(true);
@@ -1418,7 +1847,9 @@ describe('render DOM renderer', () => {
     expect(description.attributes.get('data-lumina-dialog-description')).toBe('true');
     expect(isHidden(overlay)).toBe(false);
     expect(isHidden(content)).toBe(false);
-    expect(fakeDocument.activeElement).toBe(content);
+    expect(trigger.attributes.get('inert')).toBe('');
+    expect(overlay.attributes.get('inert')).toBeUndefined();
+    expect(fakeDocument.activeElement).toBe(actionButton);
 
     const preventForwardTab = jest.fn();
     content.listeners.get('keydown')?.({
@@ -1428,7 +1859,7 @@ describe('render DOM renderer', () => {
     } as unknown as Event);
     await Promise.resolve();
 
-    expect(preventForwardTab).toHaveBeenCalledTimes(1);
+    expect(preventForwardTab).not.toHaveBeenCalled();
     expect(fakeDocument.activeElement).toBe(actionButton);
 
     closeButton.focus();
@@ -1468,6 +1899,7 @@ describe('render DOM renderer', () => {
     expect(render.get(open)).toBe(false);
     expect(isHidden(overlay)).toBe(true);
     expect(isHidden(content)).toBe(true);
+    expect(trigger.attributes.get('inert')).toBeUndefined();
     expect(fakeDocument.activeElement).toBe(trigger);
 
     trigger.listeners.get('click')?.({ currentTarget: trigger } as unknown as Event);
@@ -1478,6 +1910,7 @@ describe('render DOM renderer', () => {
     expect(render.get(open)).toBe(false);
     expect(isHidden(overlay)).toBe(true);
     expect(isHidden(content)).toBe(true);
+    expect(trigger.attributes.get('inert')).toBeUndefined();
     expect(fakeDocument.activeElement).toBe(trigger);
 
     trigger.listeners.get('click')?.({ currentTarget: trigger } as unknown as Event);
@@ -1489,6 +1922,7 @@ describe('render DOM renderer', () => {
     expect(render.get(open)).toBe(false);
     expect(isHidden(overlay)).toBe(true);
     expect(isHidden(content)).toBe(true);
+    expect(trigger.attributes.get('inert')).toBeUndefined();
     expect(fakeDocument.activeElement).toBe(trigger);
 
     render.dispose_reactive(mounted);
@@ -1498,6 +1932,7 @@ describe('render DOM renderer', () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
     const container = fakeDocument.createElement('div');
+    fakeDocument.body.appendChild(container);
     const open = render.signal(true);
 
     const mounted = render.mount_reactive(renderer, container, () =>
@@ -1518,20 +1953,26 @@ describe('render DOM renderer', () => {
     const section = container.childNodes[0] as FakeElement;
     const trigger = section.childNodes[0] as FakeElement;
     const anchor = section.childNodes[1] as FakeElement;
-    const host = fakeDocument.body.childNodes[0] as FakeElement;
+    const host = fakeDocument.body.childNodes[1] as FakeElement;
     const overlay = host.childNodes[0] as FakeElement;
     const content = host.childNodes[1] as FakeElement;
+
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(section.childNodes).toHaveLength(2);
     expect(trigger.tagName).toBe('button');
     expect(anchor.tagName).toBe('lumina-portal-anchor');
-    expect(fakeDocument.body.childNodes).toHaveLength(1);
+    expect(fakeDocument.body.childNodes).toHaveLength(2);
     expect(overlay.attributes.get('data-lumina-dialog-overlay')).toBe('true');
     expect(content.attributes.get('role')).toBe('dialog');
     expect(content.attributes.get('hidden')).toBeUndefined();
+    expect(container.attributes.get('inert')).toBe('');
+    expect(fakeDocument.activeElement).toBe(content.childNodes[1] as FakeElement);
 
     render.dispose_reactive(mounted);
-    expect(fakeDocument.body.childNodes).toHaveLength(0);
+    expect(fakeDocument.body.childNodes).toHaveLength(1);
+    expect(container.attributes.get('inert')).toBeUndefined();
   });
 
   test('headless popover opens in a portal, positions from the trigger, and dismisses cleanly', async () => {
@@ -1911,14 +2352,15 @@ describe('render DOM renderer', () => {
     expect(render.get(open)).toBe(true);
     expect(trigger.attributes.get('aria-haspopup')).toBe('listbox');
     expect(trigger.attributes.get('aria-expanded')).toBe('true');
+    expect(trigger.attributes.get('aria-activedescendant')).toBe(itemEmail.attributes.get('id'));
     expect(content.attributes.get('role')).toBe('listbox');
     expect(content.style.left).toBe('64px');
     expect(content.style.top).toBe('78px');
     expect(itemEmail.attributes.get('aria-selected')).toBe('true');
-    expect(itemEmail.attributes.get('tabIndex')).toBe('0');
+    expect(itemEmail.attributes.get('data-active')).toBe('true');
     expect(isHidden(indicatorEmail)).toBe(false);
     expect(isHidden(indicatorSms)).toBe(true);
-    expect(fakeDocument.activeElement).toBe(itemEmail);
+    expect(fakeDocument.activeElement).toBe(trigger);
 
     itemSms.listeners.get('click')?.({ currentTarget: itemSms } as unknown as Event);
     await Promise.resolve();
@@ -1937,19 +2379,36 @@ describe('render DOM renderer', () => {
     const reopenedSms = reopenedContent.childNodes[1] as FakeElement;
     const reopenedPush = reopenedContent.childNodes[2] as FakeElement;
 
-    expect(fakeDocument.activeElement).toBe(reopenedSms);
+    expect(fakeDocument.activeElement).toBe(trigger);
+    expect(trigger.attributes.get('aria-activedescendant')).toBe(reopenedSms.attributes.get('id'));
 
     const preventDown = jest.fn();
-    reopenedSms.listeners.get('keydown')?.({
+    trigger.listeners.get('keydown')?.({
       key: 'ArrowDown',
-      currentTarget: reopenedSms,
+      currentTarget: trigger,
+      target: trigger,
       preventDefault: preventDown,
     } as unknown as Event);
     await Promise.resolve();
 
     expect(preventDown).toHaveBeenCalledTimes(1);
+    expect(render.get(value)).toBe('sms');
+    expect(fakeDocument.activeElement).toBe(trigger);
+    expect(trigger.attributes.get('aria-activedescendant')).toBe(reopenedPush.attributes.get('id'));
+
+    const preventEnter = jest.fn();
+    trigger.listeners.get('keydown')?.({
+      key: 'Enter',
+      currentTarget: trigger,
+      target: trigger,
+      preventDefault: preventEnter,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    expect(preventEnter).toHaveBeenCalledTimes(1);
     expect(render.get(value)).toBe('push');
-    expect(fakeDocument.activeElement).toBe(reopenedPush);
+    expect(render.get(open)).toBe(false);
+    expect(fakeDocument.activeElement).toBe(trigger);
 
     dismiss.listeners.get('click')?.({ currentTarget: dismiss } as unknown as Event);
     await Promise.resolve();
@@ -2043,7 +2502,8 @@ describe('render DOM renderer', () => {
     } as unknown as Event);
     await Promise.resolve();
 
-    expect(fakeDocument.activeElement).toBe(reopenedSms);
+    expect(fakeDocument.activeElement).toBe(input);
+    expect(input.attributes.get('aria-activedescendant')).toBe(reopenedSms.attributes.get('id'));
 
     render.dispose_reactive(mounted);
     expect(fakeDocument.body.childNodes).toHaveLength(0);

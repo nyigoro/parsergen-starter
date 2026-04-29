@@ -2,7 +2,9 @@ import { TestingElement, TestingTextNode, TestingDocument } from '../src/testing
 import {
   collectFocusableDescendants,
   findDomElementById,
+  findFirstFocusableDescendant,
   getDomAttribute,
+  isElementInert,
   readChildNodes,
   trapDialogTabNavigation,
 } from '../src/runtime/dom-accessibility.js';
@@ -39,6 +41,24 @@ describe('runtime dom accessibility helpers', () => {
     root.appendChild(link);
 
     expect(collectFocusableDescendants(root)).toEqual([button, link]);
+    expect(findFirstFocusableDescendant(root)).toBe(button);
+  });
+
+  test('treats inert subtrees as non-focusable', () => {
+    const document = new TestingDocument();
+    const root = document.createElement('div');
+    const inertRegion = document.createElement('div');
+    inertRegion.setAttribute('inert', '');
+    const inertButton = document.createElement('button');
+    const liveButton = document.createElement('button');
+
+    inertRegion.appendChild(inertButton);
+    root.appendChild(inertRegion);
+    root.appendChild(liveButton);
+
+    expect(isElementInert(inertButton)).toBe(true);
+    expect(collectFocusableDescendants(root)).toEqual([liveButton]);
+    expect(findFirstFocusableDescendant(root)).toBe(liveButton);
   });
 
   test('traps tab navigation within a dialog-like container', () => {

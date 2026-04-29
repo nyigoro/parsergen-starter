@@ -39,6 +39,32 @@ describe('runtime dom reconciler helpers', () => {
     });
   });
 
+  test('classifies adjacent swaps and single moves with long stable tails', () => {
+    expect(
+      analyzeSequenceTransition(
+        [1, 2, 3, 4, 5, 6],
+        [1, 3, 2, 4, 5, 6],
+        (left, right) => left === right
+      )
+    ).toEqual({
+      kind: 'adjacent_swap',
+      left: 1,
+      right: 2,
+    });
+
+    expect(
+      analyzeSequenceTransition(
+        [1, 2, 3, 4, 5, 6],
+        [1, 3, 4, 2, 5, 6],
+        (left, right) => left === right
+      )
+    ).toEqual({
+      kind: 'single_move',
+      from: 1,
+      to: 3,
+    });
+  });
+
   test('reports the affected range for move-focused transitions', () => {
     const adjacent: KeyedListTransition = { kind: 'adjacent_swap', left: 2, right: 3 };
     const singleMove: KeyedListTransition = { kind: 'single_move', from: 1, to: 4 };
@@ -108,5 +134,31 @@ describe('runtime dom reconciler helpers', () => {
     });
 
     expect(labels(container)).toEqual(['c', 'a', 'd', 'b']);
+  });
+
+  test('reorders only the unstable middle window for complex changes with stable edges', () => {
+    const document = new TestingDocument();
+    const container = document.createElement('div');
+    const a = child(document, 'a');
+    const b = child(document, 'b');
+    const c = child(document, 'c');
+    const d = child(document, 'd');
+    const e = child(document, 'e');
+    const f = child(document, 'f');
+    container.appendChild(a);
+    container.appendChild(b);
+    container.appendChild(c);
+    container.appendChild(d);
+    container.appendChild(e);
+    container.appendChild(f);
+
+    reorderChildren(container, [a, d, b, e, c, f], () => undefined, {
+      transition: { kind: 'complex_reorder' },
+      structureChanged: false,
+    });
+
+    expect(labels(container)).toEqual(['a', 'd', 'b', 'e', 'c', 'f']);
+    expect(container.childNodes[0]).toBe(a);
+    expect(container.childNodes[5]).toBe(f);
   });
 });

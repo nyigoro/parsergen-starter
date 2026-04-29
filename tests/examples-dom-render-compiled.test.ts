@@ -50,7 +50,6 @@ async function runCommand(argv: string[]) {
 
 describe('compiled DOM benchmark example', () => {
   test('documents compiler-driven list authoring', () => {
-    expect(benchmarkCompiledSource).toContain('compiledWholeList');
     expect(benchmarkCompiledSource).toContain('compiledIndexList');
     expect(benchmarkCompiledSource).toContain('compiledForList');
     expect(benchmarkCompiledSource).toContain('compiledReorder');
@@ -69,15 +68,14 @@ describe('compiled DOM benchmark example', () => {
 
   test('generated benchmark module uses compiler DOM lowering', () => {
     const output = fs.readFileSync(benchmarkCompiledGeneratedPath, 'utf-8');
-    expect(output).toMatch(/import \{[^}]*\bindexList\b[^}]*\bforList\b[^}]*\} from "\.\/lumina-runtime\.js";/s);
-    expect(output).toContain('domTemplateHtml = "<span class=\\"bench-pill\\">row</span>"');
+    expect(output).toContain('import { render, get, vnode, text, props_class, props_key } from "./lumina-runtime.js');
     expect(output).toContain('render.indexList(');
     expect(output).toContain('render.forList(');
     expect(output).toContain('render.liveText(');
-    expect(output).toContain('function compiledWholeList');
+    expect(output).toContain('render.memo(() => get(row).label)');
     expect(output).toContain('function compiledIndexList');
     expect(output).toContain('function compiledForList');
     expect(output).toContain('function compiledReorder');
-    expect(output).toContain('export {');
+    expect(output).toContain('export { compiledIndexList, compiledReorder, compiledForList };');
   });
 });

@@ -75,6 +75,9 @@ describe('runtime headless primitives', () => {
     expect(dialogOpen.get()).toBe(true);
 
     const dialogContent = runtime.dialog_root(dialogOpen, () => runtime.dialog_content(null, []));
+    expect(dialogContent.props?.role).toBe('dialog');
+    expect(dialogContent.props?.['aria-modal']).toBe('true');
+    expect(dialogContent.props?.autoFocus).toBe(true);
     const preventDefault = jest.fn();
     (dialogContent.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
       key: 'Escape',
@@ -158,19 +161,44 @@ describe('runtime headless primitives', () => {
     const selectOpen = new Signal(false);
     const selectValue = new Signal('overview');
     const selectTriggerTarget = { focus: jest.fn() };
-    const selectTrigger = runtime.select_root(selectOpen, selectValue, () => runtime.select_trigger(null, []));
+    const renderSelectTree = () =>
+      runtime.select_root(selectOpen, selectValue, () => [
+        runtime.select_item('overview', null, () => ['Overview']),
+        runtime.select_item('activity', null, () => ['Activity']),
+        runtime.select_trigger(null, []),
+      ]);
+
+    let selectTree = renderSelectTree();
+    let selectTrigger = (selectTree.children ?? [])[2];
     (selectTrigger.props?.onClick as ((event: Event) => void) | undefined)?.({
       currentTarget: selectTriggerTarget,
     } as unknown as Event);
     expect(selectOpen.get()).toBe(true);
+    selectTree = renderSelectTree();
+    selectTrigger = (selectTree.children ?? [])[2];
+    expect(selectTrigger?.props?.['aria-activedescendant']).toBe('lumina-select-1-item-overview');
 
-    const selectItem = runtime.select_root(selectOpen, selectValue, () =>
-      runtime.select_item('activity', null, () => ['Activity'])
-    );
-    (selectItem.props?.onClick as (() => void) | undefined)?.();
+    (selectTrigger.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'ArrowDown',
+      preventDefault: jest.fn(),
+      currentTarget: selectTriggerTarget,
+      target: selectTriggerTarget,
+    } as unknown as KeyboardEvent);
+
+    selectTree = renderSelectTree();
+    selectTrigger = (selectTree.children ?? [])[2];
+    expect(selectValue.get()).toBe('overview');
+    expect(selectTrigger?.props?.['aria-activedescendant']).toBe('lumina-select-1-item-activity');
+
+    (selectTrigger.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'Enter',
+      preventDefault: jest.fn(),
+      currentTarget: selectTriggerTarget,
+      target: selectTriggerTarget,
+    } as unknown as KeyboardEvent);
     expect(selectValue.get()).toBe('activity');
     expect(selectOpen.get()).toBe(false);
-    expect(selectTriggerTarget.focus).toHaveBeenCalledTimes(1);
+    expect(selectTriggerTarget.focus).toHaveBeenCalled();
 
     const comboboxOpen = new Signal(false);
     const comboboxValue = new Signal('alpha');
@@ -203,6 +231,59 @@ describe('runtime headless primitives', () => {
     (multiselectItem.props?.onClick as (() => void) | undefined)?.();
     expect(multiselectValues.get()).toEqual(['alpha', 'beta']);
     expect(multiselectOpen.get()).toBe(true);
+  });
+
+  test('combobox keeps focus on the input and uses aria-activedescendant navigation', () => {
+    const runtime = createPrimitiveRuntime();
+
+    const open = new Signal(true);
+    const value = new Signal('alpha');
+    const query = new Signal('');
+    const inputTarget = { focus: jest.fn() };
+
+    const renderTree = () =>
+      runtime.combobox_root(open, value, query, () => [
+        runtime.combobox_item('alpha', null, () => ['Alpha']),
+        runtime.combobox_item('beta', null, () => ['Beta']),
+        runtime.combobox_item('gamma', null, () => ['Gamma']),
+        runtime.combobox_input(null, []),
+      ]);
+
+    let root = renderTree();
+    let input = (root.children ?? [])[3];
+    expect(input?.props?.['aria-activedescendant']).toBeDefined();
+    expect(input?.props?.['aria-activedescendant']).toBe(String(input.props?.id).replace('-input', '-item-alpha'));
+
+    (input?.props?.onFocus as ((event?: Event) => unknown) | undefined)?.({
+      currentTarget: inputTarget,
+      target: inputTarget,
+    } as unknown as Event);
+    (input?.props?.onKeyDown as ((event?: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'ArrowDown',
+      preventDefault: jest.fn(),
+      currentTarget: inputTarget,
+      target: inputTarget,
+    } as unknown as KeyboardEvent);
+
+    root = renderTree();
+    input = (root.children ?? [])[3];
+    expect(input?.props?.['aria-activedescendant']).toBe(String(input.props?.id).replace('-input', '-item-beta'));
+
+    const activeItem = (root.children ?? [])[1];
+    expect(activeItem?.props?.['aria-selected']).toBe('true');
+    expect(activeItem?.props?.['data-active']).toBe('true');
+
+    (input?.props?.onKeyDown as ((event?: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'Enter',
+      preventDefault: jest.fn(),
+      currentTarget: inputTarget,
+      target: inputTarget,
+    } as unknown as KeyboardEvent);
+
+    expect(value.get()).toBe('beta');
+    expect(query.get()).toBe('beta');
+    expect(open.get()).toBe(false);
+    expect(inputTarget.focus).toHaveBeenCalled();
   });
 
   test('checkbox and radio primitives preserve toggle behavior', () => {
