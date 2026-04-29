@@ -128,7 +128,7 @@ const expectedScenarioSuites: Record<string, string[]> = {
 const expectedScenarioIterations: Record<string, number> = tierConfig.scenarioIterations;
 
 const expectedRelativeOrdering: Record<string, Array<{ faster: string; slower: string }>> =
-  tierConfig.localOnly
+  benchmarkTier !== 'smoke'
     ? {
         reorder: [
           { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },

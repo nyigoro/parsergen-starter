@@ -832,6 +832,80 @@ const canSkipChildListPatch = (
   return true;
 };
 
+const canSkipStructuredSmallSubtree = (
+  prevNode: VNode,
+  nextNode: VNode,
+  equalsValue: (left: unknown, right: unknown) => boolean
+): boolean | null => {
+  if (prevNode === nextNode) return true;
+  if (prevNode.kind !== nextNode.kind) return false;
+
+  if (prevNode.kind === 'text' && nextNode.kind === 'text') {
+    return prevNode.text === nextNode.text;
+  }
+
+  if (prevNode.kind === 'live_text' && nextNode.kind === 'live_text') {
+    return prevNode.signal === nextNode.signal;
+  }
+
+  if (prevNode.kind === 'index_list' && nextNode.kind === 'index_list') {
+    return prevNode.itemsSignal === nextNode.itemsSignal && prevNode.listRender === nextNode.listRender;
+  }
+
+  if (prevNode.kind === 'for_list' && nextNode.kind === 'for_list') {
+    return prevNode.itemsSignal === nextNode.itemsSignal
+      && prevNode.listKey === nextNode.listKey
+      && prevNode.listIndexedRender === nextNode.listIndexedRender;
+  }
+
+  if (prevNode.kind === 'portal' || nextNode.kind === 'portal') {
+    return false;
+  }
+
+  if (prevNode.kind !== 'element' && prevNode.kind !== 'fragment') {
+    return null;
+  }
+
+  if (prevNode.kind === 'element' && nextNode.kind === 'element') {
+    if (prevNode.tag !== nextNode.tag || prevNode.key !== nextNode.key) {
+      return false;
+    }
+    if (!hasShallowEqualProps(prevNode.props, nextNode.props)) {
+      return false;
+    }
+  } else if (prevNode.kind === 'fragment' && nextNode.kind === 'fragment') {
+    if (prevNode.key !== nextNode.key) {
+      return false;
+    }
+  }
+
+  const prevChildren = asDomChildren(prevNode);
+  const nextChildren = asDomChildren(nextNode);
+  if (prevChildren.length !== nextChildren.length) {
+    return false;
+  }
+
+  if (prevChildren.length === 0) {
+    return true;
+  }
+
+  if (prevChildren.length > 6) {
+    return null;
+  }
+
+  for (let index = 0; index < prevChildren.length; index += 1) {
+    const childResult = canSkipStructuredSmallSubtree(prevChildren[index], nextChildren[index], equalsValue);
+    if (childResult === null) {
+      return null;
+    }
+    if (!childResult) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const remapMovedIndex = (index: number, from: number, to: number): number => {
   if (from === to) {
     return index;
@@ -885,6 +959,11 @@ const canSkipDomPatch = (
 
   if (prevNode.kind === 'portal' || nextNode.kind === 'portal') {
     return false;
+  }
+
+  const structuredSmallSubtree = canSkipStructuredSmallSubtree(prevNode, nextNode, equalsValue);
+  if (structuredSmallSubtree !== null) {
+    return structuredSmallSubtree;
   }
 
   const prevFingerprint = getStablePatchFingerprint(prevNode);
