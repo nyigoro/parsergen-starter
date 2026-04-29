@@ -66,6 +66,18 @@ describe('runtime dom reconciler helpers', () => {
       from: 1,
       to: 3,
     });
+
+    expect(
+      analyzeSequenceTransition(
+        [1, 2, 3, 4, 5, 6],
+        [1, 4, 2, 3, 5, 6],
+        (left, right) => left === right
+      )
+    ).toEqual({
+      kind: 'single_move',
+      from: 3,
+      to: 1,
+    });
   });
 
   test('reports the affected range for move-focused transitions', () => {
@@ -80,6 +92,7 @@ describe('runtime dom reconciler helpers', () => {
     expect(getTransitionAffectedRange({ kind: 'same_order' }, 5)).toBeNull();
     expect(getTransitionAffectedRange(adjacent, 5)).toEqual({ start: 2, end: 3 });
     expect(getTransitionAffectedRange(singleMove, 5)).toEqual({ start: 1, end: 4 });
+    expect(getTransitionAffectedRange({ kind: 'single_move', from: 4, to: 1 }, 6)).toEqual({ start: 1, end: 4 });
     expect(complex).toEqual({ kind: 'complex_reorder', start: 1, end: 4 });
     expect(getTransitionAffectedRange(complex, 6)).toEqual({ start: 1, end: 4 });
     expect(getTransitionAffectedRange({ kind: 'complex_reorder' }, 3)).toEqual({ start: 0, end: 2 });
@@ -134,6 +147,30 @@ describe('runtime dom reconciler helpers', () => {
     expect(labels(container)).toEqual(['a', 'c']);
     expect(dispose).toHaveBeenCalledTimes(1);
     expect(dispose).toHaveBeenCalledWith(b);
+  });
+
+  test('reorders reverse single moves without disposing retained nodes', () => {
+    const document = new TestingDocument();
+    const container = document.createElement('div');
+    const a = child(document, 'a');
+    const b = child(document, 'b');
+    const c = child(document, 'c');
+    const d = child(document, 'd');
+    const e = child(document, 'e');
+    container.appendChild(a);
+    container.appendChild(b);
+    container.appendChild(c);
+    container.appendChild(d);
+    container.appendChild(e);
+
+    const dispose = jest.fn();
+    reorderChildren(container, [a, d, b, c, e], dispose, {
+      transition: { kind: 'single_move', from: 3, to: 1 },
+      structureChanged: false,
+    });
+
+    expect(labels(container)).toEqual(['a', 'd', 'b', 'c', 'e']);
+    expect(dispose).not.toHaveBeenCalled();
   });
 
   test('falls back to LIS-based reordering for complex order changes', () => {

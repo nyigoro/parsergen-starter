@@ -1693,6 +1693,53 @@ describe('render DOM renderer', () => {
     render.dispose_reactive(mounted);
   });
 
+  test('complex keyed middle-window reorder still patches stable edge content changes', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+      { id: 'e', label: 'E' },
+      { id: 'f', label: 'F' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element(
+        'ul',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+          )
+      )
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const rowA = host.childNodes[0] as FakeElement;
+    const rowF = host.childNodes[5] as FakeElement;
+
+    render.set(items, [
+      { id: 'a', label: 'A!' },
+      { id: 'd', label: 'D' },
+      { id: 'b', label: 'B' },
+      { id: 'e', label: 'E' },
+      { id: 'c', label: 'C' },
+      { id: 'f', label: 'F!' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(rowA);
+    expect(host.childNodes[5]).toBe(rowF);
+    expect((host.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('A!');
+    expect((host.childNodes[5] as FakeElement).childNodes[0].textContent).toBe('F!');
+
+    render.dispose_reactive(mounted);
+  });
+
   test('moves one keyed child and still patches changed moved content', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -1774,6 +1821,115 @@ describe('render DOM renderer', () => {
     expect((host.childNodes[2] as FakeElement).getAttribute('data-id')).toBe('a');
     expect(host.childNodes[4]).toBe(itemE);
     expect((host.childNodes[4] as FakeElement).childNodes[0].textContent).toBe('E!');
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('moves one keyed child to the tail and still patches changed moved content', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element(
+        'ul',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+          )
+      )
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const itemA = host.childNodes[0] as FakeElement;
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = host.appendChild.bind(host);
+    const removeChild = host.removeChild.bind(host);
+    const insertBefore = host.insertBefore.bind(host);
+    host.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof host.appendChild;
+    host.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof host.removeChild;
+    host.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof host.insertBefore;
+
+    render.set(items, [
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+      { id: 'a', label: 'A!' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[3]).toBe(itemA);
+    expect((host.childNodes[3] as FakeElement).childNodes[0].textContent).toBe('A!');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(1);
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('reorders keyed children with removal and insertion while preserving retained identity', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+      { id: 'e', label: 'E' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element(
+        'ul',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+          )
+      )
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const rowA = host.childNodes[0];
+    const rowB = host.childNodes[1];
+    const rowD = host.childNodes[3];
+    const rowE = host.childNodes[4];
+
+    render.set(items, [
+      { id: 'a', label: 'A' },
+      { id: 'd', label: 'D' },
+      { id: 'b', label: 'B' },
+      { id: 'f', label: 'F' },
+      { id: 'e', label: 'E' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(rowA);
+    expect(host.childNodes[1]).toBe(rowD);
+    expect(host.childNodes[2]).toBe(rowB);
+    expect((host.childNodes[3] as FakeElement).getAttribute('data-id')).toBe('f');
+    expect(host.childNodes[4]).toBe(rowE);
 
     render.dispose_reactive(mounted);
   });

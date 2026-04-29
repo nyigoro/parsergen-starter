@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   DEFAULT_OUT_DIR,
   assert,
+  buildBenchmarkContract,
   compareAgainstBaseline,
   formatRegressionReport,
   summarizeScenarios,
@@ -136,6 +137,7 @@ const main = async () => {
     runId: payload.latest.runId,
     recordedAt: payload.latest.recordedAt,
     manifest: payload.manifest,
+    contract: buildBenchmarkContract(payload.manifest, payload.latest),
     historyMeta: payload.historyMeta,
     historyRuns: payload.history.length,
     listSize: payload.latest.listSize,

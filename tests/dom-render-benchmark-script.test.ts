@@ -80,6 +80,24 @@ const setScenarioSamples = (
   payload.history.forEach((entry) => updateRun(entry.scenarios));
 };
 
+const swapScenarioEntries = (
+  payload: typeof fixture,
+  scenarioName: string,
+  leftIndex: number,
+  rightIndex: number
+) => {
+  const swapRunEntries = (scenarios: typeof fixture.latest.scenarios) => {
+    const entries = scenarios[scenarioName];
+    if (!entries) {
+      throw new Error(`Missing ${scenarioName}`);
+    }
+    [entries[leftIndex], entries[rightIndex]] = [entries[rightIndex], entries[leftIndex]];
+  };
+
+  swapRunEntries(payload.latest.scenarios);
+  payload.history.forEach((entry) => swapRunEntries(entry.scenarios));
+};
+
 const runImport = (inputPath: string, outDir: string, extraArgs: string[] = []) =>
   spawnSync(
     process.execPath,
@@ -117,6 +135,15 @@ describe('dom-render benchmark history script', () => {
     expect(summary.suiteVersion).toBe(fixture.suiteVersion);
     expect(summary.runId).toBe(fixture.latest.runId);
     expect(summary.manifest.localOnly).toBe(true);
+    expect(summary.contract.domShape.listClassName).toBe('bench-list');
+    expect(summary.contract.timing.measure).toBe('performance.measure()');
+    expect(summary.contract.scenarios.find((scenario: { key: string }) => scenario.key === 'reorder')).toMatchObject({
+      key: 'reorder',
+      label: 'keyed reorder',
+      tableId: 'results-reorder',
+      iterations: fixture.latest.scenarios.reorder[0].iterations,
+      suites: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
+    });
     expect(summary.historyMeta.storageKey).toBe(fixture.historyMeta.storageKey);
     expect(summary.historyRuns).toBe(1);
     expect(summary.measuredRuns).toBe(2);
@@ -168,7 +195,10 @@ describe('dom-render benchmark history script', () => {
       baselinePath: fixturePath,
       maxMedianRatio: 5,
       maxMedianRegressionMs: 4,
-      checkedEntries: 20,
+      checkedEntries: Object.values(fixture.latest.scenarios).reduce(
+        (total, entries) => total + entries.length,
+        0
+      ),
       passed: true,
       regressions: [],
     });
@@ -202,6 +232,23 @@ describe('dom-render benchmark history script', () => {
     });
     expect(fs.readdirSync(outDir)).toHaveLength(1);
     expect(JSON.parse(fs.readFileSync(summaryPath, 'utf-8')).baselineCheck.passed).toBe(false);
+  });
+
+  test('rejects benchmark exports when scenario suite order drifts from the benchmark contract', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lumina-dom-render-bench-'));
+    const inputPath = path.join(root, 'contract-drift.json');
+    const outDir = path.join(root, 'history');
+    const payload = clonePayload();
+
+    swapScenarioEntries(payload, 'reorder', 0, 1);
+    fs.writeFileSync(inputPath, JSON.stringify(payload, null, 2), 'utf-8');
+
+    const result = runImport(inputPath, outDir);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Benchmark export latest.scenarios.reorder suites must match');
+    expect(fs.existsSync(outDir)).toBe(false);
   });
 
   test('rejects benchmark exports with mismatched sample history metadata', () => {

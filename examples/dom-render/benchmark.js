@@ -3,7 +3,7 @@ import {
   compiledForList,
   compiledIndexList,
   compiledReorder,
-} from './benchmark-compiled.generated.js?v=2026-04-29-benchmark-quality-v3';
+} from './benchmark-compiled.generated.js?v=2026-04-29-benchmark-quality-v4';
 
 const benchmarkQuery =
   typeof globalThis.location?.search === 'string' ? new URLSearchParams(globalThis.location.search) : new URLSearchParams();
@@ -22,17 +22,156 @@ const WHOLE_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('wholeListIter
 const INDEX_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('indexListIterations'), SMOKE_MODE ? 12 : 300);
 const FOR_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('forListIterations'), SMOKE_MODE ? 12 : 300);
 const REORDER_ITERATIONS = parsePositiveInt(benchmarkQuery.get('reorderIterations'), SMOKE_MODE ? 12 : 300);
+const SINGLE_MOVE_ITERATIONS = parsePositiveInt(benchmarkQuery.get('singleMoveIterations'), SMOKE_MODE ? 10 : 240);
 const COMPLEX_REORDER_ITERATIONS = parsePositiveInt(
   benchmarkQuery.get('complexReorderIterations'),
+  SMOKE_MODE ? 8 : 150
+);
+const STRUCTURE_DIFF_ITERATIONS = parsePositiveInt(
+  benchmarkQuery.get('structureDiffIterations'),
   SMOKE_MODE ? 8 : 150
 );
 const FINE_GRAINED_ITERATIONS = parsePositiveInt(benchmarkQuery.get('fineGrainedIterations'), SMOKE_MODE ? 12 : 300);
 const MOUNT_ITERATIONS = parsePositiveInt(benchmarkQuery.get('mountIterations'), SMOKE_MODE ? 6 : 40);
 const WARMUP_RUNS = parsePositiveInt(benchmarkQuery.get('warmupRuns'), SMOKE_MODE ? 1 : 1);
 const MEASURED_RUNS = parsePositiveInt(benchmarkQuery.get('measuredRuns'), SMOKE_MODE ? 2 : 3);
-const BENCHMARK_HISTORY_KEY = 'lumina.dom.benchmark.history.v3';
+const BENCHMARK_HISTORY_KEY = 'lumina.dom.benchmark.history.v4';
 const BENCHMARK_SCHEMA_VERSION = 3;
-const BENCHMARK_SUITE_VERSION = '2026-04-29-benchmark-quality-v3';
+const BENCHMARK_SUITE_VERSION = '2026-04-29-benchmark-quality-v4';
+const BENCHMARK_DOM_SHAPE = Object.freeze({
+  listTag: 'ul',
+  listClassName: 'bench-list',
+  rowTag: 'li',
+  rowClassName: 'bench-row',
+  pillTag: 'span',
+  pillClassName: 'bench-pill',
+  pillText: 'row',
+  valueTag: 'span',
+  valueClassName: 'bench-value',
+});
+const BENCHMARK_TIMING_CONTRACT = Object.freeze({
+  clock: 'performance.now()',
+  mark: 'performance.mark()',
+  measure: 'performance.measure()',
+  clearMarks: 'performance.clearMarks()',
+  clearMeasures: 'performance.clearMeasures()',
+});
+const BENCHMARK_SCENARIO_CONTRACTS = Object.freeze([
+  Object.freeze({
+    key: 'wholeList',
+    label: 'whole-list patch',
+    tableId: 'results-whole-list',
+    iterations: WHOLE_LIST_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina generic rerender',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19', 'Solid 1']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'mount',
+    label: 'initial mount',
+    tableId: 'results-mount',
+    iterations: MOUNT_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina render DOM',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19', 'Solid 1']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'indexList',
+    label: 'indexed list patch',
+    tableId: 'results-index-list',
+    iterations: INDEX_LIST_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina indexList',
+      'Lumina indexList (compiled)',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19 memo rows', 'Solid 1 Index']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'forList',
+    label: 'stable signal list patch',
+    tableId: 'results-for-list',
+    iterations: FOR_LIST_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina forList',
+      'Lumina forList (compiled)',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19 memo rows', 'Solid 1 Index']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'reorder',
+    label: 'keyed reorder',
+    tableId: 'results-reorder',
+    iterations: REORDER_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina generic keyed patch',
+      'Lumina keyed list',
+      'Lumina keyed list (compiled)',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'singleMove',
+    label: 'single keyed move',
+    tableId: 'results-single-move',
+    iterations: SINGLE_MOVE_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina generic keyed patch',
+      'Lumina keyed list',
+      'Lumina keyed list (compiled)',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'complexReorder',
+    label: 'complex keyed reorder window',
+    tableId: 'results-complex-reorder',
+    iterations: COMPLEX_REORDER_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina generic keyed patch',
+      'Lumina keyed list',
+      'Lumina keyed list (compiled)',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'structureDiff',
+    label: 'keyed structure diff',
+    tableId: 'results-structure-diff',
+    iterations: STRUCTURE_DIFF_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina generic keyed patch',
+      'Lumina keyed list',
+      'Lumina keyed list (compiled)',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['React 19']),
+    ]),
+  }),
+  Object.freeze({
+    key: 'fineGrained',
+    label: 'fine-grained row update',
+    tableId: 'results-fine-grained',
+    iterations: FINE_GRAINED_ITERATIONS,
+    suites: Object.freeze([
+      'Lumina signals + DOM',
+      'Vanilla DOM',
+      ...(LOCAL_ONLY ? [] : ['Solid signals']),
+    ]),
+  }),
+]);
+const BENCHMARK_CONTRACT = Object.freeze({
+  domShape: BENCHMARK_DOM_SHAPE,
+  timing: BENCHMARK_TIMING_CONTRACT,
+  scenarios: BENCHMARK_SCENARIO_CONTRACTS,
+});
 const BENCHMARK_MANIFEST = Object.freeze({
   version: BENCHMARK_SCHEMA_VERSION,
   suiteVersion: BENCHMARK_SUITE_VERSION,
@@ -41,15 +180,7 @@ const BENCHMARK_MANIFEST = Object.freeze({
   warmupRuns: WARMUP_RUNS,
   measuredRuns: MEASURED_RUNS,
   listSize: LIST_SIZE,
-  scenarios: Object.freeze([
-    'whole-list patch',
-    'initial mount',
-    'indexed list patch',
-    'stable signal list patch',
-    'keyed reorder',
-    'complex keyed reorder window',
-    'fine-grained row update',
-  ]),
+  scenarios: Object.freeze(BENCHMARK_SCENARIO_CONTRACTS.map((scenario) => scenario.label)),
 });
 
 const workspace = document.getElementById('workspace');
@@ -88,10 +219,37 @@ const setStatus = (message) => {
 };
 
 const captureHostSnapshot = (host) => (SMOKE_MODE ? host.innerHTML : null);
+const unmountWithSmokeSnapshot = (host, teardown) => {
+  const snapshot = captureHostSnapshot(host);
+  teardown();
+  restoreHostSnapshot(host, snapshot);
+};
 const restoreHostSnapshot = (host, snapshot) => {
   if (typeof snapshot === 'string') {
     host.innerHTML = snapshot;
   }
+};
+const preserveMountedHostSnapshot = (host, mountOnce) => {
+  if (!SMOKE_MODE) {
+    return;
+  }
+  unmountWithSmokeSnapshot(host, mountOnce());
+};
+const getScenarioContract = (scenarioKey) => {
+  const scenario = BENCHMARK_SCENARIO_CONTRACTS.find((candidate) => candidate.key === scenarioKey);
+  if (!scenario) {
+    throw new Error(`Unknown benchmark scenario contract: ${scenarioKey}`);
+  }
+  return scenario;
+};
+const bindScenarioSuites = (scenarioKey, benchmarks) => {
+  const scenario = getScenarioContract(scenarioKey);
+  if (benchmarks.length !== scenario.suites.length) {
+    throw new Error(
+      `Scenario ${scenarioKey} expected ${scenario.suites.length} suites but received ${benchmarks.length}`
+    );
+  }
+  return scenario.suites.map((name, index) => [name, benchmarks[index]]);
 };
 
 const isCompatibleHistoryEntry = (entry) => {
@@ -184,6 +342,7 @@ const saveBenchmarkRun = (result) => {
   window.__luminaBenchmarkResults = latest;
   window.__luminaBenchmarkHistory = history;
   window.__luminaBenchmarkManifest = BENCHMARK_MANIFEST;
+  window.__luminaBenchmarkContract = BENCHMARK_CONTRACT;
   window.__luminaBenchmarkExport = exportPayload;
   window.__luminaBenchmarkExportJson = JSON.stringify(exportPayload, null, 2);
   if (exportButton) {
@@ -230,6 +389,14 @@ const mutateKeyedRows = (rows, step) => {
   return next;
 };
 
+const moveHeadToTailRows = (rows) => {
+  const next = rows.slice();
+  if (next.length < 2) return next;
+  const [first] = next.splice(0, 1);
+  next.push(first);
+  return next;
+};
+
 const reorderMiddleWindowRows = (rows, windowSize = 64) => {
   const next = rows.slice();
   if (next.length < 4) return next;
@@ -245,6 +412,28 @@ const reorderMiddleWindowRows = (rows, windowSize = 64) => {
     reordered.push(right[index], left[index]);
   }
   next.splice(start, reordered.length, ...reordered);
+  return next;
+};
+
+const restructureKeyedRows = (rows, step) => {
+  const next = rows.slice();
+  if (next.length < 3) {
+    return next;
+  }
+
+  const removeIndex = step % next.length;
+  next.splice(removeIndex, 1);
+
+  if (next.length > 1) {
+    const from = (step * 3) % next.length;
+    const [moving] = next.splice(from, 1);
+    const to = (step * 5) % (next.length + 1);
+    next.splice(to, 0, moving);
+  }
+
+  const insertIndex = (step * 7) % (next.length + 1);
+  const freshId = `fresh-${step}`;
+  next.splice(insertIndex, 0, { id: freshId, label: freshId });
   return next;
 };
 
@@ -287,31 +476,42 @@ const preloadBenchmarkModules = async () => {
   await Promise.all([loadReactModules(), loadSolidModules()]);
 };
 
-const renderLuminaList = (rows) =>
+const renderLuminaBenchList = (rows, getKey = (_value, index) => index) =>
   luminaRender.element(
-    'ul',
-    null,
-    rows.map((value, index) => luminaRender.element('li', { key: index }, [luminaRender.text(value)]))
+    BENCHMARK_DOM_SHAPE.listTag,
+    { className: BENCHMARK_DOM_SHAPE.listClassName },
+    rows.map((value, index) => renderLuminaBenchRow(luminaRender.text(value), getKey(value, index)))
   );
 
-const renderLuminaBenchRow = (content) =>
-  luminaRender.element('li', { className: 'bench-row' }, [
+const renderLuminaBenchRow = (content, key) =>
+  luminaRender.element('li', key === undefined ? { className: 'bench-row' } : { className: 'bench-row', key }, [
     luminaRender.element('span', { className: 'bench-pill' }, [luminaRender.text('row')]),
     luminaRender.element('span', { className: 'bench-value' }, [content]),
   ]);
 
 const createBenchRowDom = (value) => {
-  const li = document.createElement('li');
-  li.className = 'bench-row';
-  const pill = document.createElement('span');
-  pill.className = 'bench-pill';
-  pill.textContent = 'row';
-  const content = document.createElement('span');
-  content.className = 'bench-value';
+  const li = document.createElement(BENCHMARK_DOM_SHAPE.rowTag);
+  li.className = BENCHMARK_DOM_SHAPE.rowClassName;
+  const pill = document.createElement(BENCHMARK_DOM_SHAPE.pillTag);
+  pill.className = BENCHMARK_DOM_SHAPE.pillClassName;
+  pill.textContent = BENCHMARK_DOM_SHAPE.pillText;
+  const content = document.createElement(BENCHMARK_DOM_SHAPE.valueTag);
+  content.className = BENCHMARK_DOM_SHAPE.valueClassName;
   content.textContent = value;
   li.appendChild(pill);
   li.appendChild(content);
   return { li, content };
+};
+const createBenchListDom = (rows) => {
+  const ul = document.createElement(BENCHMARK_DOM_SHAPE.listTag);
+  ul.className = BENCHMARK_DOM_SHAPE.listClassName;
+  const valueNodes = [];
+  for (const value of rows) {
+    const { li, content } = createBenchRowDom(value);
+    valueNodes.push(content);
+    ul.appendChild(li);
+  }
+  return { ul, valueNodes };
 };
 
 const renderReactBenchRow = (React, key, value) =>
@@ -321,12 +521,20 @@ const renderReactBenchRow = (React, key, value) =>
     React.createElement('span', { className: 'bench-pill' }, 'row'),
     React.createElement('span', { className: 'bench-value' }, value)
   );
+const renderReactBenchList = (React, rows, getKey = (_value, index) => index) =>
+  React.createElement(
+    BENCHMARK_DOM_SHAPE.listTag,
+    { className: BENCHMARK_DOM_SHAPE.listClassName },
+    rows.map((value, index) => renderReactBenchRow(React, getKey(value, index), value))
+  );
+const renderSolidBenchRow = (solidHtml, value) =>
+  solidHtml`<li class="bench-row"><span class="bench-pill">row</span><span class="bench-value">${value}</span></li>`;
 
 const benchmarkLuminaWholeList = async () => {
   const host = createHost('host-whole-list-lumina');
   const renderer = luminaRender.create_dom_renderer();
   const rows = luminaRender.signal(makeRows());
-  const root = luminaRender.mount_reactive(renderer, host, () => renderLuminaList(luminaRender.get(rows)));
+  const root = luminaRender.mount_reactive(renderer, host, () => renderLuminaBenchList(luminaRender.get(rows)));
 
   let value = luminaRender.get(rows);
   const start = performance.now();
@@ -336,21 +544,14 @@ const benchmarkLuminaWholeList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  luminaRender.dispose_reactive(root);
+  unmountWithSmokeSnapshot(host, () => luminaRender.dispose_reactive(root));
   return total;
 };
 
 const benchmarkVanillaWholeList = async () => {
   const host = createHost('host-whole-list-vanilla');
   const rows = makeRows();
-  const ul = document.createElement('ul');
-  const nodes = [];
-  for (let i = 0; i < rows.length; i += 1) {
-    const li = document.createElement('li');
-    li.textContent = rows[i];
-    nodes.push(li);
-    ul.appendChild(li);
-  }
+  const { ul, valueNodes: nodes } = createBenchListDom(rows);
   host.appendChild(ul);
 
   const start = performance.now();
@@ -366,14 +567,7 @@ const benchmarkVanillaWholeList = async () => {
 const benchmarkVanillaBenchList = async (hostId, iterations) => {
   const host = createHost(hostId);
   const rows = makeRows();
-  const ul = document.createElement('ul');
-  ul.className = 'bench-list';
-  const nodes = [];
-  for (let i = 0; i < rows.length; i += 1) {
-    const { li, content } = createBenchRowDom(rows[i]);
-    nodes.push(content);
-    ul.appendChild(li);
-  }
+  const { ul, valueNodes: nodes } = createBenchListDom(rows);
   host.appendChild(ul);
 
   const start = performance.now();
@@ -391,24 +585,17 @@ const benchmarkReactWholeList = async () => {
   const host = createHost('host-whole-list-react');
   const root = ReactDOMClient.createRoot(host);
 
-  const renderList = (rows) =>
-    React.createElement(
-      'ul',
-      null,
-      rows.map((value, index) => React.createElement('li', { key: index }, value))
-    );
-
   let rows = makeRows();
-  ReactDOM.flushSync(() => root.render(renderList(rows)));
+  ReactDOM.flushSync(() => root.render(renderReactBenchList(React, rows)));
 
   const start = performance.now();
   for (let i = 0; i < WHOLE_LIST_ITERATIONS; i += 1) {
     rows = mutateRows(rows, i);
-    ReactDOM.flushSync(() => root.render(renderList(rows)));
+    ReactDOM.flushSync(() => root.render(renderReactBenchList(React, rows)));
     await nextTick();
   }
   const total = performance.now() - start;
-  root.unmount();
+  unmountWithSmokeSnapshot(host, () => root.unmount());
   return total;
 };
 
@@ -424,7 +611,7 @@ const benchmarkReactMemoList = async () => {
   const renderList = (rows) =>
     React.createElement(
       'ul',
-      null,
+      { className: 'bench-list' },
       rows.map((value, index) => React.createElement(Row, { key: index, value }))
     );
 
@@ -438,7 +625,7 @@ const benchmarkReactMemoList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  root.unmount();
+  unmountWithSmokeSnapshot(host, () => root.unmount());
   return total;
 };
 
@@ -454,7 +641,7 @@ const benchmarkReactMemoKeyedList = async () => {
   const renderList = (rows) =>
     React.createElement(
       'ul',
-      null,
+      { className: 'bench-list' },
       rows.map((value, index) => React.createElement(Row, { key: index, value }))
     );
 
@@ -468,7 +655,7 @@ const benchmarkReactMemoKeyedList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  root.unmount();
+  unmountWithSmokeSnapshot(host, () => root.unmount());
   return total;
 };
 
@@ -481,7 +668,7 @@ const benchmarkSolidWholeList = async () => {
     const [rows, setRows] = solid.createSignal(makeRows());
     setRowsRef = setRows;
     solidWeb.render(
-      () => solidHtml`<ul>${() => rows().map((value) => solidHtml`<li>${value}</li>`)}</ul>`,
+      () => solidHtml`<ul class="bench-list">${() => rows().map((value) => renderSolidBenchRow(solidHtml, value))}</ul>`,
       host
     );
     return () => {
@@ -498,7 +685,7 @@ const benchmarkSolidWholeList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  dispose();
+  unmountWithSmokeSnapshot(host, () => dispose());
   return total;
 };
 
@@ -529,7 +716,7 @@ const benchmarkSolidIndexList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  dispose();
+  unmountWithSmokeSnapshot(host, () => dispose());
   return total;
 };
 
@@ -560,7 +747,7 @@ const benchmarkSolidKeyedIndexList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  dispose();
+  unmountWithSmokeSnapshot(host, () => dispose());
   return total;
 };
 
@@ -569,10 +756,15 @@ const benchmarkLuminaMount = async () => {
   const host = createHost('host-mount-lumina');
   const start = performance.now();
   for (let i = 0; i < MOUNT_ITERATIONS; i += 1) {
-    const root = luminaRender.mount(renderer, host, renderLuminaList(makeRows()));
+    const root = luminaRender.mount(renderer, host, renderLuminaBenchList(makeRows()));
     root.unmount();
   }
-  return performance.now() - start;
+  const total = performance.now() - start;
+  preserveMountedHostSnapshot(host, () => {
+    const root = luminaRender.mount(renderer, host, renderLuminaBenchList(makeRows()));
+    return () => root.unmount();
+  });
+  return total;
 };
 
 const benchmarkLuminaIndexList = async () => {
@@ -708,36 +900,39 @@ const benchmarkVanillaMount = async () => {
   const host = createHost('host-mount-vanilla');
   const start = performance.now();
   for (let i = 0; i < MOUNT_ITERATIONS; i += 1) {
-    const ul = document.createElement('ul');
-    for (const value of makeRows()) {
-      const li = document.createElement('li');
-      li.textContent = value;
-      ul.appendChild(li);
-    }
+    const { ul } = createBenchListDom(makeRows());
     host.appendChild(ul);
     host.textContent = '';
   }
-  return performance.now() - start;
+  const total = performance.now() - start;
+  preserveMountedHostSnapshot(host, () => {
+    const { ul } = createBenchListDom(makeRows());
+    host.appendChild(ul);
+    return () => {
+      host.textContent = '';
+    };
+  });
+  return total;
 };
 
 const benchmarkReactMount = async () => {
   const { React, ReactDOMClient, ReactDOM } = await loadReactModules();
   const host = createHost('host-mount-react');
-  const renderList = (rows) =>
-    React.createElement(
-      'ul',
-      null,
-      rows.map((value, index) => React.createElement('li', { key: index }, value))
-    );
 
   const rows = makeRows();
   const start = performance.now();
   for (let i = 0; i < MOUNT_ITERATIONS; i += 1) {
     const root = ReactDOMClient.createRoot(host);
-    ReactDOM.flushSync(() => root.render(renderList(rows)));
+    ReactDOM.flushSync(() => root.render(renderReactBenchList(React, rows)));
     root.unmount();
   }
-  return performance.now() - start;
+  const total = performance.now() - start;
+  preserveMountedHostSnapshot(host, () => {
+    const root = ReactDOMClient.createRoot(host);
+    ReactDOM.flushSync(() => root.render(renderReactBenchList(React, rows)));
+    return () => root.unmount();
+  });
+  return total;
 };
 
 const benchmarkSolidMount = async () => {
@@ -748,7 +943,7 @@ const benchmarkSolidMount = async () => {
   for (let i = 0; i < MOUNT_ITERATIONS; i += 1) {
     const dispose = solid.createRoot((disposeRoot) => {
       solidWeb.render(
-        () => solidHtml`<ul>${rows.map((value) => solidHtml`<li>${value}</li>`)}</ul>`,
+        () => solidHtml`<ul class="bench-list">${rows.map((value) => renderSolidBenchRow(solidHtml, value))}</ul>`,
         host
       );
       return () => {
@@ -758,7 +953,21 @@ const benchmarkSolidMount = async () => {
     });
     dispose();
   }
-  return performance.now() - start;
+  const total = performance.now() - start;
+  preserveMountedHostSnapshot(host, () => {
+    const dispose = solid.createRoot((disposeRoot) => {
+      solidWeb.render(
+        () => solidHtml`<ul class="bench-list">${rows.map((value) => renderSolidBenchRow(solidHtml, value))}</ul>`,
+        host
+      );
+      return () => {
+        disposeRoot();
+        host.textContent = '';
+      };
+    });
+    return () => dispose();
+  });
+  return total;
 };
 
 const benchmarkLuminaReorder = async () => {
@@ -766,13 +975,11 @@ const benchmarkLuminaReorder = async () => {
   const renderer = luminaRender.create_dom_renderer();
   const rows = luminaRender.signal(makeKeyedRows());
   const root = luminaRender.mount_reactive(renderer, host, () =>
-    luminaRender.element(
-      'ul',
-      null,
-      luminaRender.get(rows).map((row) =>
-        luminaRender.element('li', { key: row.id }, [luminaRender.text(row.label)])
-      )
-    )
+    luminaRender.element('ul', { className: 'bench-list' }, [
+      ...luminaRender
+        .get(rows)
+        .map((row) => renderLuminaBenchRow(luminaRender.text(row.label), row.id)),
+    ])
   );
 
   let value = luminaRender.get(rows);
@@ -783,7 +990,7 @@ const benchmarkLuminaReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  luminaRender.dispose_reactive(root);
+  unmountWithSmokeSnapshot(host, () => luminaRender.dispose_reactive(root));
   return total;
 };
 
@@ -811,6 +1018,7 @@ const benchmarkVanillaReorder = async () => {
   const host = createHost('host-reorder-vanilla');
   const rows = makeKeyedRows();
   const ul = document.createElement('ul');
+  ul.className = 'bench-list';
   const nodes = rows.map((row) => {
     const { li } = createBenchRowDom(row.label);
     ul.appendChild(li);
@@ -853,7 +1061,135 @@ const benchmarkReactReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  unmountWithSmokeSnapshot(host, () => root.unmount());
+  return total;
+};
+
+const benchmarkLuminaSingleMove = async () => {
+  const host = createHost('host-single-move-lumina');
+  const renderer = luminaRender.create_dom_renderer();
+  const rows = luminaRender.signal(makeKeyedRows());
+  const root = luminaRender.mount_reactive(renderer, host, () =>
+    luminaRender.element('ul', { className: 'bench-list' }, [
+      ...luminaRender
+        .get(rows)
+        .map((row) => renderLuminaBenchRow(luminaRender.text(row.label), row.id)),
+    ])
+  );
+
+  let value = luminaRender.get(rows);
+  const start = performance.now();
+  for (let i = 0; i < SINGLE_MOVE_ITERATIONS; i += 1) {
+    value = moveHeadToTailRows(value);
+    luminaRender.set(rows, value);
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  unmountWithSmokeSnapshot(host, () => luminaRender.dispose_reactive(root));
+  return total;
+};
+
+const benchmarkLuminaKeyedListSingleMove = async () => {
+  const host = createHost('host-single-move-lumina-keyed-list');
+  const renderer = luminaRender.create_dom_renderer();
+  const rows = luminaRender.signal(makeKeyedRows());
+  const root = luminaRender.mount(
+    renderer,
+    host,
+    luminaRender.element('ul', { className: 'bench-list' }, [
+      luminaRender.forList(
+        rows,
+        (row) => row.id,
+        (rowSignal) =>
+          renderLuminaBenchRow(
+            luminaRender.liveText(luminaRender.memo(() => luminaRender.get(rowSignal).label))
+          )
+      ),
+    ])
+  );
+
+  let value = luminaRender.get(rows);
+  const start = performance.now();
+  for (let i = 0; i < SINGLE_MOVE_ITERATIONS; i += 1) {
+    value = moveHeadToTailRows(value);
+    luminaRender.set(rows, value);
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
+  return total;
+};
+
+const benchmarkLuminaCompiledSingleMove = async () => {
+  const host = createHost('host-single-move-lumina-compiled');
+  const renderer = luminaRender.create_dom_renderer();
+  const rows = luminaRender.signal(makeKeyedRows());
+  const root = luminaRender.mount(renderer, host, compiledReorder(rows));
+
+  let value = luminaRender.get(rows);
+  const start = performance.now();
+  for (let i = 0; i < SINGLE_MOVE_ITERATIONS; i += 1) {
+    value = moveHeadToTailRows(value);
+    luminaRender.set(rows, value);
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
+  root.unmount();
+  restoreHostSnapshot(host, snapshot);
+  return total;
+};
+
+const benchmarkVanillaSingleMove = async () => {
+  const host = createHost('host-single-move-vanilla');
+  const rows = makeKeyedRows();
+  const ul = document.createElement('ul');
+  ul.className = 'bench-list';
+  const nodes = rows.map((row) => {
+    const { li } = createBenchRowDom(row.label);
+    ul.appendChild(li);
+    return li;
+  });
+  host.appendChild(ul);
+
+  const start = performance.now();
+  for (let i = 0; i < SINGLE_MOVE_ITERATIONS; i += 1) {
+    moveHeadToTailRows(rows);
+    const moving = nodes.shift();
+    if (moving) {
+      ul.appendChild(moving);
+      nodes.push(moving);
+    }
+    await nextTick();
+  }
+  return performance.now() - start;
+};
+
+const benchmarkReactSingleMove = async () => {
+  const { React, ReactDOMClient, ReactDOM } = await loadReactModules();
+  const host = createHost('host-single-move-react');
+  const root = ReactDOMClient.createRoot(host);
+
+  const renderList = (rows) =>
+    React.createElement(
+      'ul',
+      { className: 'bench-list' },
+      rows.map((row) => renderReactBenchRow(React, row.id, row.label))
+    );
+
+  let rows = makeKeyedRows();
+  ReactDOM.flushSync(() => root.render(renderList(rows)));
+
+  const start = performance.now();
+  for (let i = 0; i < SINGLE_MOVE_ITERATIONS; i += 1) {
+    rows = moveHeadToTailRows(rows);
+    ReactDOM.flushSync(() => root.render(renderList(rows)));
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  unmountWithSmokeSnapshot(host, () => root.unmount());
   return total;
 };
 
@@ -862,13 +1198,11 @@ const benchmarkLuminaComplexReorder = async () => {
   const renderer = luminaRender.create_dom_renderer();
   const rows = luminaRender.signal(makeKeyedRows());
   const root = luminaRender.mount_reactive(renderer, host, () =>
-    luminaRender.element(
-      'ul',
-      null,
-      luminaRender.get(rows).map((row) =>
-        luminaRender.element('li', { key: row.id }, [luminaRender.text(row.label)])
-      )
-    )
+    luminaRender.element('ul', { className: 'bench-list' }, [
+      ...luminaRender
+        .get(rows)
+        .map((row) => renderLuminaBenchRow(luminaRender.text(row.label), row.id)),
+    ])
   );
 
   let value = luminaRender.get(rows);
@@ -879,7 +1213,7 @@ const benchmarkLuminaComplexReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  luminaRender.dispose_reactive(root);
+  unmountWithSmokeSnapshot(host, () => luminaRender.dispose_reactive(root));
   return total;
 };
 
@@ -940,6 +1274,7 @@ const benchmarkVanillaComplexReorder = async () => {
   const host = createHost('host-complex-reorder-vanilla');
   const rows = makeKeyedRows();
   const ul = document.createElement('ul');
+  ul.className = 'bench-list';
   const nodes = rows.map((row) => {
     const { li } = createBenchRowDom(row.label);
     ul.appendChild(li);
@@ -983,7 +1318,146 @@ const benchmarkReactComplexReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  unmountWithSmokeSnapshot(host, () => root.unmount());
+  return total;
+};
+
+const benchmarkLuminaStructureDiff = async () => {
+  const host = createHost('host-structure-diff-lumina');
+  const renderer = luminaRender.create_dom_renderer();
+  const rows = luminaRender.signal(makeKeyedRows());
+  const root = luminaRender.mount_reactive(renderer, host, () =>
+    luminaRender.element('ul', { className: 'bench-list' }, [
+      ...luminaRender
+        .get(rows)
+        .map((row) => renderLuminaBenchRow(luminaRender.text(row.label), row.id)),
+    ])
+  );
+
+  let value = luminaRender.get(rows);
+  const start = performance.now();
+  for (let i = 0; i < STRUCTURE_DIFF_ITERATIONS; i += 1) {
+    value = restructureKeyedRows(value, i);
+    luminaRender.set(rows, value);
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  unmountWithSmokeSnapshot(host, () => luminaRender.dispose_reactive(root));
+  return total;
+};
+
+const benchmarkLuminaKeyedListStructureDiff = async () => {
+  const host = createHost('host-structure-diff-lumina-keyed-list');
+  const renderer = luminaRender.create_dom_renderer();
+  const rows = luminaRender.signal(makeKeyedRows());
+  const root = luminaRender.mount(
+    renderer,
+    host,
+    luminaRender.element('ul', { className: 'bench-list' }, [
+      luminaRender.forList(
+        rows,
+        (row) => row.id,
+        (rowSignal) =>
+          renderLuminaBenchRow(
+            luminaRender.liveText(luminaRender.memo(() => luminaRender.get(rowSignal).label))
+          )
+      ),
+    ])
+  );
+
+  let value = luminaRender.get(rows);
+  const start = performance.now();
+  for (let i = 0; i < STRUCTURE_DIFF_ITERATIONS; i += 1) {
+    value = restructureKeyedRows(value, i);
+    luminaRender.set(rows, value);
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
+  return total;
+};
+
+const benchmarkLuminaCompiledStructureDiff = async () => {
+  const host = createHost('host-structure-diff-lumina-compiled');
+  const renderer = luminaRender.create_dom_renderer();
+  const rows = luminaRender.signal(makeKeyedRows());
+  const root = luminaRender.mount(renderer, host, compiledReorder(rows));
+
+  let value = luminaRender.get(rows);
+  const start = performance.now();
+  for (let i = 0; i < STRUCTURE_DIFF_ITERATIONS; i += 1) {
+    value = restructureKeyedRows(value, i);
+    luminaRender.set(rows, value);
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
+  root.unmount();
+  restoreHostSnapshot(host, snapshot);
+  return total;
+};
+
+const benchmarkVanillaStructureDiff = async () => {
+  const host = createHost('host-structure-diff-vanilla');
+  let rows = makeKeyedRows();
+  const ul = document.createElement('ul');
+  ul.className = 'bench-list';
+  const nodeById = new Map();
+  for (const row of rows) {
+    const { li } = createBenchRowDom(row.label);
+    nodeById.set(row.id, li);
+    ul.appendChild(li);
+  }
+  host.appendChild(ul);
+
+  const start = performance.now();
+  for (let i = 0; i < STRUCTURE_DIFF_ITERATIONS; i += 1) {
+    rows = restructureKeyedRows(rows, i);
+    const desiredIds = new Set(rows.map((row) => row.id));
+    for (const [id, node] of Array.from(nodeById.entries())) {
+      if (!desiredIds.has(id)) {
+        node.remove();
+        nodeById.delete(id);
+      }
+    }
+    for (const row of rows) {
+      let node = nodeById.get(row.id);
+      if (!node) {
+        node = createBenchRowDom(row.label).li;
+        nodeById.set(row.id, node);
+      }
+      ul.appendChild(node);
+    }
+    await nextTick();
+  }
+  return performance.now() - start;
+};
+
+const benchmarkReactStructureDiff = async () => {
+  const { React, ReactDOMClient, ReactDOM } = await loadReactModules();
+  const host = createHost('host-structure-diff-react');
+  const root = ReactDOMClient.createRoot(host);
+
+  const renderList = (rows) =>
+    React.createElement(
+      'ul',
+      { className: 'bench-list' },
+      rows.map((row) => renderReactBenchRow(React, row.id, row.label))
+    );
+
+  let rows = makeKeyedRows();
+  ReactDOM.flushSync(() => root.render(renderList(rows)));
+
+  const start = performance.now();
+  for (let i = 0; i < STRUCTURE_DIFF_ITERATIONS; i += 1) {
+    rows = restructureKeyedRows(rows, i);
+    ReactDOM.flushSync(() => root.render(renderList(rows)));
+    await nextTick();
+  }
+  const total = performance.now() - start;
+  unmountWithSmokeSnapshot(host, () => root.unmount());
   return total;
 };
 
@@ -996,9 +1470,9 @@ const benchmarkLuminaFineGrained = async () => {
     host,
     luminaRender.element(
       'ul',
-      null,
+      { className: 'bench-list' },
       rowSignals.map((rowSignal, index) =>
-        luminaRender.element('li', { key: index }, [luminaRender.liveText(rowSignal)])
+        renderLuminaBenchRow(luminaRender.liveText(rowSignal), index)
       )
     )
   );
@@ -1011,21 +1485,14 @@ const benchmarkLuminaFineGrained = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  root.unmount();
+  unmountWithSmokeSnapshot(host, () => root.unmount());
   return total;
 };
 
 const benchmarkVanillaFineGrained = async () => {
   const host = createHost('host-fine-grained-vanilla');
   const rows = makeRows();
-  const ul = document.createElement('ul');
-  const textNodes = rows.map((value) => {
-    const li = document.createElement('li');
-    const textNode = document.createTextNode(value);
-    li.appendChild(textNode);
-    ul.appendChild(li);
-    return textNode;
-  });
+  const { ul, valueNodes: textNodes } = createBenchListDom(rows);
   host.appendChild(ul);
 
   const start = performance.now();
@@ -1048,7 +1515,7 @@ const benchmarkSolidFineGrained = async () => {
     const signals = rows.map((value) => solid.createSignal(value));
     setRowRefs = signals.map(([, setValue]) => setValue);
     solidWeb.render(
-      () => solidHtml`<ul>${signals.map(([value]) => solidHtml`<li>${value}</li>`)}</ul>`,
+      () => solidHtml`<ul class="bench-list">${signals.map(([value]) => renderSolidBenchRow(solidHtml, value))}</ul>`,
       host
     );
     return () => {
@@ -1065,7 +1532,7 @@ const benchmarkSolidFineGrained = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
-  dispose();
+  unmountWithSmokeSnapshot(host, () => dispose());
   return total;
 };
 
@@ -1109,81 +1576,69 @@ const run = async () => {
     setStatus('Preloading benchmark dependencies');
     await preloadBenchmarkModules();
 
-    const wholeListSuites = [
-      ['Lumina generic rerender', benchmarkLuminaWholeList],
-      ['Vanilla DOM', benchmarkVanillaWholeList],
-      ...(
-        LOCAL_ONLY
-          ? []
-          : [
-              ['React 19', benchmarkReactWholeList],
-              ['Solid 1', benchmarkSolidWholeList],
-            ]
-      ),
-    ];
+    const wholeListSuites = bindScenarioSuites('wholeList', [
+      benchmarkLuminaWholeList,
+      benchmarkVanillaWholeList,
+      ...(LOCAL_ONLY ? [] : [benchmarkReactWholeList, benchmarkSolidWholeList]),
+    ]);
 
-    const mountSuites = [
-      ['Lumina render DOM', benchmarkLuminaMount],
-      ['Vanilla DOM', benchmarkVanillaMount],
-      ...(
-        LOCAL_ONLY
-          ? []
-          : [
-              ['React 19', benchmarkReactMount],
-              ['Solid 1', benchmarkSolidMount],
-            ]
-      ),
-    ];
+    const mountSuites = bindScenarioSuites('mount', [
+      benchmarkLuminaMount,
+      benchmarkVanillaMount,
+      ...(LOCAL_ONLY ? [] : [benchmarkReactMount, benchmarkSolidMount]),
+    ]);
 
-    const indexSuites = [
-      ['Lumina indexList', benchmarkLuminaIndexList],
-      ['Lumina indexList (compiled)', benchmarkLuminaCompiledIndexList],
-      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-index-list-vanilla', INDEX_LIST_ITERATIONS)],
-      ...(
-        LOCAL_ONLY
-          ? []
-          : [
-              ['React 19 memo rows', benchmarkReactMemoList],
-              ['Solid 1 Index', benchmarkSolidIndexList],
-            ]
-      ),
-    ];
+    const indexSuites = bindScenarioSuites('indexList', [
+      benchmarkLuminaIndexList,
+      benchmarkLuminaCompiledIndexList,
+      () => benchmarkVanillaBenchList('host-index-list-vanilla', INDEX_LIST_ITERATIONS),
+      ...(LOCAL_ONLY ? [] : [benchmarkReactMemoList, benchmarkSolidIndexList]),
+    ]);
 
-    const forListSuites = [
-      ['Lumina forList', benchmarkLuminaForList],
-      ['Lumina forList (compiled)', benchmarkLuminaCompiledForList],
-      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-for-list-vanilla', FOR_LIST_ITERATIONS)],
-      ...(
-        LOCAL_ONLY
-          ? []
-          : [
-              ['React 19 memo rows', benchmarkReactMemoKeyedList],
-              ['Solid 1 Index', benchmarkSolidKeyedIndexList],
-            ]
-      ),
-    ];
+    const forListSuites = bindScenarioSuites('forList', [
+      benchmarkLuminaForList,
+      benchmarkLuminaCompiledForList,
+      () => benchmarkVanillaBenchList('host-for-list-vanilla', FOR_LIST_ITERATIONS),
+      ...(LOCAL_ONLY ? [] : [benchmarkReactMemoKeyedList, benchmarkSolidKeyedIndexList]),
+    ]);
 
-    const reorderSuites = [
-      ['Lumina generic keyed patch', benchmarkLuminaReorder],
-      ['Lumina keyed list', benchmarkLuminaKeyedListReorder],
-      ['Lumina keyed list (compiled)', benchmarkLuminaCompiledReorder],
-      ['Vanilla DOM', benchmarkVanillaReorder],
-      ...(LOCAL_ONLY ? [] : [['React 19', benchmarkReactReorder]]),
-    ];
+    const reorderSuites = bindScenarioSuites('reorder', [
+      benchmarkLuminaReorder,
+      benchmarkLuminaKeyedListReorder,
+      benchmarkLuminaCompiledReorder,
+      benchmarkVanillaReorder,
+      ...(LOCAL_ONLY ? [] : [benchmarkReactReorder]),
+    ]);
 
-    const complexReorderSuites = [
-      ['Lumina generic keyed patch', benchmarkLuminaComplexReorder],
-      ['Lumina keyed list', benchmarkLuminaKeyedListComplexReorder],
-      ['Lumina keyed list (compiled)', benchmarkLuminaCompiledComplexReorder],
-      ['Vanilla DOM', benchmarkVanillaComplexReorder],
-      ...(LOCAL_ONLY ? [] : [['React 19', benchmarkReactComplexReorder]]),
-    ];
+    const singleMoveSuites = bindScenarioSuites('singleMove', [
+      benchmarkLuminaSingleMove,
+      benchmarkLuminaKeyedListSingleMove,
+      benchmarkLuminaCompiledSingleMove,
+      benchmarkVanillaSingleMove,
+      ...(LOCAL_ONLY ? [] : [benchmarkReactSingleMove]),
+    ]);
 
-    const fineGrainedSuites = [
-      ['Lumina signals + DOM', benchmarkLuminaFineGrained],
-      ['Vanilla DOM', benchmarkVanillaFineGrained],
-      ...(LOCAL_ONLY ? [] : [['Solid signals', benchmarkSolidFineGrained]]),
-    ];
+    const complexReorderSuites = bindScenarioSuites('complexReorder', [
+      benchmarkLuminaComplexReorder,
+      benchmarkLuminaKeyedListComplexReorder,
+      benchmarkLuminaCompiledComplexReorder,
+      benchmarkVanillaComplexReorder,
+      ...(LOCAL_ONLY ? [] : [benchmarkReactComplexReorder]),
+    ]);
+
+    const structureDiffSuites = bindScenarioSuites('structureDiff', [
+      benchmarkLuminaStructureDiff,
+      benchmarkLuminaKeyedListStructureDiff,
+      benchmarkLuminaCompiledStructureDiff,
+      benchmarkVanillaStructureDiff,
+      ...(LOCAL_ONLY ? [] : [benchmarkReactStructureDiff]),
+    ]);
+
+    const fineGrainedSuites = bindScenarioSuites('fineGrained', [
+      benchmarkLuminaFineGrained,
+      benchmarkVanillaFineGrained,
+      ...(LOCAL_ONLY ? [] : [benchmarkSolidFineGrained]),
+    ]);
 
     const results = {
       runId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1195,22 +1650,69 @@ const run = async () => {
       scenarios: {},
     };
 
-    results.scenarios.wholeList = await runScenario('results-whole-list', 'whole-list patch', wholeListSuites, WHOLE_LIST_ITERATIONS);
-    results.scenarios.mount = await runScenario('results-mount', 'initial mount', mountSuites, MOUNT_ITERATIONS);
-    results.scenarios.indexList = await runScenario('results-index-list', 'indexed list patch', indexSuites, INDEX_LIST_ITERATIONS);
-    results.scenarios.forList = await runScenario('results-for-list', 'stable signal list patch', forListSuites, FOR_LIST_ITERATIONS);
-    results.scenarios.reorder = await runScenario('results-reorder', 'keyed reorder', reorderSuites, REORDER_ITERATIONS);
+    const wholeListScenario = getScenarioContract('wholeList');
+    const mountScenario = getScenarioContract('mount');
+    const indexScenario = getScenarioContract('indexList');
+    const forListScenario = getScenarioContract('forList');
+    const reorderScenario = getScenarioContract('reorder');
+    const singleMoveScenario = getScenarioContract('singleMove');
+    const complexReorderScenario = getScenarioContract('complexReorder');
+    const structureDiffScenario = getScenarioContract('structureDiff');
+    const fineGrainedScenario = getScenarioContract('fineGrained');
+
+    results.scenarios.wholeList = await runScenario(
+      wholeListScenario.tableId,
+      wholeListScenario.label,
+      wholeListSuites,
+      wholeListScenario.iterations
+    );
+    results.scenarios.mount = await runScenario(
+      mountScenario.tableId,
+      mountScenario.label,
+      mountSuites,
+      mountScenario.iterations
+    );
+    results.scenarios.indexList = await runScenario(
+      indexScenario.tableId,
+      indexScenario.label,
+      indexSuites,
+      indexScenario.iterations
+    );
+    results.scenarios.forList = await runScenario(
+      forListScenario.tableId,
+      forListScenario.label,
+      forListSuites,
+      forListScenario.iterations
+    );
+    results.scenarios.reorder = await runScenario(
+      reorderScenario.tableId,
+      reorderScenario.label,
+      reorderSuites,
+      reorderScenario.iterations
+    );
+    results.scenarios.singleMove = await runScenario(
+      singleMoveScenario.tableId,
+      singleMoveScenario.label,
+      singleMoveSuites,
+      singleMoveScenario.iterations
+    );
     results.scenarios.complexReorder = await runScenario(
-      'results-complex-reorder',
-      'complex keyed reorder window',
+      complexReorderScenario.tableId,
+      complexReorderScenario.label,
       complexReorderSuites,
-      COMPLEX_REORDER_ITERATIONS
+      complexReorderScenario.iterations
+    );
+    results.scenarios.structureDiff = await runScenario(
+      structureDiffScenario.tableId,
+      structureDiffScenario.label,
+      structureDiffSuites,
+      structureDiffScenario.iterations
     );
     results.scenarios.fineGrained = await runScenario(
-      'results-fine-grained',
-      'fine-grained row update',
+      fineGrainedScenario.tableId,
+      fineGrainedScenario.label,
       fineGrainedSuites,
-      FINE_GRAINED_ITERATIONS
+      fineGrainedScenario.iterations
     );
 
     saveBenchmarkRun(results);
@@ -1221,6 +1723,7 @@ const run = async () => {
 };
 
 updateHistoryCount();
+window.__luminaBenchmarkContract = BENCHMARK_CONTRACT;
 
 runButton.addEventListener('click', () => {
   run().catch((error) => {

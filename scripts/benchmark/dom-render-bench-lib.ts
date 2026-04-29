@@ -12,6 +12,40 @@ export type BenchmarkManifest = {
   scenarios: string[];
 };
 
+export type BenchmarkDomShape = {
+  listTag: string;
+  listClassName: string;
+  rowTag: string;
+  rowClassName: string;
+  pillTag: string;
+  pillClassName: string;
+  pillText: string;
+  valueTag: string;
+  valueClassName: string;
+};
+
+export type BenchmarkTimingContract = {
+  clock: string;
+  mark: string;
+  measure: string;
+  clearMarks: string;
+  clearMeasures: string;
+};
+
+export type BenchmarkScenarioContract = {
+  key: string;
+  label: string;
+  tableId: string;
+  iterations: number;
+  suites: string[];
+};
+
+export type BenchmarkContract = {
+  domShape: BenchmarkDomShape;
+  timing: BenchmarkTimingContract;
+  scenarios: BenchmarkScenarioContract[];
+};
+
 export type ScenarioEntry = {
   name: string;
   warmupRuns: number;
@@ -75,6 +109,24 @@ export type BenchmarkRegressionReport = {
 
 export const DEFAULT_OUT_DIR = path.resolve('benchmarks/dom-render-history');
 const SUMMARY_EPSILON = 1e-9;
+const BENCHMARK_DOM_SHAPE: BenchmarkDomShape = Object.freeze({
+  listTag: 'ul',
+  listClassName: 'bench-list',
+  rowTag: 'li',
+  rowClassName: 'bench-row',
+  pillTag: 'span',
+  pillClassName: 'bench-pill',
+  pillText: 'row',
+  valueTag: 'span',
+  valueClassName: 'bench-value',
+});
+const BENCHMARK_TIMING_CONTRACT: BenchmarkTimingContract = Object.freeze({
+  clock: 'performance.now()',
+  mark: 'performance.mark()',
+  measure: 'performance.measure()',
+  clearMarks: 'performance.clearMarks()',
+  clearMeasures: 'performance.clearMeasures()',
+});
 
 export const assert = (condition: unknown, message: string): asserts condition => {
   if (!condition) {
@@ -90,9 +142,28 @@ const isPositiveInteger = (value: unknown): value is number => Number.isInteger(
 
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
 
+const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+
 const approxEqual = (left: number, right: number, epsilon = SUMMARY_EPSILON) => Math.abs(left - right) <= epsilon;
 
-const sameJson = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+const normalizeJson = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeJson(entry));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, normalizeJson(entry)])
+    );
+  }
+  return value;
+};
+
+const sameJson = (left: unknown, right: unknown) =>
+  JSON.stringify(normalizeJson(left)) === JSON.stringify(normalizeJson(right));
+
+const unique = (values: string[]) => new Set(values).size === values.length;
 
 const median = (values: number[]) => {
   const sorted = [...values].sort((left, right) => left - right);
@@ -108,6 +179,70 @@ const mean = (values: number[]) => values.reduce((total, value) => total + value
 const min = (values: number[]) => values.reduce((best, value) => (value < best ? value : best), values[0]);
 
 const max = (values: number[]) => values.reduce((best, value) => (value > best ? value : best), values[0]);
+
+const buildExpectedScenarioDefinitions = (localOnly: boolean) =>
+  [
+    {
+      key: 'wholeList',
+      label: 'whole-list patch',
+      tableId: 'results-whole-list',
+      suites: ['Lumina generic rerender', 'Vanilla DOM', ...(localOnly ? [] : ['React 19', 'Solid 1'])],
+    },
+    {
+      key: 'mount',
+      label: 'initial mount',
+      tableId: 'results-mount',
+      suites: ['Lumina render DOM', 'Vanilla DOM', ...(localOnly ? [] : ['React 19', 'Solid 1'])],
+    },
+    {
+      key: 'indexList',
+      label: 'indexed list patch',
+      tableId: 'results-index-list',
+      suites: ['Lumina indexList', 'Lumina indexList (compiled)', 'Vanilla DOM', ...(localOnly ? [] : ['React 19 memo rows', 'Solid 1 Index'])],
+    },
+    {
+      key: 'forList',
+      label: 'stable signal list patch',
+      tableId: 'results-for-list',
+      suites: ['Lumina forList', 'Lumina forList (compiled)', 'Vanilla DOM', ...(localOnly ? [] : ['React 19 memo rows', 'Solid 1 Index'])],
+    },
+    {
+      key: 'reorder',
+      label: 'keyed reorder',
+      tableId: 'results-reorder',
+      suites: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(localOnly ? [] : ['React 19'])],
+    },
+    {
+      key: 'singleMove',
+      label: 'single keyed move',
+      tableId: 'results-single-move',
+      suites: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(localOnly ? [] : ['React 19'])],
+    },
+    {
+      key: 'complexReorder',
+      label: 'complex keyed reorder window',
+      tableId: 'results-complex-reorder',
+      suites: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(localOnly ? [] : ['React 19'])],
+    },
+    {
+      key: 'structureDiff',
+      label: 'keyed structure diff',
+      tableId: 'results-structure-diff',
+      suites: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM', ...(localOnly ? [] : ['React 19'])],
+    },
+    {
+      key: 'fineGrained',
+      label: 'fine-grained row update',
+      tableId: 'results-fine-grained',
+      suites: ['Lumina signals + DOM', 'Vanilla DOM', ...(localOnly ? [] : ['Solid signals'])],
+    },
+  ] as const;
+
+const buildExpectedContract = (manifest: BenchmarkManifest) => ({
+  domShape: BENCHMARK_DOM_SHAPE,
+  timing: BENCHMARK_TIMING_CONTRACT,
+  scenarios: buildExpectedScenarioDefinitions(manifest.localOnly),
+});
 
 const validateManifest = (
   rawManifest: unknown,
@@ -125,7 +260,10 @@ const validateManifest = (
   assert(isPositiveInteger(manifest.measuredRuns), 'Benchmark manifest.measuredRuns must be a positive integer');
   assert(isPositiveInteger(manifest.listSize), 'Benchmark manifest.listSize must be a positive integer');
   assert(
-    Array.isArray(manifest.scenarios) && manifest.scenarios.length > 0 && manifest.scenarios.every((entry) => typeof entry === 'string'),
+    Array.isArray(manifest.scenarios) &&
+      manifest.scenarios.length > 0 &&
+      manifest.scenarios.every(isNonEmptyString) &&
+      unique(manifest.scenarios),
     'Benchmark manifest.scenarios must be a non-empty string array'
   );
 
@@ -141,7 +279,7 @@ const validateScenarioEntry = (
   assert(isRecord(rawEntry), `Benchmark export entry for ${scenarioName} must be an object`);
 
   const entry = rawEntry as Partial<ScenarioEntry>;
-  assert(typeof entry.name === 'string' && entry.name.length > 0, `Benchmark export entry for ${scenarioName} is missing a name`);
+  assert(isNonEmptyString(entry.name), `Benchmark export entry for ${scenarioName} is missing a name`);
   assert(entry.warmupRuns === expectedWarmupRuns, `Benchmark export entry ${entry.name} has mismatched warmupRuns`);
   assert(entry.measuredRuns === expectedMeasuredRuns, `Benchmark export entry ${entry.name} has mismatched measuredRuns`);
   assert(isPositiveInteger(entry.iterations), `Benchmark export entry ${entry.name} must have positive iterations`);
@@ -175,6 +313,7 @@ const validateScenarioEntry = (
 const validateRun = (
   rawRun: unknown,
   manifest: BenchmarkManifest,
+  expectedContract: ReturnType<typeof buildExpectedContract>,
   label: string
 ): BenchmarkRun => {
   assert(isRecord(rawRun), `Benchmark export is missing ${label}`);
@@ -192,12 +331,52 @@ const validateRun = (
   assert(sameJson(run.manifest, manifest), `Benchmark export ${label}.manifest must match the top-level manifest`);
   assert(isRecord(run.scenarios), `Benchmark export ${label}.scenarios must be an object`);
 
-  for (const [scenarioName, entries] of Object.entries(run.scenarios)) {
-    assert(Array.isArray(entries) && entries.length > 0, `Benchmark export ${label}.scenarios.${scenarioName} must be a non-empty array`);
-    entries.forEach((entry) => validateScenarioEntry(entry, scenarioName, manifest.warmupRuns, manifest.measuredRuns));
+  const expectedScenarioKeys = expectedContract.scenarios.map((scenario) => scenario.key);
+  const actualScenarioKeys = Object.keys(run.scenarios);
+  assert(
+    sameJson(actualScenarioKeys, expectedScenarioKeys),
+    `Benchmark export ${label}.scenarios keys must match ${expectedScenarioKeys.join(', ')}`
+  );
+
+  for (const scenario of expectedContract.scenarios) {
+    const entries = run.scenarios[scenario.key];
+    assert(
+      Array.isArray(entries) && entries.length === scenario.suites.length,
+      `Benchmark export ${label}.scenarios.${scenario.key} must include ${scenario.suites.length} suites`
+    );
+
+    const validatedEntries = entries.map((entry) =>
+      validateScenarioEntry(entry, scenario.key, manifest.warmupRuns, manifest.measuredRuns)
+    );
+    assert(
+      sameJson(
+        validatedEntries.map((entry) => entry.name),
+        scenario.suites
+      ),
+      `Benchmark export ${label}.scenarios.${scenario.key} suites must match ${scenario.suites.join(', ')}`
+    );
+    assert(
+      validatedEntries.every((entry) => entry.iterations === validatedEntries[0].iterations),
+      `Benchmark export ${label}.scenarios.${scenario.key} must use one shared iteration count`
+    );
   }
 
   return run as BenchmarkRun;
+};
+
+export const buildBenchmarkContract = (manifest: BenchmarkManifest, run: BenchmarkRun): BenchmarkContract => {
+  const expectedContract = buildExpectedContract(manifest);
+  return {
+    domShape: expectedContract.domShape,
+    timing: expectedContract.timing,
+    scenarios: expectedContract.scenarios.map((scenario) => ({
+      key: scenario.key,
+      label: scenario.label,
+      tableId: scenario.tableId,
+      iterations: run.scenarios[scenario.key][0]?.iterations ?? 0,
+      suites: [...scenario.suites],
+    })),
+  };
 };
 
 export const validatePayload = (payload: unknown): BenchmarkExport => {
@@ -208,12 +387,21 @@ export const validatePayload = (payload: unknown): BenchmarkExport => {
   assert(isRecord(typed.environment), 'Benchmark export is missing environment');
 
   const manifest = validateManifest(typed.manifest, typed.schemaVersion, typed.suiteVersion);
-  const latest = validateRun(typed.latest, manifest, 'latest');
+  const expectedContract = buildExpectedContract(manifest);
+  assert(
+    sameJson(
+      manifest.scenarios,
+      expectedContract.scenarios.map((scenario) => scenario.label)
+    ),
+    'Benchmark manifest.scenarios must match the DOM render benchmark contract'
+  );
+  const latest = validateRun(typed.latest, manifest, expectedContract, 'latest');
+  assert(sameJson(typed.environment, latest.environment), 'Benchmark export environment must match latest.environment');
   assert(Array.isArray(typed.history) && typed.history.length > 0, 'Benchmark export history must be a non-empty array');
   typed.history.forEach((entry, index) => {
     assert(entry.schemaVersion === typed.schemaVersion, `Benchmark export history[${index}].schemaVersion must match schemaVersion`);
     assert(entry.suiteVersion === typed.suiteVersion, `Benchmark export history[${index}].suiteVersion must match suiteVersion`);
-    validateRun(entry, manifest, `history[${index}]`);
+    validateRun(entry, manifest, expectedContract, `history[${index}]`);
   });
   assert(isRecord(typed.historyMeta), 'Benchmark export is missing historyMeta');
   assert(
@@ -225,6 +413,15 @@ export const validatePayload = (payload: unknown): BenchmarkExport => {
   const latestHistoryEntry = typed.history[typed.history.length - 1];
   assert(latestHistoryEntry.runId === latest.runId, 'Benchmark export latest.runId must match the latest history entry');
   assert(latestHistoryEntry.recordedAt === latest.recordedAt, 'Benchmark export latest.recordedAt must match the latest history entry');
+  assert(
+    sameJson(latestHistoryEntry, {
+      ...latest,
+      schemaVersion: typed.schemaVersion,
+      suiteVersion: typed.suiteVersion,
+      manifest,
+    }),
+    'Benchmark export latest must match the latest compatible history entry'
+  );
 
   return typed;
 };

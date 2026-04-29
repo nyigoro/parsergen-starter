@@ -53,7 +53,7 @@
     "repl:smoke": "node scripts/repl-smoke.cjs",
     "bench:compile": "tsx scripts/benchmark/compile-bench.ts",
     "bench:dom-render:import": "tsx scripts/benchmark/dom-render-bench.ts",
-    "bench:dom-render:check": "tsx scripts/benchmark/dom-render-bench.ts --baseline tests/benchmark/dom-render-smoke.baseline.json",
+    "bench:dom-render:check": "tsx scripts/benchmark/dom-render-bench.ts --baseline tests/benchmark/dom-render-smoke.baseline.json --max-median-ratio 3 --max-median-regression-ms 2",
     "bench:dom-render:update-baseline": "tsx scripts/benchmark/dom-render-bench.ts --baseline-out tests/benchmark/dom-render-smoke.baseline.json",
     "bench:incremental": "tsx scripts/benchmark/incremental-bench.ts",
     "bench:lsp": "tsx scripts/benchmark/lsp-bench.ts",

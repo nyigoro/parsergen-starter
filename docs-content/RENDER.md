@@ -38,6 +38,10 @@ A renderer implements mount/update/unmount behavior for a host:
 
 Keep components and reactivity portable while swapping only the rendering target. The objective is one view model that can run in browser, server, graphics, and CLI environments with predictable semantics and minimal host-specific code.
 
+## Related Docs
+
+- `BENCHMARK_ARCHITECTURE.md` for the DOM benchmark contract, baseline flow, and perf-gate wiring
+
 For idiomatic language-level state APIs, use `@std/reactive` (`createSignal`, `createMemo`, `createEffect`, `get`, `set`).
 
 ## Reactivity Model
@@ -187,6 +191,21 @@ See complete examples in `examples/dom-render/`:
 - Async data loader (effect + async)
 - Benchmark harness (`benchmark.html`) vs React/Solid/vanilla
 - SSR/Canvas/Terminal target notes in the benchmark/readme pages
+
+### Benchmark Harness Contract
+
+The DOM benchmark harness keeps its comparable list scenarios on one DOM shape:
+
+- `ul.bench-list`
+- `li.bench-row`
+- `span.bench-pill`
+- `span.bench-value`
+
+That shape lines up with the [WHATWG DOM Standard](https://dom.spec.whatwg.org/) node-tree model so framework-specific wrapper differences do not distort the measurement.
+
+Per measured run, the harness records totals with [`performance.now()`](https://developer.mozilla.org/docs/Web/API/Performance/now) and emits [`performance.mark()`](https://developer.mozilla.org/en-US/docs/Web/API/Performance/mark) / [`performance.measure()`](https://developer.mozilla.org/en-US/docs/Web/API/Performance/measure) entries for inspection through the browser [Performance API](https://developer.mozilla.org/en-US/docs/Web/API/Performance_API/Performance_data).
+
+The import/perf-gate step validates scenario order, suite order, sample math, and baseline compatibility before accepting a run into benchmark history.
 
 ## Scope
 

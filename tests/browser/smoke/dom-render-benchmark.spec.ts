@@ -5,10 +5,28 @@ import { startSmokeServer } from '../fixtures/serve';
 
 const runSmoke = process.env.LUMINA_BROWSER_SMOKE === '1';
 const benchmarkExportPath = process.env.LUMINA_DOM_RENDER_BENCHMARK_EXPORT_PATH;
-const suiteVersion = '2026-04-29-benchmark-quality-v3';
-const historyKey = 'lumina.dom.benchmark.history.v3';
+const suiteVersion = '2026-04-29-benchmark-quality-v4';
+const historyKey = 'lumina.dom.benchmark.history.v4';
 const smokeListSize = 32;
 const measuredRuns = 2;
+const expectedDomShape = {
+  listTag: 'ul',
+  listClassName: 'bench-list',
+  rowTag: 'li',
+  rowClassName: 'bench-row',
+  pillTag: 'span',
+  pillClassName: 'bench-pill',
+  pillText: 'row',
+  valueTag: 'span',
+  valueClassName: 'bench-value',
+} as const;
+const expectedTimingContract = {
+  clock: 'performance.now()',
+  mark: 'performance.mark()',
+  measure: 'performance.measure()',
+  clearMarks: 'performance.clearMarks()',
+  clearMeasures: 'performance.clearMeasures()',
+} as const;
 
 const expectedManifestScenarios = [
   'whole-list patch',
@@ -16,7 +34,9 @@ const expectedManifestScenarios = [
   'indexed list patch',
   'stable signal list patch',
   'keyed reorder',
+  'single keyed move',
   'complex keyed reorder window',
+  'keyed structure diff',
   'fine-grained row update',
 ];
 
@@ -26,7 +46,9 @@ const expectedScenarioSuites: Record<string, string[]> = {
   indexList: ['Lumina indexList', 'Lumina indexList (compiled)', 'Vanilla DOM'],
   forList: ['Lumina forList', 'Lumina forList (compiled)', 'Vanilla DOM'],
   reorder: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
+  singleMove: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
   complexReorder: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
+  structureDiff: ['Lumina generic keyed patch', 'Lumina keyed list', 'Lumina keyed list (compiled)', 'Vanilla DOM'],
   fineGrained: ['Lumina signals + DOM', 'Vanilla DOM'],
 };
 
@@ -36,7 +58,9 @@ const expectedScenarioIterations: Record<string, number> = {
   indexList: 12,
   forList: 12,
   reorder: 12,
+  singleMove: 10,
   complexReorder: 8,
+  structureDiff: 8,
   fineGrained: 12,
 };
 
@@ -93,17 +117,33 @@ type BenchmarkExportPayload = {
   };
 };
 
+type BenchmarkContract = {
+  domShape: typeof expectedDomShape;
+  timing: typeof expectedTimingContract;
+  scenarios: Array<{
+    key: string;
+    label: string;
+    tableId: string;
+    iterations: number;
+    suites: string[];
+  }>;
+};
+
 type BenchRowShape = {
   tag: string;
   className: string;
+  childNodeTypes: number[];
   children: Array<{
     tag: string;
     className: string;
     text: string;
+    nodeType: number;
   }>;
 };
 
 type BenchHostShape = {
+  listTag: string | null;
+  listClassName: string | null;
   rowCount: number;
   benchRowCount: number;
   pillCount: number;
@@ -117,10 +157,19 @@ type BenchmarkPageState = {
   payload: BenchmarkExportPayload;
   exportJson: string;
   manifest: BenchmarkRun['manifest'];
+  contract: BenchmarkContract;
   historyLength: number;
   historyCountLabel: string | null;
   exportDisabled: boolean;
   dom: {
+    wholeList: {
+      lumina: BenchHostShape;
+      vanilla: BenchHostShape;
+    };
+    mount: {
+      lumina: BenchHostShape;
+      vanilla: BenchHostShape;
+    };
     indexList: {
       lumina: BenchHostShape;
       compiled: BenchHostShape;
@@ -132,13 +181,31 @@ type BenchmarkPageState = {
       vanilla: BenchHostShape;
     };
     reorder: {
-      lumina: BenchHostShape;
+      generic: BenchHostShape;
+      keyed: BenchHostShape;
+      compiled: BenchHostShape;
+      vanilla: BenchHostShape;
+    };
+    singleMove: {
+      generic: BenchHostShape;
+      keyed: BenchHostShape;
       compiled: BenchHostShape;
       vanilla: BenchHostShape;
     };
     complexReorder: {
-      lumina: BenchHostShape;
+      generic: BenchHostShape;
+      keyed: BenchHostShape;
       compiled: BenchHostShape;
+      vanilla: BenchHostShape;
+    };
+    structureDiff: {
+      generic: BenchHostShape;
+      keyed: BenchHostShape;
+      compiled: BenchHostShape;
+      vanilla: BenchHostShape;
+    };
+    fineGrained: {
+      lumina: BenchHostShape;
       vanilla: BenchHostShape;
     };
   };
@@ -171,6 +238,14 @@ const swapAdjacentRows = <T>(rows: T[], step: number) => {
   return next;
 };
 
+const moveHeadToTailRows = <T>(rows: T[]) => {
+  const next = rows.slice();
+  if (next.length < 2) return next;
+  const [first] = next.splice(0, 1);
+  next.push(first as T);
+  return next;
+};
+
 const reorderMiddleWindowRows = <T>(rows: T[], windowSize = 64) => {
   const next = rows.slice();
   if (next.length < 4) return next;
@@ -189,6 +264,26 @@ const reorderMiddleWindowRows = <T>(rows: T[], windowSize = 64) => {
   return next;
 };
 
+const restructureKeyedRows = <T extends { id: string; label: string }>(rows: T[], step: number) => {
+  const next = rows.slice();
+  if (next.length < 3) return next;
+  const removeIndex = step % next.length;
+  next.splice(removeIndex, 1);
+  if (next.length > 1) {
+    const from = (step * 3) % next.length;
+    const [moving] = next.splice(from, 1);
+    const to = (step * 5) % (next.length + 1);
+    next.splice(to, 0, moving as T);
+  }
+  const insertIndex = (step * 7) % (next.length + 1);
+  const freshId = `fresh-${step}`;
+  next.splice(insertIndex, 0, { id: freshId, label: freshId } as T);
+  return next;
+};
+
+const buildKeyedRows = (size: number) =>
+  Array.from({ length: size }, (_, index) => ({ id: `row-${index}`, label: `row-${index}` }));
+
 const applySteps = <T>(initial: T[], iterations: number, stepper: (rows: T[], step: number) => T[]) => {
   let current = initial;
   for (let step = 0; step < iterations; step += 1) {
@@ -198,12 +293,90 @@ const applySteps = <T>(initial: T[], iterations: number, stepper: (rows: T[], st
 };
 
 const expectedMutatedRows = applySteps(buildRows(smokeListSize), expectedScenarioIterations.indexList, mutateRows);
+const expectedMountedRows = buildRows(smokeListSize);
 const expectedAdjacentSwapRows = applySteps(buildRows(smokeListSize), expectedScenarioIterations.reorder, swapAdjacentRows);
+const expectedSingleMoveRows = applySteps(buildRows(smokeListSize), expectedScenarioIterations.singleMove, (rows) =>
+  moveHeadToTailRows(rows)
+);
 const expectedComplexReorderRows = applySteps(
   buildRows(smokeListSize),
   expectedScenarioIterations.complexReorder,
   (rows) => reorderMiddleWindowRows(rows)
 );
+const expectedStructureDiffRows = applySteps(
+  buildKeyedRows(smokeListSize),
+  expectedScenarioIterations.structureDiff,
+  (rows, step) => restructureKeyedRows(rows, step)
+).map((row) => row.label);
+const expectedContract: BenchmarkContract = {
+  domShape: expectedDomShape,
+  timing: expectedTimingContract,
+  scenarios: [
+    {
+      key: 'wholeList',
+      label: 'whole-list patch',
+      tableId: 'results-whole-list',
+      iterations: expectedScenarioIterations.wholeList,
+      suites: expectedScenarioSuites.wholeList,
+    },
+    {
+      key: 'mount',
+      label: 'initial mount',
+      tableId: 'results-mount',
+      iterations: expectedScenarioIterations.mount,
+      suites: expectedScenarioSuites.mount,
+    },
+    {
+      key: 'indexList',
+      label: 'indexed list patch',
+      tableId: 'results-index-list',
+      iterations: expectedScenarioIterations.indexList,
+      suites: expectedScenarioSuites.indexList,
+    },
+    {
+      key: 'forList',
+      label: 'stable signal list patch',
+      tableId: 'results-for-list',
+      iterations: expectedScenarioIterations.forList,
+      suites: expectedScenarioSuites.forList,
+    },
+    {
+      key: 'reorder',
+      label: 'keyed reorder',
+      tableId: 'results-reorder',
+      iterations: expectedScenarioIterations.reorder,
+      suites: expectedScenarioSuites.reorder,
+    },
+    {
+      key: 'singleMove',
+      label: 'single keyed move',
+      tableId: 'results-single-move',
+      iterations: expectedScenarioIterations.singleMove,
+      suites: expectedScenarioSuites.singleMove,
+    },
+    {
+      key: 'complexReorder',
+      label: 'complex keyed reorder window',
+      tableId: 'results-complex-reorder',
+      iterations: expectedScenarioIterations.complexReorder,
+      suites: expectedScenarioSuites.complexReorder,
+    },
+    {
+      key: 'structureDiff',
+      label: 'keyed structure diff',
+      tableId: 'results-structure-diff',
+      iterations: expectedScenarioIterations.structureDiff,
+      suites: expectedScenarioSuites.structureDiff,
+    },
+    {
+      key: 'fineGrained',
+      label: 'fine-grained row update',
+      tableId: 'results-fine-grained',
+      iterations: expectedScenarioIterations.fineGrained,
+      suites: expectedScenarioSuites.fineGrained,
+    },
+  ],
+};
 
 const expectValidSamples = (entry: BenchmarkScenarioEntry, scenarioName: string) => {
   expect(entry.warmupRuns).toBe(1);
@@ -228,6 +401,8 @@ const expectValidSamples = (entry: BenchmarkScenarioEntry, scenarioName: string)
 };
 
 const expectBenchHostShape = (shape: BenchHostShape, expectedValues: string[]) => {
+  expect(shape.listTag).toBe(expectedDomShape.listTag);
+  expect(shape.listClassName).toBe(expectedDomShape.listClassName);
   expect(shape.rowCount).toBe(expectedValues.length);
   expect(shape.benchRowCount).toBe(expectedValues.length);
   expect(shape.pillCount).toBe(expectedValues.length);
@@ -235,11 +410,17 @@ const expectBenchHostShape = (shape: BenchHostShape, expectedValues: string[]) =
   expect(shape.pills).toEqual(Array.from({ length: expectedValues.length }, () => 'row'));
   expect(shape.values).toEqual(expectedValues);
   expect(shape.rowShapes[0]).toEqual({
-    tag: 'li',
-    className: 'bench-row',
+    tag: expectedDomShape.rowTag,
+    className: expectedDomShape.rowClassName,
+    childNodeTypes: [1, 1],
     children: [
-      { tag: 'span', className: 'bench-pill', text: 'row' },
-      { tag: 'span', className: 'bench-value', text: expectedValues[0] },
+      { tag: expectedDomShape.pillTag, className: expectedDomShape.pillClassName, text: 'row', nodeType: 1 },
+      {
+        tag: expectedDomShape.valueTag,
+        className: expectedDomShape.valueClassName,
+        text: expectedValues[0],
+        nodeType: 1,
+      },
     ],
   });
 };
@@ -253,7 +434,7 @@ const expectBenchHostParity = (actual: BenchHostShape, baseline: BenchHostShape,
 test.describe('DOM render benchmark contract', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
 
-  test('exports versioned local-only benchmark JSON and keeps specialized host DOM parity', async ({ page }, testInfo) => {
+  test('exports versioned local-only benchmark JSON and keeps benchmark DOM parity', async ({ page }, testInfo) => {
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -286,8 +467,11 @@ test.describe('DOM render benchmark contract', () => {
           if (!host) {
             throw new Error(`Missing host ${hostId}`);
           }
+          const list = host.firstElementChild;
           const rows = Array.from(host.querySelectorAll('.bench-row'));
           return {
+            listTag: list?.tagName.toLowerCase() ?? null,
+            listClassName: list?.className ?? null,
             rowCount: rows.length,
             benchRowCount: rows.length,
             pillCount: host.querySelectorAll('.bench-pill').length,
@@ -297,10 +481,12 @@ test.describe('DOM render benchmark contract', () => {
             rowShapes: rows.slice(0, 3).map((row) => ({
               tag: row.tagName.toLowerCase(),
               className: row.className,
+              childNodeTypes: Array.from(row.childNodes).map((child) => child.nodeType),
               children: Array.from(row.children).map((child) => ({
                 tag: child.tagName.toLowerCase(),
                 className: child.className,
                 text: child.textContent ?? '',
+                nodeType: child.nodeType,
               })),
             })),
           };
@@ -310,10 +496,19 @@ test.describe('DOM render benchmark contract', () => {
           payload: (window as Record<string, unknown>).__luminaBenchmarkExport as BenchmarkExportPayload,
           exportJson: (window as Record<string, unknown>).__luminaBenchmarkExportJson as string,
           manifest: (window as Record<string, unknown>).__luminaBenchmarkManifest as BenchmarkRun['manifest'],
+          contract: (window as Record<string, unknown>).__luminaBenchmarkContract as BenchmarkContract,
           historyLength: ((window as Record<string, unknown>).__luminaBenchmarkHistory as unknown[]).length,
           historyCountLabel: document.getElementById('history-count')?.textContent ?? null,
           exportDisabled: (document.getElementById('export-json') as HTMLButtonElement | null)?.disabled ?? true,
           dom: {
+            wholeList: {
+              lumina: readBenchHost('host-whole-list-lumina'),
+              vanilla: readBenchHost('host-whole-list-vanilla'),
+            },
+            mount: {
+              lumina: readBenchHost('host-mount-lumina'),
+              vanilla: readBenchHost('host-mount-vanilla'),
+            },
             indexList: {
               lumina: readBenchHost('host-index-list-lumina'),
               compiled: readBenchHost('host-index-list-lumina-compiled'),
@@ -324,15 +519,33 @@ test.describe('DOM render benchmark contract', () => {
               compiled: readBenchHost('host-for-list-lumina-compiled'),
               vanilla: readBenchHost('host-for-list-vanilla'),
             },
-            reorder: {
-              lumina: readBenchHost('host-reorder-lumina-keyed-list'),
-              compiled: readBenchHost('host-reorder-lumina-compiled'),
-              vanilla: readBenchHost('host-reorder-vanilla'),
-            },
-            complexReorder: {
-              lumina: readBenchHost('host-complex-reorder-lumina-keyed-list'),
-              compiled: readBenchHost('host-complex-reorder-lumina-compiled'),
-              vanilla: readBenchHost('host-complex-reorder-vanilla'),
+    reorder: {
+      generic: readBenchHost('host-reorder-lumina'),
+      keyed: readBenchHost('host-reorder-lumina-keyed-list'),
+      compiled: readBenchHost('host-reorder-lumina-compiled'),
+      vanilla: readBenchHost('host-reorder-vanilla'),
+    },
+    singleMove: {
+      generic: readBenchHost('host-single-move-lumina'),
+      keyed: readBenchHost('host-single-move-lumina-keyed-list'),
+      compiled: readBenchHost('host-single-move-lumina-compiled'),
+      vanilla: readBenchHost('host-single-move-vanilla'),
+    },
+    complexReorder: {
+      generic: readBenchHost('host-complex-reorder-lumina'),
+      keyed: readBenchHost('host-complex-reorder-lumina-keyed-list'),
+      compiled: readBenchHost('host-complex-reorder-lumina-compiled'),
+      vanilla: readBenchHost('host-complex-reorder-vanilla'),
+    },
+    structureDiff: {
+      generic: readBenchHost('host-structure-diff-lumina'),
+      keyed: readBenchHost('host-structure-diff-lumina-keyed-list'),
+      compiled: readBenchHost('host-structure-diff-lumina-compiled'),
+      vanilla: readBenchHost('host-structure-diff-vanilla'),
+    },
+    fineGrained: {
+      lumina: readBenchHost('host-fine-grained-lumina'),
+      vanilla: readBenchHost('host-fine-grained-vanilla'),
             },
           },
         };
@@ -367,6 +580,7 @@ test.describe('DOM render benchmark contract', () => {
       expect(state.payload.environment.language).toBeTruthy();
       expect(state.payload.environment.languages.length).toBeGreaterThan(0);
       expect(state.manifest).toEqual(state.payload.manifest);
+      expect(state.contract).toEqual(expectedContract);
       expect(state.payload.latest.manifest).toEqual(state.payload.manifest);
       expect(state.payload.latest.runId).toMatch(/^\d+-[a-z0-9]{6}$/);
       expect(state.payload.latest.recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -397,6 +611,12 @@ test.describe('DOM render benchmark contract', () => {
         }
       }
 
+      expectBenchHostShape(state.dom.wholeList.lumina, expectedMutatedRows);
+      expectBenchHostParity(state.dom.wholeList.vanilla, state.dom.wholeList.lumina, expectedMutatedRows);
+
+      expectBenchHostShape(state.dom.mount.lumina, expectedMountedRows);
+      expectBenchHostParity(state.dom.mount.vanilla, state.dom.mount.lumina, expectedMountedRows);
+
       expectBenchHostShape(state.dom.indexList.lumina, expectedMutatedRows);
       expectBenchHostParity(state.dom.indexList.compiled, state.dom.indexList.lumina, expectedMutatedRows);
       expectBenchHostParity(state.dom.indexList.vanilla, state.dom.indexList.lumina, expectedMutatedRows);
@@ -405,13 +625,28 @@ test.describe('DOM render benchmark contract', () => {
       expectBenchHostParity(state.dom.forList.compiled, state.dom.forList.lumina, expectedMutatedRows);
       expectBenchHostParity(state.dom.forList.vanilla, state.dom.forList.lumina, expectedMutatedRows);
 
-      expectBenchHostShape(state.dom.reorder.lumina, expectedAdjacentSwapRows);
-      expectBenchHostParity(state.dom.reorder.compiled, state.dom.reorder.lumina, expectedAdjacentSwapRows);
-      expectBenchHostParity(state.dom.reorder.vanilla, state.dom.reorder.lumina, expectedAdjacentSwapRows);
+    expectBenchHostShape(state.dom.reorder.generic, expectedAdjacentSwapRows);
+    expectBenchHostParity(state.dom.reorder.keyed, state.dom.reorder.generic, expectedAdjacentSwapRows);
+    expectBenchHostParity(state.dom.reorder.compiled, state.dom.reorder.generic, expectedAdjacentSwapRows);
+    expectBenchHostParity(state.dom.reorder.vanilla, state.dom.reorder.generic, expectedAdjacentSwapRows);
 
-      expectBenchHostShape(state.dom.complexReorder.lumina, expectedComplexReorderRows);
-      expectBenchHostParity(state.dom.complexReorder.compiled, state.dom.complexReorder.lumina, expectedComplexReorderRows);
-      expectBenchHostParity(state.dom.complexReorder.vanilla, state.dom.complexReorder.lumina, expectedComplexReorderRows);
+    expectBenchHostShape(state.dom.singleMove.generic, expectedSingleMoveRows);
+    expectBenchHostParity(state.dom.singleMove.keyed, state.dom.singleMove.generic, expectedSingleMoveRows);
+    expectBenchHostParity(state.dom.singleMove.compiled, state.dom.singleMove.generic, expectedSingleMoveRows);
+    expectBenchHostParity(state.dom.singleMove.vanilla, state.dom.singleMove.generic, expectedSingleMoveRows);
+
+    expectBenchHostShape(state.dom.complexReorder.generic, expectedComplexReorderRows);
+    expectBenchHostParity(state.dom.complexReorder.keyed, state.dom.complexReorder.generic, expectedComplexReorderRows);
+    expectBenchHostParity(state.dom.complexReorder.compiled, state.dom.complexReorder.generic, expectedComplexReorderRows);
+    expectBenchHostParity(state.dom.complexReorder.vanilla, state.dom.complexReorder.generic, expectedComplexReorderRows);
+
+    expectBenchHostShape(state.dom.structureDiff.generic, expectedStructureDiffRows);
+    expectBenchHostParity(state.dom.structureDiff.keyed, state.dom.structureDiff.generic, expectedStructureDiffRows);
+    expectBenchHostParity(state.dom.structureDiff.compiled, state.dom.structureDiff.generic, expectedStructureDiffRows);
+    expectBenchHostParity(state.dom.structureDiff.vanilla, state.dom.structureDiff.generic, expectedStructureDiffRows);
+
+    expectBenchHostShape(state.dom.fineGrained.lumina, expectedMutatedRows);
+    expectBenchHostParity(state.dom.fineGrained.vanilla, state.dom.fineGrained.lumina, expectedMutatedRows);
     } finally {
       await server.close();
     }

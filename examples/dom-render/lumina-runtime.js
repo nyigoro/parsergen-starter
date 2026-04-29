@@ -5776,58 +5776,77 @@ var hasVNodeKey = /* @__PURE__ */ __name((node) => typeof node.key === "string" 
 var hasKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasKeyedChildren");
 var duplicateKeyError = /* @__PURE__ */ __name((key) => new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`), "duplicateKeyError");
 var areAllChildrenKeyed = /* @__PURE__ */ __name((children2) => children2.every((child) => hasVNodeKey(child)), "areAllChildrenKeyed");
-var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChildren) => {
+var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChildren, equalsValue) => {
   if (prevChildren.length !== nextChildren.length) {
-    return null;
+    return {
+      transition: null,
+      stableDirtyIndices: []
+    };
   }
-  const seenPrevKeys = /* @__PURE__ */ new Set();
   const seenNextKeys = /* @__PURE__ */ new Set();
   let firstMismatch = -1;
+  const stableDirtyIndices = [];
+  const prevKeys = new Array(prevChildren.length);
+  const nextKeys = new Array(nextChildren.length);
   for (let index = 0; index < prevChildren.length; index += 1) {
     const prevChild = prevChildren[index];
     const nextChild = nextChildren[index];
     if (!hasVNodeKey(prevChild) || !hasVNodeKey(nextChild)) {
-      return null;
+      return {
+        transition: null,
+        stableDirtyIndices: []
+      };
     }
     const prevKey = prevChild.key;
     const nextKey = nextChild.key;
-    if (seenPrevKeys.has(prevKey)) {
-      throw duplicateKeyError(prevKey);
-    }
+    prevKeys[index] = prevKey;
+    nextKeys[index] = nextKey;
     if (seenNextKeys.has(nextKey)) {
       throw duplicateKeyError(nextKey);
     }
-    seenPrevKeys.add(prevKey);
     seenNextKeys.add(nextKey);
-    if (firstMismatch < 0 && prevKey !== nextKey) {
+    if (prevKey === nextKey) {
+      if (!canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+        stableDirtyIndices.push(index);
+      }
+      continue;
+    }
+    if (firstMismatch < 0) {
       firstMismatch = index;
     }
   }
   if (firstMismatch < 0) {
     return {
-      kind: "same_order"
+      transition: {
+        kind: "same_order"
+      },
+      stableDirtyIndices
     };
   }
   const swapRight = firstMismatch + 1;
-  if (swapRight < prevChildren.length && prevChildren[firstMismatch].key === nextChildren[swapRight].key && prevChildren[swapRight].key === nextChildren[firstMismatch].key) {
+  if (swapRight < prevChildren.length && prevKeys[firstMismatch] === nextKeys[swapRight] && prevKeys[swapRight] === nextKeys[firstMismatch]) {
     let restMatches = true;
     for (let index = swapRight + 1; index < prevChildren.length; index += 1) {
-      if (prevChildren[index].key !== nextChildren[index].key) {
+      if (prevKeys[index] !== nextKeys[index]) {
         restMatches = false;
         break;
       }
     }
     if (restMatches) {
       return {
-        kind: "adjacent_swap",
-        left: firstMismatch,
-        right: swapRight
+        transition: {
+          kind: "adjacent_swap",
+          left: firstMismatch,
+          right: swapRight
+        },
+        stableDirtyIndices
       };
     }
   }
-  const prevKeys = prevChildren.map((child) => child.key);
-  const nextKeys = nextChildren.map((child) => child.key);
-  return analyzeSequenceTransition(prevKeys, nextKeys, (left, right) => left === right);
+  return {
+    transition: analyzeSequenceTransition(prevKeys, nextKeys, (left, right) => left === right),
+    stableDirtyIndices
+  };
 }, "analyzeKeyedChildTransition");
 var createForListState = /* @__PURE__ */ __name((entries) => ({
   entries,
@@ -5928,48 +5947,20 @@ var hasShallowEqualProps = /* @__PURE__ */ __name((left, right) => {
   }
   return leftCount === rightCount;
 }, "hasShallowEqualProps");
-var canSkipStableKeyedChildPatch = /* @__PURE__ */ __name((prevNode, nextNode) => {
-  if (prevNode === nextNode) return true;
-  if (prevNode.kind !== nextNode.kind) return false;
-  if (prevNode.kind === "text" && nextNode.kind === "text") {
-    return prevNode.text === nextNode.text;
-  }
-  if (prevNode.kind === "live_text" && nextNode.kind === "live_text") {
-    return prevNode.signal === nextNode.signal;
-  }
-  if (prevNode.kind === "portal" || nextNode.kind === "portal") {
-    return false;
-  }
-  if (prevNode.tag !== nextNode.tag || prevNode.key !== nextNode.key) {
-    return false;
-  }
-  if (!hasShallowEqualProps(prevNode.props, nextNode.props)) {
-    return false;
-  }
-  const prevChildren = asDomChildren(prevNode);
-  const nextChildren = asDomChildren(nextNode);
-  if (prevChildren.length !== nextChildren.length) {
-    return false;
-  }
-  if (prevChildren.length === 0) {
+var canSkipChildListPatch = /* @__PURE__ */ __name((length, compareChild) => {
+  if (length === 0) {
     return true;
   }
-  if (prevChildren.length !== 1) {
+  if (length > 6) {
     return false;
   }
-  const prevChild = prevChildren[0];
-  const nextChild = nextChildren[0];
-  if (prevChild === nextChild) {
-    return true;
+  for (let index = 0; index < length; index += 1) {
+    if (!compareChild(index)) {
+      return false;
+    }
   }
-  if (prevChild.kind === "text" && nextChild.kind === "text") {
-    return prevChild.text === nextChild.text;
-  }
-  if (prevChild.kind === "live_text" && nextChild.kind === "live_text") {
-    return prevChild.signal === nextChild.signal;
-  }
-  return false;
-}, "canSkipStableKeyedChildPatch");
+  return true;
+}, "canSkipChildListPatch");
 var remapMovedIndex = /* @__PURE__ */ __name((index, from, to) => {
   if (from === to) {
     return index;
@@ -6025,11 +6016,7 @@ var canSkipDomPatch = /* @__PURE__ */ __name((prevNode, nextNode, equalsValue) =
   if (prevChildren.length === 0) {
     return true;
   }
-  if (prevChildren.length === 1) {
-    return canSkipDomPatch(prevChildren[0], nextChildren[0], equalsValue);
-  }
-  void equalsValue;
-  return false;
+  return canSkipChildListPatch(prevChildren.length, (index) => canSkipDomPatch(prevChildren[index], nextChildren[index], equalsValue));
 }, "canSkipDomPatch");
 var patchPortalMount = /* @__PURE__ */ __name((anchor, prevNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const previous = portalStore.get(anchor) ?? {
@@ -6212,6 +6199,30 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     nextEntries.splice(to, 0, moving);
     return nextEntries;
   }, "moveItems");
+  const applyDirectEntryReorder = /* @__PURE__ */ __name((currentEntries, nextEntries, transition) => {
+    if (typeof host.insertBefore !== "function") {
+      return false;
+    }
+    if (transition.kind === "adjacent_swap") {
+      const leftDom = currentEntries[transition.left]?.domNode;
+      const rightDom = currentEntries[transition.right]?.domNode;
+      if (!leftDom || !rightDom) {
+        return false;
+      }
+      host.insertBefore(rightDom, leftDom);
+      return true;
+    }
+    if (transition.kind === "single_move") {
+      const movingDom = currentEntries[transition.from]?.domNode;
+      if (!movingDom) {
+        return false;
+      }
+      const reference = transition.from < transition.to ? currentEntries[transition.to + 1]?.domNode ?? null : currentEntries[transition.to]?.domNode ?? null;
+      host.insertBefore(movingDom, reference);
+      return true;
+    }
+    return false;
+  }, "applyDirectEntryReorder");
   const syncIndicesForRange = /* @__PURE__ */ __name((nextEntries, transition, previousOrder, nextOrder) => {
     const range = transition.kind === "complex_reorder" && previousOrder && nextOrder ? getComplexOrderAffectedRange(previousOrder, nextOrder) : getTransitionAffectedRange(transition, nextEntries.length);
     if (!range) return;
@@ -6292,6 +6303,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       return;
     }
     if (transition.kind === "adjacent_swap" || transition.kind === "single_move") {
+      const previousEntries = state2.entries;
       const nextEntries2 = transition.kind === "adjacent_swap" ? swapItems(state2.entries, transition.left, transition.right) : moveItems(state2.entries, transition.from, transition.to);
       for (let index = 0; index < nextEntries2.length; index += 1) {
         if (!nextEntries2[index]) {
@@ -6306,10 +6318,12 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       });
       state2.entries = nextEntries2;
       state2.order = nextOrder ?? (transition.kind === "adjacent_swap" ? swapItems(state2.order, transition.left, transition.right) : moveItems(state2.order, transition.from, transition.to));
-      reorderChildren(host, nextEntries2.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-        transition,
-        structureChanged: false
-      });
+      if (!applyDirectEntryReorder(previousEntries, nextEntries2, transition)) {
+        reorderChildren(host, nextEntries2.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+          transition,
+          structureChanged: false
+        });
+      }
       return;
     }
     let nextEntries = [];
@@ -6317,6 +6331,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     const resolvedNextOrder = nextOrder ?? buildKeyedOrder(nextItems, keyOf);
     const reorderedEntries = transition.kind === "complex_reorder" ? reorderEntriesForComplexWindow(state2.entries, state2.order, resolvedNextOrder) : null;
     if (reorderedEntries) {
+      const previousEntries = state2.entries;
       runBatched(() => {
         if (!hasPureEntryValueReuse(nextItems, reorderedEntries)) {
           syncValuesForEntries(nextItems, reorderedEntries);
@@ -6325,10 +6340,12 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       });
       state2.entries = reorderedEntries;
       state2.order = resolvedNextOrder;
-      reorderChildren(host, reorderedEntries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-        transition,
-        structureChanged: false
-      });
+      if (!applyDirectEntryReorder(previousEntries, reorderedEntries, transition)) {
+        reorderChildren(host, reorderedEntries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+          transition,
+          structureChanged: false
+        });
+      }
       return;
     }
     runBatched(() => {
@@ -6436,24 +6453,38 @@ var patchStableKeyedChildAt = /* @__PURE__ */ __name((currentDomChildren, prevCh
   const domChild = currentDomChildren[index];
   const prevChild = prevChildren[index];
   const nextChild = nextChildren[index];
-  if (!domChild || !prevChild || !nextChild || canSkipStableKeyedChildPatch(prevChild, nextChild) || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+  if (!domChild || !prevChild || !nextChild || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
     return;
   }
   patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
 }, "patchStableKeyedChildAt");
+var patchTransitionAffectedRange = /* @__PURE__ */ __name((currentDomChildren, prevChildren, nextChildren, transition, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+  const range = getTransitionAffectedRange(transition, nextChildren.length);
+  if (!range) {
+    return;
+  }
+  for (let index = range.start; index <= range.end; index += 1) {
+    const sourceIndex = transition.kind === "adjacent_swap" ? index === transition.left ? transition.right : transition.left : remapMovedIndex(index, transition.from, transition.to);
+    const domChild = currentDomChildren[sourceIndex];
+    const prevChild = prevChildren[sourceIndex];
+    const nextChild = nextChildren[index];
+    if (!domChild || !prevChild || !nextChild || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+      continue;
+    }
+    patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+  }
+}, "patchTransitionAffectedRange");
 var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
-  const keyedTransition = analyzeKeyedChildTransition(prevChildren, nextChildren);
+  const keyedAnalysis = analyzeKeyedChildTransition(prevChildren, nextChildren, equalsValue);
+  const keyedTransition = keyedAnalysis.transition;
   if (keyedTransition?.kind === "same_order") {
-    for (let i = 0; i < nextChildren.length; i += 1) {
-      const domChild = element.childNodes[i];
+    for (const index of keyedAnalysis.stableDirtyIndices) {
+      const domChild = element.childNodes[index];
       if (!domChild) {
-        element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+        element.appendChild(createDomNode(nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
         continue;
       }
-      if (canSkipStableKeyedChildPatch(prevChildren[i], nextChildren[i]) || canSkipDomPatch(prevChildren[i], nextChildren[i], equalsValue)) {
-        continue;
-      }
-      patchDomNode(domChild, prevChildren[i], nextChildren[i], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      patchDomNode(domChild, prevChildren[index], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
     }
     return;
   }
@@ -6463,24 +6494,9 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
     const rightDom = currentDomChildren2[keyedTransition.right];
     if (leftDom && rightDom && typeof element.insertBefore === "function") {
       element.insertBefore(rightDom, leftDom);
-      for (let index = 0; index < nextChildren.length; index += 1) {
-        if (index === keyedTransition.left) {
-          if (!canSkipStableKeyedChildPatch(prevChildren[keyedTransition.right], nextChildren[index]) && !canSkipDomPatch(prevChildren[keyedTransition.right], nextChildren[index], equalsValue)) {
-            patchDomNode(rightDom, prevChildren[keyedTransition.right], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
-          }
-          continue;
-        }
-        if (index === keyedTransition.right) {
-          if (!canSkipStableKeyedChildPatch(prevChildren[keyedTransition.left], nextChildren[index]) && !canSkipDomPatch(prevChildren[keyedTransition.left], nextChildren[index], equalsValue)) {
-            patchDomNode(leftDom, prevChildren[keyedTransition.left], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
-          }
-          continue;
-        }
-        const domChild = currentDomChildren2[index];
-        if (!domChild || canSkipStableKeyedChildPatch(prevChildren[index], nextChildren[index]) || canSkipDomPatch(prevChildren[index], nextChildren[index], equalsValue)) {
-          continue;
-        }
-        patchDomNode(domChild, prevChildren[index], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      patchTransitionAffectedRange(currentDomChildren2, prevChildren, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      for (const index of keyedAnalysis.stableDirtyIndices) {
+        patchStableKeyedChildAt(currentDomChildren2, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
       return;
     }
@@ -6491,14 +6507,13 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
     if (movingDom && typeof element.insertBefore === "function") {
       const reference = keyedTransition.from < keyedTransition.to ? currentDomChildren2[keyedTransition.to + 1] ?? null : currentDomChildren2[keyedTransition.to] ?? null;
       element.insertBefore(movingDom, reference);
-      for (let index = 0; index < nextChildren.length; index += 1) {
-        const sourceIndex = remapMovedIndex(index, keyedTransition.from, keyedTransition.to);
-        const domChild = currentDomChildren2[sourceIndex];
-        const prevChild = prevChildren[sourceIndex];
-        if (!domChild || !prevChild || canSkipStableKeyedChildPatch(prevChild, nextChildren[index]) || canSkipDomPatch(prevChild, nextChildren[index], equalsValue)) {
+      patchTransitionAffectedRange(currentDomChildren2, prevChildren, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      const affectedRange = getTransitionAffectedRange(keyedTransition, nextChildren.length);
+      for (const index of keyedAnalysis.stableDirtyIndices) {
+        if (affectedRange && index >= affectedRange.start && index <= affectedRange.end) {
           continue;
         }
-        patchDomNode(domChild, prevChild, nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        patchStableKeyedChildAt(currentDomChildren2, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
       return;
     }
@@ -6517,7 +6532,7 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         const domChild = currentDomChildren2[currentIndex];
         const prevChild = prevChildren[currentIndex];
         const nextChild = nextChildren[nextIndex];
-        if (!domChild || !prevChild || !nextChild || canSkipStableKeyedChildPatch(prevChild, nextChild) || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+        if (!domChild || !prevChild || !nextChild || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
           continue;
         }
         patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
@@ -6543,7 +6558,7 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
           continue;
         }
         prevKeyedWindow.delete(nextChild.key);
-        nextDomChildren2[nextIndex] = canSkipStableKeyedChildPatch(prevEntry.vnode, nextChild) || canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        nextDomChildren2[nextIndex] = canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
       for (const stale of prevKeyedWindow.values()) {
         structureChanged2 = true;
@@ -7132,6 +7147,7 @@ var getTextLabel = /* @__PURE__ */ __name((input) => {
 }, "getTextLabel");
 var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
   const { tabsContext, dialogContext, popoverContext, tooltipContext, toastContext, menuContext, checkboxContext, radioGroupContext, radioItemContext, selectContext, selectItemContext, comboboxContext, comboboxItemContext, multiselectContext, multiselectItemContext, getTabsBaseId, getDialogBaseId, getPopoverBaseId, getTooltipBaseId, getToastBaseId, getMenuBaseId, getCheckboxBaseId, getRadioBaseId, getSelectBaseId, getComboboxBaseId, getMultiselectBaseId, getTabsIds, registerTabsValue, getTabsNavigationTarget, getDialogIds, getPopoverIds, getTooltipIds, getToastIds, getMenuIds, getCheckboxIds, getRadioItemId, getSelectIds, getComboboxIds, getMultiselectIds, getRadioIndicatorId, getSelectItemId, getComboboxItemId, getMultiselectItemId, getSelectIndicatorId, getComboboxIndicatorId, getMultiselectIndicatorId, setDialogRestoreTarget, restoreDialogFocus, setPopoverAnchorTarget, setPopoverRestoreTarget, restorePopoverFocus, clearToastTimer, scheduleToastTimer, setMenuAnchorTarget, setMenuRestoreTarget, restoreMenuFocus, setTooltipAnchorTarget, setSelectAnchorTarget, setSelectRestoreTarget, restoreSelectFocus, setComboboxAnchorTarget, setComboboxRestoreTarget, restoreComboboxFocus, setMultiselectAnchorTarget, setMultiselectRestoreTarget, restoreMultiselectFocus, registerMenuValue, registerRadioValue, registerSelectValue, registerComboboxValue, registerMultiselectValue, getMenuItemId, getMenuActiveValue, setMenuActiveValue, getMenuNavigationTarget, getMenuTypeaheadTarget, getRadioNavigationTarget, getSelectNavigationTarget, getSelectTypeaheadTarget, getComboboxNavigationTarget, getMultiselectNavigationTarget, getMultiselectTypeaheadTarget, getSelectActiveValue, getSelectActiveDescendantId, setSelectActiveValue, acceptSelectActiveValue, getComboboxActiveValue, getComboboxActiveDescendantId, setComboboxActiveValue, acceptComboboxActiveValue, getMultiselectActiveValue, setMultiselectActiveValue, focusMenuItem, focusRadioItem, focusMultiselectItem, closeMenu, closeSelect, closeCombobox, closeMultiselect, readStringSelection, toggleMultiselectValue, getPopoverAnchorRect, getMenuAnchorRect, getTooltipAnchorRect, getSelectAnchorRect, getComboboxAnchorRect, getMultiselectAnchorRect, pickPopoverSide, omitPopoverLayoutProps, pickToastDuration, omitToastControlProps, getPopoverContentStyle } = options.headlessUi;
+  const resolveMultiselectOpenActiveValue = /* @__PURE__ */ __name((ctx) => readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry)) ?? ctx.order[0] ?? "", "resolveMultiselectOpenActiveValue");
   const api = {
     tabs_root: /* @__PURE__ */ __name((value, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.tabs_root");
@@ -7652,6 +7668,9 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
         onMouseEnter: /* @__PURE__ */ __name(() => {
           setMenuActiveValue(ctx, value);
         }, "onMouseEnter"),
+        onFocus: /* @__PURE__ */ __name(() => {
+          setMenuActiveValue(ctx, value);
+        }, "onFocus"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
           const key = String(event?.key ?? "");
           if (key === "Escape") {
@@ -8234,13 +8253,42 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           }
           const nextOpen = !ctx.open.get();
           if (nextOpen) {
-            setMultiselectActiveValue(ctx, readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry)) ?? ctx.order[0] ?? "");
+            setMultiselectActiveValue(ctx, resolveMultiselectOpenActiveValue(ctx));
           }
           ctx.open.set(nextOpen);
           if (!nextOpen) {
             restoreMultiselectFocus(ctx);
           }
-        }, "onClick")
+        }, "onClick"),
+        onKeyDown: /* @__PURE__ */ __name((event) => {
+          const key = String(event?.key ?? "");
+          const target = getFocusTargetFromEvent(event);
+          const openWithValue = /* @__PURE__ */ __name((nextValue) => {
+            event?.preventDefault?.();
+            if (target) {
+              setMultiselectRestoreTarget(ctx, target);
+              setMultiselectAnchorTarget(ctx, target);
+            }
+            setMultiselectActiveValue(ctx, nextValue);
+            ctx.open.set(true);
+            return false;
+          }, "openWithValue");
+          const initialValue = resolveMultiselectOpenActiveValue(ctx);
+          if (key === "Enter" || key === " " || key === "ArrowDown") {
+            return openWithValue(initialValue);
+          }
+          if (key === "ArrowUp" || key === "End") {
+            return openWithValue(ctx.order[ctx.order.length - 1] ?? initialValue);
+          }
+          if (key === "Home") {
+            return openWithValue(ctx.order[0] ?? initialValue);
+          }
+          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, initialValue, key);
+          if (!typeaheadTarget) {
+            return void 0;
+          }
+          return openWithValue(typeaheadTarget);
+        }, "onKeyDown")
       }, props), children2);
     }, "multiselect_trigger"),
     multiselect_content: /* @__PURE__ */ __name((props, children2 = []) => {
@@ -8272,6 +8320,16 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             return void 0;
           }
           const activeValue = getMultiselectActiveValue(ctx);
+          if (key === "Enter" || key === " ") {
+            if (!activeValue) {
+              return void 0;
+            }
+            event?.preventDefault?.();
+            setMultiselectActiveValue(ctx, activeValue);
+            toggleMultiselectValue(ctx, activeValue);
+            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, activeValue, getFocusTargetFromEvent(event));
+            return false;
+          }
           if (key === "ArrowDown" || key === "Home") {
             event?.preventDefault?.();
             const targetValue = key === "Home" ? ctx.order[0] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key) ?? activeValue;
@@ -8331,6 +8389,9 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           onMouseEnter: /* @__PURE__ */ __name(() => {
             setMultiselectActiveValue(ctx, value);
           }, "onMouseEnter"),
+          onFocus: /* @__PURE__ */ __name(() => {
+            setMultiselectActiveValue(ctx, value);
+          }, "onFocus"),
           onKeyDown: /* @__PURE__ */ __name((event) => {
             const key = String(event?.key ?? "");
             if (key === "Escape") {
@@ -8346,6 +8407,20 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
               event?.preventDefault?.();
               setMultiselectActiveValue(ctx, value);
               toggleMultiselectValue(ctx, value);
+              return false;
+            }
+            if (key === "Home") {
+              event?.preventDefault?.();
+              const firstValue = ctx.order[0] ?? value;
+              setMultiselectActiveValue(ctx, firstValue);
+              focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, firstValue, getFocusTargetFromEvent(event));
+              return false;
+            }
+            if (key === "End") {
+              event?.preventDefault?.();
+              const lastValue = ctx.order[ctx.order.length - 1] ?? value;
+              setMultiselectActiveValue(ctx, lastValue);
+              focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, lastValue, getFocusTargetFromEvent(event));
               return false;
             }
             const nextValue = getMultiselectNavigationTarget(ctx, value, key);

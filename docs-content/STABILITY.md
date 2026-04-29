@@ -107,6 +107,30 @@ Output is JSON with:
 - Delta values in MB
 - Whether explicit GC sampling was available
 
+### DOM Render Benchmark
+
+The DOM render smoke benchmark is the perf-gate fixture for `examples/dom-render/benchmark.html`.
+
+Run the browser smoke harness to produce an export:
+
+```bash
+npm run test:browser:benchmark
+```
+
+Validate or archive an export with the benchmark importer:
+
+```bash
+node --import tsx scripts/benchmark/dom-render-bench.ts --input <export.json> --baseline tests/benchmark/dom-render-smoke.baseline.json --summary-path <summary.json>
+```
+
+Contract notes:
+
+- Scenario keys and order are fixed: `wholeList`, `mount`, `indexList`, `forList`, `reorder`, `complexReorder`, `fineGrained`.
+- Local smoke suites are fixed per scenario, so suite-name drift fails validation before baseline medians are compared.
+- Comparable DOM scenarios keep the same [WHATWG DOM](https://dom.spec.whatwg.org/) shape: `ul.bench-list > li.bench-row > span.bench-pill + span.bench-value`.
+- Timings use [`performance.now()`](https://developer.mozilla.org/docs/Web/API/Performance/now) totals and [`performance.mark()`](https://developer.mozilla.org/en-US/docs/Web/API/Performance/mark) / [`performance.measure()`](https://developer.mozilla.org/en-US/docs/Web/API/Performance/measure) entries so samples align with the browser Performance API model.
+- The importer validates manifest compatibility, scenario keys, suite order, sample counts, summary math, and latest-history parity before applying baseline tolerances.
+
 ## Exit Criteria (Phase 1)
 
 - Compiler does not crash on valid randomized inputs in fuzz/property tests.
