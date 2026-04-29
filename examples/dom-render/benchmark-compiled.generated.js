@@ -1,4 +1,4 @@
-import { render, get, vnode, text, props_class, props_key } from "./lumina-runtime.js?v=2026-04-29-benchmark-quality-v3";
+import { render, get, vnode, text, props_class, props_key, props_merge } from "./lumina-runtime.js?v=2026-04-29-benchmark-quality-v3";
 
 const BENCH_LIST_PROPS = props_class("bench-list");
 const BENCH_ROW_PROPS = props_class("bench-row");
@@ -25,7 +25,7 @@ function compiledReorder(rows) {
       (row) =>
         renderBenchRow(
           render.liveText(render.memo(() => get(row).label)),
-          props_key(get(row).id)
+          props_merge(BENCH_ROW_PROPS, props_key(get(row).id))
         )
     ),
   ]);

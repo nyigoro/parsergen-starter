@@ -51,6 +51,7 @@
     "init": "tsx src/bin/cli.ts --init",
     "repl:smoke": "node scripts/repl-smoke.cjs",
     "bench:compile": "tsx scripts/benchmark/compile-bench.ts",
+    "bench:dom-render:import": "tsx scripts/benchmark/dom-render-bench.ts",
     "bench:incremental": "tsx scripts/benchmark/incremental-bench.ts",
     "bench:lsp": "tsx scripts/benchmark/lsp-bench.ts",
     "bench:memory": "node --expose-gc --import tsx scripts/benchmark/memory-bench.ts",

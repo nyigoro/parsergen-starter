@@ -70,11 +70,12 @@ describe('compiled DOM benchmark example', () => {
 
   test('generated benchmark module uses compiler DOM lowering', () => {
     const output = fs.readFileSync(benchmarkCompiledGeneratedPath, 'utf-8');
-    expect(output).toContain('import { render, get, vnode, text, props_class, props_key } from "./lumina-runtime.js');
+    expect(output).toContain('import { render, get, vnode, text, props_class, props_key, props_merge } from "./lumina-runtime.js');
     expect(output).toContain('render.indexList(');
     expect(output).toContain('render.forList(');
     expect(output).toContain('render.liveText(');
     expect(output).toContain('render.memo(() => get(row).label)');
+    expect(output).toContain('props_merge(BENCH_ROW_PROPS, props_key(get(row).id))');
     expect(output).toContain('function compiledIndexList');
     expect(output).toContain('function compiledForList');
     expect(output).toContain('function compiledReorder');

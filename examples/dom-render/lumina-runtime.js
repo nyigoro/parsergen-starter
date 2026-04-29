@@ -4619,6 +4619,17 @@ var findDomElementById = /* @__PURE__ */ __name((root, id) => {
 }, "findDomElementById");
 var isElementHidden = /* @__PURE__ */ __name((element) => elementRecord(element).hidden === true || getDomAttribute(element, "hidden") !== null, "isElementHidden");
 var isElementDisabled = /* @__PURE__ */ __name((element) => elementRecord(element).disabled === true || getDomAttribute(element, "disabled") !== null, "isElementDisabled");
+var isElementInert = /* @__PURE__ */ __name((element) => {
+  let current = element;
+  while (current) {
+    const candidate = current;
+    if (elementRecord(candidate).inert === true || getDomAttribute(candidate, "inert") !== null) {
+      return true;
+    }
+    current = current.parentNode;
+  }
+  return false;
+}, "isElementInert");
 var getElementTabIndex = /* @__PURE__ */ __name((element) => {
   const raw = elementRecord(element).tabIndex ?? getDomAttribute(element, "tabIndex") ?? getDomAttribute(element, "tabindex");
   if (raw === null || raw === void 0 || raw === "") return null;
@@ -4626,7 +4637,7 @@ var getElementTabIndex = /* @__PURE__ */ __name((element) => {
   return Number.isFinite(parsed) ? parsed : null;
 }, "getElementTabIndex");
 var isFocusableElement = /* @__PURE__ */ __name((element) => {
-  if (isElementHidden(element) || isElementDisabled(element)) return false;
+  if (isElementHidden(element) || isElementDisabled(element) || isElementInert(element)) return false;
   const tabIndex = getElementTabIndex(element);
   if (tabIndex !== null) {
     return tabIndex >= 0;
@@ -4642,6 +4653,9 @@ var collectFocusableDescendants = /* @__PURE__ */ __name((root) => {
   const visit = /* @__PURE__ */ __name((node) => {
     for (const child of readChildNodes(node)) {
       const element = child;
+      if (isElementInert(element)) {
+        continue;
+      }
       if (typeof element.focus === "function" && isFocusableElement(element)) {
         focusable.push(element);
       }
@@ -4653,6 +4667,7 @@ var collectFocusableDescendants = /* @__PURE__ */ __name((root) => {
   visit(root);
   return focusable;
 }, "collectFocusableDescendants");
+var findFirstFocusableDescendant = /* @__PURE__ */ __name((root) => collectFocusableDescendants(root)[0] ?? null, "findFirstFocusableDescendant");
 var getFocusTargetFromEvent = /* @__PURE__ */ __name((event) => {
   if (!event || typeof event !== "object") return null;
   const target = event.currentTarget ?? event.target;
@@ -4698,16 +4713,16 @@ var setChildren = /* @__PURE__ */ __name((container, children2) => {
     container.appendChild(child);
   }
 }, "setChildren");
-var findStableWindow = /* @__PURE__ */ __name((currentChildren, nextChildren) => {
+var findStableSequenceWindow = /* @__PURE__ */ __name((currentChildren, nextChildren, equals = (left, right) => left === right) => {
   let currentStart = 0;
   let nextStart = 0;
-  while (currentStart < currentChildren.length && nextStart < nextChildren.length && currentChildren[currentStart] === nextChildren[nextStart]) {
+  while (currentStart < currentChildren.length && nextStart < nextChildren.length && equals(currentChildren[currentStart], nextChildren[nextStart])) {
     currentStart += 1;
     nextStart += 1;
   }
   let currentEnd = currentChildren.length - 1;
   let nextEnd = nextChildren.length - 1;
-  while (currentEnd >= currentStart && nextEnd >= nextStart && currentChildren[currentEnd] === nextChildren[nextEnd]) {
+  while (currentEnd >= currentStart && nextEnd >= nextStart && equals(currentChildren[currentEnd], nextChildren[nextEnd])) {
     currentEnd -= 1;
     nextEnd -= 1;
   }
@@ -4720,7 +4735,7 @@ var findStableWindow = /* @__PURE__ */ __name((currentChildren, nextChildren) =>
     nextStart,
     nextEnd
   };
-}, "findStableWindow");
+}, "findStableSequenceWindow");
 var getTransitionAffectedRange = /* @__PURE__ */ __name((transition, length) => {
   switch (transition.kind) {
     case "same_order":
@@ -4736,6 +4751,12 @@ var getTransitionAffectedRange = /* @__PURE__ */ __name((transition, length) => 
         end: Math.max(transition.from, transition.to)
       };
     case "complex_reorder":
+      if (typeof transition.start === "number" && typeof transition.end === "number") {
+        return {
+          start: transition.start,
+          end: transition.end
+        };
+      }
       return length > 0 ? {
         start: 0,
         end: length - 1
@@ -4845,7 +4866,9 @@ var analyzeSequenceTransition = /* @__PURE__ */ __name((previous, next, equals) 
     };
   }
   return {
-    kind: "complex_reorder"
+    kind: "complex_reorder",
+    start: firstMismatch,
+    end: lastMismatch
   };
 }, "analyzeSequenceTransition");
 var analyzeDomChildTransition = /* @__PURE__ */ __name((currentChildren, nextChildren) => analyzeSequenceTransition(currentChildren, nextChildren, (left, right) => left === right), "analyzeDomChildTransition");
@@ -4883,6 +4906,17 @@ var longestIncreasingSubsequenceIndices = /* @__PURE__ */ __name((values) => {
   }
   return result;
 }, "longestIncreasingSubsequenceIndices");
+var resolveComplexTransitionWindow = /* @__PURE__ */ __name((transition, currentLength, nextLength) => {
+  if (transition.kind !== "complex_reorder" || typeof transition.start !== "number" || typeof transition.end !== "number" || currentLength !== nextLength || transition.start < 0 || transition.end < transition.start || transition.end >= currentLength) {
+    return null;
+  }
+  return {
+    currentStart: transition.start,
+    currentEnd: transition.end,
+    nextStart: transition.start,
+    nextEnd: transition.end
+  };
+}, "resolveComplexTransitionWindow");
 var reorderChildren = /* @__PURE__ */ __name((container, children2, disposeChild, options) => {
   if (typeof container.insertBefore !== "function") {
     setChildren(container, children2);
@@ -4916,7 +4950,7 @@ var reorderChildren = /* @__PURE__ */ __name((container, children2, disposeChild
     container.insertBefore(moving, reference);
     return;
   }
-  const window2 = findStableWindow(currentChildren, children2);
+  const window2 = resolveComplexTransitionWindow(transition, currentChildren.length, children2.length) ?? findStableSequenceWindow(currentChildren, children2);
   if (!window2) {
     return;
   }
@@ -5395,6 +5429,9 @@ var parseVNode = /* @__PURE__ */ __name((json2) => {
 
 // src/runtime/dom-renderer.ts
 var domTemplateCache = /* @__PURE__ */ new WeakMap();
+var dialogModalInertTargets = /* @__PURE__ */ new WeakMap();
+var inertCounts = /* @__PURE__ */ new WeakMap();
+var inertStates = /* @__PURE__ */ new WeakMap();
 var getDomDocument = /* @__PURE__ */ __name((options) => {
   if (options?.document) return options.document;
   const doc = globalThis.document;
@@ -5405,6 +5442,124 @@ var getDomDocument = /* @__PURE__ */ __name((options) => {
 }, "getDomDocument");
 var asDomChildren = /* @__PURE__ */ __name((node) => node.children ?? [], "asDomChildren");
 var isEventProp = /* @__PURE__ */ __name((name) => /^on[A-Z]/.test(name), "isEventProp");
+var isForcedAttributeProp = /* @__PURE__ */ __name((name) => name === "role" || name.startsWith("aria-") || name.startsWith("data-"), "isForcedAttributeProp");
+var isHiddenPropValue = /* @__PURE__ */ __name((value) => value === true || value === "true", "isHiddenPropValue");
+var isPortalHostElement = /* @__PURE__ */ __name((node) => node != null && String(node.tagName ?? "").toLowerCase() === "lumina-portal-host", "isPortalHostElement");
+var isDialogOverlayElement = /* @__PURE__ */ __name((node) => node != null && getDomAttribute(node, "data-lumina-dialog-overlay") === "true", "isDialogOverlayElement");
+var isModalDialogElement = /* @__PURE__ */ __name((element) => getDomAttribute(element, "role") === "dialog" && getDomAttribute(element, "aria-modal") === "true", "isModalDialogElement");
+var containsDomNode = /* @__PURE__ */ __name((root, target) => {
+  if (!target) return false;
+  if (root === target) return true;
+  for (const child of readChildNodes(root)) {
+    if (containsDomNode(child, target)) {
+      return true;
+    }
+  }
+  return false;
+}, "containsDomNode");
+var findMarkedDialogInitialFocus = /* @__PURE__ */ __name((root) => {
+  for (const child of readChildNodes(root)) {
+    const element = child;
+    if (getDomAttribute(element, "data-lumina-dialog-initial-focus") === "true") {
+      return element;
+    }
+    const nested = findMarkedDialogInitialFocus(child);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}, "findMarkedDialogInitialFocus");
+var focusInitialDialogTarget = /* @__PURE__ */ __name((element) => {
+  const activeElement = element.ownerDocument?.activeElement;
+  if (activeElement && activeElement !== element && containsDomNode(element, activeElement)) {
+    return;
+  }
+  const marked = findMarkedDialogInitialFocus(element);
+  if (marked?.focus) {
+    marked.focus();
+    return;
+  }
+  const firstFocusable = findFirstFocusableDescendant(element);
+  if (firstFocusable?.focus) {
+    firstFocusable.focus();
+    return;
+  }
+  element.focus?.();
+}, "focusInitialDialogTarget");
+var setElementInert = /* @__PURE__ */ __name((element, active) => {
+  const record = element;
+  if (active) {
+    const count2 = inertCounts.get(element) ?? 0;
+    inertCounts.set(element, count2 + 1);
+    if (count2 > 0) {
+      return;
+    }
+    inertStates.set(element, {
+      hadAttribute: getDomAttribute(element, "inert") !== null,
+      previousValue: record.inert
+    });
+    if (element.setAttribute) {
+      element.setAttribute("inert", "");
+    }
+    record.inert = true;
+    return;
+  }
+  const count = inertCounts.get(element) ?? 0;
+  if (count <= 1) {
+    inertCounts.delete(element);
+    const previous = inertStates.get(element);
+    inertStates.delete(element);
+    if (previous?.hadAttribute) {
+      if (element.setAttribute) {
+        element.setAttribute("inert", "");
+      }
+    } else if (element.removeAttribute) {
+      element.removeAttribute("inert");
+    }
+    record.inert = previous?.previousValue;
+    return;
+  }
+  inertCounts.set(element, count - 1);
+}, "setElementInert");
+var collectModalInertTargets = /* @__PURE__ */ __name((dialog) => {
+  const parent = dialog.parentNode;
+  if (!parent) return [];
+  const scopeParent = isPortalHostElement(parent) && parent.parentNode ? parent.parentNode : parent;
+  const exempt = /* @__PURE__ */ new Set();
+  if (isPortalHostElement(parent)) {
+    exempt.add(parent);
+  } else {
+    exempt.add(dialog);
+  }
+  const targets = [];
+  for (const sibling of readChildNodes(scopeParent)) {
+    const element = sibling;
+    if (exempt.has(sibling) || isDialogOverlayElement(sibling)) {
+      continue;
+    }
+    targets.push(element);
+  }
+  return targets;
+}, "collectModalInertTargets");
+var syncModalDialogInertState = /* @__PURE__ */ __name((dialog, active) => {
+  const previousTargets = dialogModalInertTargets.get(dialog) ?? [];
+  if (!active) {
+    for (const target of previousTargets) {
+      setElementInert(target, false);
+    }
+    dialogModalInertTargets.delete(dialog);
+    return;
+  }
+  if (previousTargets.length > 0) {
+    return;
+  }
+  const targets = collectModalInertTargets(dialog);
+  for (const target of targets) {
+    setElementInert(target, true);
+  }
+  dialogModalInertTargets.set(dialog, targets);
+}, "syncModalDialogInertState");
 var cloneStaticTemplateElement = /* @__PURE__ */ __name((documentLike, html) => {
   let cache = domTemplateCache.get(documentLike);
   if (!cache) {
@@ -5489,10 +5644,14 @@ var setDomProperty = /* @__PURE__ */ __name((element, name, value, eventStore) =
   }
   if (value === false || value === null || value === void 0) {
     if (element.removeAttribute) element.removeAttribute(name);
-    element[name] = value;
+    if (!isForcedAttributeProp(name)) {
+      element[name] = value;
+    }
     return;
   }
-  if (name in element) {
+  if (isForcedAttributeProp(name) && element.setAttribute) {
+    element.setAttribute(name, String(value));
+  } else if (name in element) {
     element[name] = value;
   } else if (element.setAttribute) {
     element.setAttribute(name, String(value));
@@ -5519,8 +5678,13 @@ var updateDomProperties = /* @__PURE__ */ __name((element, previous, next, event
     if (prev[key] === value) continue;
     setDomProperty(element, key, value, eventStore);
   }
-  if (nxt.autoFocus && prev.autoFocus !== nxt.autoFocus) {
-    element.focus?.();
+  if (isModalDialogElement(element)) {
+    syncModalDialogInertState(element, !isElementHidden(element));
+  }
+  if (nxt.autoFocus && (prev.autoFocus !== nxt.autoFocus || isModalDialogElement(element) && isHiddenPropValue(prev.hidden) && !isElementHidden(element))) {
+    if (!isModalDialogElement(element)) {
+      element.focus?.();
+    }
   }
 }, "updateDomProperties");
 var setChildren2 = /* @__PURE__ */ __name((container, children2) => {
@@ -5530,6 +5694,14 @@ var setChildren2 = /* @__PURE__ */ __name((container, children2) => {
   }
   for (const child of children2) {
     container.appendChild(child);
+    const childElement = child;
+    if (childElement.getAttribute && isModalDialogElement(childElement)) {
+      const open = !isElementHidden(childElement);
+      syncModalDialogInertState(childElement, open);
+      if (open) {
+        focusInitialDialogTarget(childElement);
+      }
+    }
   }
 }, "setChildren");
 var resolvePortalTarget = /* @__PURE__ */ __name((node, documentLike) => {
@@ -5543,6 +5715,9 @@ var resolvePortalTarget = /* @__PURE__ */ __name((node, documentLike) => {
   return null;
 }, "resolvePortalTarget");
 var disposeDomNode = /* @__PURE__ */ __name((node, eventStore, portalStore, liveTextStore) => {
+  if (node.getAttribute && isModalDialogElement(node)) {
+    syncModalDialogInertState(node, false);
+  }
   const liveTextEffect = liveTextStore.get(node);
   if (liveTextEffect) {
     liveTextEffect.dispose();
@@ -5586,12 +5761,21 @@ var replaceChildren = /* @__PURE__ */ __name((container, children2, eventStore, 
   }
   for (const child of children2) {
     container.appendChild(child);
+    const childElement = child;
+    if (childElement.getAttribute && isModalDialogElement(childElement)) {
+      const open = !isElementHidden(childElement);
+      syncModalDialogInertState(childElement, open);
+      if (open) {
+        focusInitialDialogTarget(childElement);
+      }
+    }
   }
 }, "replaceChildren");
 var vnodeKindTag = /* @__PURE__ */ __name((node) => `${node.kind}:${node.tag ?? ""}`, "vnodeKindTag");
 var hasVNodeKey = /* @__PURE__ */ __name((node) => typeof node.key === "string" || typeof node.key === "number", "hasVNodeKey");
 var hasKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasKeyedChildren");
 var duplicateKeyError = /* @__PURE__ */ __name((key) => new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`), "duplicateKeyError");
+var areAllChildrenKeyed = /* @__PURE__ */ __name((children2) => children2.every((child) => hasVNodeKey(child)), "areAllChildrenKeyed");
 var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChildren) => {
   if (prevChildren.length !== nextChildren.length) {
     return null;
@@ -5799,6 +5983,16 @@ var remapMovedIndex = /* @__PURE__ */ __name((index, from, to) => {
   if (index === to) return from;
   return index - 1;
 }, "remapMovedIndex");
+var getComplexOrderAffectedRange = /* @__PURE__ */ __name((previousOrder, nextOrder) => {
+  const window2 = findStableSequenceWindow(previousOrder, nextOrder);
+  if (!window2) {
+    return null;
+  }
+  return {
+    start: window2.nextStart,
+    end: window2.nextEnd
+  };
+}, "getComplexOrderAffectedRange");
 var canSkipDomPatch = /* @__PURE__ */ __name((prevNode, nextNode, equalsValue) => {
   if (prevNode === nextNode) return true;
   if (prevNode.kind !== nextNode.kind) return false;
@@ -5984,6 +6178,13 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       syncEntryValue(entry, items[index]);
     }
   }, "syncValuesForOrder");
+  const syncValuesForEntries = /* @__PURE__ */ __name((items, nextEntries) => {
+    for (let index = 0; index < items.length; index += 1) {
+      const entry = nextEntries[index];
+      if (!entry) continue;
+      syncEntryValue(entry, items[index]);
+    }
+  }, "syncValuesForEntries");
   const hasPureEntryValueReuse = /* @__PURE__ */ __name((items, nextEntries) => {
     if (items.length !== nextEntries.length) {
       return false;
@@ -6011,8 +6212,8 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     nextEntries.splice(to, 0, moving);
     return nextEntries;
   }, "moveItems");
-  const syncIndicesForRange = /* @__PURE__ */ __name((nextEntries, transition) => {
-    const range = getTransitionAffectedRange(transition, nextEntries.length);
+  const syncIndicesForRange = /* @__PURE__ */ __name((nextEntries, transition, previousOrder, nextOrder) => {
+    const range = transition.kind === "complex_reorder" && previousOrder && nextOrder ? getComplexOrderAffectedRange(previousOrder, nextOrder) : getTransitionAffectedRange(transition, nextEntries.length);
     if (!range) return;
     for (let index = range.start; index <= range.end; index += 1) {
       const entry = nextEntries[index];
@@ -6020,6 +6221,33 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       syncEntryIndex(entry, index);
     }
   }, "syncIndicesForRange");
+  const reorderEntriesForComplexWindow = /* @__PURE__ */ __name((currentEntries, previousOrder, nextOrder) => {
+    if (currentEntries.length !== nextOrder.length || previousOrder.length !== nextOrder.length) {
+      return null;
+    }
+    const window2 = findStableSequenceWindow(previousOrder, nextOrder);
+    if (!window2) {
+      return currentEntries.slice();
+    }
+    const nextEntries = currentEntries.slice();
+    const windowEntries = /* @__PURE__ */ new Map();
+    for (let index = window2.currentStart; index <= window2.currentEnd; index += 1) {
+      const entry = currentEntries[index];
+      const key = previousOrder[index];
+      if (!entry || key == null) {
+        return null;
+      }
+      windowEntries.set(key, entry);
+    }
+    for (let index = window2.nextStart; index <= window2.nextEnd; index += 1) {
+      const entry = windowEntries.get(nextOrder[index]);
+      if (!entry) {
+        return null;
+      }
+      nextEntries[index] = entry;
+    }
+    return nextEntries;
+  }, "reorderEntriesForComplexWindow");
   const buildNextEntries = /* @__PURE__ */ __name((items, order) => {
     const retained = /* @__PURE__ */ new Set();
     const nextEntries = [];
@@ -6074,7 +6302,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
         if (nextOrder && !hasPureEntryValueReuse(nextItems, nextEntries2)) {
           syncValuesForOrder(nextItems, nextOrder);
         }
-        syncIndicesForRange(nextEntries2, transition);
+        syncIndicesForRange(nextEntries2, transition, state2.order, nextOrder ?? state2.order);
       });
       state2.entries = nextEntries2;
       state2.order = nextOrder ?? (transition.kind === "adjacent_swap" ? swapItems(state2.order, transition.left, transition.right) : moveItems(state2.order, transition.from, transition.to));
@@ -6087,11 +6315,27 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     let nextEntries = [];
     let structureChanged = false;
     const resolvedNextOrder = nextOrder ?? buildKeyedOrder(nextItems, keyOf);
+    const reorderedEntries = transition.kind === "complex_reorder" ? reorderEntriesForComplexWindow(state2.entries, state2.order, resolvedNextOrder) : null;
+    if (reorderedEntries) {
+      runBatched(() => {
+        if (!hasPureEntryValueReuse(nextItems, reorderedEntries)) {
+          syncValuesForEntries(nextItems, reorderedEntries);
+        }
+        syncIndicesForRange(reorderedEntries, transition, state2.order, resolvedNextOrder);
+      });
+      state2.entries = reorderedEntries;
+      state2.order = resolvedNextOrder;
+      reorderChildren(host, reorderedEntries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+        transition,
+        structureChanged: false
+      });
+      return;
+    }
     runBatched(() => {
       const built = buildNextEntries(nextItems, resolvedNextOrder);
       nextEntries = built.nextEntries;
       structureChanged = built.structureChanged;
-      syncIndicesForRange(nextEntries, transition);
+      syncIndicesForRange(nextEntries, transition, state2.order, resolvedNextOrder);
     });
     state2.entries = nextEntries;
     state2.order = resolvedNextOrder;
@@ -6156,6 +6400,9 @@ var createDomNode = /* @__PURE__ */ __name((node, documentLike, eventStore, port
   updateDomProperties(element, {}, node.props, eventStore);
   const children2 = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
   setChildren2(element, children2);
+  if (node.props?.autoFocus && isModalDialogElement(element) && !isElementHidden(element)) {
+    focusInitialDialogTarget(element);
+  }
   return element;
 }, "createDomNode");
 var patchDomChildrenPositionally = /* @__PURE__ */ __name((element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
@@ -6185,6 +6432,15 @@ var patchDomChildrenPositionally = /* @__PURE__ */ __name((element, prevChildren
     }
   }
 }, "patchDomChildrenPositionally");
+var patchStableKeyedChildAt = /* @__PURE__ */ __name((currentDomChildren, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+  const domChild = currentDomChildren[index];
+  const prevChild = prevChildren[index];
+  const nextChild = nextChildren[index];
+  if (!domChild || !prevChild || !nextChild || canSkipStableKeyedChildPatch(prevChild, nextChild) || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+    return;
+  }
+  patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+}, "patchStableKeyedChildAt");
 var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const keyedTransition = analyzeKeyedChildTransition(prevChildren, nextChildren);
   if (keyedTransition?.kind === "same_order") {
@@ -6244,6 +6500,59 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         }
         patchDomNode(domChild, prevChild, nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
+      return;
+    }
+  }
+  if (keyedTransition?.kind === "complex_reorder" && areAllChildrenKeyed(prevChildren) && areAllChildrenKeyed(nextChildren)) {
+    const currentDomChildren2 = readChildNodes(element);
+    const window2 = findStableSequenceWindow(prevChildren, nextChildren, (left, right) => left.key === right.key);
+    if (window2) {
+      for (let index = 0; index < window2.currentStart; index += 1) {
+        patchStableKeyedChildAt(currentDomChildren2, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      }
+      const suffixLength = prevChildren.length - (window2.currentEnd + 1);
+      for (let offset = 0; offset < suffixLength; offset += 1) {
+        const currentIndex = window2.currentEnd + 1 + offset;
+        const nextIndex = window2.nextEnd + 1 + offset;
+        const domChild = currentDomChildren2[currentIndex];
+        const prevChild = prevChildren[currentIndex];
+        const nextChild = nextChildren[nextIndex];
+        if (!domChild || !prevChild || !nextChild || canSkipStableKeyedChildPatch(prevChild, nextChild) || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+          continue;
+        }
+        patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      }
+      const nextDomChildren2 = currentDomChildren2.slice();
+      const prevKeyedWindow = /* @__PURE__ */ new Map();
+      for (let index = window2.currentStart; index <= window2.currentEnd; index += 1) {
+        const prevChild = prevChildren[index];
+        const domChild = currentDomChildren2[index];
+        if (!domChild) continue;
+        prevKeyedWindow.set(prevChild.key, {
+          vnode: prevChild,
+          domNode: domChild
+        });
+      }
+      let structureChanged2 = false;
+      for (let nextIndex = window2.nextStart; nextIndex <= window2.nextEnd; nextIndex += 1) {
+        const nextChild = nextChildren[nextIndex];
+        const prevEntry = prevKeyedWindow.get(nextChild.key);
+        if (!prevEntry) {
+          structureChanged2 = true;
+          nextDomChildren2[nextIndex] = createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+          continue;
+        }
+        prevKeyedWindow.delete(nextChild.key);
+        nextDomChildren2[nextIndex] = canSkipStableKeyedChildPatch(prevEntry.vnode, nextChild) || canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      }
+      for (const stale of prevKeyedWindow.values()) {
+        structureChanged2 = true;
+        disposeDomNode(stale.domNode, eventStore, portalStore, liveTextStore);
+      }
+      reorderChildren(element, nextDomChildren2, (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+        transition: keyedTransition,
+        structureChanged: structureChanged2
+      });
       return;
     }
   }
@@ -6366,6 +6675,9 @@ var patchDomNode = /* @__PURE__ */ __name((domNode, prevNode, nextNode, document
     patchDomChildrenWithKeys(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
   } else {
     patchDomChildrenPositionally(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+  }
+  if (nextNode.kind === "element" && nextNode.props?.autoFocus && isModalDialogElement(element) && isHiddenPropValue(prevNode.props?.hidden) && !isElementHidden(element)) {
+    focusInitialDialogTarget(element);
   }
   return element;
 }, "patchDomNode");
@@ -6802,8 +7114,24 @@ var propsOnSubmit = /* @__PURE__ */ __name((handler) => ({
 }), "propsOnSubmit");
 
 // src/runtime/headless-primitives-runtime.ts
+var getTextLabel = /* @__PURE__ */ __name((input) => {
+  const parts = [];
+  for (const child of normalizeVNodeChildren(input)) {
+    if (child.kind === "text" && child.text) {
+      parts.push(child.text);
+      continue;
+    }
+    if (child.children && child.children.length > 0) {
+      const nested = getTextLabel(child.children);
+      if (nested) {
+        parts.push(nested);
+      }
+    }
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}, "getTextLabel");
 var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
-  const { tabsContext, dialogContext, popoverContext, tooltipContext, toastContext, menuContext, checkboxContext, radioGroupContext, radioItemContext, selectContext, selectItemContext, comboboxContext, comboboxItemContext, multiselectContext, multiselectItemContext, getTabsBaseId, getDialogBaseId, getPopoverBaseId, getTooltipBaseId, getToastBaseId, getMenuBaseId, getCheckboxBaseId, getRadioBaseId, getSelectBaseId, getComboboxBaseId, getMultiselectBaseId, getTabsIds, registerTabsValue, getTabsNavigationTarget, getDialogIds, getPopoverIds, getTooltipIds, getToastIds, getMenuIds, getCheckboxIds, getRadioItemId, getSelectIds, getComboboxIds, getMultiselectIds, getRadioIndicatorId, getSelectItemId, getComboboxItemId, getMultiselectItemId, getSelectIndicatorId, getComboboxIndicatorId, getMultiselectIndicatorId, setDialogRestoreTarget, restoreDialogFocus, setPopoverAnchorTarget, setPopoverRestoreTarget, restorePopoverFocus, clearToastTimer, scheduleToastTimer, setMenuAnchorTarget, setMenuRestoreTarget, restoreMenuFocus, setTooltipAnchorTarget, setSelectAnchorTarget, setSelectRestoreTarget, restoreSelectFocus, setComboboxAnchorTarget, setComboboxRestoreTarget, setMultiselectAnchorTarget, setMultiselectRestoreTarget, restoreMultiselectFocus, registerMenuValue, registerRadioValue, registerSelectValue, registerComboboxValue, registerMultiselectValue, getMenuItemId, getMenuNavigationTarget, getRadioNavigationTarget, getSelectNavigationTarget, getComboboxNavigationTarget, getMultiselectNavigationTarget, focusMenuItem, focusRadioItem, focusSelectItem, focusComboboxItem, focusMultiselectItem, closeMenu, closeSelect, closeCombobox, closeMultiselect, readStringSelection, toggleMultiselectValue, getPopoverAnchorRect, getMenuAnchorRect, getTooltipAnchorRect, getSelectAnchorRect, getComboboxAnchorRect, getMultiselectAnchorRect, pickPopoverSide, omitPopoverLayoutProps, pickToastDuration, omitToastControlProps, getPopoverContentStyle } = options.headlessUi;
+  const { tabsContext, dialogContext, popoverContext, tooltipContext, toastContext, menuContext, checkboxContext, radioGroupContext, radioItemContext, selectContext, selectItemContext, comboboxContext, comboboxItemContext, multiselectContext, multiselectItemContext, getTabsBaseId, getDialogBaseId, getPopoverBaseId, getTooltipBaseId, getToastBaseId, getMenuBaseId, getCheckboxBaseId, getRadioBaseId, getSelectBaseId, getComboboxBaseId, getMultiselectBaseId, getTabsIds, registerTabsValue, getTabsNavigationTarget, getDialogIds, getPopoverIds, getTooltipIds, getToastIds, getMenuIds, getCheckboxIds, getRadioItemId, getSelectIds, getComboboxIds, getMultiselectIds, getRadioIndicatorId, getSelectItemId, getComboboxItemId, getMultiselectItemId, getSelectIndicatorId, getComboboxIndicatorId, getMultiselectIndicatorId, setDialogRestoreTarget, restoreDialogFocus, setPopoverAnchorTarget, setPopoverRestoreTarget, restorePopoverFocus, clearToastTimer, scheduleToastTimer, setMenuAnchorTarget, setMenuRestoreTarget, restoreMenuFocus, setTooltipAnchorTarget, setSelectAnchorTarget, setSelectRestoreTarget, restoreSelectFocus, setComboboxAnchorTarget, setComboboxRestoreTarget, restoreComboboxFocus, setMultiselectAnchorTarget, setMultiselectRestoreTarget, restoreMultiselectFocus, registerMenuValue, registerRadioValue, registerSelectValue, registerComboboxValue, registerMultiselectValue, getMenuItemId, getMenuActiveValue, setMenuActiveValue, getMenuNavigationTarget, getMenuTypeaheadTarget, getRadioNavigationTarget, getSelectNavigationTarget, getSelectTypeaheadTarget, getComboboxNavigationTarget, getMultiselectNavigationTarget, getMultiselectTypeaheadTarget, getSelectActiveValue, getSelectActiveDescendantId, setSelectActiveValue, acceptSelectActiveValue, getComboboxActiveValue, getComboboxActiveDescendantId, setComboboxActiveValue, acceptComboboxActiveValue, getMultiselectActiveValue, setMultiselectActiveValue, focusMenuItem, focusRadioItem, focusMultiselectItem, closeMenu, closeSelect, closeCombobox, closeMultiselect, readStringSelection, toggleMultiselectValue, getPopoverAnchorRect, getMenuAnchorRect, getTooltipAnchorRect, getSelectAnchorRect, getComboboxAnchorRect, getMultiselectAnchorRect, pickPopoverSide, omitPopoverLayoutProps, pickToastDuration, omitToastControlProps, getPopoverContentStyle } = options.headlessUi;
   const api = {
     tabs_root: /* @__PURE__ */ __name((value, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.tabs_root");
@@ -7226,11 +7554,29 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             setMenuAnchorTarget(ctx, target);
           }
           const nextOpen = !ctx.open.get();
+          if (nextOpen) {
+            setMenuActiveValue(ctx, "");
+          }
           ctx.open.set(nextOpen);
           if (!nextOpen) {
             restoreMenuFocus(ctx);
           }
-        }, "onClick")
+        }, "onClick"),
+        onKeyDown: /* @__PURE__ */ __name((event) => {
+          const key = String(event?.key ?? "");
+          const target = getFocusTargetFromEvent(event);
+          if (key !== "Enter" && key !== " " && key !== "ArrowDown" && key !== "ArrowUp") {
+            return void 0;
+          }
+          event?.preventDefault?.();
+          if (target) {
+            setMenuRestoreTarget(ctx, target);
+            setMenuAnchorTarget(ctx, target);
+          }
+          setMenuActiveValue(ctx, key === "ArrowUp" ? ctx.order[ctx.order.length - 1] ?? "" : "");
+          ctx.open.set(true);
+          return false;
+        }, "onKeyDown")
       }, props), children2);
     }, "menu_trigger"),
     menu_content: /* @__PURE__ */ __name((props, children2 = []) => {
@@ -7256,45 +7602,67 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             closeMenu(ctx);
             return false;
           }
+          if (key === "Tab") {
+            setMenuActiveValue(ctx, "");
+            ctx.open.set(false);
+            return void 0;
+          }
           if (key === "ArrowDown" || key === "Home") {
             event?.preventDefault?.();
+            setMenuActiveValue(ctx, ctx.order[0] ?? "");
             focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.order[0] ?? "");
             return false;
           }
           if (key === "ArrowUp" || key === "End") {
             event?.preventDefault?.();
+            setMenuActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? "");
             focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.order[ctx.order.length - 1] ?? "");
             return false;
           }
-          return void 0;
+          const typeaheadTarget = getMenuTypeaheadTarget(ctx, getMenuActiveValue(ctx), key);
+          if (!typeaheadTarget) {
+            return void 0;
+          }
+          event?.preventDefault?.();
+          setMenuActiveValue(ctx, typeaheadTarget);
+          focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget);
+          return false;
         }, "onKeyDown")
       }, omitPopoverLayoutProps(props)), children2);
     }, "menu_content"),
     menu_item: /* @__PURE__ */ __name((value, props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.menu_item");
       const ctx = frameManager.useContext(menuContext);
-      registerMenuValue(ctx, value);
+      registerMenuValue(ctx, value, getTextLabel(children2));
       const open = ctx.open.get();
-      const isFirst = ctx.order[0] === value;
+      const active = getMenuActiveValue(ctx);
       const itemId = getMenuItemId(ctx, value);
       return vnodeElement("button", mergeProps({
         type: "button",
         id: itemId,
         role: "menuitem",
         hidden: !open,
-        tabIndex: open ? 0 : -1,
-        autoFocus: open && isFirst,
+        tabIndex: open && active === value ? 0 : -1,
+        autoFocus: open && active === value,
         "data-lumina-menu-item": "true",
         "data-state": open ? "open" : "closed",
         onClick: /* @__PURE__ */ __name(() => {
           closeMenu(ctx);
         }, "onClick"),
+        onMouseEnter: /* @__PURE__ */ __name(() => {
+          setMenuActiveValue(ctx, value);
+        }, "onMouseEnter"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
           const key = String(event?.key ?? "");
           if (key === "Escape") {
             event?.preventDefault?.();
             closeMenu(ctx);
             return false;
+          }
+          if (key === "Tab") {
+            setMenuActiveValue(ctx, "");
+            ctx.open.set(false);
+            return void 0;
           }
           if (key === "Enter" || key === " ") {
             event?.preventDefault?.();
@@ -7306,9 +7674,17 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             return false;
           }
           const nextValue = getMenuNavigationTarget(ctx, value, key);
-          if (!nextValue) return void 0;
+          if (nextValue) {
+            event?.preventDefault?.();
+            setMenuActiveValue(ctx, nextValue);
+            focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue);
+            return false;
+          }
+          const typeaheadTarget = getMenuTypeaheadTarget(ctx, value, key);
+          if (!typeaheadTarget) return void 0;
           event?.preventDefault?.();
-          focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue);
+          setMenuActiveValue(ctx, typeaheadTarget);
+          focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget);
           return false;
         }, "onKeyDown")
       }, props), children2);
@@ -7350,26 +7726,101 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       const ctx = frameManager.useContext(selectContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getSelectIds(ctx);
+      const activeDescendantId = open ? getSelectActiveDescendantId(ctx) : null;
       return vnodeElement("button", mergeProps({
         type: "button",
         id: triggerId,
         role: "combobox",
         "aria-haspopup": "listbox",
         "aria-expanded": open ? "true" : "false",
-        "aria-controls": contentId,
+        "aria-controls": open ? contentId : void 0,
+        "aria-activedescendant": activeDescendantId ?? void 0,
         "data-state": open ? "open" : "closed",
         onClick: /* @__PURE__ */ __name((event) => {
           const target = getFocusTargetFromEvent(event);
           if (target) {
             setSelectRestoreTarget(ctx, target);
             setSelectAnchorTarget(ctx, target);
+            target.focus?.();
           }
           const nextOpen = !ctx.open.get();
+          if (nextOpen) {
+            setSelectActiveValue(ctx, ctx.value.get());
+          }
           ctx.open.set(nextOpen);
           if (!nextOpen) {
             restoreSelectFocus(ctx);
           }
-        }, "onClick")
+        }, "onClick"),
+        onKeyDown: /* @__PURE__ */ __name((event) => {
+          const key = String(event?.key ?? "");
+          const openNow = ctx.open.get();
+          const currentValue = ctx.value.get();
+          const currentActive = getSelectActiveValue(ctx);
+          if (key === "Escape" && openNow) {
+            event?.preventDefault?.();
+            closeSelect(ctx);
+            return false;
+          }
+          if (!openNow) {
+            if (key === "ArrowDown" || key === "Enter" || key === " ") {
+              event?.preventDefault?.();
+              setSelectActiveValue(ctx, currentValue);
+              ctx.open.set(true);
+              return false;
+            }
+            if (key === "ArrowUp" || key === "Home") {
+              event?.preventDefault?.();
+              setSelectActiveValue(ctx, ctx.order[0] ?? currentValue);
+              ctx.open.set(true);
+              return false;
+            }
+            if (key === "End") {
+              event?.preventDefault?.();
+              setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentValue);
+              ctx.open.set(true);
+              return false;
+            }
+            const typeaheadTarget2 = getSelectTypeaheadTarget(ctx, currentValue, key);
+            if (!typeaheadTarget2) {
+              return void 0;
+            }
+            event?.preventDefault?.();
+            setSelectActiveValue(ctx, typeaheadTarget2);
+            ctx.open.set(true);
+            return false;
+          }
+          if (key === "Enter" || key === " " || key === "Tab") {
+            if (key !== "Tab") {
+              event?.preventDefault?.();
+            }
+            acceptSelectActiveValue(ctx);
+            setSelectActiveValue(ctx, ctx.value.get());
+            ctx.open.set(false);
+            return key === "Tab" ? void 0 : false;
+          }
+          if (key === "Home") {
+            event?.preventDefault?.();
+            setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
+            return false;
+          }
+          if (key === "End") {
+            event?.preventDefault?.();
+            setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
+            return false;
+          }
+          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key);
+          if (typeaheadTarget) {
+            event?.preventDefault?.();
+            setSelectActiveValue(ctx, typeaheadTarget);
+            return false;
+          }
+          const nextValue = getSelectNavigationTarget(ctx, currentActive, key);
+          if (!nextValue) return void 0;
+          event?.preventDefault?.();
+          setSelectActiveValue(ctx, nextValue);
+          return false;
+        }, "onKeyDown")
       }, props), children2);
     }, "select_trigger"),
     select_content: /* @__PURE__ */ __name((props, children2 = []) => {
@@ -7382,27 +7833,51 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
         id: contentId,
         "aria-labelledby": triggerId,
         hidden: !open,
-        tabIndex: -1,
-        autoFocus: open,
         "data-lumina-select-content": "true",
         "data-state": open ? "open" : "closed",
         "data-side": pickPopoverSide(props),
         style: getPopoverContentStyle(getSelectAnchorRect(ctx), props),
         onKeyDown: /* @__PURE__ */ __name((event) => {
           const key = String(event?.key ?? "");
+          const currentActive = getSelectActiveValue(ctx);
           if (key === "Escape") {
             event?.preventDefault?.();
             closeSelect(ctx);
             return false;
           }
-          if (key === "ArrowDown" || key === "Home") {
+          if (key === "ArrowDown" || key === "ArrowRight") {
             event?.preventDefault?.();
-            focusSelectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.value.get() && ctx.order.includes(ctx.value.get()) ? ctx.value.get() : ctx.order[0] ?? "", getFocusTargetFromEvent(event));
+            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key));
             return false;
           }
-          if (key === "ArrowUp" || key === "End") {
+          if (key === "ArrowUp" || key === "ArrowLeft") {
             event?.preventDefault?.();
-            focusSelectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.value.get() && ctx.order.includes(ctx.value.get()) ? ctx.value.get() : ctx.order[ctx.order.length - 1] ?? "", getFocusTargetFromEvent(event));
+            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key));
+            return false;
+          }
+          if (key === "Home") {
+            event?.preventDefault?.();
+            setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
+            return false;
+          }
+          if (key === "End") {
+            event?.preventDefault?.();
+            setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
+            return false;
+          }
+          if (key === "Enter" || key === " " || key === "Tab") {
+            if (key !== "Tab") {
+              event?.preventDefault?.();
+            }
+            acceptSelectActiveValue(ctx);
+            setSelectActiveValue(ctx, ctx.value.get());
+            ctx.open.set(false);
+            return key === "Tab" ? void 0 : false;
+          }
+          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key);
+          if (typeaheadTarget) {
+            event?.preventDefault?.();
+            setSelectActiveValue(ctx, typeaheadTarget);
             return false;
           }
           return void 0;
@@ -7412,52 +7887,63 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
     select_item: /* @__PURE__ */ __name((value, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.select_item");
       const ctx = frameManager.useContext(selectContext);
-      registerSelectValue(ctx, value);
       const open = ctx.open.get();
       const currentValue = ctx.value.get();
+      const activeValue = getSelectActiveValue(ctx);
       const selected = currentValue === value;
+      const active = open && activeValue === value;
       const itemId = getSelectItemId(ctx, value);
-      const isFirst = ctx.order[0] === value;
-      const shouldAutoFocus = open && (selected || !ctx.order.includes(currentValue) && isFirst);
       return coerceRenderableToVNode(frameManager.withContext(selectItemContext, {
         value,
         itemId,
         selected
-      }, () => vnodeElement("button", mergeProps({
-        type: "button",
-        id: itemId,
-        role: "option",
-        hidden: !open,
-        tabIndex: open ? selected ? 0 : -1 : -1,
-        autoFocus: shouldAutoFocus,
-        "aria-selected": selected ? "true" : "false",
-        "data-lumina-select-item": "true",
-        "data-state": selected ? "checked" : "unchecked",
-        onClick: /* @__PURE__ */ __name(() => {
-          ctx.value.set(value);
-          closeSelect(ctx);
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
-            event?.preventDefault?.();
+      }, () => {
+        const resolvedChildren = resolveChildrenInput(renderChildren);
+        registerSelectValue(ctx, value, getTextLabel(resolvedChildren));
+        return vnodeElement("button", mergeProps({
+          type: "button",
+          id: itemId,
+          role: "option",
+          hidden: !open,
+          tabIndex: -1,
+          "aria-selected": selected ? "true" : "false",
+          "data-lumina-select-item": "true",
+          "data-active": active ? "true" : "false",
+          "data-state": selected ? "checked" : "unchecked",
+          onClick: /* @__PURE__ */ __name(() => {
+            setSelectActiveValue(ctx, value);
+            acceptSelectActiveValue(ctx);
             closeSelect(ctx);
-            return false;
-          }
-          if (key === "Enter" || key === " ") {
+          }, "onClick"),
+          onMouseEnter: /* @__PURE__ */ __name(() => {
+            setSelectActiveValue(ctx, value);
+          }, "onMouseEnter"),
+          onKeyDown: /* @__PURE__ */ __name((event) => {
+            const key = String(event?.key ?? "");
+            if (key === "Escape") {
+              event?.preventDefault?.();
+              closeSelect(ctx);
+              return false;
+            }
+            if (key === "Enter" || key === " " || key === "Tab") {
+              if (key !== "Tab") {
+                event?.preventDefault?.();
+              }
+              setSelectActiveValue(ctx, value);
+              acceptSelectActiveValue(ctx);
+              setSelectActiveValue(ctx, ctx.value.get());
+              ctx.open.set(false);
+              return key === "Tab" ? void 0 : false;
+            }
+            const nextValue = getSelectNavigationTarget(ctx, value, key);
+            if (!nextValue) return void 0;
             event?.preventDefault?.();
-            ctx.value.set(value);
-            closeSelect(ctx);
+            setSelectActiveValue(ctx, nextValue);
+            restoreSelectFocus(ctx);
             return false;
-          }
-          const nextValue = getSelectNavigationTarget(ctx, value, key);
-          if (!nextValue) return void 0;
-          event?.preventDefault?.();
-          ctx.value.set(nextValue);
-          focusSelectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue, getFocusTargetFromEvent(event));
-          return false;
-        }, "onKeyDown")
-      }, props), resolveChildrenInput(renderChildren))));
+          }, "onKeyDown")
+        }, props), resolvedChildren);
+      }));
     }, "select_item"),
     select_indicator: /* @__PURE__ */ __name((props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.select_indicator");
@@ -7508,6 +7994,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       const ctx = frameManager.useContext(comboboxContext);
       const open = ctx.open.get();
       const { inputId, contentId } = getComboboxIds(ctx);
+      const activeDescendantId = open ? getComboboxActiveDescendantId(ctx) : null;
       return vnodeElement("input", mergeProps({
         type: "text",
         id: inputId,
@@ -7517,6 +8004,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
         "aria-haspopup": "listbox",
         "aria-expanded": open ? "true" : "false",
         "aria-controls": contentId,
+        "aria-activedescendant": activeDescendantId ?? void 0,
         "data-state": open ? "open" : "closed",
         onInput: /* @__PURE__ */ __name((event) => {
           const target = getFocusTargetFromEvent(event);
@@ -7526,6 +8014,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           }
           const nextQuery = String(event?.target?.value ?? "");
           ctx.query.set(nextQuery);
+          setComboboxActiveValue(ctx, "");
           ctx.open.set(true);
         }, "onInput"),
         onFocus: /* @__PURE__ */ __name((event) => {
@@ -7533,6 +8022,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           if (!target) return void 0;
           setComboboxRestoreTarget(ctx, target);
           setComboboxAnchorTarget(ctx, target);
+          setComboboxActiveValue(ctx, ctx.value.get());
           ctx.open.set(true);
           return void 0;
         }, "onFocus"),
@@ -7541,6 +8031,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           if (!target) return void 0;
           setComboboxRestoreTarget(ctx, target);
           setComboboxAnchorTarget(ctx, target);
+          setComboboxActiveValue(ctx, ctx.value.get());
           ctx.open.set(true);
           return void 0;
         }, "onClick"),
@@ -7551,18 +8042,20 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             closeCombobox(ctx);
             return false;
           }
-          if (key === "ArrowDown" || key === "Home") {
+          if (key === "Enter") {
             event?.preventDefault?.();
-            ctx.open.set(true);
-            const currentValue = ctx.value.get();
-            focusComboboxItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, currentValue && ctx.order.includes(currentValue) ? currentValue : ctx.order[0] ?? "", getFocusTargetFromEvent(event));
+            acceptComboboxActiveValue(ctx);
+            closeCombobox(ctx);
             return false;
           }
-          if (key === "ArrowUp" || key === "End") {
+          if (key === "ArrowDown" || key === "ArrowUp") {
             event?.preventDefault?.();
             ctx.open.set(true);
-            const currentValue = ctx.value.get();
-            focusComboboxItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, currentValue && ctx.order.includes(currentValue) ? currentValue : ctx.order[ctx.order.length - 1] ?? "", getFocusTargetFromEvent(event));
+            const currentValue = getComboboxActiveValue(ctx);
+            const nextValue = key === "ArrowDown" ? getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowDown" : "Home") : getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowUp" : "End");
+            if (nextValue) {
+              setComboboxActiveValue(ctx, nextValue);
+            }
             return false;
           }
           return void 0;
@@ -7591,14 +8084,20 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             closeCombobox(ctx);
             return false;
           }
-          if (key === "ArrowDown" || key === "Home") {
+          if (key === "Enter") {
             event?.preventDefault?.();
-            focusComboboxItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.value.get() && ctx.order.includes(ctx.value.get()) ? ctx.value.get() : ctx.order[0] ?? "", getFocusTargetFromEvent(event));
+            acceptComboboxActiveValue(ctx);
+            closeCombobox(ctx);
             return false;
           }
-          if (key === "ArrowUp" || key === "End") {
+          if (key === "ArrowDown" || key === "ArrowUp" || key === "Home" || key === "End") {
             event?.preventDefault?.();
-            focusComboboxItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.value.get() && ctx.order.includes(ctx.value.get()) ? ctx.value.get() : ctx.order[ctx.order.length - 1] ?? "", getFocusTargetFromEvent(event));
+            const currentValue = getComboboxActiveValue(ctx);
+            const nextValue = getComboboxNavigationTarget(ctx, currentValue, key === "ArrowDown" || key === "ArrowUp" ? key : key);
+            if (nextValue) {
+              setComboboxActiveValue(ctx, nextValue);
+            }
+            restoreComboboxFocus(ctx);
             return false;
           }
           return void 0;
@@ -7616,23 +8115,36 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       }
       const currentValue = ctx.value.get();
       const selected = currentValue === value;
+      const active = getComboboxActiveValue(ctx) === value;
       const itemId = getComboboxItemId(ctx, value);
       return coerceRenderableToVNode(frameManager.withContext(comboboxItemContext, {
         value,
         itemId,
-        selected
-      }, () => vnodeElement("button", mergeProps({
-        type: "button",
+        selected,
+        active
+      }, () => vnodeElement("div", mergeProps({
         id: itemId,
         role: "option",
         hidden: !open || !matchesQuery,
-        tabIndex: open && matchesQuery ? selected ? 0 : -1 : -1,
-        "aria-selected": selected ? "true" : "false",
+        tabIndex: -1,
+        "aria-selected": active ? "true" : "false",
         "data-lumina-combobox-item": "true",
         "data-state": selected ? "checked" : "unchecked",
+        "data-active": active ? "true" : "false",
+        onMouseDown: /* @__PURE__ */ __name((event) => {
+          event?.preventDefault?.();
+          return false;
+        }, "onMouseDown"),
+        onMouseEnter: /* @__PURE__ */ __name(() => {
+          setComboboxActiveValue(ctx, value);
+        }, "onMouseEnter"),
+        onFocus: /* @__PURE__ */ __name(() => {
+          setComboboxActiveValue(ctx, value);
+        }, "onFocus"),
         onClick: /* @__PURE__ */ __name(() => {
           ctx.value.set(value);
           ctx.query.set(value);
+          setComboboxActiveValue(ctx, value);
           closeCombobox(ctx);
         }, "onClick"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
@@ -7646,15 +8158,15 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             event?.preventDefault?.();
             ctx.value.set(value);
             ctx.query.set(value);
+            setComboboxActiveValue(ctx, value);
             closeCombobox(ctx);
             return false;
           }
           const nextValue = getComboboxNavigationTarget(ctx, value, key);
           if (!nextValue) return void 0;
           event?.preventDefault?.();
-          ctx.value.set(nextValue);
-          ctx.query.set(nextValue);
-          focusComboboxItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue, getFocusTargetFromEvent(event));
+          setComboboxActiveValue(ctx, nextValue);
+          restoreComboboxFocus(ctx);
           return false;
         }, "onKeyDown")
       }, props), resolveChildrenInput(renderChildren))));
@@ -7665,9 +8177,9 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       return vnodeElement("span", mergeProps({
         id: getComboboxIndicatorId(ctx.itemId),
         "aria-hidden": "true",
-        hidden: !ctx.selected,
+        hidden: !ctx.active,
         "data-lumina-combobox-indicator": "true",
-        "data-state": ctx.selected ? "checked" : "unchecked"
+        "data-state": ctx.active ? "checked" : "unchecked"
       }, props), children2);
     }, "combobox_indicator"),
     multiselect_root: /* @__PURE__ */ __name((open, values, renderChildren) => {
@@ -7710,7 +8222,6 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       return vnodeElement("button", mergeProps({
         type: "button",
         id: triggerId,
-        role: "combobox",
         "aria-haspopup": "listbox",
         "aria-expanded": open ? "true" : "false",
         "aria-controls": contentId,
@@ -7722,6 +8233,9 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             setMultiselectAnchorTarget(ctx, target);
           }
           const nextOpen = !ctx.open.get();
+          if (nextOpen) {
+            setMultiselectActiveValue(ctx, readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry)) ?? ctx.order[0] ?? "");
+          }
           ctx.open.set(nextOpen);
           if (!nextOpen) {
             restoreMultiselectFocus(ctx);
@@ -7753,70 +8267,103 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             closeMultiselect(ctx);
             return false;
           }
-          const currentValues = readStringSelection(ctx.values.get());
+          if (key === "Tab") {
+            ctx.open.set(false);
+            return void 0;
+          }
+          const activeValue = getMultiselectActiveValue(ctx);
           if (key === "ArrowDown" || key === "Home") {
             event?.preventDefault?.();
-            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, currentValues.find((entry) => ctx.order.includes(entry)) ?? ctx.order[0] ?? "", getFocusTargetFromEvent(event));
+            const targetValue = key === "Home" ? ctx.order[0] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key) ?? activeValue;
+            setMultiselectActiveValue(ctx, targetValue);
+            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, targetValue, getFocusTargetFromEvent(event));
             return false;
           }
           if (key === "ArrowUp" || key === "End") {
             event?.preventDefault?.();
-            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, [
-              ...currentValues
-            ].reverse().find((entry) => ctx.order.includes(entry)) ?? ctx.order[ctx.order.length - 1] ?? "", getFocusTargetFromEvent(event));
+            const targetValue = key === "End" ? ctx.order[ctx.order.length - 1] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key) ?? activeValue;
+            setMultiselectActiveValue(ctx, targetValue);
+            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, targetValue, getFocusTargetFromEvent(event));
             return false;
           }
-          return void 0;
+          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, activeValue, key);
+          if (!typeaheadTarget) {
+            return void 0;
+          }
+          event?.preventDefault?.();
+          setMultiselectActiveValue(ctx, typeaheadTarget);
+          focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget, getFocusTargetFromEvent(event));
+          return false;
         }, "onKeyDown")
       }, omitPopoverLayoutProps(props)), children2);
     }, "multiselect_content"),
     multiselect_item: /* @__PURE__ */ __name((value, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_item");
       const ctx = frameManager.useContext(multiselectContext);
-      registerMultiselectValue(ctx, value);
       const open = ctx.open.get();
       const selectedValues = readStringSelection(ctx.values.get());
       const selected = selectedValues.includes(value);
       const itemId = getMultiselectItemId(ctx, value);
-      const firstSelected = selectedValues.find((entry) => ctx.order.includes(entry));
-      const isFirst = ctx.order[0] === value;
-      const shouldAutoFocus = open && (selected && value === firstSelected || !firstSelected && isFirst);
       return coerceRenderableToVNode(frameManager.withContext(multiselectItemContext, {
         value,
         itemId,
         selected
-      }, () => vnodeElement("button", mergeProps({
-        type: "button",
-        id: itemId,
-        role: "option",
-        hidden: !open,
-        tabIndex: open ? selected ? 0 : -1 : -1,
-        autoFocus: shouldAutoFocus,
-        "aria-selected": selected ? "true" : "false",
-        "data-lumina-multiselect-item": "true",
-        "data-state": selected ? "checked" : "unchecked",
-        onClick: /* @__PURE__ */ __name(() => {
-          toggleMultiselectValue(ctx, value);
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
-            event?.preventDefault?.();
-            closeMultiselect(ctx);
-            return false;
-          }
-          if (key === "Enter" || key === " ") {
-            event?.preventDefault?.();
+      }, () => {
+        const resolvedChildren = resolveChildrenInput(renderChildren);
+        registerMultiselectValue(ctx, value, getTextLabel(resolvedChildren));
+        const active = getMultiselectActiveValue(ctx);
+        const shouldAutoFocus = open && active === value;
+        return vnodeElement("button", mergeProps({
+          type: "button",
+          id: itemId,
+          role: "option",
+          hidden: !open,
+          tabIndex: open && active === value ? 0 : -1,
+          autoFocus: shouldAutoFocus,
+          "aria-selected": selected ? "true" : "false",
+          "data-lumina-multiselect-item": "true",
+          "data-active": active === value ? "true" : "false",
+          "data-state": selected ? "checked" : "unchecked",
+          onClick: /* @__PURE__ */ __name(() => {
+            setMultiselectActiveValue(ctx, value);
             toggleMultiselectValue(ctx, value);
+          }, "onClick"),
+          onMouseEnter: /* @__PURE__ */ __name(() => {
+            setMultiselectActiveValue(ctx, value);
+          }, "onMouseEnter"),
+          onKeyDown: /* @__PURE__ */ __name((event) => {
+            const key = String(event?.key ?? "");
+            if (key === "Escape") {
+              event?.preventDefault?.();
+              closeMultiselect(ctx);
+              return false;
+            }
+            if (key === "Tab") {
+              ctx.open.set(false);
+              return void 0;
+            }
+            if (key === "Enter" || key === " ") {
+              event?.preventDefault?.();
+              setMultiselectActiveValue(ctx, value);
+              toggleMultiselectValue(ctx, value);
+              return false;
+            }
+            const nextValue = getMultiselectNavigationTarget(ctx, value, key);
+            if (nextValue) {
+              event?.preventDefault?.();
+              setMultiselectActiveValue(ctx, nextValue);
+              focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue, getFocusTargetFromEvent(event));
+              return false;
+            }
+            const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, value, key);
+            if (!typeaheadTarget) return void 0;
+            event?.preventDefault?.();
+            setMultiselectActiveValue(ctx, typeaheadTarget);
+            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget, getFocusTargetFromEvent(event));
             return false;
-          }
-          const nextValue = getMultiselectNavigationTarget(ctx, value, key);
-          if (!nextValue) return void 0;
-          event?.preventDefault?.();
-          focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue, getFocusTargetFromEvent(event));
-          return false;
-        }, "onKeyDown")
-      }, props), resolveChildrenInput(renderChildren))));
+          }, "onKeyDown")
+        }, props), resolvedChildren);
+      }));
     }, "multiselect_item"),
     multiselect_indicator: /* @__PURE__ */ __name((props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_indicator");
@@ -8983,6 +9530,18 @@ var registerOrderedValue = /* @__PURE__ */ __name((order, value) => {
     order.push(value);
   }
 }, "registerOrderedValue");
+var getTypeaheadLabels = /* @__PURE__ */ __name((labelsMap, keyObject) => {
+  const existing = labelsMap.get(keyObject);
+  if (existing) return existing;
+  const created = /* @__PURE__ */ new Map();
+  labelsMap.set(keyObject, created);
+  return created;
+}, "getTypeaheadLabels");
+var registerTypeaheadLabel = /* @__PURE__ */ __name((labelsMap, keyObject, value, label) => {
+  const normalized = String(label ?? "").trim();
+  if (!normalized) return;
+  getTypeaheadLabels(labelsMap, keyObject).set(value, normalized);
+}, "registerTypeaheadLabel");
 var getWrappedNavigationTarget = /* @__PURE__ */ __name((order, current, key, forwardKeys, backwardKeys) => {
   if (order.length === 0) return null;
   const currentIndex = Math.max(0, order.indexOf(current));
@@ -9000,6 +9559,23 @@ var getWrappedNavigationTarget = /* @__PURE__ */ __name((order, current, key, fo
   }
   return null;
 }, "getWrappedNavigationTarget");
+var getClampedNavigationTarget = /* @__PURE__ */ __name((order, current, key, forwardKeys, backwardKeys) => {
+  if (order.length === 0) return null;
+  const currentIndex = Math.max(0, order.indexOf(current));
+  if (key === "Home") {
+    return order[0] ?? null;
+  }
+  if (key === "End") {
+    return order[order.length - 1] ?? null;
+  }
+  if (forwardKeys.includes(key)) {
+    return order[Math.min(currentIndex + 1, order.length - 1)] ?? null;
+  }
+  if (backwardKeys.includes(key)) {
+    return order[Math.max(currentIndex - 1, 0)] ?? null;
+  }
+  return null;
+}, "getClampedNavigationTarget");
 var restoreFocusFromMap = /* @__PURE__ */ __name((ctx, targets) => {
   const key = ctx.open;
   const target = targets.get(key);
@@ -9049,6 +9625,41 @@ var clearTimerHandle = /* @__PURE__ */ __name((handle) => {
     globalThis.clearTimeout(handle);
   }
 }, "clearTimerHandle");
+var TYPEAHEAD_RESET_MS = 700;
+var isPrintableTypeaheadKey = /* @__PURE__ */ __name((key) => key.length === 1 && key.trim().length > 0, "isPrintableTypeaheadKey");
+var updateTypeaheadBuffer = /* @__PURE__ */ __name((state2, key) => {
+  const normalizedKey = key.toLowerCase();
+  const previous = state2?.buffer ?? "";
+  const nextRaw = `${previous}${normalizedKey}`;
+  const repeated = new Set(nextRaw).size === 1 ? normalizedKey : nextRaw;
+  clearTimerHandle(state2?.resetHandle);
+  const nextState = {
+    buffer: repeated,
+    resetHandle: void 0
+  };
+  nextState.resetHandle = typeof globalThis.setTimeout === "function" ? globalThis.setTimeout(() => {
+    nextState.buffer = "";
+    nextState.resetHandle = void 0;
+  }, TYPEAHEAD_RESET_MS) : void 0;
+  return nextState;
+}, "updateTypeaheadBuffer");
+var getTypeaheadTarget = /* @__PURE__ */ __name((stateMap, keyObject, order, labels, current, key) => {
+  if (!isPrintableTypeaheadKey(key) || order.length === 0) return null;
+  const nextState = updateTypeaheadBuffer(stateMap.get(keyObject), key);
+  stateMap.set(keyObject, nextState);
+  const needle = nextState.buffer;
+  const currentIndex = order.indexOf(current);
+  const startOffset = currentIndex >= 0 ? 1 : 0;
+  for (let offset = startOffset; offset < order.length + startOffset; offset += 1) {
+    const index = currentIndex >= 0 ? (currentIndex + offset) % order.length : offset % order.length;
+    const candidate = order[index];
+    const label = (labels?.get(candidate) ?? candidate ?? "").trim().toLowerCase();
+    if (label.startsWith(needle)) {
+      return candidate;
+    }
+  }
+  return null;
+}, "getTypeaheadTarget");
 var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
   const tabsContext = createContextToken();
   const checkboxContext = createContextToken();
@@ -9072,12 +9683,22 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
   const toastTimers = /* @__PURE__ */ new WeakMap();
   const menuAnchorTargets = /* @__PURE__ */ new WeakMap();
   const menuRestoreTargets = /* @__PURE__ */ new WeakMap();
+  const menuActiveValues = /* @__PURE__ */ new WeakMap();
+  const menuTypeaheadStates = /* @__PURE__ */ new WeakMap();
+  const menuTypeaheadLabels = /* @__PURE__ */ new WeakMap();
   const selectAnchorTargets = /* @__PURE__ */ new WeakMap();
   const selectRestoreTargets = /* @__PURE__ */ new WeakMap();
+  const selectActiveValues = /* @__PURE__ */ new WeakMap();
+  const selectTypeaheadStates = /* @__PURE__ */ new WeakMap();
+  const selectTypeaheadLabels = /* @__PURE__ */ new WeakMap();
   const comboboxAnchorTargets = /* @__PURE__ */ new WeakMap();
   const comboboxRestoreTargets = /* @__PURE__ */ new WeakMap();
+  const comboboxActiveValues = /* @__PURE__ */ new WeakMap();
   const multiselectAnchorTargets = /* @__PURE__ */ new WeakMap();
   const multiselectRestoreTargets = /* @__PURE__ */ new WeakMap();
+  const multiselectActiveValues = /* @__PURE__ */ new WeakMap();
+  const multiselectTypeaheadStates = /* @__PURE__ */ new WeakMap();
+  const multiselectTypeaheadLabels = /* @__PURE__ */ new WeakMap();
   const getTabsBaseId = createSignalBaseIdResolver("lumina-tabs");
   const getCheckboxBaseId = createSignalBaseIdResolver("lumina-checkbox");
   const getRadioBaseId = createSignalBaseIdResolver("lumina-radio");
@@ -9232,26 +9853,136 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
   const setTooltipAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
     setMapTarget(ctx, tooltipAnchorTargets, target);
   }, "setTooltipAnchorTarget");
-  const registerMenuValue = /* @__PURE__ */ __name((ctx, value) => {
+  const registerMenuValue = /* @__PURE__ */ __name((ctx, value, label) => {
     registerOrderedValue(ctx.order, value);
+    registerTypeaheadLabel(menuTypeaheadLabels, ctx.open, value, label);
   }, "registerMenuValue");
+  const getMenuActiveSignal = /* @__PURE__ */ __name((ctx) => {
+    const key = ctx.open;
+    const existing = menuActiveValues.get(key);
+    if (existing) return existing;
+    const created = new Signal("");
+    menuActiveValues.set(key, created);
+    return created;
+  }, "getMenuActiveSignal");
+  const setMenuActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+    getMenuActiveSignal(ctx).set(typeof value === "string" ? value : "");
+  }, "setMenuActiveValue");
+  const getMenuActiveValue = /* @__PURE__ */ __name((ctx) => {
+    const explicit = getMenuActiveSignal(ctx).get();
+    if (explicit) {
+      return explicit;
+    }
+    return ctx.order[0] ?? explicit ?? "";
+  }, "getMenuActiveValue");
   const registerRadioValue = /* @__PURE__ */ __name((ctx, value) => {
     registerOrderedValue(ctx.order, value);
   }, "registerRadioValue");
-  const registerSelectValue = /* @__PURE__ */ __name((ctx, value) => {
+  const registerSelectValue = /* @__PURE__ */ __name((ctx, value, label) => {
     registerOrderedValue(ctx.order, value);
+    registerTypeaheadLabel(selectTypeaheadLabels, ctx.value, value, label);
   }, "registerSelectValue");
+  const getSelectActiveSignal = /* @__PURE__ */ __name((ctx) => {
+    const key = ctx.value;
+    const existing = selectActiveValues.get(key);
+    if (existing) return existing;
+    const created = new Signal("");
+    selectActiveValues.set(key, created);
+    return created;
+  }, "getSelectActiveSignal");
+  const setSelectActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+    getSelectActiveSignal(ctx).set(typeof value === "string" ? value : "");
+  }, "setSelectActiveValue");
+  const resolveSelectActiveValue = /* @__PURE__ */ __name((ctx) => {
+    const explicit = getSelectActiveSignal(ctx).get();
+    if (explicit && (ctx.order.length === 0 || ctx.order.includes(explicit))) {
+      return explicit;
+    }
+    const selected = ctx.value.get();
+    if (selected && (ctx.order.length === 0 || ctx.order.includes(selected))) {
+      return selected;
+    }
+    return ctx.order[0] ?? explicit ?? selected ?? "";
+  }, "resolveSelectActiveValue");
+  const getSelectActiveValue = /* @__PURE__ */ __name((ctx) => resolveSelectActiveValue(ctx), "getSelectActiveValue");
+  const getSelectActiveDescendantId = /* @__PURE__ */ __name((ctx) => {
+    const activeValue = resolveSelectActiveValue(ctx);
+    return activeValue ? getSelectItemId(ctx, activeValue) : null;
+  }, "getSelectActiveDescendantId");
+  const acceptSelectActiveValue = /* @__PURE__ */ __name((ctx) => {
+    const nextValue = resolveSelectActiveValue(ctx);
+    if (!nextValue) return "";
+    ctx.value.set(nextValue);
+    setSelectActiveValue(ctx, nextValue);
+    return nextValue;
+  }, "acceptSelectActiveValue");
   const registerComboboxValue = /* @__PURE__ */ __name((ctx, value) => {
     registerOrderedValue(ctx.order, value);
   }, "registerComboboxValue");
-  const registerMultiselectValue = /* @__PURE__ */ __name((ctx, value) => {
+  const getComboboxActiveSignal = /* @__PURE__ */ __name((ctx) => {
+    const key = ctx.value;
+    const existing = comboboxActiveValues.get(key);
+    if (existing) return existing;
+    const created = new Signal("");
+    comboboxActiveValues.set(key, created);
+    return created;
+  }, "getComboboxActiveSignal");
+  const setComboboxActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+    getComboboxActiveSignal(ctx).set(typeof value === "string" ? value : "");
+  }, "setComboboxActiveValue");
+  const resolveComboboxActiveValue = /* @__PURE__ */ __name((ctx) => {
+    const explicit = getComboboxActiveSignal(ctx).get();
+    if (explicit && (ctx.order.length === 0 || ctx.order.includes(explicit))) {
+      return explicit;
+    }
+    const selected = ctx.value.get();
+    if (selected && (ctx.order.length === 0 || ctx.order.includes(selected))) {
+      return selected;
+    }
+    return ctx.order[0] ?? explicit ?? selected ?? "";
+  }, "resolveComboboxActiveValue");
+  const getComboboxActiveValue = /* @__PURE__ */ __name((ctx) => resolveComboboxActiveValue(ctx), "getComboboxActiveValue");
+  const getComboboxActiveDescendantId = /* @__PURE__ */ __name((ctx) => {
+    const activeValue = resolveComboboxActiveValue(ctx);
+    return activeValue ? getComboboxItemId(ctx, activeValue) : null;
+  }, "getComboboxActiveDescendantId");
+  const acceptComboboxActiveValue = /* @__PURE__ */ __name((ctx) => {
+    const nextValue = resolveComboboxActiveValue(ctx);
+    if (!nextValue) return "";
+    ctx.value.set(nextValue);
+    ctx.query.set(nextValue);
+    setComboboxActiveValue(ctx, nextValue);
+    return nextValue;
+  }, "acceptComboboxActiveValue");
+  const registerMultiselectValue = /* @__PURE__ */ __name((ctx, value, label) => {
     registerOrderedValue(ctx.order, value);
+    registerTypeaheadLabel(multiselectTypeaheadLabels, ctx.open, value, label);
   }, "registerMultiselectValue");
+  const getMultiselectActiveSignal = /* @__PURE__ */ __name((ctx) => {
+    const key = ctx.values;
+    const existing = multiselectActiveValues.get(key);
+    if (existing) return existing;
+    const created = new Signal("");
+    multiselectActiveValues.set(key, created);
+    return created;
+  }, "getMultiselectActiveSignal");
+  const setMultiselectActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+    getMultiselectActiveSignal(ctx).set(typeof value === "string" ? value : "");
+  }, "setMultiselectActiveValue");
+  const getMultiselectActiveValue = /* @__PURE__ */ __name((ctx) => {
+    const explicit = getMultiselectActiveSignal(ctx).get();
+    if (explicit) {
+      return explicit;
+    }
+    const selected = readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry));
+    return selected ?? ctx.order[0] ?? "";
+  }, "getMultiselectActiveValue");
   const getMenuNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
     "ArrowDown"
   ], [
     "ArrowUp"
   ]), "getMenuNavigationTarget");
+  const getMenuTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key) => getTypeaheadTarget(menuTypeaheadStates, ctx.open, ctx.order, menuTypeaheadLabels.get(ctx.open), current, key), "getMenuTypeaheadTarget");
   const getRadioNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
     "ArrowRight",
     "ArrowDown"
@@ -9259,13 +9990,12 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     "ArrowLeft",
     "ArrowUp"
   ]), "getRadioNavigationTarget");
-  const getSelectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
-    "ArrowDown",
-    "ArrowRight"
+  const getSelectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getClampedNavigationTarget(ctx.order, current, key, [
+    "ArrowDown"
   ], [
-    "ArrowUp",
-    "ArrowLeft"
+    "ArrowUp"
   ]), "getSelectNavigationTarget");
+  const getSelectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key) => getTypeaheadTarget(selectTypeaheadStates, ctx.value, ctx.order, selectTypeaheadLabels.get(ctx.value), current, key), "getSelectTypeaheadTarget");
   const getComboboxNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
     "ArrowDown",
     "ArrowRight"
@@ -9273,31 +10003,34 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     "ArrowUp",
     "ArrowLeft"
   ]), "getComboboxNavigationTarget");
-  const getMultiselectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
-    "ArrowDown",
-    "ArrowRight"
+  const getMultiselectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getClampedNavigationTarget(ctx.order, current, key, [
+    "ArrowDown"
   ], [
-    "ArrowUp",
-    "ArrowLeft"
+    "ArrowUp"
   ]), "getMultiselectNavigationTarget");
+  const getMultiselectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key) => getTypeaheadTarget(multiselectTypeaheadStates, ctx.open, ctx.order, multiselectTypeaheadLabels.get(ctx.open), current, key), "getMultiselectTypeaheadTarget");
   const focusMenuItem = /* @__PURE__ */ __name((documentLike, ctx, value) => focusElementById(documentLike, getMenuItemId(ctx, value)), "focusMenuItem");
   const focusRadioItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getRadioItemId(ctx, value), fallbackRoot), "focusRadioItem");
   const focusSelectItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getSelectItemId(ctx, value), fallbackRoot), "focusSelectItem");
   const focusComboboxItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getComboboxItemId(ctx, value), fallbackRoot), "focusComboboxItem");
   const focusMultiselectItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getMultiselectItemId(ctx, value), fallbackRoot), "focusMultiselectItem");
   const closeMenu = /* @__PURE__ */ __name((ctx) => {
+    setMenuActiveValue(ctx, "");
     ctx.open.set(false);
     restoreMenuFocus(ctx);
   }, "closeMenu");
   const closeSelect = /* @__PURE__ */ __name((ctx) => {
+    setSelectActiveValue(ctx, ctx.value.get());
     ctx.open.set(false);
     restoreSelectFocus(ctx);
   }, "closeSelect");
   const closeCombobox = /* @__PURE__ */ __name((ctx) => {
+    setComboboxActiveValue(ctx, ctx.value.get());
     ctx.open.set(false);
     restoreComboboxFocus(ctx);
   }, "closeCombobox");
   const closeMultiselect = /* @__PURE__ */ __name((ctx) => {
+    setMultiselectActiveValue(ctx, getMultiselectActiveValue(ctx));
     ctx.open.set(false);
     restoreMultiselectFocus(ctx);
   }, "closeMultiselect");
@@ -9471,11 +10204,26 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     registerSelectValue,
     registerComboboxValue,
     registerMultiselectValue,
+    getMenuActiveValue,
+    setMenuActiveValue,
     getMenuNavigationTarget,
+    getMenuTypeaheadTarget,
     getRadioNavigationTarget,
     getSelectNavigationTarget,
+    getSelectTypeaheadTarget,
     getComboboxNavigationTarget,
     getMultiselectNavigationTarget,
+    getMultiselectTypeaheadTarget,
+    getSelectActiveValue,
+    getSelectActiveDescendantId,
+    setSelectActiveValue,
+    acceptSelectActiveValue,
+    getComboboxActiveValue,
+    getComboboxActiveDescendantId,
+    setComboboxActiveValue,
+    acceptComboboxActiveValue,
+    getMultiselectActiveValue,
+    setMultiselectActiveValue,
     focusMenuItem,
     focusRadioItem,
     focusSelectItem,

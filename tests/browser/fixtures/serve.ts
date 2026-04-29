@@ -17,6 +17,7 @@ type SmokeServer = {
 
 const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
 const grammarPath = path.resolve(fixtureDir, '../../../examples/lumina.peg');
+const domRenderDir = path.resolve(fixtureDir, '../../../examples/dom-render');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 
@@ -42,6 +43,14 @@ const makeHeaders = (contentType: string): Record<string, string> => ({
   'Cross-Origin-Embedder-Policy': 'require-corp',
   'Cache-Control': 'no-store',
 });
+
+const domRenderContentType = (filePath: string): string => {
+  if (filePath.endsWith('.html')) return 'text/html; charset=utf-8';
+  if (filePath.endsWith('.js')) return 'text/javascript; charset=utf-8';
+  if (filePath.endsWith('.css')) return 'text/css; charset=utf-8';
+  if (filePath.endsWith('.json')) return 'application/json; charset=utf-8';
+  return 'text/plain; charset=utf-8';
+};
 
 const compileJsModule = (source: string): string => {
   const ast = parseProgram(source);
@@ -100,6 +109,20 @@ export async function startSmokeServer(): Promise<SmokeServer> {
       if (pathname === '/health') {
         res.writeHead(200, makeHeaders('application/json; charset=utf-8'));
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (pathname.startsWith('/dom-render/')) {
+        const relativePath = pathname.slice('/dom-render/'.length) || 'benchmark.html';
+        const normalizedPath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '');
+        const filePath = path.resolve(domRenderDir, normalizedPath);
+        if (!filePath.startsWith(domRenderDir) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+          res.writeHead(404, makeHeaders('text/plain; charset=utf-8'));
+          res.end('not found');
+          return;
+        }
+        res.writeHead(200, makeHeaders(domRenderContentType(filePath)));
+        res.end(fs.readFileSync(filePath));
         return;
       }
 

@@ -1,6 +1,7 @@
 import { findFirstFocusableDescendant, getDomAttribute, isElementHidden, readChildNodes } from './dom-accessibility.js';
 import {
   analyzeSequenceTransition,
+  findStableSequenceWindow,
   getTransitionAffectedRange,
   reorderChildren,
   type KeyedListTransition,
@@ -538,6 +539,9 @@ const hasKeyedChildren = (children: VNode[]): boolean => children.some((child) =
 const duplicateKeyError = (key: string | number): Error =>
   new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`);
 
+const areAllChildrenKeyed = (children: VNode[]): children is Array<VNode & { key: string | number }> =>
+  children.every((child) => hasVNodeKey(child));
+
 const analyzeKeyedChildTransition = (
   prevChildren: VNode[],
   nextChildren: VNode[]
@@ -792,6 +796,17 @@ const remapMovedIndex = (index: number, from: number, to: number): number => {
   if (index < to || index > from) return index;
   if (index === to) return from;
   return index - 1;
+};
+
+const getComplexOrderAffectedRange = (
+  previousOrder: Array<string | number>,
+  nextOrder: Array<string | number>
+): { start: number; end: number } | null => {
+  const window = findStableSequenceWindow(previousOrder, nextOrder);
+  if (!window) {
+    return null;
+  }
+  return { start: window.nextStart, end: window.nextEnd };
 };
 
 const canSkipDomPatch = (
@@ -1074,6 +1089,14 @@ const bindForListHost = (
     }
   };
 
+  const syncValuesForEntries = (items: unknown[], nextEntries: ForListEntry[]): void => {
+    for (let index = 0; index < items.length; index += 1) {
+      const entry = nextEntries[index];
+      if (!entry) continue;
+      syncEntryValue(entry, items[index]);
+    }
+  };
+
   const hasPureEntryValueReuse = (
     items: unknown[],
     nextEntries: ForListEntry[]
@@ -1109,15 +1132,56 @@ const bindForListHost = (
 
   const syncIndicesForRange = (
     nextEntries: ForListEntry[],
-    transition: KeyedListTransition
+    transition: KeyedListTransition,
+    previousOrder?: Array<string | number>,
+    nextOrder?: Array<string | number>
   ): void => {
-    const range = getTransitionAffectedRange(transition, nextEntries.length);
+    const range =
+      transition.kind === 'complex_reorder' && previousOrder && nextOrder
+        ? getComplexOrderAffectedRange(previousOrder, nextOrder)
+        : getTransitionAffectedRange(transition, nextEntries.length);
     if (!range) return;
     for (let index = range.start; index <= range.end; index += 1) {
       const entry = nextEntries[index];
       if (!entry) continue;
       syncEntryIndex(entry, index);
     }
+  };
+
+  const reorderEntriesForComplexWindow = (
+    currentEntries: ForListEntry[],
+    previousOrder: Array<string | number>,
+    nextOrder: Array<string | number>
+  ): ForListEntry[] | null => {
+    if (currentEntries.length !== nextOrder.length || previousOrder.length !== nextOrder.length) {
+      return null;
+    }
+
+    const window = findStableSequenceWindow(previousOrder, nextOrder);
+    if (!window) {
+      return currentEntries.slice();
+    }
+
+    const nextEntries = currentEntries.slice();
+    const windowEntries = new Map<string | number, ForListEntry>();
+    for (let index = window.currentStart; index <= window.currentEnd; index += 1) {
+      const entry = currentEntries[index];
+      const key = previousOrder[index];
+      if (!entry || key == null) {
+        return null;
+      }
+      windowEntries.set(key, entry);
+    }
+
+    for (let index = window.nextStart; index <= window.nextEnd; index += 1) {
+      const entry = windowEntries.get(nextOrder[index]);
+      if (!entry) {
+        return null;
+      }
+      nextEntries[index] = entry;
+    }
+
+    return nextEntries;
   };
 
   const buildNextEntries = (
@@ -1189,7 +1253,7 @@ const bindForListHost = (
         if (nextOrder && !hasPureEntryValueReuse(nextItems, nextEntries)) {
           syncValuesForOrder(nextItems, nextOrder);
         }
-        syncIndicesForRange(nextEntries, transition);
+        syncIndicesForRange(nextEntries, transition, state.order, nextOrder ?? state.order);
       });
 
       state.entries = nextEntries;
@@ -1213,11 +1277,37 @@ const bindForListHost = (
     let nextEntries: ForListEntry[] = [];
     let structureChanged = false;
     const resolvedNextOrder = nextOrder ?? buildKeyedOrder(nextItems, keyOf);
+    const reorderedEntries =
+      transition.kind === 'complex_reorder'
+        ? reorderEntriesForComplexWindow(state.entries, state.order, resolvedNextOrder)
+        : null;
+    if (reorderedEntries) {
+      runBatched(() => {
+        if (!hasPureEntryValueReuse(nextItems, reorderedEntries)) {
+          syncValuesForEntries(nextItems, reorderedEntries);
+        }
+        syncIndicesForRange(reorderedEntries, transition, state.order, resolvedNextOrder);
+      });
+
+      state.entries = reorderedEntries;
+      state.order = resolvedNextOrder;
+      reorderChildren(
+        host,
+        reorderedEntries.map((entry) => entry.domNode),
+        (child) => disposeDomNode(child as DomNodeLike, eventStore, portalStore, liveTextStore),
+        {
+          transition,
+          structureChanged: false,
+        }
+      );
+      return;
+    }
+
     runBatched(() => {
       const built = buildNextEntries(nextItems, resolvedNextOrder);
       nextEntries = built.nextEntries;
       structureChanged = built.structureChanged;
-      syncIndicesForRange(nextEntries, transition);
+      syncIndicesForRange(nextEntries, transition, state.order, resolvedNextOrder);
     });
 
     state.entries = nextEntries;
@@ -1345,6 +1435,32 @@ const patchDomChildrenPositionally = (
   }
 };
 
+const patchStableKeyedChildAt = (
+  currentDomChildren: DomNodeLike[],
+  prevChildren: VNode[],
+  nextChildren: VNode[],
+  index: number,
+  documentLike: DomDocumentLike,
+  eventStore: DomEventStore,
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore,
+  equalsValue: (left: unknown, right: unknown) => boolean
+): void => {
+  const domChild = currentDomChildren[index];
+  const prevChild = prevChildren[index];
+  const nextChild = nextChildren[index];
+  if (
+    !domChild
+    || !prevChild
+    || !nextChild
+    || canSkipStableKeyedChildPatch(prevChild, nextChild)
+    || canSkipDomPatch(prevChild, nextChild, equalsValue)
+  ) {
+    return;
+  }
+  patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+};
+
 const patchDomChildrenWithKeys = (
   element: DomElementLike,
   prevChildren: VNode[],
@@ -1463,6 +1579,111 @@ const patchDomChildrenWithKeys = (
           equalsValue
         );
       }
+      return;
+    }
+  }
+
+  if (keyedTransition?.kind === 'complex_reorder' && areAllChildrenKeyed(prevChildren) && areAllChildrenKeyed(nextChildren)) {
+    const currentDomChildren = readChildNodes(element) as DomNodeLike[];
+    const window = findStableSequenceWindow(prevChildren, nextChildren, (left, right) => left.key === right.key);
+    if (window) {
+      for (let index = 0; index < window.currentStart; index += 1) {
+        patchStableKeyedChildAt(
+          currentDomChildren,
+          prevChildren,
+          nextChildren,
+          index,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
+      }
+
+      const suffixLength = prevChildren.length - (window.currentEnd + 1);
+      for (let offset = 0; offset < suffixLength; offset += 1) {
+        const currentIndex = window.currentEnd + 1 + offset;
+        const nextIndex = window.nextEnd + 1 + offset;
+        const domChild = currentDomChildren[currentIndex];
+        const prevChild = prevChildren[currentIndex];
+        const nextChild = nextChildren[nextIndex];
+        if (
+          !domChild
+          || !prevChild
+          || !nextChild
+          || canSkipStableKeyedChildPatch(prevChild, nextChild)
+          || canSkipDomPatch(prevChild, nextChild, equalsValue)
+        ) {
+          continue;
+        }
+        patchDomNode(
+          domChild,
+          prevChild,
+          nextChild,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
+      }
+
+      const nextDomChildren = currentDomChildren.slice();
+      const prevKeyedWindow = new Map<string | number, { vnode: VNode; domNode: DomNodeLike }>();
+      for (let index = window.currentStart; index <= window.currentEnd; index += 1) {
+        const prevChild = prevChildren[index];
+        const domChild = currentDomChildren[index];
+        if (!domChild) continue;
+        prevKeyedWindow.set(prevChild.key, { vnode: prevChild, domNode: domChild });
+      }
+
+      let structureChanged = false;
+      for (let nextIndex = window.nextStart; nextIndex <= window.nextEnd; nextIndex += 1) {
+        const nextChild = nextChildren[nextIndex];
+        const prevEntry = prevKeyedWindow.get(nextChild.key);
+        if (!prevEntry) {
+          structureChanged = true;
+          nextDomChildren[nextIndex] = createDomNode(
+            nextChild,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
+          continue;
+        }
+        prevKeyedWindow.delete(nextChild.key);
+        nextDomChildren[nextIndex] =
+          canSkipStableKeyedChildPatch(prevEntry.vnode, nextChild) || canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue)
+            ? prevEntry.domNode
+            : patchDomNode(
+                prevEntry.domNode,
+                prevEntry.vnode,
+                nextChild,
+                documentLike,
+                eventStore,
+                portalStore,
+                liveTextStore,
+                equalsValue
+              );
+      }
+
+      for (const stale of prevKeyedWindow.values()) {
+        structureChanged = true;
+        disposeDomNode(stale.domNode, eventStore, portalStore, liveTextStore);
+      }
+
+      reorderChildren(
+        element,
+        nextDomChildren,
+        (child) => disposeDomNode(child as DomNodeLike, eventStore, portalStore, liveTextStore),
+        {
+          transition: keyedTransition,
+          structureChanged,
+        }
+      );
       return;
     }
   }

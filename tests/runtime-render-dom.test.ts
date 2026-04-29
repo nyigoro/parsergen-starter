@@ -879,6 +879,110 @@ describe('render DOM renderer', () => {
     root.unmount();
   });
 
+  test('forList complex middle keyed reorders preserve stable edges and patch stable-edge value changes', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'd', label: 'Delta' },
+      { id: 'e', label: 'Epsilon' },
+      { id: 'f', label: 'Zeta' },
+    ]);
+    const runs = { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 };
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', { 'data-row-id': render.memo(() => render.get(row).id) }, [
+              render.liveText(
+                render.memo(() => {
+                  const value = render.get(row);
+                  runs[value.id as 'a' | 'b' | 'c' | 'd' | 'e' | 'f'] += 1;
+                  return `${value.label}:${render.get(index)}`;
+                })
+              ),
+            ])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    const rowA = listHost.childNodes[0];
+    const rowB = listHost.childNodes[1];
+    const rowC = listHost.childNodes[2];
+    const rowD = listHost.childNodes[3];
+    const rowE = listHost.childNodes[4];
+    const rowF = listHost.childNodes[5];
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = listHost.appendChild.bind(listHost);
+    const removeChild = listHost.removeChild.bind(listHost);
+    const insertBefore = listHost.insertBefore.bind(listHost);
+    listHost.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof listHost.appendChild;
+    listHost.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof listHost.removeChild;
+    listHost.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof listHost.insertBefore;
+
+    runs.a = 0;
+    runs.b = 0;
+    runs.c = 0;
+    runs.d = 0;
+    runs.e = 0;
+    runs.f = 0;
+
+    render.set(rows, [
+      { id: 'a', label: 'Alpha*' },
+      { id: 'd', label: 'Delta' },
+      { id: 'b', label: 'Beta' },
+      { id: 'e', label: 'Epsilon' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'f', label: 'Zeta' },
+    ]);
+    await Promise.resolve();
+
+    expect(listHost.childNodes[0]).toBe(rowA);
+    expect(listHost.childNodes[1]).toBe(rowD);
+    expect(listHost.childNodes[2]).toBe(rowB);
+    expect(listHost.childNodes[3]).toBe(rowE);
+    expect(listHost.childNodes[4]).toBe(rowC);
+    expect(listHost.childNodes[5]).toBe(rowF);
+    expect((listHost.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('Alpha*:0');
+    expect((listHost.childNodes[1] as FakeElement).childNodes[0].textContent).toBe('Delta:1');
+    expect((listHost.childNodes[2] as FakeElement).childNodes[0].textContent).toBe('Beta:2');
+    expect((listHost.childNodes[3] as FakeElement).childNodes[0].textContent).toBe('Epsilon:3');
+    expect((listHost.childNodes[4] as FakeElement).childNodes[0].textContent).toBe('Gamma:4');
+    expect((listHost.childNodes[5] as FakeElement).childNodes[0].textContent).toBe('Zeta:5');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBe(2);
+    expect(runs.a).toBeGreaterThan(0);
+    expect(runs.b).toBeGreaterThan(0);
+    expect(runs.c).toBeGreaterThan(0);
+    expect(runs.d).toBeGreaterThan(0);
+    expect(runs.e).toBeGreaterThan(0);
+    expect(runs.f).toBe(0);
+
+    root.unmount();
+  });
+
   test('forList skips host child reordering when keyed order stays the same', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -932,6 +1036,76 @@ describe('render DOM renderer', () => {
     expect(appendCount).toBe(0);
     expect(removeCount).toBe(0);
     expect(insertCount).toBe(0);
+
+    root.unmount();
+  });
+
+  test('forList complex middle-window reorders only rerun unstable rows', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'd', label: 'Delta' },
+      { id: 'e', label: 'Epsilon' },
+      { id: 'f', label: 'Zeta' },
+    ]);
+    const runs = { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 };
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', { 'data-row-id': render.memo(() => render.get(row).id) }, [
+              render.liveText(
+                render.memo(() => {
+                  const value = render.get(row);
+                  runs[value.id as keyof typeof runs] += 1;
+                  return `${value.label}:${render.get(index)}`;
+                })
+              ),
+            ])
+        ),
+      ])
+    );
+
+    const ul = container.childNodes[0] as FakeElement;
+    const listHost = ul.childNodes[0] as FakeElement;
+    const rowA = listHost.childNodes[0];
+    const rowF = listHost.childNodes[5];
+
+    for (const key of Object.keys(runs) as Array<keyof typeof runs>) {
+      runs[key] = 0;
+    }
+
+    render.set(rows, [
+      { id: 'a', label: 'Alpha' },
+      { id: 'd', label: 'Delta' },
+      { id: 'b', label: 'Beta' },
+      { id: 'e', label: 'Epsilon' },
+      { id: 'c', label: 'Gamma' },
+      { id: 'f', label: 'Zeta' },
+    ]);
+    await Promise.resolve();
+
+    expect(listHost.childNodes[0]).toBe(rowA);
+    expect(listHost.childNodes[5]).toBe(rowF);
+    expect((listHost.childNodes[1] as FakeElement).childNodes[0].textContent).toBe('Delta:1');
+    expect((listHost.childNodes[2] as FakeElement).childNodes[0].textContent).toBe('Beta:2');
+    expect((listHost.childNodes[3] as FakeElement).childNodes[0].textContent).toBe('Epsilon:3');
+    expect((listHost.childNodes[4] as FakeElement).childNodes[0].textContent).toBe('Gamma:4');
+    expect(runs.a).toBe(0);
+    expect(runs.f).toBe(0);
+    expect(runs.b).toBeGreaterThan(0);
+    expect(runs.c).toBeGreaterThan(0);
+    expect(runs.d).toBeGreaterThan(0);
+    expect(runs.e).toBeGreaterThan(0);
 
     root.unmount();
   });
@@ -1366,6 +1540,74 @@ describe('render DOM renderer', () => {
     expect(appendCount).toBe(0);
     expect(removeCount).toBe(0);
     expect(insertCount).toBe(1);
+
+    render.dispose_reactive(mounted);
+  });
+
+  test('complex keyed middle-window reorder preserves stable edge identity without rebuilding', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const items = render.signal([
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+      { id: 'd', label: 'D' },
+      { id: 'e', label: 'E' },
+      { id: 'f', label: 'F' },
+    ]);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.element(
+        'ul',
+        null,
+        render.get(items).map((item) =>
+          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+        )
+      )
+    );
+
+    const host = container.childNodes[0] as FakeElement;
+    const rowA = host.childNodes[0];
+    const rowF = host.childNodes[5];
+    let appendCount = 0;
+    let removeCount = 0;
+    let insertCount = 0;
+    const appendChild = host.appendChild.bind(host);
+    const removeChild = host.removeChild.bind(host);
+    const insertBefore = host.insertBefore.bind(host);
+    host.appendChild = ((node: FakeNode) => {
+      appendCount += 1;
+      return appendChild(node);
+    }) as typeof host.appendChild;
+    host.removeChild = ((node: FakeNode) => {
+      removeCount += 1;
+      return removeChild(node);
+    }) as typeof host.removeChild;
+    host.insertBefore = ((node: FakeNode, referenceNode: FakeNode | null) => {
+      insertCount += 1;
+      return insertBefore(node, referenceNode);
+    }) as typeof host.insertBefore;
+
+    render.set(items, [
+      { id: 'a', label: 'A' },
+      { id: 'd', label: 'D' },
+      { id: 'b', label: 'B' },
+      { id: 'e', label: 'E' },
+      { id: 'c', label: 'C' },
+      { id: 'f', label: 'F' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(rowA);
+    expect(host.childNodes[5]).toBe(rowF);
+    expect((host.childNodes[1] as FakeElement).getAttribute('data-id')).toBe('d');
+    expect((host.childNodes[2] as FakeElement).getAttribute('data-id')).toBe('b');
+    expect((host.childNodes[3] as FakeElement).getAttribute('data-id')).toBe('e');
+    expect((host.childNodes[4] as FakeElement).getAttribute('data-id')).toBe('c');
+    expect(appendCount).toBe(0);
+    expect(removeCount).toBe(0);
+    expect(insertCount).toBeGreaterThan(0);
 
     render.dispose_reactive(mounted);
   });

@@ -59,6 +59,9 @@ describe('dom-render live assets', () => {
     expect(benchmarkSource).toContain('BENCHMARK_MANIFEST');
     expect(benchmarkSource).toContain('BENCHMARK_SCHEMA_VERSION');
     expect(benchmarkSource).toContain('BENCHMARK_SUITE_VERSION');
+    expect(benchmarkSource).toContain('SMOKE_MODE');
+    expect(benchmarkSource).toContain('LOCAL_ONLY');
+    expect(benchmarkSource).toContain('parsePositiveInt');
     expect(benchmarkSource).toContain('MEASURED_RUNS');
     expect(benchmarkSource).toContain('preloadBenchmarkModules');
     expect(benchmarkSource).toContain('Warmup');
@@ -70,6 +73,8 @@ describe('dom-render live assets', () => {
     expect(benchmarkSource).toContain('exportBenchmarkResults');
     expect(benchmarkSource).toContain('createBenchRowDom');
     expect(benchmarkSource).toContain('renderReactBenchRow');
+    expect(benchmarkSource).toContain('historyMeta');
+    expect(benchmarkSource).toContain('isCompatibleHistoryEntry');
     expect(benchmarkSource).toContain('bench-row');
     expect(benchmarkSource).toContain('window.__luminaBenchmarkResults');
     expect(benchmarkSource).toContain('window.__luminaBenchmarkManifest');

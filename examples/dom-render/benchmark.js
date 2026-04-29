@@ -5,22 +5,39 @@ import {
   compiledReorder,
 } from './benchmark-compiled.generated.js?v=2026-04-29-benchmark-quality-v3';
 
-const LIST_SIZE = 1000;
-const WHOLE_LIST_ITERATIONS = 300;
-const INDEX_LIST_ITERATIONS = 300;
-const FOR_LIST_ITERATIONS = 300;
-const REORDER_ITERATIONS = 300;
-const COMPLEX_REORDER_ITERATIONS = 150;
-const FINE_GRAINED_ITERATIONS = 300;
-const MOUNT_ITERATIONS = 40;
-const WARMUP_RUNS = 1;
-const MEASURED_RUNS = 3;
-const BENCHMARK_HISTORY_KEY = 'lumina.dom.benchmark.history.v2';
+const benchmarkQuery =
+  typeof globalThis.location?.search === 'string' ? new URLSearchParams(globalThis.location.search) : new URLSearchParams();
+
+const parsePositiveInt = (rawValue, fallback) => {
+  const parsed = Number.parseInt(String(rawValue ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const readFlag = (name) => benchmarkQuery.get(name) === '1';
+
+const SMOKE_MODE = readFlag('smoke');
+const LOCAL_ONLY = SMOKE_MODE || readFlag('localOnly');
+const LIST_SIZE = parsePositiveInt(benchmarkQuery.get('listSize'), SMOKE_MODE ? 64 : 1000);
+const WHOLE_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('wholeListIterations'), SMOKE_MODE ? 12 : 300);
+const INDEX_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('indexListIterations'), SMOKE_MODE ? 12 : 300);
+const FOR_LIST_ITERATIONS = parsePositiveInt(benchmarkQuery.get('forListIterations'), SMOKE_MODE ? 12 : 300);
+const REORDER_ITERATIONS = parsePositiveInt(benchmarkQuery.get('reorderIterations'), SMOKE_MODE ? 12 : 300);
+const COMPLEX_REORDER_ITERATIONS = parsePositiveInt(
+  benchmarkQuery.get('complexReorderIterations'),
+  SMOKE_MODE ? 8 : 150
+);
+const FINE_GRAINED_ITERATIONS = parsePositiveInt(benchmarkQuery.get('fineGrainedIterations'), SMOKE_MODE ? 12 : 300);
+const MOUNT_ITERATIONS = parsePositiveInt(benchmarkQuery.get('mountIterations'), SMOKE_MODE ? 6 : 40);
+const WARMUP_RUNS = parsePositiveInt(benchmarkQuery.get('warmupRuns'), SMOKE_MODE ? 1 : 1);
+const MEASURED_RUNS = parsePositiveInt(benchmarkQuery.get('measuredRuns'), SMOKE_MODE ? 2 : 3);
+const BENCHMARK_HISTORY_KEY = 'lumina.dom.benchmark.history.v3';
 const BENCHMARK_SCHEMA_VERSION = 3;
 const BENCHMARK_SUITE_VERSION = '2026-04-29-benchmark-quality-v3';
 const BENCHMARK_MANIFEST = Object.freeze({
   version: BENCHMARK_SCHEMA_VERSION,
   suiteVersion: BENCHMARK_SUITE_VERSION,
+  smokeMode: SMOKE_MODE,
+  localOnly: LOCAL_ONLY,
   warmupRuns: WARMUP_RUNS,
   measuredRuns: MEASURED_RUNS,
   listSize: LIST_SIZE,
@@ -70,8 +87,17 @@ const setStatus = (message) => {
   statusNode.textContent = message;
 };
 
-const sameManifest = (entry) => {
+const captureHostSnapshot = (host) => (SMOKE_MODE ? host.innerHTML : null);
+const restoreHostSnapshot = (host, snapshot) => {
+  if (typeof snapshot === 'string') {
+    host.innerHTML = snapshot;
+  }
+};
+
+const isCompatibleHistoryEntry = (entry) => {
   if (!entry || typeof entry !== 'object') return false;
+  if (entry.schemaVersion !== BENCHMARK_SCHEMA_VERSION) return false;
+  if (entry.suiteVersion !== BENCHMARK_SUITE_VERSION) return false;
   return JSON.stringify(entry.manifest ?? null) === JSON.stringify(BENCHMARK_MANIFEST);
 };
 
@@ -118,6 +144,10 @@ const toExportPayload = (result, history) => ({
   environment: getEnvironmentSnapshot(),
   latest: result,
   history,
+  historyMeta: {
+    storageKey: BENCHMARK_HISTORY_KEY,
+    compatibleRuns: history.length,
+  },
 });
 
 const loadBenchmarkHistory = () => {
@@ -126,7 +156,7 @@ const loadBenchmarkHistory = () => {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(sameManifest);
+    return parsed.filter(isCompatibleHistoryEntry);
   } catch {
     return [];
   }
@@ -139,7 +169,12 @@ const updateHistoryCount = () => {
 
 const saveBenchmarkRun = (result) => {
   const history = loadBenchmarkHistory();
-  history.push({ ...result, manifest: BENCHMARK_MANIFEST });
+  history.push({
+    ...result,
+    schemaVersion: BENCHMARK_SCHEMA_VERSION,
+    suiteVersion: BENCHMARK_SUITE_VERSION,
+    manifest: BENCHMARK_MANIFEST,
+  });
   while (history.length > 24) {
     history.shift();
   }
@@ -246,6 +281,9 @@ const loadSolidModules = async () => {
 };
 
 const preloadBenchmarkModules = async () => {
+  if (LOCAL_ONLY) {
+    return;
+  }
   await Promise.all([loadReactModules(), loadSolidModules()]);
 };
 
@@ -557,7 +595,9 @@ const benchmarkLuminaIndexList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -575,7 +615,9 @@ const benchmarkLuminaCompiledIndexList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -603,7 +645,9 @@ const benchmarkLuminaForList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -621,7 +665,9 @@ const benchmarkLuminaCompiledForList = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -652,7 +698,9 @@ const benchmarkLuminaKeyedListReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -753,7 +801,9 @@ const benchmarkLuminaCompiledReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -847,7 +897,9 @@ const benchmarkLuminaCompiledComplexReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -878,7 +930,9 @@ const benchmarkLuminaKeyedListComplexReorder = async () => {
     await nextTick();
   }
   const total = performance.now() - start;
+  const snapshot = captureHostSnapshot(host);
   root.unmount();
+  restoreHostSnapshot(host, snapshot);
   return total;
 };
 
@@ -1055,6 +1109,82 @@ const run = async () => {
     setStatus('Preloading benchmark dependencies');
     await preloadBenchmarkModules();
 
+    const wholeListSuites = [
+      ['Lumina generic rerender', benchmarkLuminaWholeList],
+      ['Vanilla DOM', benchmarkVanillaWholeList],
+      ...(
+        LOCAL_ONLY
+          ? []
+          : [
+              ['React 19', benchmarkReactWholeList],
+              ['Solid 1', benchmarkSolidWholeList],
+            ]
+      ),
+    ];
+
+    const mountSuites = [
+      ['Lumina render DOM', benchmarkLuminaMount],
+      ['Vanilla DOM', benchmarkVanillaMount],
+      ...(
+        LOCAL_ONLY
+          ? []
+          : [
+              ['React 19', benchmarkReactMount],
+              ['Solid 1', benchmarkSolidMount],
+            ]
+      ),
+    ];
+
+    const indexSuites = [
+      ['Lumina indexList', benchmarkLuminaIndexList],
+      ['Lumina indexList (compiled)', benchmarkLuminaCompiledIndexList],
+      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-index-list-vanilla', INDEX_LIST_ITERATIONS)],
+      ...(
+        LOCAL_ONLY
+          ? []
+          : [
+              ['React 19 memo rows', benchmarkReactMemoList],
+              ['Solid 1 Index', benchmarkSolidIndexList],
+            ]
+      ),
+    ];
+
+    const forListSuites = [
+      ['Lumina forList', benchmarkLuminaForList],
+      ['Lumina forList (compiled)', benchmarkLuminaCompiledForList],
+      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-for-list-vanilla', FOR_LIST_ITERATIONS)],
+      ...(
+        LOCAL_ONLY
+          ? []
+          : [
+              ['React 19 memo rows', benchmarkReactMemoKeyedList],
+              ['Solid 1 Index', benchmarkSolidKeyedIndexList],
+            ]
+      ),
+    ];
+
+    const reorderSuites = [
+      ['Lumina generic keyed patch', benchmarkLuminaReorder],
+      ['Lumina keyed list', benchmarkLuminaKeyedListReorder],
+      ['Lumina keyed list (compiled)', benchmarkLuminaCompiledReorder],
+      ['Vanilla DOM', benchmarkVanillaReorder],
+      ...(LOCAL_ONLY ? [] : [['React 19', benchmarkReactReorder]]),
+    ];
+
+    const complexReorderSuites = [
+      ['Lumina generic keyed patch', benchmarkLuminaComplexReorder],
+      ['Lumina keyed list', benchmarkLuminaKeyedListComplexReorder],
+      ['Lumina keyed list (compiled)', benchmarkLuminaCompiledComplexReorder],
+      ['Vanilla DOM', benchmarkVanillaComplexReorder],
+      ...(LOCAL_ONLY ? [] : [['React 19', benchmarkReactComplexReorder]]),
+    ];
+
+    const fineGrainedSuites = [
+      ['Lumina signals + DOM', benchmarkLuminaFineGrained],
+      ['Vanilla DOM', benchmarkVanillaFineGrained],
+      ...(LOCAL_ONLY ? [] : [['Solid signals', benchmarkSolidFineGrained]]),
+    ];
+
     const results = {
       runId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       recordedAt: new Date().toISOString(),
@@ -1065,57 +1195,23 @@ const run = async () => {
       scenarios: {},
     };
 
-    results.scenarios.wholeList = await runScenario('results-whole-list', 'whole-list patch', [
-      ['Lumina generic rerender', benchmarkLuminaWholeList],
-      ['Vanilla DOM', benchmarkVanillaWholeList],
-      ['React 19', benchmarkReactWholeList],
-      ['Solid 1', benchmarkSolidWholeList],
-    ], WHOLE_LIST_ITERATIONS);
-
-    results.scenarios.mount = await runScenario('results-mount', 'initial mount', [
-      ['Lumina render DOM', benchmarkLuminaMount],
-      ['Vanilla DOM', benchmarkVanillaMount],
-      ['React 19', benchmarkReactMount],
-      ['Solid 1', benchmarkSolidMount],
-    ], MOUNT_ITERATIONS);
-
-    results.scenarios.indexList = await runScenario('results-index-list', 'indexed list patch', [
-      ['Lumina indexList', benchmarkLuminaIndexList],
-      ['Lumina indexList (compiled)', benchmarkLuminaCompiledIndexList],
-      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-index-list-vanilla', INDEX_LIST_ITERATIONS)],
-      ['React 19 memo rows', benchmarkReactMemoList],
-      ['Solid 1 Index', benchmarkSolidIndexList],
-    ], INDEX_LIST_ITERATIONS);
-
-    results.scenarios.forList = await runScenario('results-for-list', 'stable signal list patch', [
-      ['Lumina forList', benchmarkLuminaForList],
-      ['Lumina forList (compiled)', benchmarkLuminaCompiledForList],
-      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-for-list-vanilla', FOR_LIST_ITERATIONS)],
-      ['React 19 memo rows', benchmarkReactMemoKeyedList],
-      ['Solid 1 Index', benchmarkSolidKeyedIndexList],
-    ], FOR_LIST_ITERATIONS);
-
-    results.scenarios.reorder = await runScenario('results-reorder', 'keyed reorder', [
-      ['Lumina generic keyed patch', benchmarkLuminaReorder],
-      ['Lumina keyed list', benchmarkLuminaKeyedListReorder],
-      ['Lumina keyed list (compiled)', benchmarkLuminaCompiledReorder],
-      ['Vanilla DOM', benchmarkVanillaReorder],
-      ['React 19', benchmarkReactReorder],
-    ], REORDER_ITERATIONS);
-
-    results.scenarios.complexReorder = await runScenario('results-complex-reorder', 'complex keyed reorder window', [
-      ['Lumina generic keyed patch', benchmarkLuminaComplexReorder],
-      ['Lumina keyed list', benchmarkLuminaKeyedListComplexReorder],
-      ['Lumina keyed list (compiled)', benchmarkLuminaCompiledComplexReorder],
-      ['Vanilla DOM', benchmarkVanillaComplexReorder],
-      ['React 19', benchmarkReactComplexReorder],
-    ], COMPLEX_REORDER_ITERATIONS);
-
-    results.scenarios.fineGrained = await runScenario('results-fine-grained', 'fine-grained row update', [
-      ['Lumina signals + DOM', benchmarkLuminaFineGrained],
-      ['Vanilla DOM', benchmarkVanillaFineGrained],
-      ['Solid signals', benchmarkSolidFineGrained],
-    ], FINE_GRAINED_ITERATIONS);
+    results.scenarios.wholeList = await runScenario('results-whole-list', 'whole-list patch', wholeListSuites, WHOLE_LIST_ITERATIONS);
+    results.scenarios.mount = await runScenario('results-mount', 'initial mount', mountSuites, MOUNT_ITERATIONS);
+    results.scenarios.indexList = await runScenario('results-index-list', 'indexed list patch', indexSuites, INDEX_LIST_ITERATIONS);
+    results.scenarios.forList = await runScenario('results-for-list', 'stable signal list patch', forListSuites, FOR_LIST_ITERATIONS);
+    results.scenarios.reorder = await runScenario('results-reorder', 'keyed reorder', reorderSuites, REORDER_ITERATIONS);
+    results.scenarios.complexReorder = await runScenario(
+      'results-complex-reorder',
+      'complex keyed reorder window',
+      complexReorderSuites,
+      COMPLEX_REORDER_ITERATIONS
+    );
+    results.scenarios.fineGrained = await runScenario(
+      'results-fine-grained',
+      'fine-grained row update',
+      fineGrainedSuites,
+      FINE_GRAINED_ITERATIONS
+    );
 
     saveBenchmarkRun(results);
     setStatus('Done');

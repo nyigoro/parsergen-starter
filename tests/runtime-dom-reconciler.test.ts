@@ -1,6 +1,7 @@
 import { TestingDocument, TestingElement } from '../src/testing-dom.js';
 import {
   analyzeSequenceTransition,
+  findStableSequenceWindow,
   getTransitionAffectedRange,
   reorderChildren,
   type KeyedListTransition,
@@ -36,6 +37,8 @@ describe('runtime dom reconciler helpers', () => {
 
     expect(analyzeSequenceTransition([1, 2, 3, 4], [3, 1, 4, 2], (left, right) => left === right)).toEqual({
       kind: 'complex_reorder',
+      start: 0,
+      end: 3,
     });
   });
 
@@ -68,11 +71,28 @@ describe('runtime dom reconciler helpers', () => {
   test('reports the affected range for move-focused transitions', () => {
     const adjacent: KeyedListTransition = { kind: 'adjacent_swap', left: 2, right: 3 };
     const singleMove: KeyedListTransition = { kind: 'single_move', from: 1, to: 4 };
+    const complex = analyzeSequenceTransition(
+      ['a', 'b', 'c', 'd', 'e', 'f'],
+      ['a', 'd', 'b', 'e', 'c', 'f'],
+      (left, right) => left === right
+    );
 
     expect(getTransitionAffectedRange({ kind: 'same_order' }, 5)).toBeNull();
     expect(getTransitionAffectedRange(adjacent, 5)).toEqual({ start: 2, end: 3 });
     expect(getTransitionAffectedRange(singleMove, 5)).toEqual({ start: 1, end: 4 });
+    expect(complex).toEqual({ kind: 'complex_reorder', start: 1, end: 4 });
+    expect(getTransitionAffectedRange(complex, 6)).toEqual({ start: 1, end: 4 });
     expect(getTransitionAffectedRange({ kind: 'complex_reorder' }, 3)).toEqual({ start: 0, end: 2 });
+  });
+
+  test('finds the unstable middle window for complex reorders with stable edges', () => {
+    expect(findStableSequenceWindow(['a', 'b', 'c', 'd', 'e', 'f'], ['a', 'd', 'b', 'e', 'c', 'f'])).toEqual({
+      currentStart: 1,
+      currentEnd: 4,
+      nextStart: 1,
+      nextEnd: 4,
+    });
+    expect(findStableSequenceWindow(['a', 'b', 'c'], ['a', 'b', 'c'])).toBeNull();
   });
 
   test('reorders adjacent siblings without disposing retained nodes', () => {
@@ -152,8 +172,14 @@ describe('runtime dom reconciler helpers', () => {
     container.appendChild(e);
     container.appendChild(f);
 
+    const transition = analyzeSequenceTransition(
+      [a, b, c, d, e, f],
+      [a, d, b, e, c, f],
+      (left, right) => left === right
+    );
+
     reorderChildren(container, [a, d, b, e, c, f], () => undefined, {
-      transition: { kind: 'complex_reorder' },
+      transition,
       structureChanged: false,
     });
 

@@ -4,7 +4,7 @@ export type KeyedListTransition =
   | { kind: 'same_order' }
   | { kind: 'adjacent_swap'; left: number; right: number }
   | { kind: 'single_move'; from: number; to: number }
-  | { kind: 'complex_reorder' };
+  | { kind: 'complex_reorder'; start?: number; end?: number };
 
 export interface ReorderableDomNodeLike extends AccessibleDomNodeLike {
   textContent: string | null;
@@ -25,9 +25,10 @@ const setChildren = <TNode extends ReorderableDomNodeLike>(container: TNode, chi
   }
 };
 
-const findStableWindow = <TNode>(
+export const findStableSequenceWindow = <TNode>(
   currentChildren: TNode[],
-  nextChildren: TNode[]
+  nextChildren: TNode[],
+  equals: (left: TNode, right: TNode) => boolean = (left, right) => left === right
 ): { currentStart: number; currentEnd: number; nextStart: number; nextEnd: number } | null => {
   let currentStart = 0;
   let nextStart = 0;
@@ -35,7 +36,7 @@ const findStableWindow = <TNode>(
   while (
     currentStart < currentChildren.length
     && nextStart < nextChildren.length
-    && currentChildren[currentStart] === nextChildren[nextStart]
+    && equals(currentChildren[currentStart] as TNode, nextChildren[nextStart] as TNode)
   ) {
     currentStart += 1;
     nextStart += 1;
@@ -46,7 +47,7 @@ const findStableWindow = <TNode>(
   while (
     currentEnd >= currentStart
     && nextEnd >= nextStart
-    && currentChildren[currentEnd] === nextChildren[nextEnd]
+    && equals(currentChildren[currentEnd] as TNode, nextChildren[nextEnd] as TNode)
   ) {
     currentEnd -= 1;
     nextEnd -= 1;
@@ -74,6 +75,9 @@ export const getTransitionAffectedRange = (
         end: Math.max(transition.from, transition.to),
       };
     case 'complex_reorder':
+      if (typeof transition.start === 'number' && typeof transition.end === 'number') {
+        return { start: transition.start, end: transition.end };
+      }
       return length > 0 ? { start: 0, end: length - 1 } : null;
   }
 };
@@ -185,7 +189,7 @@ export const analyzeSequenceTransition = <T>(
     return { kind: 'single_move', from: singleMove.from, to: singleMove.to };
   }
 
-  return { kind: 'complex_reorder' };
+  return { kind: 'complex_reorder', start: firstMismatch, end: lastMismatch };
 };
 
 export const analyzeDomChildTransition = <TNode>(
@@ -234,6 +238,31 @@ const longestIncreasingSubsequenceIndices = (values: number[]): number[] => {
   return result;
 };
 
+const resolveComplexTransitionWindow = (
+  transition: KeyedListTransition,
+  currentLength: number,
+  nextLength: number
+): { currentStart: number; currentEnd: number; nextStart: number; nextEnd: number } | null => {
+  if (
+    transition.kind !== 'complex_reorder'
+    || typeof transition.start !== 'number'
+    || typeof transition.end !== 'number'
+    || currentLength !== nextLength
+    || transition.start < 0
+    || transition.end < transition.start
+    || transition.end >= currentLength
+  ) {
+    return null;
+  }
+
+  return {
+    currentStart: transition.start,
+    currentEnd: transition.end,
+    nextStart: transition.start,
+    nextEnd: transition.end,
+  };
+};
+
 export const reorderChildren = <TNode extends ReorderableDomNodeLike>(
   container: TNode,
   children: TNode[],
@@ -278,7 +307,9 @@ export const reorderChildren = <TNode extends ReorderableDomNodeLike>(
     return;
   }
 
-  const window = findStableWindow(currentChildren, children);
+  const window =
+    resolveComplexTransitionWindow(transition, currentChildren.length, children.length)
+    ?? findStableSequenceWindow(currentChildren, children);
   if (!window) {
     return;
   }
