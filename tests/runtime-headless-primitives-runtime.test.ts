@@ -7,7 +7,7 @@ type ContextToken = object;
 const createPrimitiveRuntime = () => {
   const contexts = new Map<ContextToken, unknown>();
   const frameManager = {
-    withContext: <T,>(context: ContextToken, value: T, renderChildren: () => unknown): unknown => {
+    withContext: <T>(context: ContextToken, value: T, renderChildren: () => unknown): unknown => {
       const had = contexts.has(context);
       const previous = contexts.get(context);
       contexts.set(context, value);
@@ -21,7 +21,7 @@ const createPrimitiveRuntime = () => {
         }
       }
     },
-    useContext: <T,>(context: ContextToken): T => {
+    useContext: <T>(context: ContextToken): T => {
       const value = contexts.get(context);
       if (value === undefined) {
         throw new Error('missing context');
@@ -99,7 +99,9 @@ describe('runtime headless primitives', () => {
         height: 60,
       }),
     };
-    const popoverTrigger = runtime.popover_root(popoverOpen, () => runtime.popover_trigger(null, []));
+    const popoverTrigger = runtime.popover_root(popoverOpen, () =>
+      runtime.popover_trigger(null, [])
+    );
     (popoverTrigger.props?.onClick as ((event: Event) => void) | undefined)?.({
       currentTarget: popoverTarget,
     } as unknown as Event);
@@ -185,14 +187,49 @@ describe('runtime headless primitives', () => {
         preventDefault: jest.fn(),
       } as unknown as KeyboardEvent);
       tree = renderMenuTree();
-      expect(((tree.children ?? [])[2])?.props?.autoFocus).toBe(true);
+      expect((tree.children ?? [])[2]?.props?.autoFocus).toBe(true);
 
-      const closeEvent = { key: 'Tab' } as unknown as KeyboardEvent;
-      expect((secondItem?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.(closeEvent)).toBeUndefined();
+      const preventTab = jest.fn();
+      const closeEvent = { key: 'Tab', preventDefault: preventTab } as unknown as KeyboardEvent;
+      expect(
+        (secondItem?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.(
+          closeEvent
+        )
+      ).toBeUndefined();
+      expect(preventTab).not.toHaveBeenCalled();
       expect(menuOpenByKey.get()).toBe(false);
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test('menu focus updates the active item before typeahead runs', () => {
+    const runtime = createPrimitiveRuntime();
+    const open = new Signal(true);
+    const renderTree = () =>
+      runtime.menu_root(open, () => [
+        runtime.menu_item('alpha', null, ['Alpha']),
+        runtime.menu_item('rename', null, ['Rename']),
+        runtime.menu_item('delete', null, ['Delete']),
+      ]);
+
+    let tree = renderTree();
+    let rename = (tree.children ?? [])[1];
+    (rename?.props?.onFocus as (() => void) | undefined)?.();
+
+    tree = renderTree();
+    rename = (tree.children ?? [])[1];
+    expect(rename?.props?.tabIndex).toBe(0);
+
+    (rename?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'd',
+      preventDefault: jest.fn(),
+      currentTarget: { focus: jest.fn() },
+      target: { focus: jest.fn() },
+    } as unknown as KeyboardEvent);
+
+    tree = renderTree();
+    expect((tree.children ?? [])[2]?.props?.tabIndex).toBe(0);
   });
 
   test('select, combobox, and multiselect primitives preserve selection behavior', () => {
@@ -307,12 +344,16 @@ describe('runtime headless primitives', () => {
       currentTarget: { focus: jest.fn() },
       target: { focus: jest.fn() },
     } as unknown as KeyboardEvent);
-    const multiselectAfterTypeahead = runtime.multiselect_root(multiselectOpen, multiselectValues, () => [
-      runtime.multiselect_trigger(null, []),
-      runtime.multiselect_item('alpha', null, () => ['Amber']),
-      runtime.multiselect_item('beta', null, () => ['Blue']),
-      runtime.multiselect_item('gamma', null, () => ['Green']),
-    ]);
+    const multiselectAfterTypeahead = runtime.multiselect_root(
+      multiselectOpen,
+      multiselectValues,
+      () => [
+        runtime.multiselect_trigger(null, []),
+        runtime.multiselect_item('alpha', null, () => ['Amber']),
+        runtime.multiselect_item('beta', null, () => ['Blue']),
+        runtime.multiselect_item('gamma', null, () => ['Green']),
+      ]
+    );
     const multiselectGamma = (multiselectAfterTypeahead.children ?? [])[3];
     expect(multiselectGamma?.props?.tabIndex).toBe(0);
     expect(multiselectGamma?.props?.['data-active']).toBe('true');
@@ -340,7 +381,9 @@ describe('runtime headless primitives', () => {
     let root = renderTree();
     let input = (root.children ?? [])[3];
     expect(input?.props?.['aria-activedescendant']).toBeDefined();
-    expect(input?.props?.['aria-activedescendant']).toBe(String(input.props?.id).replace('-input', '-item-alpha'));
+    expect(input?.props?.['aria-activedescendant']).toBe(
+      String(input.props?.id).replace('-input', '-item-alpha')
+    );
 
     (input?.props?.onFocus as ((event?: Event) => unknown) | undefined)?.({
       currentTarget: inputTarget,
@@ -355,7 +398,9 @@ describe('runtime headless primitives', () => {
 
     root = renderTree();
     input = (root.children ?? [])[3];
-    expect(input?.props?.['aria-activedescendant']).toBe(String(input.props?.id).replace('-input', '-item-beta'));
+    expect(input?.props?.['aria-activedescendant']).toBe(
+      String(input.props?.id).replace('-input', '-item-beta')
+    );
 
     const activeItem = (root.children ?? [])[1];
     expect(activeItem?.props?.['aria-selected']).toBe('true');
@@ -374,6 +419,122 @@ describe('runtime headless primitives', () => {
     expect(inputTarget.focus).toHaveBeenCalled();
   });
 
+  test('select trigger opens on printable keys and keeps vertical navigation clamped', () => {
+    const runtime = createPrimitiveRuntime();
+    const open = new Signal(false);
+    const value = new Signal('email');
+    const triggerTarget = { focus: jest.fn() };
+    const renderTree = () =>
+      runtime.select_root(open, value, () => [
+        runtime.select_item('email', null, () => ['Email']),
+        runtime.select_item('sms', null, () => ['SMS']),
+        runtime.select_item('push', null, () => ['Push']),
+        runtime.select_trigger(null, []),
+      ]);
+
+    let tree = renderTree();
+    let trigger = (tree.children ?? [])[3];
+    const preventTypeahead = jest.fn();
+    (trigger?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'p',
+      preventDefault: preventTypeahead,
+      currentTarget: triggerTarget,
+      target: triggerTarget,
+    } as unknown as KeyboardEvent);
+
+    expect(preventTypeahead).toHaveBeenCalledTimes(1);
+    expect(open.get()).toBe(true);
+
+    tree = renderTree();
+    trigger = (tree.children ?? [])[3];
+    expect(trigger?.props?.['aria-activedescendant']).toBe('lumina-select-1-item-push');
+    expect(value.get()).toBe('email');
+
+    const preventDown = jest.fn();
+    (trigger?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'ArrowDown',
+      preventDefault: preventDown,
+      currentTarget: triggerTarget,
+      target: triggerTarget,
+    } as unknown as KeyboardEvent);
+
+    expect(preventDown).toHaveBeenCalledTimes(1);
+    tree = renderTree();
+    trigger = (tree.children ?? [])[3];
+    expect(trigger?.props?.['aria-activedescendant']).toBe('lumina-select-1-item-push');
+    expect(value.get()).toBe('email');
+  });
+
+  test('multiselect trigger opens on keyboard and clamps active-option movement', () => {
+    const runtime = createPrimitiveRuntime();
+    const open = new Signal(false);
+    const values = new Signal<string[]>(['sms']);
+    const triggerTarget = { focus: jest.fn() };
+    const renderTree = () =>
+      runtime.multiselect_root(open, values, () => [
+        runtime.multiselect_trigger(null, []),
+        runtime.multiselect_item('email', null, () => ['Email']),
+        runtime.multiselect_item('sms', null, () => ['SMS']),
+        runtime.multiselect_item('push', null, () => ['Push']),
+      ]);
+
+    let tree = renderTree();
+    let trigger = (tree.children ?? [])[0];
+    const preventTypeahead = jest.fn();
+    (trigger?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'p',
+      preventDefault: preventTypeahead,
+      currentTarget: triggerTarget,
+      target: triggerTarget,
+    } as unknown as KeyboardEvent);
+
+    expect(preventTypeahead).toHaveBeenCalledTimes(1);
+    expect(open.get()).toBe(true);
+
+    tree = renderTree();
+    let email = (tree.children ?? [])[1];
+    let push = (tree.children ?? [])[3];
+    expect(push?.props?.tabIndex).toBe(0);
+    expect(push?.props?.['data-active']).toBe('true');
+
+    const preventDown = jest.fn();
+    (push?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'ArrowDown',
+      preventDefault: preventDown,
+      currentTarget: { focus: jest.fn() },
+      target: { focus: jest.fn() },
+    } as unknown as KeyboardEvent);
+
+    expect(preventDown).toHaveBeenCalledTimes(1);
+    tree = renderTree();
+    push = (tree.children ?? [])[3];
+    expect(push?.props?.tabIndex).toBe(0);
+
+    const preventHome = jest.fn();
+    (push?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'Home',
+      preventDefault: preventHome,
+      currentTarget: { focus: jest.fn() },
+      target: { focus: jest.fn() },
+    } as unknown as KeyboardEvent);
+
+    expect(preventHome).toHaveBeenCalledTimes(1);
+    tree = renderTree();
+    email = (tree.children ?? [])[1];
+    expect(email?.props?.tabIndex).toBe(0);
+
+    const preventSpace = jest.fn();
+    (email?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: ' ',
+      preventDefault: preventSpace,
+      currentTarget: { focus: jest.fn() },
+      target: { focus: jest.fn() },
+    } as unknown as KeyboardEvent);
+
+    expect(preventSpace).toHaveBeenCalledTimes(1);
+    expect(values.get()).toEqual(['sms', 'email']);
+  });
+
   test('checkbox and radio primitives preserve toggle behavior', () => {
     const runtime = createPrimitiveRuntime();
 
@@ -382,12 +543,16 @@ describe('runtime headless primitives', () => {
     (checkbox.props?.onClick as (() => void) | undefined)?.();
     expect(checked.get()).toBe(true);
 
-    const indicator = runtime.checkbox_root(checked, null, () => runtime.checkbox_indicator(null, ['yes']));
+    const indicator = runtime.checkbox_root(checked, null, () =>
+      runtime.checkbox_indicator(null, ['yes'])
+    );
     const indicatorNode = (indicator.children ?? [])[0];
     expect(indicatorNode?.props?.hidden).toBe(false);
 
     const choice = new Signal('overview');
-    const radioGroup = runtime.radio_group(choice, null, () => runtime.radio_item('activity', null, () => ['Activity']));
+    const radioGroup = runtime.radio_group(choice, null, () =>
+      runtime.radio_item('activity', null, () => ['Activity'])
+    );
     const radio = (radioGroup.children ?? [])[0];
     (radio?.props?.onClick as (() => void) | undefined)?.();
     expect(choice.get()).toBe('activity');

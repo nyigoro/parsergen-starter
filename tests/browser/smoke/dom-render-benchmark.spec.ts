@@ -1,7 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { startSmokeServer } from '../fixtures/serve';
 
 const runSmoke = process.env.LUMINA_BROWSER_SMOKE === '1';
+const benchmarkExportPath = process.env.LUMINA_DOM_RENDER_BENCHMARK_EXPORT_PATH;
 const suiteVersion = '2026-04-29-benchmark-quality-v3';
 const historyKey = 'lumina.dom.benchmark.history.v3';
 const smokeListSize = 32;
@@ -250,7 +253,7 @@ const expectBenchHostParity = (actual: BenchHostShape, baseline: BenchHostShape,
 test.describe('DOM render benchmark contract', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
 
-  test('exports versioned local-only benchmark JSON and keeps specialized host DOM parity', async ({ page }) => {
+  test('exports versioned local-only benchmark JSON and keeps specialized host DOM parity', async ({ page }, testInfo) => {
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -334,6 +337,16 @@ test.describe('DOM render benchmark contract', () => {
           },
         };
       });
+
+      await testInfo.attach('dom-render-benchmark-export', {
+        body: Buffer.from(state.exportJson, 'utf-8'),
+        contentType: 'application/json',
+      });
+      if (benchmarkExportPath) {
+        const resolvedExportPath = path.resolve(benchmarkExportPath);
+        fs.mkdirSync(path.dirname(resolvedExportPath), { recursive: true });
+        fs.writeFileSync(resolvedExportPath, `${state.exportJson}\n`, 'utf-8');
+      }
 
       expect(consoleErrors).toEqual([]);
       expect(pageErrors).toEqual([]);

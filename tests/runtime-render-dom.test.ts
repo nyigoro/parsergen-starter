@@ -110,7 +110,10 @@ class FakeDocumentFragment extends FakeNode {
   }
 }
 
-const parseTemplateIntoFragment = (html: string, ownerDocument: FakeDocument): FakeDocumentFragment => {
+const parseTemplateIntoFragment = (
+  html: string,
+  ownerDocument: FakeDocument
+): FakeDocumentFragment => {
   const fragment = new FakeDocumentFragment();
   const stack: FakeNode[] = [fragment];
   const tokenPattern = /<!--[\s\S]*?-->|<\/?[^>]+>|[^<]+/g;
@@ -147,7 +150,7 @@ const parseTemplateIntoFragment = (html: string, ownerDocument: FakeDocument): F
   }
 
   return fragment;
-}
+};
 
 class FakeElement extends FakeNode {
   readonly tagName: string;
@@ -155,7 +158,14 @@ class FakeElement extends FakeNode {
   readonly listeners = new Map<string, (event: unknown) => void>();
   style: Record<string, unknown> & { setProperty: (name: string, value: string) => void };
   readonly ownerDocument: FakeDocument;
-  boundingRect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  boundingRect: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    width: number;
+    height: number;
+  };
   value = '';
   checked = false;
   disabled = false;
@@ -204,7 +214,14 @@ class FakeElement extends FakeNode {
     }
   }
 
-  getBoundingClientRect(): { left: number; top: number; right: number; bottom: number; width: number; height: number } {
+  getBoundingClientRect(): {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    width: number;
+    height: number;
+  } {
     return { ...this.boundingRect };
   }
 
@@ -525,9 +542,7 @@ describe('render DOM renderer', () => {
       renderer,
       container,
       render.element('ul', null, [
-        render.indexList(rows, (row) =>
-          render.element('li', null, [render.liveText(row)])
-        ),
+        render.indexList(rows, (row) => render.element('li', null, [render.liveText(row)])),
       ])
     );
 
@@ -656,9 +671,10 @@ describe('render DOM renderer', () => {
         render.forList(
           rows,
           (row: { id: string }) => row.id,
-          (row) => render.element('li', { 'data-row-id': render.memo(() => render.get(row).id) }, [
-            render.liveText(render.memo(() => render.get(row).label)),
-          ])
+          (row) =>
+            render.element('li', { 'data-row-id': render.memo(() => render.get(row).id) }, [
+              render.liveText(render.memo(() => render.get(row).label)),
+            ])
         ),
       ])
     );
@@ -1000,7 +1016,8 @@ describe('render DOM renderer', () => {
         render.forList(
           rows,
           (row: { id: string }) => row.id,
-          (row) => render.element('li', null, [render.liveText(render.memo(() => render.get(row).label))])
+          (row) =>
+            render.element('li', null, [render.liveText(render.memo(() => render.get(row).label))])
         ),
       ])
     );
@@ -1118,11 +1135,15 @@ describe('render DOM renderer', () => {
 
     const Counter = (props: { label: string }) => {
       const count = render.state(0);
-      return render.element('button', {
-        onClick: () => {
-          render.set(count, render.get(count) + 1);
+      return render.element(
+        'button',
+        {
+          onClick: () => {
+            render.set(count, render.get(count) + 1);
+          },
         },
-      }, [render.text(`${props.label}:${render.get(count)}`)]);
+        [render.text(`${props.label}:${render.get(count)}`)]
+      );
     };
 
     const mounted = render.mount_reactive(renderer, container, () =>
@@ -1157,16 +1178,24 @@ describe('render DOM renderer', () => {
 
     const Counter = (props: { id: string; label: string }) => {
       const count = render.state(0);
-      return render.element('button', {
-        onClick: () => {
-          render.set(count, render.get(count) + 1);
+      return render.element(
+        'button',
+        {
+          onClick: () => {
+            render.set(count, render.get(count) + 1);
+          },
+          'data-id': props.id,
         },
-        'data-id': props.id,
-      }, [render.text(`${props.label}:${render.get(count)}`)]);
+        [render.text(`${props.label}:${render.get(count)}`)]
+      );
     };
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) => render.component(Counter, item, item.id)))
+      render.element(
+        'section',
+        null,
+        render.get(items).map((item) => render.component(Counter, item, item.id))
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1202,9 +1231,17 @@ describe('render DOM renderer', () => {
     ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) =>
-        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-      ))
+      render.element(
+        'section',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('button', { key: item.id, 'data-id': item.id }, [
+              render.text(item.label),
+            ])
+          )
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1256,9 +1293,17 @@ describe('render DOM renderer', () => {
     ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) =>
-        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-      ))
+      render.element(
+        'section',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('button', { key: item.id, 'data-id': item.id }, [
+              render.text(item.label),
+            ])
+          )
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1313,9 +1358,17 @@ describe('render DOM renderer', () => {
     ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) =>
-        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-      ))
+      render.element(
+        'section',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('button', { key: item.id, 'data-id': item.id }, [
+              render.text(item.label),
+            ])
+          )
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1349,9 +1402,17 @@ describe('render DOM renderer', () => {
     ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) =>
-        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-      ))
+      render.element(
+        'section',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('button', { key: item.id, 'data-id': item.id }, [
+              render.text(item.label),
+            ])
+          )
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1385,9 +1446,17 @@ describe('render DOM renderer', () => {
     ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) =>
-        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-      ))
+      render.element(
+        'section',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('button', { key: item.id, 'data-id': item.id }, [
+              render.text(item.label),
+            ])
+          )
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1441,9 +1510,17 @@ describe('render DOM renderer', () => {
     ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) =>
-        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-      ))
+      render.element(
+        'section',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('button', { key: item.id, 'data-id': item.id }, [
+              render.text(item.label),
+            ])
+          )
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1499,9 +1576,11 @@ describe('render DOM renderer', () => {
       render.element(
         'ul',
         null,
-        render.get(items).map((item) =>
-          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-        )
+        render
+          .get(items)
+          .map((item) =>
+            render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+          )
       )
     );
 
@@ -1561,9 +1640,11 @@ describe('render DOM renderer', () => {
       render.element(
         'ul',
         null,
-        render.get(items).map((item) =>
-          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-        )
+        render
+          .get(items)
+          .map((item) =>
+            render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+          )
       )
     );
 
@@ -1627,9 +1708,11 @@ describe('render DOM renderer', () => {
       render.element(
         'ul',
         null,
-        render.get(items).map((item) =>
-          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-        )
+        render
+          .get(items)
+          .map((item) =>
+            render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+          )
       )
     );
 
@@ -1666,9 +1749,11 @@ describe('render DOM renderer', () => {
       render.element(
         'ul',
         null,
-        render.get(items).map((item) =>
-          render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-        )
+        render
+          .get(items)
+          .map((item) =>
+            render.element('li', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
+          )
       )
     );
 
@@ -1704,9 +1789,17 @@ describe('render DOM renderer', () => {
     ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) =>
-        render.element('button', { key: item.id, 'data-id': item.id }, [render.text(item.label)])
-      ))
+      render.element(
+        'section',
+        null,
+        render
+          .get(items)
+          .map((item) =>
+            render.element('button', { key: item.id, 'data-id': item.id }, [
+              render.text(item.label),
+            ])
+          )
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1755,16 +1848,24 @@ describe('render DOM renderer', () => {
 
     const Counter = (props: { id: string; label: string }) => {
       const count = render.state(0);
-      return render.element('button', {
-        onClick: () => {
-          render.set(count, render.get(count) + 1);
+      return render.element(
+        'button',
+        {
+          onClick: () => {
+            render.set(count, render.get(count) + 1);
+          },
+          'data-id': props.id,
         },
-        'data-id': props.id,
-      }, [render.text(`${props.label}:${render.get(count)}`)]);
+        [render.text(`${props.label}:${render.get(count)}`)]
+      );
     };
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.element('section', null, render.get(items).map((item) => render.component(Counter, item, item.id)))
+      render.element(
+        'section',
+        null,
+        render.get(items).map((item) => render.component(Counter, item, item.id))
+      )
     );
 
     const host = container.childNodes[0] as FakeElement;
@@ -1867,13 +1968,19 @@ describe('render DOM renderer', () => {
     }) =>
       render.with_context(ThemeContext, props.theme, () =>
         render.element('section', { 'data-theme': render.use_context(ThemeContext) }, [
-          render.slot(props.header, { theme: render.use_context(ThemeContext) }, render.text('fallback')),
+          render.slot(
+            props.header,
+            { theme: render.use_context(ThemeContext) },
+            render.text('fallback')
+          ),
           ...render.children(props.children),
         ])
       );
 
     const ThemeLabel = (props: { prefix: string }) =>
-      render.element('span', null, [render.text(`${props.prefix}:${render.use_context(ThemeContext)}`)]);
+      render.element('span', null, [
+        render.text(`${props.prefix}:${render.use_context(ThemeContext)}`),
+      ]);
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.component(ThemeRoot, {
@@ -1906,9 +2013,7 @@ describe('render DOM renderer', () => {
       container,
       render.element('section', null, [
         render.text('inline'),
-        render.portal_body([
-          render.element('aside', { id: 'portaled' }, [render.text('In body')]),
-        ]),
+        render.portal_body([render.element('aside', { id: 'portaled' }, [render.text('In body')])]),
       ])
     ) as { update: (node: unknown) => void; unmount: () => void };
 
@@ -1949,7 +2054,8 @@ describe('render DOM renderer', () => {
     const active = render.signal('profile');
     const externalClick = jest.fn();
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.tabs_root(active, () =>
@@ -1999,7 +2105,10 @@ describe('render DOM renderer', () => {
     expect(isHidden(panelBilling)).toBe(true);
 
     const preventDefault = jest.fn();
-    triggerSettings.listeners.get('keydown')?.({ key: 'ArrowRight', preventDefault } as unknown as Event);
+    triggerSettings.listeners.get('keydown')?.({
+      key: 'ArrowRight',
+      preventDefault,
+    } as unknown as Event);
     await Promise.resolve();
 
     expect(render.get(active)).toBe('billing');
@@ -2007,19 +2116,28 @@ describe('render DOM renderer', () => {
     expect(triggerBilling.attributes.get('aria-selected')).toBe('true');
     expect(isHidden(panelBilling)).toBe(false);
 
-    triggerBilling.listeners.get('keydown')?.({ key: 'Home', preventDefault: jest.fn() } as unknown as Event);
+    triggerBilling.listeners.get('keydown')?.({
+      key: 'Home',
+      preventDefault: jest.fn(),
+    } as unknown as Event);
     await Promise.resolve();
 
     expect(render.get(active)).toBe('profile');
     expect(triggerProfile.attributes.get('aria-selected')).toBe('true');
     expect(isHidden(panelProfile)).toBe(false);
 
-    triggerProfile.listeners.get('keydown')?.({ key: 'End', preventDefault: jest.fn() } as unknown as Event);
+    triggerProfile.listeners.get('keydown')?.({
+      key: 'End',
+      preventDefault: jest.fn(),
+    } as unknown as Event);
     await Promise.resolve();
 
     expect(render.get(active)).toBe('billing');
 
-    triggerBilling.listeners.get('keydown')?.({ key: 'ArrowLeft', preventDefault: jest.fn() } as unknown as Event);
+    triggerBilling.listeners.get('keydown')?.({
+      key: 'ArrowLeft',
+      preventDefault: jest.fn(),
+    } as unknown as Event);
     await Promise.resolve();
 
     expect(render.get(active)).toBe('settings');
@@ -2035,7 +2153,8 @@ describe('render DOM renderer', () => {
     const externalTriggerClick = jest.fn();
     const externalCloseClick = jest.fn();
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.dialog_root(open, () =>
@@ -2224,16 +2343,18 @@ describe('render DOM renderer', () => {
     const open = render.signal(false);
     const externalTriggerClick = jest.fn();
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.popover_root(open, () =>
         render.element('section', null, [
           render.popover_trigger({ onClick: externalTriggerClick }, [render.text('Open popover')]),
           render.popover_portal([
-            render.popover_content({ className: 'content', side: 'bottom', align: 'start', offset: 12 }, [
-              render.element('button', { id: 'popover-action' }, [render.text('Popover action')]),
-            ]),
+            render.popover_content(
+              { className: 'content', side: 'bottom', align: 'start', offset: 12 },
+              [render.element('button', { id: 'popover-action' }, [render.text('Popover action')])]
+            ),
           ]),
         ])
       )
@@ -2302,16 +2423,20 @@ describe('render DOM renderer', () => {
     const open = render.signal(false);
     const externalEnter = jest.fn();
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.tooltip_root(open, () =>
         render.element('section', null, [
-          render.tooltip_trigger({ className: 'tooltip-trigger', onMouseEnter: externalEnter }, [render.text('Hover target')]),
+          render.tooltip_trigger({ className: 'tooltip-trigger', onMouseEnter: externalEnter }, [
+            render.text('Hover target'),
+          ]),
           render.tooltip_portal([
-            render.tooltip_content({ className: 'tooltip', side: 'top', align: 'start', offset: 6 }, [
-              render.text('Helpful copy'),
-            ]),
+            render.tooltip_content(
+              { className: 'tooltip', side: 'top', align: 'start', offset: 6 },
+              [render.text('Helpful copy')]
+            ),
           ]),
         ])
       )
@@ -2375,7 +2500,8 @@ describe('render DOM renderer', () => {
       const open = render.signal(true);
       const externalClose = jest.fn();
       const isHidden = (node: FakeElement): boolean =>
-        node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+        node.attributes.get('hidden') === 'true' ||
+        (node as FakeElement & { hidden?: boolean }).hidden === true;
 
       mounted = render.mount_reactive(renderer, container, () =>
         render.toast_root(open, () =>
@@ -2441,7 +2567,8 @@ describe('render DOM renderer', () => {
     const selected: string[] = [];
     const externalTriggerClick = jest.fn();
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.menu_root(open, () =>
@@ -2449,9 +2576,15 @@ describe('render DOM renderer', () => {
           render.menu_trigger({ onClick: externalTriggerClick }, [render.text('Open menu')]),
           render.menu_portal([
             render.menu_content({ className: 'menu', side: 'bottom', align: 'start' }, [
-              render.menu_item('open', { onClick: () => selected.push('open') }, [render.text('Open file')]),
-              render.menu_item('rename', { onClick: () => selected.push('rename') }, [render.text('Rename')]),
-              render.menu_item('delete', { onClick: () => selected.push('delete') }, [render.text('Delete')]),
+              render.menu_item('open', { onClick: () => selected.push('open') }, [
+                render.text('Open file'),
+              ]),
+              render.menu_item('rename', { onClick: () => selected.push('rename') }, [
+                render.text('Rename'),
+              ]),
+              render.menu_item('delete', { onClick: () => selected.push('delete') }, [
+                render.text('Delete'),
+              ]),
             ]),
           ]),
         ])
@@ -2544,6 +2677,30 @@ describe('render DOM renderer', () => {
     expect(render.get(open)).toBe(true);
     expect(fakeDocument.activeElement).toBe(reopenedDelete);
 
+    const preventTypeahead = jest.fn();
+    reopenedDelete.listeners.get('keydown')?.({
+      key: 'r',
+      currentTarget: reopenedDelete,
+      preventDefault: preventTypeahead,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    const reopenedRename = reopenedContent.childNodes[1] as FakeElement;
+    expect(preventTypeahead).toHaveBeenCalledTimes(1);
+    expect(fakeDocument.activeElement).toBe(reopenedRename);
+
+    const preventTab = jest.fn();
+    reopenedRename.listeners.get('keydown')?.({
+      key: 'Tab',
+      currentTarget: reopenedRename,
+      preventDefault: preventTab,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    expect(preventTab).not.toHaveBeenCalled();
+    expect(render.get(open)).toBe(false);
+    expect(fakeDocument.activeElement).toBe(reopenedRename);
+
     trigger.listeners.get('click')?.({ currentTarget: trigger } as unknown as Event);
     await Promise.resolve();
     dismiss.listeners.get('click')?.({} as Event);
@@ -2566,27 +2723,31 @@ describe('render DOM renderer', () => {
     const value = render.signal('email');
     const selected: string[] = [];
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.select_root(open, value, () =>
         render.element('section', null, [
           render.select_trigger(null, [render.text('Choose channel')]),
           render.select_portal([
-            render.select_content({ className: 'select', side: 'bottom', align: 'start', offset: 10 }, [
-              render.select_item('email', { onClick: () => selected.push('email') }, () => [
-                render.select_indicator(null, [render.text('o')]),
-                render.text('Email'),
-              ]),
-              render.select_item('sms', { onClick: () => selected.push('sms') }, () => [
-                render.select_indicator(null, [render.text('o')]),
-                render.text('SMS'),
-              ]),
-              render.select_item('push', { onClick: () => selected.push('push') }, () => [
-                render.select_indicator(null, [render.text('o')]),
-                render.text('Push'),
-              ]),
-            ]),
+            render.select_content(
+              { className: 'select', side: 'bottom', align: 'start', offset: 10 },
+              [
+                render.select_item('email', { onClick: () => selected.push('email') }, () => [
+                  render.select_indicator(null, [render.text('o')]),
+                  render.text('Email'),
+                ]),
+                render.select_item('sms', { onClick: () => selected.push('sms') }, () => [
+                  render.select_indicator(null, [render.text('o')]),
+                  render.text('SMS'),
+                ]),
+                render.select_item('push', { onClick: () => selected.push('push') }, () => [
+                  render.select_indicator(null, [render.text('o')]),
+                  render.text('Push'),
+                ]),
+              ]
+            ),
           ]),
         ])
       )
@@ -2679,6 +2840,68 @@ describe('render DOM renderer', () => {
     expect(fakeDocument.body.childNodes).toHaveLength(0);
   });
 
+  test('headless select opens on printable keys and clamps vertical movement', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const open = render.signal(false);
+    const value = render.signal('email');
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.select_root(open, value, () =>
+        render.element('section', null, [
+          render.select_trigger(null, [render.text('Choose channel')]),
+          render.select_portal([
+            render.select_content(null, [
+              render.select_item('email', null, () => [render.text('Email')]),
+              render.select_item('sms', null, () => [render.text('SMS')]),
+              render.select_item('push', null, () => [render.text('Push')]),
+            ]),
+          ]),
+        ])
+      )
+    );
+
+    const section = container.childNodes[0] as FakeElement;
+    const trigger = section.childNodes[0] as FakeElement;
+    trigger.focus();
+
+    const preventTypeahead = jest.fn();
+    trigger.listeners.get('keydown')?.({
+      key: 'p',
+      currentTarget: trigger,
+      target: trigger,
+      preventDefault: preventTypeahead,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    const host = fakeDocument.body.childNodes[0] as FakeElement;
+    const content = host.childNodes[1] as FakeElement;
+    const itemPush = content.childNodes[2] as FakeElement;
+
+    expect(preventTypeahead).toHaveBeenCalledTimes(1);
+    expect(render.get(open)).toBe(true);
+    expect(render.get(value)).toBe('email');
+    expect(fakeDocument.activeElement).toBe(trigger);
+    expect(trigger.attributes.get('aria-activedescendant')).toBe(itemPush.attributes.get('id'));
+
+    const preventDown = jest.fn();
+    trigger.listeners.get('keydown')?.({
+      key: 'ArrowDown',
+      currentTarget: trigger,
+      target: trigger,
+      preventDefault: preventDown,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    expect(preventDown).toHaveBeenCalledTimes(1);
+    expect(trigger.attributes.get('aria-activedescendant')).toBe(itemPush.attributes.get('id'));
+    expect(render.get(value)).toBe('email');
+
+    render.dispose_reactive(mounted);
+    expect(fakeDocument.body.childNodes).toHaveLength(0);
+  });
+
   test('headless combobox filters by query, selects items, and restores focus', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -2688,23 +2911,27 @@ describe('render DOM renderer', () => {
     const query = render.signal('');
     const selected: string[] = [];
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.combobox_root(open, value, query, () =>
         render.element('section', null, [
           render.combobox_input({ placeholder: 'Search channels' }, []),
           render.combobox_portal([
-            render.combobox_content({ className: 'combobox', side: 'bottom', align: 'start', offset: 6 }, [
-              render.combobox_item('email', { onClick: () => selected.push('email') }, () => [
-                render.combobox_indicator(null, [render.text('o')]),
-                render.text('Email'),
-              ]),
-              render.combobox_item('sms', { onClick: () => selected.push('sms') }, () => [
-                render.combobox_indicator(null, [render.text('o')]),
-                render.text('SMS'),
-              ]),
-            ]),
+            render.combobox_content(
+              { className: 'combobox', side: 'bottom', align: 'start', offset: 6 },
+              [
+                render.combobox_item('email', { onClick: () => selected.push('email') }, () => [
+                  render.combobox_indicator(null, [render.text('o')]),
+                  render.text('Email'),
+                ]),
+                render.combobox_item('sms', { onClick: () => selected.push('sms') }, () => [
+                  render.combobox_indicator(null, [render.text('o')]),
+                  render.text('SMS'),
+                ]),
+              ]
+            ),
           ]),
         ])
       )
@@ -2775,27 +3002,31 @@ describe('render DOM renderer', () => {
     const values = render.signal<string[]>(['email']);
     const selected: string[] = [];
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.multiselect_root(open, values, () =>
         render.element('section', null, [
           render.multiselect_trigger(null, [render.text('Choose channels')]),
           render.multiselect_portal([
-            render.multiselect_content({ className: 'multiselect', side: 'bottom', align: 'start', offset: 8 }, [
-              render.multiselect_item('email', { onClick: () => selected.push('email') }, () => [
-                render.multiselect_indicator(null, [render.text('x')]),
-                render.text('Email'),
-              ]),
-              render.multiselect_item('sms', { onClick: () => selected.push('sms') }, () => [
-                render.multiselect_indicator(null, [render.text('x')]),
-                render.text('SMS'),
-              ]),
-              render.multiselect_item('push', { onClick: () => selected.push('push') }, () => [
-                render.multiselect_indicator(null, [render.text('x')]),
-                render.text('Push'),
-              ]),
-            ]),
+            render.multiselect_content(
+              { className: 'multiselect', side: 'bottom', align: 'start', offset: 8 },
+              [
+                render.multiselect_item('email', { onClick: () => selected.push('email') }, () => [
+                  render.multiselect_indicator(null, [render.text('x')]),
+                  render.text('Email'),
+                ]),
+                render.multiselect_item('sms', { onClick: () => selected.push('sms') }, () => [
+                  render.multiselect_indicator(null, [render.text('x')]),
+                  render.text('SMS'),
+                ]),
+                render.multiselect_item('push', { onClick: () => selected.push('push') }, () => [
+                  render.multiselect_indicator(null, [render.text('x')]),
+                  render.text('Push'),
+                ]),
+              ]
+            ),
           ]),
         ])
       )
@@ -2866,21 +3097,117 @@ describe('render DOM renderer', () => {
     expect(fakeDocument.body.childNodes).toHaveLength(0);
   });
 
+  test('headless multiselect opens on keyboard and keeps movement clamped', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const open = render.signal(false);
+    const values = render.signal<string[]>(['sms']);
+
+    const mounted = render.mount_reactive(renderer, container, () =>
+      render.multiselect_root(open, values, () =>
+        render.element('section', null, [
+          render.multiselect_trigger(null, [render.text('Choose channels')]),
+          render.multiselect_portal([
+            render.multiselect_content(null, [
+              render.multiselect_item('email', null, () => [render.text('Email')]),
+              render.multiselect_item('sms', null, () => [render.text('SMS')]),
+              render.multiselect_item('push', null, () => [render.text('Push')]),
+            ]),
+          ]),
+        ])
+      )
+    );
+
+    const section = container.childNodes[0] as FakeElement;
+    const trigger = section.childNodes[0] as FakeElement;
+    trigger.focus();
+
+    const preventTypeahead = jest.fn();
+    trigger.listeners.get('keydown')?.({
+      key: 'p',
+      currentTarget: trigger,
+      target: trigger,
+      preventDefault: preventTypeahead,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    const host = fakeDocument.body.childNodes[0] as FakeElement;
+    const content = host.childNodes[1] as FakeElement;
+    const itemEmail = content.childNodes[0] as FakeElement;
+    const itemPush = content.childNodes[2] as FakeElement;
+
+    expect(preventTypeahead).toHaveBeenCalledTimes(1);
+    expect(render.get(open)).toBe(true);
+    expect(fakeDocument.activeElement).toBe(itemPush);
+    expect(itemPush.attributes.get('data-active')).toBe('true');
+
+    const preventDown = jest.fn();
+    itemPush.listeners.get('keydown')?.({
+      key: 'ArrowDown',
+      currentTarget: itemPush,
+      preventDefault: preventDown,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    expect(preventDown).toHaveBeenCalledTimes(1);
+    expect(fakeDocument.activeElement).toBe(itemPush);
+
+    const preventHome = jest.fn();
+    itemPush.listeners.get('keydown')?.({
+      key: 'Home',
+      currentTarget: itemPush,
+      preventDefault: preventHome,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    expect(preventHome).toHaveBeenCalledTimes(1);
+    expect(fakeDocument.activeElement).toBe(itemEmail);
+
+    const preventSpace = jest.fn();
+    itemEmail.listeners.get('keydown')?.({
+      key: ' ',
+      currentTarget: itemEmail,
+      preventDefault: preventSpace,
+    } as unknown as Event);
+    await Promise.resolve();
+
+    expect(preventSpace).toHaveBeenCalledTimes(1);
+    expect(render.get(values)).toEqual(['sms', 'email']);
+
+    itemEmail.listeners.get('keydown')?.({
+      key: 'Escape',
+      currentTarget: itemEmail,
+      preventDefault: jest.fn(),
+    } as unknown as Event);
+    await Promise.resolve();
+
+    expect(render.get(open)).toBe(false);
+    expect(fakeDocument.activeElement).toBe(trigger);
+
+    render.dispose_reactive(mounted);
+    expect(fakeDocument.body.childNodes).toHaveLength(0);
+  });
+
   test('resource suspense shows fallback first and then resolved content', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
     const container = fakeDocument.createElement('div');
     let resolveLoad!: (value: string) => void;
-    const resource = render.createResource(`user:${Date.now()}:suspense`, () =>
-      new Promise<string>((resolve) => {
-        resolveLoad = resolve;
-      }),
-    0);
+    const resource = render.createResource(
+      `user:${Date.now()}:suspense`,
+      () =>
+        new Promise<string>((resolve) => {
+          resolveLoad = resolve;
+        }),
+      0
+    );
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.suspense(
-        render.element('div', { id: 'loading' }, [render.text('Loading')]),
-        () => render.element('div', { id: 'content' }, [render.text(render.resourceRead<string>(resource))])
+      render.suspense(render.element('div', { id: 'loading' }, [render.text('Loading')]), () =>
+        render.element('div', { id: 'content' }, [
+          render.text(render.resourceRead<string>(resource)),
+        ])
       )
     );
 
@@ -2914,12 +3241,16 @@ describe('render DOM renderer', () => {
     );
 
     const mounted = render.mount_reactive(renderer, container, () =>
-      render.suspense(
-        render.element('div', { id: 'loading' }, [render.text('Loading')]),
-        () => render.error_boundary(
+      render.suspense(render.element('div', { id: 'loading' }, [render.text('Loading')]), () =>
+        render.error_boundary(
           (error: unknown) =>
-            render.element('div', { id: 'error' }, [render.text(String((error as Error)?.message ?? error))]),
-          () => render.element('div', { id: 'content' }, [render.text(render.resourceRead<string>(resource))])
+            render.element('div', { id: 'error' }, [
+              render.text(String((error as Error)?.message ?? error)),
+            ]),
+          () =>
+            render.element('div', { id: 'content' }, [
+              render.text(render.resourceRead<string>(resource)),
+            ])
         )
       )
     );
@@ -2947,7 +3278,8 @@ describe('render DOM renderer', () => {
     const checked = render.signal(false);
     const externalClick = jest.fn();
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.checkbox_root(checked, { onClick: externalClick }, () => [
@@ -2996,7 +3328,8 @@ describe('render DOM renderer', () => {
     const value = render.signal('email');
     const selected: string[] = [];
     const isHidden = (node: FakeElement): boolean =>
-      node.attributes.get('hidden') === 'true' || (node as FakeElement & { hidden?: boolean }).hidden === true;
+      node.attributes.get('hidden') === 'true' ||
+      (node as FakeElement & { hidden?: boolean }).hidden === true;
 
     const mounted = render.mount_reactive(renderer, container, () =>
       render.radio_group(value, null, () => [
@@ -3078,7 +3411,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('dialog helpers throw when used outside a dialog root provider', () => {
@@ -3091,7 +3426,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('popover helpers throw when used outside a popover root provider', () => {
@@ -3104,7 +3441,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('tooltip helpers throw when used outside a tooltip root provider', () => {
@@ -3117,7 +3456,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('toast helpers throw when used outside a toast root provider', () => {
@@ -3130,7 +3471,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('menu helpers throw when used outside a menu root provider', () => {
@@ -3143,7 +3486,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('select helpers throw when used outside a select root provider', () => {
@@ -3156,7 +3501,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('combobox helpers throw when used outside a combobox root provider', () => {
@@ -3169,7 +3516,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('multiselect helpers throw when used outside a multiselect root provider', () => {
@@ -3182,7 +3531,9 @@ describe('render DOM renderer', () => {
     );
 
     expect((mounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((mounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((mounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('checkbox/radio helpers throw when used outside their providers', () => {
@@ -3199,9 +3550,13 @@ describe('render DOM renderer', () => {
     );
 
     expect((checkboxMounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((checkboxMounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((checkboxMounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
     expect((radioMounted as { $tag?: string; $payload?: unknown }).$tag).toBe('Err');
-    expect(String((radioMounted as { $payload?: unknown }).$payload)).toContain('No provider found for context');
+    expect(String((radioMounted as { $payload?: unknown }).$payload)).toContain(
+      'No provider found for context'
+    );
   });
 
   test('render.state throws outside a component frame', () => {

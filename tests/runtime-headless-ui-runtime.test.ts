@@ -107,9 +107,37 @@ describe('runtime headless ui helpers', () => {
     expect(combobox.query.get()).toBe('gamma');
   });
 
+  test('cycles repeated typeahead keys across matching options', () => {
+    const runtime = createHeadlessUiRuntime();
+
+    const menu = { open: new Signal(true), baseId: 'menu', order: [] as string[] };
+    runtime.registerMenuValue(menu, 'alpha', 'Alpha');
+    runtime.registerMenuValue(menu, 'apricot', 'Apricot');
+    runtime.registerMenuValue(menu, 'berry', 'Berry');
+    expect(runtime.getMenuTypeaheadTarget(menu, 'alpha', 'a')).toBe('apricot');
+    expect(runtime.getMenuTypeaheadTarget(menu, 'apricot', 'a')).toBe('alpha');
+
+    const select = {
+      open: new Signal(true),
+      value: new Signal('alpha'),
+      baseId: 'select',
+      order: [] as string[],
+    };
+    runtime.registerSelectValue(select, 'alpha', 'Alpha');
+    runtime.registerSelectValue(select, 'apricot', 'Apricot');
+    runtime.registerSelectValue(select, 'berry', 'Berry');
+    expect(runtime.getSelectTypeaheadTarget(select, 'alpha', 'a')).toBe('apricot');
+    expect(runtime.getSelectTypeaheadTarget(select, 'apricot', 'a')).toBe('alpha');
+  });
+
   test('restores focus and reads anchor-based popover layout', () => {
     const runtime = createHeadlessUiRuntime();
-    const dialog = { open: new Signal(true), baseId: 'dialog', hasTitle: false, hasDescription: false };
+    const dialog = {
+      open: new Signal(true),
+      baseId: 'dialog',
+      hasTitle: false,
+      hasDescription: false,
+    };
     const focusTarget: FocusTarget = { focus: jest.fn() };
     runtime.setDialogRestoreTarget(dialog, focusTarget);
     runtime.restoreDialogFocus(dialog);
@@ -127,7 +155,11 @@ describe('runtime headless ui helpers', () => {
       height: 60,
     });
     expect(
-      runtime.getPopoverContentStyle(runtime.getPopoverAnchorRect(popover), { side: 'right', align: 'end', offset: 6 })
+      runtime.getPopoverContentStyle(runtime.getPopoverAnchorRect(popover), {
+        side: 'right',
+        align: 'end',
+        offset: 6,
+      })
     ).toEqual({
       position: 'fixed',
       zIndex: '1001',

@@ -732,6 +732,29 @@ const hasShallowEqualProps = (
   return leftCount === rightCount;
 };
 
+const canSkipChildListPatch = (
+  length: number,
+  compareChild: (index: number) => boolean
+): boolean => {
+  if (length === 0) {
+    return true;
+  }
+
+  // Keep the skip analysis cheap and focused on the small row/card subtrees
+  // that dominate list benchmarks.
+  if (length > 6) {
+    return false;
+  }
+
+  for (let index = 0; index < length; index += 1) {
+    if (!compareChild(index)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const canSkipStableKeyedChildPatch = (prevNode: VNode, nextNode: VNode): boolean => {
   if (prevNode === nextNode) return true;
   if (prevNode.kind !== nextNode.kind) return false;
@@ -766,22 +789,9 @@ const canSkipStableKeyedChildPatch = (prevNode: VNode, nextNode: VNode): boolean
     return true;
   }
 
-  if (prevChildren.length !== 1) {
-    return false;
-  }
-
-  const prevChild = prevChildren[0];
-  const nextChild = nextChildren[0];
-  if (prevChild === nextChild) {
-    return true;
-  }
-  if (prevChild.kind === 'text' && nextChild.kind === 'text') {
-    return prevChild.text === nextChild.text;
-  }
-  if (prevChild.kind === 'live_text' && nextChild.kind === 'live_text') {
-    return prevChild.signal === nextChild.signal;
-  }
-  return false;
+  return canSkipChildListPatch(prevChildren.length, (index) =>
+    canSkipStableKeyedChildPatch(prevChildren[index], nextChildren[index])
+  );
 };
 
 const remapMovedIndex = (index: number, from: number, to: number): number => {
@@ -857,12 +867,9 @@ const canSkipDomPatch = (
     return true;
   }
 
-  if (prevChildren.length === 1) {
-    return canSkipDomPatch(prevChildren[0], nextChildren[0], equalsValue);
-  }
-
-  void equalsValue;
-  return false;
+  return canSkipChildListPatch(prevChildren.length, (index) =>
+    canSkipDomPatch(prevChildren[index], nextChildren[index], equalsValue)
+  );
 };
 
 const patchPortalMount = (

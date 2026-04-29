@@ -115,7 +115,9 @@ export type PopoverAlign = 'start' | 'center' | 'end';
 type FocusTargetLike = { focus?: () => void };
 type LookupDocumentLike = { getElementById?: (id: string) => AccessibleDomElementLike | null };
 type AnchorRectLike = Partial<AnchorRect> | null | undefined;
-type AnchorElementLike = AccessibleDomElementLike & { getBoundingClientRect?: () => AnchorRectLike };
+type AnchorElementLike = AccessibleDomElementLike & {
+  getBoundingClientRect?: () => AnchorRectLike;
+};
 type TypeaheadState = { buffer: string; resetHandle: unknown };
 type TypeaheadLabels = Map<string, string>;
 
@@ -139,7 +141,10 @@ const registerOrderedValue = (order: string[], value: string): void => {
   }
 };
 
-const getTypeaheadLabels = (labelsMap: WeakMap<object, TypeaheadLabels>, keyObject: object): TypeaheadLabels => {
+const getTypeaheadLabels = (
+  labelsMap: WeakMap<object, TypeaheadLabels>,
+  keyObject: object
+): TypeaheadLabels => {
   const existing = labelsMap.get(keyObject);
   if (existing) return existing;
   const created = new Map<string, string>();
@@ -237,9 +242,10 @@ const focusElementById = (
   targetId: string,
   fallbackRoot?: AccessibleDomNodeLike | null
 ): boolean => {
-  const target = (documentLike && typeof documentLike.getElementById === 'function'
-    ? documentLike.getElementById(targetId)
-    : null) ?? findDomElementById<AccessibleDomElementLike>(fallbackRoot, targetId);
+  const target =
+    (documentLike && typeof documentLike.getElementById === 'function'
+      ? documentLike.getElementById(targetId)
+      : null) ?? findDomElementById<AccessibleDomElementLike>(fallbackRoot, targetId);
   if (!target || typeof target.focus !== 'function') return false;
   target.focus();
   return true;
@@ -311,7 +317,8 @@ const getTypeaheadTarget = (
   const currentIndex = order.indexOf(current);
   const startOffset = currentIndex >= 0 ? 1 : 0;
   for (let offset = startOffset; offset < order.length + startOffset; offset += 1) {
-    const index = currentIndex >= 0 ? (currentIndex + offset) % order.length : offset % order.length;
+    const index =
+      currentIndex >= 0 ? (currentIndex + offset) % order.length : offset % order.length;
     const candidate = order[index];
     const label = (labels?.get(candidate) ?? candidate ?? '').trim().toLowerCase();
     if (label.startsWith(needle)) {
@@ -383,7 +390,10 @@ export const createHeadlessUiRuntime = () => {
     return normalized.length > 0 ? normalized : 'tab';
   };
 
-  const getTabsIds = (ctx: TabsContextValue, value: string): { triggerId: string; panelId: string } => {
+  const getTabsIds = (
+    ctx: TabsContextValue,
+    value: string
+  ): { triggerId: string; panelId: string } => {
     const part = normalizeTabsPart(value);
     return {
       triggerId: `${ctx.baseId}-trigger-${part}`,
@@ -395,8 +405,18 @@ export const createHeadlessUiRuntime = () => {
     registerOrderedValue(ctx.order, value);
   };
 
-  const getTabsNavigationTarget = (ctx: TabsContextValue, current: string, key: string): string | null =>
-    getWrappedNavigationTarget(ctx.order, current, key, ['ArrowRight', 'ArrowDown'], ['ArrowLeft', 'ArrowUp']);
+  const getTabsNavigationTarget = (
+    ctx: TabsContextValue,
+    current: string,
+    key: string
+  ): string | null =>
+    getWrappedNavigationTarget(
+      ctx.order,
+      current,
+      key,
+      ['ArrowRight', 'ArrowDown'],
+      ['ArrowLeft', 'ArrowUp']
+    );
 
   const getDialogIds = (
     ctx: DialogContextValue
@@ -440,7 +460,9 @@ export const createHeadlessUiRuntime = () => {
     contentId: `${ctx.baseId}-content`,
   });
 
-  const getMultiselectIds = (ctx: MultiselectContextValue): { triggerId: string; contentId: string } => ({
+  const getMultiselectIds = (
+    ctx: MultiselectContextValue
+  ): { triggerId: string; contentId: string } => ({
     triggerId: `${ctx.baseId}-trigger`,
     contentId: `${ctx.baseId}-content`,
   });
@@ -466,7 +488,10 @@ export const createHeadlessUiRuntime = () => {
   const getComboboxIndicatorId = (itemId: string): string => `${itemId}-indicator`;
   const getMultiselectIndicatorId = (itemId: string): string => `${itemId}-indicator`;
 
-  const setDialogRestoreTarget = (ctx: DialogContextValue, target: FocusTargetLike | null | undefined): void => {
+  const setDialogRestoreTarget = (
+    ctx: DialogContextValue,
+    target: FocusTargetLike | null | undefined
+  ): void => {
     setMapTarget(ctx, dialogRestoreTargets, target);
   };
 
@@ -474,11 +499,17 @@ export const createHeadlessUiRuntime = () => {
     restoreFocusFromMap(ctx, dialogRestoreTargets);
   };
 
-  const setPopoverAnchorTarget = (ctx: PopoverContextValue, target: AnchorElementLike | null | undefined): void => {
+  const setPopoverAnchorTarget = (
+    ctx: PopoverContextValue,
+    target: AnchorElementLike | null | undefined
+  ): void => {
     setMapTarget(ctx, popoverAnchorTargets, target);
   };
 
-  const setPopoverRestoreTarget = (ctx: PopoverContextValue, target: FocusTargetLike | null | undefined): void => {
+  const setPopoverRestoreTarget = (
+    ctx: PopoverContextValue,
+    target: FocusTargetLike | null | undefined
+  ): void => {
     setMapTarget(ctx, popoverRestoreTargets, target);
   };
 
@@ -508,11 +539,17 @@ export const createHeadlessUiRuntime = () => {
     toastTimers.set(key, handle);
   };
 
-  const setMenuAnchorTarget = (ctx: MenuContextValue, target: AnchorElementLike | null | undefined): void => {
+  const setMenuAnchorTarget = (
+    ctx: MenuContextValue,
+    target: AnchorElementLike | null | undefined
+  ): void => {
     setMapTarget(ctx, menuAnchorTargets, target);
   };
 
-  const setMenuRestoreTarget = (ctx: MenuContextValue, target: FocusTargetLike | null | undefined): void => {
+  const setMenuRestoreTarget = (
+    ctx: MenuContextValue,
+    target: FocusTargetLike | null | undefined
+  ): void => {
     setMapTarget(ctx, menuRestoreTargets, target);
   };
 
@@ -520,11 +557,17 @@ export const createHeadlessUiRuntime = () => {
     restoreFocusFromMap(ctx, menuRestoreTargets);
   };
 
-  const setSelectAnchorTarget = (ctx: SelectContextValue, target: AnchorElementLike | null | undefined): void => {
+  const setSelectAnchorTarget = (
+    ctx: SelectContextValue,
+    target: AnchorElementLike | null | undefined
+  ): void => {
     setMapTarget(ctx, selectAnchorTargets, target);
   };
 
-  const setSelectRestoreTarget = (ctx: SelectContextValue, target: FocusTargetLike | null | undefined): void => {
+  const setSelectRestoreTarget = (
+    ctx: SelectContextValue,
+    target: FocusTargetLike | null | undefined
+  ): void => {
     setMapTarget(ctx, selectRestoreTargets, target);
   };
 
@@ -568,7 +611,10 @@ export const createHeadlessUiRuntime = () => {
     restoreFocusFromMap(ctx, multiselectRestoreTargets);
   };
 
-  const setTooltipAnchorTarget = (ctx: TooltipContextValue, target: AnchorElementLike | null | undefined): void => {
+  const setTooltipAnchorTarget = (
+    ctx: TooltipContextValue,
+    target: AnchorElementLike | null | undefined
+  ): void => {
     setMapTarget(ctx, tooltipAnchorTargets, target);
   };
 
@@ -602,7 +648,11 @@ export const createHeadlessUiRuntime = () => {
     registerOrderedValue(ctx.order, value);
   };
 
-  const registerSelectValue = (ctx: SelectContextValue, value: string, label?: string | null): void => {
+  const registerSelectValue = (
+    ctx: SelectContextValue,
+    value: string,
+    label?: string | null
+  ): void => {
     registerOrderedValue(ctx.order, value);
     registerTypeaheadLabel(selectTypeaheadLabels, ctx.value as object, value, label);
   };
@@ -616,7 +666,10 @@ export const createHeadlessUiRuntime = () => {
     return created;
   };
 
-  const setSelectActiveValue = (ctx: SelectContextValue, value: string | null | undefined): void => {
+  const setSelectActiveValue = (
+    ctx: SelectContextValue,
+    value: string | null | undefined
+  ): void => {
     getSelectActiveSignal(ctx).set(typeof value === 'string' ? value : '');
   };
 
@@ -660,7 +713,10 @@ export const createHeadlessUiRuntime = () => {
     return created;
   };
 
-  const setComboboxActiveValue = (ctx: ComboboxContextValue, value: string | null | undefined): void => {
+  const setComboboxActiveValue = (
+    ctx: ComboboxContextValue,
+    value: string | null | undefined
+  ): void => {
     getComboboxActiveSignal(ctx).set(typeof value === 'string' ? value : '');
   };
 
@@ -676,7 +732,8 @@ export const createHeadlessUiRuntime = () => {
     return ctx.order[0] ?? explicit ?? selected ?? '';
   };
 
-  const getComboboxActiveValue = (ctx: ComboboxContextValue): string => resolveComboboxActiveValue(ctx);
+  const getComboboxActiveValue = (ctx: ComboboxContextValue): string =>
+    resolveComboboxActiveValue(ctx);
 
   const getComboboxActiveDescendantId = (ctx: ComboboxContextValue): string | null => {
     const activeValue = resolveComboboxActiveValue(ctx);
@@ -692,7 +749,11 @@ export const createHeadlessUiRuntime = () => {
     return nextValue;
   };
 
-  const registerMultiselectValue = (ctx: MultiselectContextValue, value: string, label?: string | null): void => {
+  const registerMultiselectValue = (
+    ctx: MultiselectContextValue,
+    value: string,
+    label?: string | null
+  ): void => {
     registerOrderedValue(ctx.order, value);
     registerTypeaheadLabel(multiselectTypeaheadLabels, ctx.open as object, value, label);
   };
@@ -706,7 +767,10 @@ export const createHeadlessUiRuntime = () => {
     return created;
   };
 
-  const setMultiselectActiveValue = (ctx: MultiselectContextValue, value: string | null | undefined): void => {
+  const setMultiselectActiveValue = (
+    ctx: MultiselectContextValue,
+    value: string | null | undefined
+  ): void => {
     getMultiselectActiveSignal(ctx).set(typeof value === 'string' ? value : '');
   };
 
@@ -715,14 +779,24 @@ export const createHeadlessUiRuntime = () => {
     if (explicit) {
       return explicit;
     }
-    const selected = readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry));
+    const selected = readStringSelection(ctx.values.get()).find((entry) =>
+      ctx.order.includes(entry)
+    );
     return selected ?? ctx.order[0] ?? '';
   };
 
-  const getMenuNavigationTarget = (ctx: MenuContextValue, current: string, key: string): string | null =>
+  const getMenuNavigationTarget = (
+    ctx: MenuContextValue,
+    current: string,
+    key: string
+  ): string | null =>
     getWrappedNavigationTarget(ctx.order, current, key, ['ArrowDown'], ['ArrowUp']);
 
-  const getMenuTypeaheadTarget = (ctx: MenuContextValue, current: string, key: string): string | null =>
+  const getMenuTypeaheadTarget = (
+    ctx: MenuContextValue,
+    current: string,
+    key: string
+  ): string | null =>
     getTypeaheadTarget(
       menuTypeaheadStates,
       ctx.open as object,
@@ -732,13 +806,31 @@ export const createHeadlessUiRuntime = () => {
       key
     );
 
-  const getRadioNavigationTarget = (ctx: RadioGroupContextValue, current: string, key: string): string | null =>
-    getWrappedNavigationTarget(ctx.order, current, key, ['ArrowRight', 'ArrowDown'], ['ArrowLeft', 'ArrowUp']);
+  const getRadioNavigationTarget = (
+    ctx: RadioGroupContextValue,
+    current: string,
+    key: string
+  ): string | null =>
+    getWrappedNavigationTarget(
+      ctx.order,
+      current,
+      key,
+      ['ArrowRight', 'ArrowDown'],
+      ['ArrowLeft', 'ArrowUp']
+    );
 
-  const getSelectNavigationTarget = (ctx: SelectContextValue, current: string, key: string): string | null =>
+  const getSelectNavigationTarget = (
+    ctx: SelectContextValue,
+    current: string,
+    key: string
+  ): string | null =>
     getClampedNavigationTarget(ctx.order, current, key, ['ArrowDown'], ['ArrowUp']);
 
-  const getSelectTypeaheadTarget = (ctx: SelectContextValue, current: string, key: string): string | null =>
+  const getSelectTypeaheadTarget = (
+    ctx: SelectContextValue,
+    current: string,
+    key: string
+  ): string | null =>
     getTypeaheadTarget(
       selectTypeaheadStates,
       ctx.value as object,
@@ -753,7 +845,13 @@ export const createHeadlessUiRuntime = () => {
     current: string,
     key: string
   ): string | null =>
-    getWrappedNavigationTarget(ctx.order, current, key, ['ArrowDown', 'ArrowRight'], ['ArrowUp', 'ArrowLeft']);
+    getWrappedNavigationTarget(
+      ctx.order,
+      current,
+      key,
+      ['ArrowDown', 'ArrowRight'],
+      ['ArrowUp', 'ArrowLeft']
+    );
 
   const getMultiselectNavigationTarget = (
     ctx: MultiselectContextValue,
@@ -861,7 +959,9 @@ export const createHeadlessUiRuntime = () => {
 
   const pickPopoverSide = (props: Record<string, unknown> | null | undefined): PopoverSide => {
     const value = props?.side;
-    return value === 'top' || value === 'bottom' || value === 'left' || value === 'right' ? value : 'bottom';
+    return value === 'top' || value === 'bottom' || value === 'left' || value === 'right'
+      ? value
+      : 'bottom';
   };
 
   const pickPopoverAlign = (props: Record<string, unknown> | null | undefined): PopoverAlign => {
