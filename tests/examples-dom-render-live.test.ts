@@ -23,6 +23,7 @@ describe('dom-render live assets', () => {
 
   test('benchmark page exposes deeper scenario sections', () => {
     expect(benchmarkHtml).toContain('rel="icon"');
+    expect(benchmarkHtml).toContain('export-json');
     expect(benchmarkHtml).toContain('Whole-list patch');
     expect(benchmarkHtml).toContain('Indexed list patch');
     expect(benchmarkHtml).toContain('Stable signal list patch');
@@ -32,6 +33,8 @@ describe('dom-render live assets', () => {
     expect(benchmarkHtml).toContain('Fine-grained row update');
     expect(benchmarkHtml).toContain('Saved compatible runs: 0');
     expect(benchmarkHtml).toContain('untimed warmup');
+    expect(benchmarkHtml).toContain('versioned JSON payload');
+    expect(benchmarkHtml).toContain('Range (ms)');
     expect(benchmarkHtml).toContain('results-whole-list');
     expect(benchmarkHtml).toContain('results-index-list');
     expect(benchmarkHtml).toContain('results-for-list');
@@ -54,11 +57,20 @@ describe('dom-render live assets', () => {
     expect(benchmarkSource).toContain('benchmarkReactComplexReorder');
     expect(benchmarkSource).toContain('BENCHMARK_HISTORY_KEY');
     expect(benchmarkSource).toContain('BENCHMARK_MANIFEST');
+    expect(benchmarkSource).toContain('BENCHMARK_SCHEMA_VERSION');
+    expect(benchmarkSource).toContain('BENCHMARK_SUITE_VERSION');
     expect(benchmarkSource).toContain('MEASURED_RUNS');
     expect(benchmarkSource).toContain('preloadBenchmarkModules');
     expect(benchmarkSource).toContain('Warmup');
     expect(benchmarkSource).toContain('saveBenchmarkRun');
     expect(benchmarkSource).toContain('samplesMs');
+    expect(benchmarkSource).toContain('summarizeSamples');
+    expect(benchmarkSource).toContain('window.__luminaBenchmarkExport');
+    expect(benchmarkSource).toContain('window.__luminaBenchmarkExportJson');
+    expect(benchmarkSource).toContain('exportBenchmarkResults');
+    expect(benchmarkSource).toContain('createBenchRowDom');
+    expect(benchmarkSource).toContain('renderReactBenchRow');
+    expect(benchmarkSource).toContain('bench-row');
     expect(benchmarkSource).toContain('window.__luminaBenchmarkResults');
     expect(benchmarkSource).toContain('window.__luminaBenchmarkManifest');
     expect(benchmarkSource).toContain('benchmarkReactMemoList');

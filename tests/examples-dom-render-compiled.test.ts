@@ -55,6 +55,8 @@ describe('compiled DOM benchmark example', () => {
     expect(benchmarkCompiledSource).toContain('compiledReorder');
     expect(benchmarkCompiledSource).toContain('text(get(row))');
     expect(benchmarkCompiledSource).toContain('text(row.label)');
+    expect(benchmarkCompiledSource).toContain('props_merge');
+    expect(benchmarkCompiledSource).toContain('props_class("bench-row")');
     expect(benchmarkCompiledSource).toContain('props_class("bench-pill")');
     expect(benchmarkCompiledSource).toContain('props_key(row.id)');
   });

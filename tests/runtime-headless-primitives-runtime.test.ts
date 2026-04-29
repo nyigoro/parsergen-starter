@@ -157,10 +157,11 @@ describe('runtime headless primitives', () => {
         runtime.menu_root(menuOpenByKey, () => [
           runtime.menu_item('profile', null, ['Profile']),
           runtime.menu_item('settings', null, ['Settings']),
+          runtime.menu_item('billing-id', null, ['Billing']),
           runtime.menu_trigger(null, ['Open']),
         ]);
       let tree = renderMenuTree();
-      let trigger = (tree.children ?? [])[2];
+      let trigger = (tree.children ?? [])[3];
       (trigger?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
         key: 'ArrowUp',
         currentTarget: triggerTarget,
@@ -170,9 +171,25 @@ describe('runtime headless primitives', () => {
       expect(menuOpenByKey.get()).toBe(true);
       tree = renderMenuTree();
       const firstItem = (tree.children ?? [])[0];
-      const lastItem = (tree.children ?? [])[1];
+      const secondItem = (tree.children ?? [])[1];
+      const lastItem = (tree.children ?? [])[2];
       expect(firstItem?.props?.autoFocus).toBe(false);
       expect(lastItem?.props?.autoFocus).toBe(true);
+      expect(firstItem?.props?.tabIndex).toBe(-1);
+      expect(lastItem?.props?.tabIndex).toBe(0);
+
+      (firstItem?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+        key: 'b',
+        currentTarget: triggerTarget,
+        target: triggerTarget,
+        preventDefault: jest.fn(),
+      } as unknown as KeyboardEvent);
+      tree = renderMenuTree();
+      expect(((tree.children ?? [])[2])?.props?.autoFocus).toBe(true);
+
+      const closeEvent = { key: 'Tab' } as unknown as KeyboardEvent;
+      expect((secondItem?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.(closeEvent)).toBeUndefined();
+      expect(menuOpenByKey.get()).toBe(false);
     } finally {
       jest.useRealTimers();
     }
@@ -193,6 +210,28 @@ describe('runtime headless primitives', () => {
 
     let selectTree = renderSelectTree();
     let selectTrigger = (selectTree.children ?? [])[2];
+    (selectTrigger.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'A',
+      preventDefault: jest.fn(),
+      currentTarget: selectTriggerTarget,
+      target: selectTriggerTarget,
+    } as unknown as KeyboardEvent);
+    expect(selectOpen.get()).toBe(true);
+    selectTree = renderSelectTree();
+    selectTrigger = (selectTree.children ?? [])[2];
+    expect(selectTrigger?.props?.['aria-activedescendant']).toBe('lumina-select-1-item-activity');
+
+    (selectTrigger.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'A',
+      preventDefault: jest.fn(),
+      currentTarget: selectTriggerTarget,
+      target: selectTriggerTarget,
+    } as unknown as KeyboardEvent);
+    selectTree = renderSelectTree();
+    selectTrigger = (selectTree.children ?? [])[2];
+    expect(selectTrigger?.props?.['aria-activedescendant']).toBe('lumina-select-1-item-activity');
+
+    selectOpen.set(false);
     (selectTrigger.props?.onClick as ((event: Event) => void) | undefined)?.({
       currentTarget: selectTriggerTarget,
     } as unknown as Event);
@@ -250,12 +289,33 @@ describe('runtime headless primitives', () => {
     const multiselectValues = new Signal<string[]>(['alpha']);
     const multiselectTree = runtime.multiselect_root(multiselectOpen, multiselectValues, () => [
       runtime.multiselect_trigger(null, []),
-      runtime.multiselect_item('beta', null, () => ['Beta']),
+      runtime.multiselect_item('alpha', null, () => ['Amber']),
+      runtime.multiselect_item('beta', null, () => ['Blue']),
+      runtime.multiselect_item('gamma', null, () => ['Green']),
     ]);
     const multiselectTrigger = (multiselectTree.children ?? [])[0];
-    const multiselectItem = (multiselectTree.children ?? [])[1];
+    const multiselectFirstItem = (multiselectTree.children ?? [])[1];
+    const multiselectItem = (multiselectTree.children ?? [])[2];
     expect(multiselectTrigger?.props?.role).toBeUndefined();
     expect(multiselectTrigger?.props?.['aria-haspopup']).toBe('listbox');
+    expect(multiselectFirstItem?.props?.tabIndex).toBe(0);
+    expect(multiselectItem?.props?.tabIndex).toBe(-1);
+    expect(multiselectFirstItem?.props?.['data-active']).toBe('true');
+    (multiselectFirstItem?.props?.onKeyDown as ((event: KeyboardEvent) => unknown) | undefined)?.({
+      key: 'g',
+      preventDefault: jest.fn(),
+      currentTarget: { focus: jest.fn() },
+      target: { focus: jest.fn() },
+    } as unknown as KeyboardEvent);
+    const multiselectAfterTypeahead = runtime.multiselect_root(multiselectOpen, multiselectValues, () => [
+      runtime.multiselect_trigger(null, []),
+      runtime.multiselect_item('alpha', null, () => ['Amber']),
+      runtime.multiselect_item('beta', null, () => ['Blue']),
+      runtime.multiselect_item('gamma', null, () => ['Green']),
+    ]);
+    const multiselectGamma = (multiselectAfterTypeahead.children ?? [])[3];
+    expect(multiselectGamma?.props?.tabIndex).toBe(0);
+    expect(multiselectGamma?.props?.['data-active']).toBe('true');
     (multiselectItem.props?.onClick as (() => void) | undefined)?.();
     expect(multiselectValues.get()).toEqual(['alpha', 'beta']);
     expect(multiselectOpen.get()).toBe(true);

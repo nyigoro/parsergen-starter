@@ -5,6 +5,7 @@ import {
   indexList,
   props_class,
   props_key,
+  props_merge,
   text,
   vnode
 } from "@std/render";
@@ -28,7 +29,7 @@ pub fn compiledIndexList(rows: Signal<Vec<string>>) -> VNode {
 pub fn compiledReorder(rows: Signal<Vec<BenchRow>>) -> VNode {
   vnode("ul", props_class("bench-list"), [
     map_vec(get(rows), fn(row: BenchRow, _index: int) -> VNode {
-      vnode("li", props_key(row.id), [
+      vnode("li", props_merge(props_class("bench-row"), props_key(row.id)), [
         vnode("span", props_class("bench-pill"), [text("row")]),
         vnode("span", props_class("bench-value"), [text(row.label)])
       ])

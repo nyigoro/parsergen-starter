@@ -1,4 +1,4 @@
-import { render, get, vnode, text, props_class, props_key } from "./lumina-runtime.js?v=2026-04-29-benchmark-trust-v2";
+import { render, get, vnode, text, props_class, props_key } from "./lumina-runtime.js?v=2026-04-29-benchmark-quality-v3";
 
 const BENCH_LIST_PROPS = props_class("bench-list");
 const BENCH_ROW_PROPS = props_class("bench-row");

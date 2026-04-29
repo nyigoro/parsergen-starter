@@ -35,6 +35,23 @@ type DomElementLike = AccessibleDomElementLike & {
 };
 type DomNodeLike = AccessibleDomNodeLike;
 
+const getTextLabel = (input: VNodeInput): string => {
+  const parts: string[] = [];
+  for (const child of normalizeVNodeChildren(input)) {
+    if (child.kind === 'text' && child.text) {
+      parts.push(child.text);
+      continue;
+    }
+    if (child.children && child.children.length > 0) {
+      const nested = getTextLabel(child.children);
+      if (nested) {
+        parts.push(nested);
+      }
+    }
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+};
+
 interface HeadlessPrimitivesRuntimeOptions {
   requireActiveFrameManager: (apiName: string) => HeadlessFrameManager;
   headlessUi: ReturnType<typeof createHeadlessUiRuntime>;
@@ -117,10 +134,13 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
     getMenuActiveValue,
     setMenuActiveValue,
     getMenuNavigationTarget,
+    getMenuTypeaheadTarget,
     getRadioNavigationTarget,
     getSelectNavigationTarget,
+    getSelectTypeaheadTarget,
     getComboboxNavigationTarget,
     getMultiselectNavigationTarget,
+    getMultiselectTypeaheadTarget,
     getSelectActiveValue,
     getSelectActiveDescendantId,
     setSelectActiveValue,
@@ -129,6 +149,8 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
     getComboboxActiveDescendantId,
     setComboboxActiveValue,
     acceptComboboxActiveValue,
+    getMultiselectActiveValue,
+    setMultiselectActiveValue,
     focusMenuItem,
     focusRadioItem,
     focusMultiselectItem,
@@ -799,6 +821,11 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 closeMenu(ctx);
                 return false;
               }
+              if (key === 'Tab') {
+                setMenuActiveValue(ctx, '');
+                ctx.open.set(false);
+                return undefined;
+              }
               if (key === 'ArrowDown' || key === 'Home') {
                 event?.preventDefault?.();
                 setMenuActiveValue(ctx, ctx.order[0] ?? '');
@@ -819,7 +846,18 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 );
                 return false;
               }
-              return undefined;
+              const typeaheadTarget = getMenuTypeaheadTarget(ctx, getMenuActiveValue(ctx), key);
+              if (!typeaheadTarget) {
+                return undefined;
+              }
+              event?.preventDefault?.();
+              setMenuActiveValue(ctx, typeaheadTarget);
+              focusMenuItem(
+                (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
+                ctx,
+                typeaheadTarget
+              );
+              return false;
             },
           },
           omitPopoverLayoutProps(props)
@@ -834,7 +872,7 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
     ): VNode => {
       const frameManager = options.requireActiveFrameManager('render.menu_item');
       const ctx = frameManager.useContext(menuContext);
-      registerMenuValue(ctx, value);
+      registerMenuValue(ctx, value, getTextLabel(children));
       const open = ctx.open.get();
       const active = getMenuActiveValue(ctx);
       const itemId = getMenuItemId(ctx, value);
@@ -846,7 +884,7 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 id: itemId,
                 role: 'menuitem',
                 hidden: !open,
-                tabIndex: open ? 0 : -1,
+                tabIndex: open && active === value ? 0 : -1,
                 autoFocus: open && active === value,
                 'data-lumina-menu-item': 'true',
                 'data-state': open ? 'open' : 'closed',
@@ -861,31 +899,47 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                   if (key === 'Escape') {
                     event?.preventDefault?.();
                     closeMenu(ctx);
-                return false;
-              }
-              if (key === 'Enter' || key === ' ') {
-                event?.preventDefault?.();
-                const click = props?.onClick;
-                if (typeof click === 'function') {
-                  click(event as unknown as Event);
-                }
-                closeMenu(ctx);
-                return false;
+                    return false;
+                  }
+                  if (key === 'Tab') {
+                    setMenuActiveValue(ctx, '');
+                    ctx.open.set(false);
+                    return undefined;
+                  }
+                  if (key === 'Enter' || key === ' ') {
+                    event?.preventDefault?.();
+                    const click = props?.onClick;
+                    if (typeof click === 'function') {
+                      click(event as unknown as Event);
+                    }
+                    closeMenu(ctx);
+                    return false;
                   }
                   const nextValue = getMenuNavigationTarget(ctx, value, key);
-                  if (!nextValue) return undefined;
+                  if (nextValue) {
+                    event?.preventDefault?.();
+                    setMenuActiveValue(ctx, nextValue);
+                    focusMenuItem(
+                      (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
+                      ctx,
+                      nextValue
+                    );
+                    return false;
+                  }
+                  const typeaheadTarget = getMenuTypeaheadTarget(ctx, value, key);
+                  if (!typeaheadTarget) return undefined;
                   event?.preventDefault?.();
-                  setMenuActiveValue(ctx, nextValue);
+                  setMenuActiveValue(ctx, typeaheadTarget);
                   focusMenuItem(
                     (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
                     ctx,
-                    nextValue
+                    typeaheadTarget
                   );
-              return false;
-            },
-          },
-          props
-        ),
+                  return false;
+                },
+              },
+              props
+            ),
         children
       );
     },
@@ -977,26 +1031,34 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                   ctx.open.set(true);
                   return false;
                 }
-                if (key === 'ArrowUp' || key === 'End') {
-                  event?.preventDefault?.();
-                  setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentValue);
-                  ctx.open.set(true);
-                  return false;
-                }
-                if (key === 'Home') {
+                if (key === 'ArrowUp' || key === 'Home') {
                   event?.preventDefault?.();
                   setSelectActiveValue(ctx, ctx.order[0] ?? currentValue);
                   ctx.open.set(true);
                   return false;
                 }
-                return undefined;
+                if (key === 'End') {
+                  event?.preventDefault?.();
+                  setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentValue);
+                  ctx.open.set(true);
+                  return false;
+                }
+                const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentValue, key);
+                if (!typeaheadTarget) {
+                  return undefined;
+                }
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, typeaheadTarget);
+                ctx.open.set(true);
+                return false;
               }
               if (key === 'Enter' || key === ' ' || key === 'Tab') {
                 if (key !== 'Tab') {
                   event?.preventDefault?.();
                 }
                 acceptSelectActiveValue(ctx);
-                closeSelect(ctx);
+                setSelectActiveValue(ctx, ctx.value.get());
+                ctx.open.set(false);
                 return key === 'Tab' ? undefined : false;
               }
               if (key === 'Home') {
@@ -1007,6 +1069,12 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
               if (key === 'End') {
                 event?.preventDefault?.();
                 setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
+                return false;
+              }
+              const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key);
+              if (typeaheadTarget) {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, typeaheadTarget);
                 return false;
               }
               const nextValue = getSelectNavigationTarget(ctx, currentActive, key);
@@ -1043,6 +1111,7 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
             style: getPopoverContentStyle(getSelectAnchorRect(ctx), props),
             onKeyDown: (event?: KeyboardEvent) => {
               const key = String(event?.key ?? '');
+              const currentActive = getSelectActiveValue(ctx);
               if (key === 'Escape') {
                 event?.preventDefault?.();
                 closeSelect(ctx);
@@ -1060,12 +1129,12 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
               }
               if (key === 'Home') {
                 event?.preventDefault?.();
-                setSelectActiveValue(ctx, ctx.order[0] ?? getSelectActiveValue(ctx));
+                setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
                 return false;
               }
               if (key === 'End') {
                 event?.preventDefault?.();
-                setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? getSelectActiveValue(ctx));
+                setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
                 return false;
               }
               if (key === 'Enter' || key === ' ' || key === 'Tab') {
@@ -1073,7 +1142,14 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                   event?.preventDefault?.();
                 }
                 acceptSelectActiveValue(ctx);
-                closeSelect(ctx);
+                setSelectActiveValue(ctx, ctx.value.get());
+                ctx.open.set(false);
+                return key === 'Tab' ? undefined : false;
+              }
+              const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key);
+              if (typeaheadTarget) {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, typeaheadTarget);
                 return false;
               }
               return undefined;
@@ -1091,7 +1167,6 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
     ): VNode => {
       const frameManager = options.requireActiveFrameManager('render.select_item');
       const ctx = frameManager.useContext(selectContext);
-      registerSelectValue(ctx, value);
       const open = ctx.open.get();
       const currentValue = ctx.value.get();
       const activeValue = getSelectActiveValue(ctx);
@@ -1099,8 +1174,10 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
       const active = open && activeValue === value;
       const itemId = getSelectItemId(ctx, value);
       return coerceRenderableToVNode(
-        frameManager.withContext(selectItemContext, { value, itemId, selected }, () =>
-          vnodeElement(
+        frameManager.withContext(selectItemContext, { value, itemId, selected }, () => {
+          const resolvedChildren = resolveChildrenInput(renderChildren);
+          registerSelectValue(ctx, value, getTextLabel(resolvedChildren));
+          return vnodeElement(
             'button',
             mergeProps(
               {
@@ -1134,7 +1211,8 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                     }
                     setSelectActiveValue(ctx, value);
                     acceptSelectActiveValue(ctx);
-                    closeSelect(ctx);
+                    setSelectActiveValue(ctx, ctx.value.get());
+                    ctx.open.set(false);
                     return key === 'Tab' ? undefined : false;
                   }
                   const nextValue = getSelectNavigationTarget(ctx, value, key);
@@ -1147,9 +1225,9 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
               },
               props
             ),
-            resolveChildrenInput(renderChildren)
+            resolvedChildren
           )
-        )
+        })
       );
     },
     select_indicator: (
@@ -1519,6 +1597,12 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 setMultiselectAnchorTarget(ctx, target as DomElementLike);
               }
               const nextOpen = !ctx.open.get();
+              if (nextOpen) {
+                setMultiselectActiveValue(
+                  ctx,
+                  readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry)) ?? (ctx.order[0] ?? '')
+                );
+              }
               ctx.open.set(nextOpen);
               if (!nextOpen) {
                 restoreMultiselectFocus(ctx);
@@ -1560,29 +1644,54 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 closeMultiselect(ctx);
                 return false;
               }
-              const currentValues = readStringSelection(ctx.values.get());
+              if (key === 'Tab') {
+                ctx.open.set(false);
+                return undefined;
+              }
+              const activeValue = getMultiselectActiveValue(ctx);
               if (key === 'ArrowDown' || key === 'Home') {
                 event?.preventDefault?.();
+                const targetValue =
+                  key === 'Home'
+                    ? (ctx.order[0] ?? activeValue)
+                    : (getMultiselectNavigationTarget(ctx, activeValue, key) ?? activeValue);
+                setMultiselectActiveValue(ctx, targetValue);
                 focusMultiselectItem(
                   (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
                   ctx,
-                  currentValues.find((entry) => ctx.order.includes(entry)) ?? (ctx.order[0] ?? ''),
+                  targetValue,
                   getFocusTargetFromEvent(event) as DomNodeLike | null
                 );
                 return false;
               }
               if (key === 'ArrowUp' || key === 'End') {
                 event?.preventDefault?.();
+                const targetValue =
+                  key === 'End'
+                    ? (ctx.order[ctx.order.length - 1] ?? activeValue)
+                    : (getMultiselectNavigationTarget(ctx, activeValue, key) ?? activeValue);
+                setMultiselectActiveValue(ctx, targetValue);
                 focusMultiselectItem(
                   (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
                   ctx,
-                  [...currentValues].reverse().find((entry) => ctx.order.includes(entry))
-                    ?? (ctx.order[ctx.order.length - 1] ?? ''),
+                  targetValue,
                   getFocusTargetFromEvent(event) as DomNodeLike | null
                 );
                 return false;
               }
-              return undefined;
+              const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, activeValue, key);
+              if (!typeaheadTarget) {
+                return undefined;
+              }
+              event?.preventDefault?.();
+              setMultiselectActiveValue(ctx, typeaheadTarget);
+              focusMultiselectItem(
+                (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
+                ctx,
+                typeaheadTarget,
+                getFocusTargetFromEvent(event) as DomNodeLike | null
+              );
+              return false;
             },
           },
           omitPopoverLayoutProps(props)
@@ -1597,17 +1706,17 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
     ): VNode => {
       const frameManager = options.requireActiveFrameManager('render.multiselect_item');
       const ctx = frameManager.useContext(multiselectContext);
-      registerMultiselectValue(ctx, value);
       const open = ctx.open.get();
       const selectedValues = readStringSelection(ctx.values.get());
       const selected = selectedValues.includes(value);
       const itemId = getMultiselectItemId(ctx, value);
-      const firstSelected = selectedValues.find((entry) => ctx.order.includes(entry));
-      const isFirst = ctx.order[0] === value;
-      const shouldAutoFocus = open && ((selected && value === firstSelected) || (!firstSelected && isFirst));
       return coerceRenderableToVNode(
-        frameManager.withContext(multiselectItemContext, { value, itemId, selected }, () =>
-          vnodeElement(
+        frameManager.withContext(multiselectItemContext, { value, itemId, selected }, () => {
+          const resolvedChildren = resolveChildrenInput(renderChildren);
+          registerMultiselectValue(ctx, value, getTextLabel(resolvedChildren));
+          const active = getMultiselectActiveValue(ctx);
+          const shouldAutoFocus = open && active === value;
+          return vnodeElement(
             'button',
             mergeProps(
               {
@@ -1615,13 +1724,18 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                 id: itemId,
                 role: 'option',
                 hidden: !open,
-                tabIndex: open ? (selected ? 0 : -1) : -1,
+                tabIndex: open && active === value ? 0 : -1,
                 autoFocus: shouldAutoFocus,
                 'aria-selected': selected ? 'true' : 'false',
                 'data-lumina-multiselect-item': 'true',
+                'data-active': active === value ? 'true' : 'false',
                 'data-state': selected ? 'checked' : 'unchecked',
                 onClick: () => {
+                  setMultiselectActiveValue(ctx, value);
                   toggleMultiselectValue(ctx, value);
+                },
+                onMouseEnter: () => {
+                  setMultiselectActiveValue(ctx, value);
                 },
                 onKeyDown: (event?: KeyboardEvent) => {
                   const key = String(event?.key ?? '');
@@ -1630,18 +1744,36 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
                     closeMultiselect(ctx);
                     return false;
                   }
+                  if (key === 'Tab') {
+                    ctx.open.set(false);
+                    return undefined;
+                  }
                   if (key === 'Enter' || key === ' ') {
                     event?.preventDefault?.();
+                    setMultiselectActiveValue(ctx, value);
                     toggleMultiselectValue(ctx, value);
                     return false;
                   }
                   const nextValue = getMultiselectNavigationTarget(ctx, value, key);
-                  if (!nextValue) return undefined;
+                  if (nextValue) {
+                    event?.preventDefault?.();
+                    setMultiselectActiveValue(ctx, nextValue);
+                    focusMultiselectItem(
+                      (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
+                      ctx,
+                      nextValue,
+                      getFocusTargetFromEvent(event) as DomNodeLike | null
+                    );
+                    return false;
+                  }
+                  const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, value, key);
+                  if (!typeaheadTarget) return undefined;
                   event?.preventDefault?.();
+                  setMultiselectActiveValue(ctx, typeaheadTarget);
                   focusMultiselectItem(
                     (getFocusTargetFromEvent(event) as { ownerDocument?: DomDocumentLike } | null)?.ownerDocument,
                     ctx,
-                    nextValue,
+                    typeaheadTarget,
                     getFocusTargetFromEvent(event) as DomNodeLike | null
                   );
                   return false;
@@ -1649,9 +1781,9 @@ export const createHeadlessPrimitivesRuntime = (options: HeadlessPrimitivesRunti
               },
               props
             ),
-            resolveChildrenInput(renderChildren)
+            resolvedChildren
           )
-        )
+        })
       );
     },
     multiselect_indicator: (

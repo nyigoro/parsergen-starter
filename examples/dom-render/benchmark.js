@@ -1,9 +1,9 @@
-import { render as luminaRender } from './lumina-runtime.js?v=2026-04-29-benchmark-trust-v2';
+import { render as luminaRender } from './lumina-runtime.js?v=2026-04-29-benchmark-quality-v3';
 import {
   compiledForList,
   compiledIndexList,
   compiledReorder,
-} from './benchmark-compiled.generated.js?v=2026-04-29-benchmark-trust-v2';
+} from './benchmark-compiled.generated.js?v=2026-04-29-benchmark-quality-v3';
 
 const LIST_SIZE = 1000;
 const WHOLE_LIST_ITERATIONS = 300;
@@ -16,8 +16,11 @@ const MOUNT_ITERATIONS = 40;
 const WARMUP_RUNS = 1;
 const MEASURED_RUNS = 3;
 const BENCHMARK_HISTORY_KEY = 'lumina.dom.benchmark.history.v2';
+const BENCHMARK_SCHEMA_VERSION = 3;
+const BENCHMARK_SUITE_VERSION = '2026-04-29-benchmark-quality-v3';
 const BENCHMARK_MANIFEST = Object.freeze({
-  version: 2,
+  version: BENCHMARK_SCHEMA_VERSION,
+  suiteVersion: BENCHMARK_SUITE_VERSION,
   warmupRuns: WARMUP_RUNS,
   measuredRuns: MEASURED_RUNS,
   listSize: LIST_SIZE,
@@ -34,6 +37,7 @@ const BENCHMARK_MANIFEST = Object.freeze({
 
 const workspace = document.getElementById('workspace');
 const runButton = document.getElementById('run');
+const exportButton = document.getElementById('export-json');
 const statusNode = document.getElementById('status');
 const historyNode = document.getElementById('history-count');
 
@@ -54,11 +58,10 @@ const clearTable = (tableId) => {
   return tbody;
 };
 
-const appendResult = (tableId, name, total, iterations) => {
+const appendResult = (tableId, name, summary) => {
   const tbody = document.getElementById(tableId);
   const row = document.createElement('tr');
-  const avg = total / iterations;
-  row.innerHTML = `<td>${name}</td><td>${total.toFixed(2)}</td><td>${avg.toFixed(4)}</td>`;
+  row.innerHTML = `<td>${name}</td><td>${summary.medianMs.toFixed(2)}</td><td>${summary.avgMsPerIteration.toFixed(4)}</td><td>${summary.minMs.toFixed(2)} - ${summary.maxMs.toFixed(2)}</td>`;
   tbody.appendChild(row);
 };
 
@@ -78,6 +81,44 @@ const median = (values) => {
   if (sorted.length % 2 === 1) return sorted[middle];
   return (sorted[middle - 1] + sorted[middle]) / 2;
 };
+
+const min = (values) => values.reduce((best, value) => (value < best ? value : best), values[0] ?? 0);
+const max = (values) => values.reduce((best, value) => (value > best ? value : best), values[0] ?? 0);
+const mean = (values) => (values.length === 0 ? 0 : values.reduce((total, value) => total + value, 0) / values.length);
+
+const summarizeSamples = (samplesMs, iterations) => {
+  const medianMs = median(samplesMs);
+  const minMs = min(samplesMs);
+  const maxMs = max(samplesMs);
+  const meanMs = mean(samplesMs);
+  return {
+    iterations,
+    samplesMs,
+    minMs,
+    medianMs,
+    maxMs,
+    meanMs,
+    avgMsPerIteration: medianMs / iterations,
+  };
+};
+
+const getEnvironmentSnapshot = () => ({
+  userAgent: navigator.userAgent,
+  hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+  deviceMemory: navigator.deviceMemory ?? null,
+  language: navigator.language ?? null,
+  languages: Array.isArray(navigator.languages) ? [...navigator.languages] : [],
+  platform: navigator.platform ?? null,
+});
+
+const toExportPayload = (result, history) => ({
+  schemaVersion: BENCHMARK_SCHEMA_VERSION,
+  suiteVersion: BENCHMARK_SUITE_VERSION,
+  manifest: BENCHMARK_MANIFEST,
+  environment: getEnvironmentSnapshot(),
+  latest: result,
+  history,
+});
 
 const loadBenchmarkHistory = () => {
   try {
@@ -103,10 +144,29 @@ const saveBenchmarkRun = (result) => {
     history.shift();
   }
   localStorage.setItem(BENCHMARK_HISTORY_KEY, JSON.stringify(history));
-  window.__luminaBenchmarkResults = { ...result, manifest: BENCHMARK_MANIFEST };
+  const latest = { ...result, manifest: BENCHMARK_MANIFEST };
+  const exportPayload = toExportPayload(latest, history);
+  window.__luminaBenchmarkResults = latest;
   window.__luminaBenchmarkHistory = history;
   window.__luminaBenchmarkManifest = BENCHMARK_MANIFEST;
+  window.__luminaBenchmarkExport = exportPayload;
+  window.__luminaBenchmarkExportJson = JSON.stringify(exportPayload, null, 2);
+  if (exportButton) {
+    exportButton.disabled = false;
+  }
   updateHistoryCount();
+};
+
+const exportBenchmarkResults = () => {
+  const payload = window.__luminaBenchmarkExport;
+  if (!payload) return;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `lumina-dom-benchmark-${Date.now()}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
 };
 
 const makeRows = () => Array.from({ length: LIST_SIZE }, (_, i) => `row-${i}`);
@@ -202,6 +262,28 @@ const renderLuminaBenchRow = (content) =>
     luminaRender.element('span', { className: 'bench-value' }, [content]),
   ]);
 
+const createBenchRowDom = (value) => {
+  const li = document.createElement('li');
+  li.className = 'bench-row';
+  const pill = document.createElement('span');
+  pill.className = 'bench-pill';
+  pill.textContent = 'row';
+  const content = document.createElement('span');
+  content.className = 'bench-value';
+  content.textContent = value;
+  li.appendChild(pill);
+  li.appendChild(content);
+  return { li, content };
+};
+
+const renderReactBenchRow = (React, key, value) =>
+  React.createElement(
+    'li',
+    { key, className: 'bench-row' },
+    React.createElement('span', { className: 'bench-pill' }, 'row'),
+    React.createElement('span', { className: 'bench-value' }, value)
+  );
+
 const benchmarkLuminaWholeList = async () => {
   const host = createHost('host-whole-list-lumina');
   const renderer = luminaRender.create_dom_renderer();
@@ -243,6 +325,29 @@ const benchmarkVanillaWholeList = async () => {
   return performance.now() - start;
 };
 
+const benchmarkVanillaBenchList = async (hostId, iterations) => {
+  const host = createHost(hostId);
+  const rows = makeRows();
+  const ul = document.createElement('ul');
+  ul.className = 'bench-list';
+  const nodes = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const { li, content } = createBenchRowDom(rows[i]);
+    nodes.push(content);
+    ul.appendChild(li);
+  }
+  host.appendChild(ul);
+
+  const start = performance.now();
+  for (let i = 0; i < iterations; i += 1) {
+    const index = i % rows.length;
+    rows[index] = `${rows[index]}*`;
+    nodes[index].textContent = rows[index];
+    await nextTick();
+  }
+  return performance.now() - start;
+};
+
 const benchmarkReactWholeList = async () => {
   const { React, ReactDOMClient, ReactDOM } = await loadReactModules();
   const host = createHost('host-whole-list-react');
@@ -275,7 +380,7 @@ const benchmarkReactMemoList = async () => {
   const root = ReactDOMClient.createRoot(host);
 
   const Row = React.memo(function Row({ value }) {
-    return React.createElement('li', null, value);
+    return renderReactBenchRow(React, null, value);
   });
 
   const renderList = (rows) =>
@@ -305,7 +410,7 @@ const benchmarkReactMemoKeyedList = async () => {
   const root = ReactDOMClient.createRoot(host);
 
   const Row = React.memo(function Row({ value }) {
-    return React.createElement('li', null, value);
+    return renderReactBenchRow(React, null, value);
   });
 
   const renderList = (rows) =>
@@ -369,7 +474,7 @@ const benchmarkSolidIndexList = async () => {
     setRowsRef = setRows;
     solidWeb.render(
       () =>
-        solidHtml`<ul><${solid.Index} each=${rows}>${(item) => solidHtml`<li>${item}</li>`}</${solid.Index}></ul>`,
+        solidHtml`<ul class="bench-list"><${solid.Index} each=${rows}>${(item) => solidHtml`<li class="bench-row"><span class="bench-pill">row</span><span class="bench-value">${item}</span></li>`}</${solid.Index}></ul>`,
       host
     );
     return () => {
@@ -400,7 +505,7 @@ const benchmarkSolidKeyedIndexList = async () => {
     setRowsRef = setRows;
     solidWeb.render(
       () =>
-        solidHtml`<ul><${solid.Index} each=${rows}>${(item) => solidHtml`<li>${item}</li>`}</${solid.Index}></ul>`,
+        solidHtml`<ul class="bench-list"><${solid.Index} each=${rows}>${(item) => solidHtml`<li class="bench-row"><span class="bench-pill">row</span><span class="bench-value">${item}</span></li>`}</${solid.Index}></ul>`,
       host
     );
     return () => {
@@ -657,8 +762,7 @@ const benchmarkVanillaReorder = async () => {
   const rows = makeKeyedRows();
   const ul = document.createElement('ul');
   const nodes = rows.map((row) => {
-    const li = document.createElement('li');
-    li.textContent = row.label;
+    const { li } = createBenchRowDom(row.label);
     ul.appendChild(li);
     return li;
   });
@@ -685,8 +789,8 @@ const benchmarkReactReorder = async () => {
   const renderList = (rows) =>
     React.createElement(
       'ul',
-      null,
-      rows.map((row) => React.createElement('li', { key: row.id }, row.label))
+      { className: 'bench-list' },
+      rows.map((row) => renderReactBenchRow(React, row.id, row.label))
     );
 
   let rows = makeKeyedRows();
@@ -783,8 +887,7 @@ const benchmarkVanillaComplexReorder = async () => {
   const rows = makeKeyedRows();
   const ul = document.createElement('ul');
   const nodes = rows.map((row) => {
-    const li = document.createElement('li');
-    li.textContent = row.label;
+    const { li } = createBenchRowDom(row.label);
     ul.appendChild(li);
     return li;
   });
@@ -812,8 +915,8 @@ const benchmarkReactComplexReorder = async () => {
   const renderList = (rows) =>
     React.createElement(
       'ul',
-      null,
-      rows.map((row) => React.createElement('li', { key: row.id }, row.label))
+      { className: 'bench-list' },
+      rows.map((row) => renderReactBenchRow(React, row.id, row.label))
     );
 
   let rows = makeKeyedRows();
@@ -923,18 +1026,24 @@ const runScenario = async (tableId, label, suites, iterations) => {
     const samplesMs = [];
     for (let runIndex = 0; runIndex < MEASURED_RUNS; runIndex += 1) {
       setStatus(`Running ${label}: ${name} (${runIndex + 1}/${MEASURED_RUNS})`);
+      const startMark = `${tableId}:${name}:run:${runIndex}:start`;
+      const endMark = `${tableId}:${name}:run:${runIndex}:end`;
+      const measureName = `${tableId}:${name}:run:${runIndex}`;
+      performance.mark(startMark);
       samplesMs.push(await benchmark());
+      performance.mark(endMark);
+      performance.measure(measureName, startMark, endMark);
+      performance.clearMarks(startMark);
+      performance.clearMarks(endMark);
+      performance.clearMeasures(measureName);
     }
-    const total = median(samplesMs);
-    appendResult(tableId, name, total, iterations);
+    const summary = summarizeSamples(samplesMs, iterations);
+    appendResult(tableId, name, summary);
     scenarioResults.push({
       name,
-      total,
-      avg: total / iterations,
-      iterations,
       warmupRuns: WARMUP_RUNS,
       measuredRuns: MEASURED_RUNS,
-      samplesMs,
+      ...summary,
     });
   }
   return scenarioResults;
@@ -947,8 +1056,9 @@ const run = async () => {
     await preloadBenchmarkModules();
 
     const results = {
+      runId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       recordedAt: new Date().toISOString(),
-      userAgent: navigator.userAgent,
+      environment: getEnvironmentSnapshot(),
       listSize: LIST_SIZE,
       warmupRuns: WARMUP_RUNS,
       measuredRuns: MEASURED_RUNS,
@@ -972,7 +1082,7 @@ const run = async () => {
     results.scenarios.indexList = await runScenario('results-index-list', 'indexed list patch', [
       ['Lumina indexList', benchmarkLuminaIndexList],
       ['Lumina indexList (compiled)', benchmarkLuminaCompiledIndexList],
-      ['Vanilla DOM', benchmarkVanillaWholeList],
+      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-index-list-vanilla', INDEX_LIST_ITERATIONS)],
       ['React 19 memo rows', benchmarkReactMemoList],
       ['Solid 1 Index', benchmarkSolidIndexList],
     ], INDEX_LIST_ITERATIONS);
@@ -980,7 +1090,7 @@ const run = async () => {
     results.scenarios.forList = await runScenario('results-for-list', 'stable signal list patch', [
       ['Lumina forList', benchmarkLuminaForList],
       ['Lumina forList (compiled)', benchmarkLuminaCompiledForList],
-      ['Vanilla DOM', benchmarkVanillaWholeList],
+      ['Vanilla DOM', () => benchmarkVanillaBenchList('host-for-list-vanilla', FOR_LIST_ITERATIONS)],
       ['React 19 memo rows', benchmarkReactMemoKeyedList],
       ['Solid 1 Index', benchmarkSolidKeyedIndexList],
     ], FOR_LIST_ITERATIONS);
@@ -1022,4 +1132,8 @@ runButton.addEventListener('click', () => {
     setStatus(`Failed: ${error instanceof Error ? error.message : String(error)}`);
     alert(`Benchmark failed: ${error instanceof Error ? error.message : String(error)}`);
   });
+});
+
+exportButton?.addEventListener('click', () => {
+  exportBenchmarkResults();
 });

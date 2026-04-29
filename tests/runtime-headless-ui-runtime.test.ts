@@ -47,11 +47,16 @@ describe('runtime headless ui helpers', () => {
     expect(runtime.getTabsNavigationTarget(tabs, 'overview', 'ArrowLeft')).toBe('activity');
 
     const menu = { open: new Signal(true), baseId: 'menu', order: ['one', 'two', 'three'] };
+    runtime.registerMenuValue(menu, 'one', 'Alpha');
+    runtime.registerMenuValue(menu, 'two', 'Beta');
+    runtime.registerMenuValue(menu, 'three', 'Bravo');
     expect(runtime.getMenuNavigationTarget(menu, 'one', 'End')).toBe('three');
     expect(runtime.getMenuNavigationTarget(menu, 'three', 'ArrowDown')).toBe('one');
     expect(runtime.getMenuActiveValue(menu)).toBe('one');
     runtime.setMenuActiveValue(menu, 'three');
     expect(runtime.getMenuActiveValue(menu)).toBe('three');
+    expect(runtime.getMenuTypeaheadTarget(menu, 'one', 'b')).toBe('two');
+    expect(runtime.getMenuTypeaheadTarget(menu, 'two', 'b')).toBe('three');
 
     const multiselect = {
       open: new Signal(true),
@@ -59,9 +64,14 @@ describe('runtime headless ui helpers', () => {
       baseId: 'multi',
       order: ['alpha', 'beta', 'gamma'],
     };
-    expect(runtime.getMultiselectNavigationTarget(multiselect, 'beta', 'ArrowLeft')).toBe('alpha');
+    runtime.registerMultiselectValue(multiselect, 'alpha', 'Amber');
+    runtime.registerMultiselectValue(multiselect, 'beta', 'Blue');
+    runtime.registerMultiselectValue(multiselect, 'gamma', 'Green');
+    expect(runtime.getMultiselectNavigationTarget(multiselect, 'beta', 'ArrowUp')).toBe('alpha');
+    expect(runtime.getMultiselectNavigationTarget(multiselect, 'gamma', 'ArrowDown')).toBe('gamma');
     expect(runtime.toggleMultiselectValue(multiselect, 'beta')).toEqual(['alpha', 'beta']);
     expect(runtime.toggleMultiselectValue(multiselect, 'alpha')).toEqual(['beta']);
+    expect(runtime.getMultiselectTypeaheadTarget(multiselect, 'alpha', 'g')).toBe('gamma');
 
     const select = {
       open: new Signal(true),
@@ -69,10 +79,15 @@ describe('runtime headless ui helpers', () => {
       baseId: 'select',
       order: ['alpha', 'beta', 'gamma'],
     };
+    runtime.registerSelectValue(select, 'alpha', 'Apple');
+    runtime.registerSelectValue(select, 'beta', 'Berry');
+    runtime.registerSelectValue(select, 'gamma', 'Cherry');
     expect(runtime.getSelectActiveDescendantId(select)).toBe('select-item-beta');
     runtime.setSelectActiveValue(select, 'gamma');
     expect(runtime.getSelectActiveValue(select)).toBe('gamma');
     expect(runtime.getSelectActiveDescendantId(select)).toBe('select-item-gamma');
+    expect(runtime.getSelectNavigationTarget(select, 'gamma', 'ArrowDown')).toBe('gamma');
+    expect(runtime.getSelectTypeaheadTarget(select, 'alpha', 'b')).toBe('beta');
     runtime.acceptSelectActiveValue(select);
     expect(select.value.get()).toBe('gamma');
 
