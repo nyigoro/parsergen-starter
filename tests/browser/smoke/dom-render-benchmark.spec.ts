@@ -127,24 +127,27 @@ const expectedScenarioSuites: Record<string, string[]> = {
 
 const expectedScenarioIterations: Record<string, number> = tierConfig.scenarioIterations;
 
-const expectedRelativeOrdering: Record<string, Array<{ faster: string; slower: string }>> = {
-  reorder: [
-    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
-    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
-  ],
-  singleMove: [
-    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
-    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
-  ],
-  complexReorder: [
-    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
-    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
-  ],
-  structureDiff: [
-    { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
-    { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
-  ],
-};
+const expectedRelativeOrdering: Record<string, Array<{ faster: string; slower: string }>> =
+  tierConfig.localOnly
+    ? {
+        reorder: [
+          { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+          { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+        ],
+        singleMove: [
+          { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+          { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+        ],
+        complexReorder: [
+          { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+          { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+        ],
+        structureDiff: [
+          { faster: 'Lumina keyed list', slower: 'Lumina generic keyed patch' },
+          { faster: 'Lumina keyed list (compiled)', slower: 'Lumina generic keyed patch' },
+        ],
+      }
+    : {};
 
 type BenchmarkScenarioEntry = {
   name: string;

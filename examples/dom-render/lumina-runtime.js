@@ -4923,7 +4923,7 @@ var reorderChildren = /* @__PURE__ */ __name((container, children2, disposeChild
     return;
   }
   const structureChanged = options?.structureChanged ?? true;
-  let currentChildren = readChildNodes(container);
+  let currentChildren = options?.currentChildren ?? readChildNodes(container);
   if (structureChanged) {
     const desired = new Set(children2);
     currentChildren = currentChildren.filter((child) => {
@@ -6357,7 +6357,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       return;
     }
     if (transition.kind === "adjacent_swap" || transition.kind === "single_move") {
-      const previousEntries = state2.entries;
+      const previousEntries2 = state2.entries;
       const nextEntries2 = transition.kind === "adjacent_swap" ? swapItems(state2.entries, transition.left, transition.right) : moveItems(state2.entries, transition.from, transition.to);
       for (let index = 0; index < nextEntries2.length; index += 1) {
         if (!nextEntries2[index]) {
@@ -6372,8 +6372,9 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       });
       state2.entries = nextEntries2;
       state2.order = nextOrder ?? (transition.kind === "adjacent_swap" ? swapItems(state2.order, transition.left, transition.right) : moveItems(state2.order, transition.from, transition.to));
-      if (!applyDirectEntryReorder(previousEntries, nextEntries2, transition)) {
+      if (!applyDirectEntryReorder(previousEntries2, nextEntries2, transition)) {
         reorderChildren(host, nextEntries2.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+          currentChildren: previousEntries2.map((entry) => entry.domNode),
           transition,
           structureChanged: false
         });
@@ -6385,7 +6386,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     const resolvedNextOrder = nextOrder ?? buildKeyedOrder(nextItems, keyOf);
     const reorderedEntries = transition.kind === "complex_reorder" ? reorderEntriesForComplexWindow(state2.entries, state2.order, resolvedNextOrder) : null;
     if (reorderedEntries) {
-      const previousEntries = state2.entries;
+      const previousEntries2 = state2.entries;
       runBatched(() => {
         if (!hasPureEntryValueReuse(nextItems, reorderedEntries)) {
           syncValuesForEntries(nextItems, reorderedEntries);
@@ -6394,14 +6395,16 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       });
       state2.entries = reorderedEntries;
       state2.order = resolvedNextOrder;
-      if (!applyDirectEntryReorder(previousEntries, reorderedEntries, transition)) {
+      if (!applyDirectEntryReorder(previousEntries2, reorderedEntries, transition)) {
         reorderChildren(host, reorderedEntries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+          currentChildren: previousEntries2.map((entry) => entry.domNode),
           transition,
           structureChanged: false
         });
       }
       return;
     }
+    const previousEntries = state2.entries;
     runBatched(() => {
       const built = buildNextEntries(nextItems, resolvedNextOrder);
       nextEntries = built.nextEntries;
@@ -6411,6 +6414,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     state2.entries = nextEntries;
     state2.order = resolvedNextOrder;
     reorderChildren(host, nextEntries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+      currentChildren: previousEntries.map((entry) => entry.domNode),
       transition,
       structureChanged
     });
@@ -6642,6 +6646,7 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
           element.removeChild(stale.domNode);
         }
       }
+      const reconcilerCurrentChildren = structureChanged2 ? currentDomChildren2.filter((child) => child.parentNode === element) : currentDomChildren2;
       reorderChildren(element, nextDomChildren2, (child) => {
         const domChild = child;
         if (alreadyDisposedStaleNodes2.has(domChild)) {
@@ -6649,8 +6654,10 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         }
         disposeDomNode(domChild, eventStore, portalStore, liveTextStore);
       }, structureChanged2 ? {
+        currentChildren: reconcilerCurrentChildren,
         structureChanged: false
       } : {
+        currentChildren: reconcilerCurrentChildren,
         transition: keyedTransition?.kind === "complex_reorder" ? keyedTransition : null,
         structureChanged: false
       });
@@ -6722,6 +6729,7 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
     }
     disposeDomNode(domChild, eventStore, portalStore, liveTextStore);
   }, {
+    currentChildren: currentDomChildren,
     transition: keyedTransition,
     structureChanged
   });
@@ -6845,7 +6853,9 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
   for (let index = nextChildren.length; index < existingChildren.length; index += 1) {
     disposeDomNode(existingChildren[index], eventStore, portalStore, liveTextStore);
   }
-  reorderChildren(element, nextDomChildren, (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore));
+  reorderChildren(element, nextDomChildren, (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+    currentChildren: existingChildren
+  });
   return element;
 }, "hydrateDomNode");
 var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
@@ -6880,7 +6890,11 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
       if (nextDom !== currentDom) {
         reorderChildren(domContainer, [
           nextDom
-        ], (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore));
+        ], (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+          currentChildren: [
+            currentDom
+          ]
+        });
       }
       currentDom = nextDom;
       currentVNode = next;
@@ -6901,7 +6915,11 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
       if (hydratedDom !== existing) {
         reorderChildren(domContainer, [
           hydratedDom
-        ], (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore));
+        ], (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+          currentChildren: [
+            existing
+          ]
+        });
       }
       currentDom = hydratedDom;
       currentVNode = node;

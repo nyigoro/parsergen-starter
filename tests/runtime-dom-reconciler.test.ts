@@ -193,6 +193,63 @@ describe('runtime dom reconciler helpers', () => {
     expect(labels(container)).toEqual(['c', 'a', 'd', 'b']);
   });
 
+  test('reuses a supplied child snapshot instead of rereading childNodes', () => {
+    const a = { id: 'a', parentNode: null as unknown, textContent: null };
+    const b = { id: 'b', parentNode: null as unknown, textContent: null };
+    const c = { id: 'c', parentNode: null as unknown, textContent: null };
+    const backing = [a, b, c];
+    let readCount = 0;
+
+    const container = {
+      get childNodes() {
+        readCount += 1;
+        return backing;
+      },
+      textContent: null,
+      parentNode: null,
+      appendChild(node: typeof a) {
+        const existingIndex = backing.indexOf(node);
+        if (existingIndex >= 0) {
+          backing.splice(existingIndex, 1);
+        }
+        backing.push(node);
+        return node;
+      },
+      insertBefore(node: typeof a, referenceNode: typeof a | null) {
+        const existingIndex = backing.indexOf(node);
+        if (existingIndex >= 0) {
+          backing.splice(existingIndex, 1);
+        }
+        const referenceIndex = referenceNode == null ? -1 : backing.indexOf(referenceNode);
+        if (referenceIndex < 0) {
+          backing.push(node);
+        } else {
+          backing.splice(referenceIndex, 0, node);
+        }
+        return node;
+      },
+      removeChild(node: typeof a) {
+        const existingIndex = backing.indexOf(node);
+        if (existingIndex >= 0) {
+          backing.splice(existingIndex, 1);
+        }
+        return node;
+      },
+    };
+    a.parentNode = container;
+    b.parentNode = container;
+    c.parentNode = container;
+
+    reorderChildren(container, [b, a, c], () => undefined, {
+      currentChildren: [a, b, c],
+      transition: { kind: 'adjacent_swap', left: 0, right: 1 },
+      structureChanged: false,
+    });
+
+    expect(readCount).toBe(0);
+    expect(backing.map((node) => node.id)).toEqual(['b', 'a', 'c']);
+  });
+
   test('reorders only the unstable middle window for complex changes with stable edges', () => {
     const document = new TestingDocument();
     const container = document.createElement('div');

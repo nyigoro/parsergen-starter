@@ -267,7 +267,7 @@ export const reorderChildren = <TNode extends ReorderableDomNodeLike>(
   container: TNode,
   children: TNode[],
   disposeChild: (node: TNode) => void,
-  options?: { transition?: KeyedListTransition | null; structureChanged?: boolean }
+  options?: { transition?: KeyedListTransition | null; structureChanged?: boolean; currentChildren?: TNode[] }
 ): void => {
   if (typeof container.insertBefore !== 'function') {
     setChildren(container, children);
@@ -275,7 +275,7 @@ export const reorderChildren = <TNode extends ReorderableDomNodeLike>(
   }
 
   const structureChanged = options?.structureChanged ?? true;
-  let currentChildren = readChildNodes(container) as TNode[];
+  let currentChildren = options?.currentChildren ?? (readChildNodes(container) as TNode[]);
   if (structureChanged) {
     const desired = new Set(children);
     currentChildren = currentChildren.filter((child) => {
