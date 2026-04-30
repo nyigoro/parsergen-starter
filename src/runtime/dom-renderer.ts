@@ -749,10 +749,8 @@ const analyzeKeyedChildTransition = (
   }
 
   const seenNextKeys = new Set<string | number>();
-  let firstMismatch = -1;
+  let sawMismatch = false;
   const stableDirtyIndices: number[] = [];
-  const prevKeys: Array<string | number> = new Array(prevChildren.length);
-  const nextKeys: Array<string | number> = new Array(nextChildren.length);
 
   for (let index = 0; index < prevChildren.length; index += 1) {
     const prevChild = prevChildren[index];
@@ -763,8 +761,6 @@ const analyzeKeyedChildTransition = (
 
     const prevKey = prevChild.key;
     const nextKey = nextChild.key;
-    prevKeys[index] = prevKey;
-    nextKeys[index] = nextKey;
     if (seenNextKeys.has(nextKey)) {
       throw duplicateKeyError(nextKey);
     }
@@ -778,38 +774,15 @@ const analyzeKeyedChildTransition = (
       continue;
     }
 
-    if (firstMismatch < 0) {
-      firstMismatch = index;
-    }
+    sawMismatch = true;
   }
 
-  if (firstMismatch < 0) {
+  if (!sawMismatch) {
     return { transition: { kind: 'same_order' }, stableDirtyIndices };
   }
 
-  const swapRight = firstMismatch + 1;
-  if (
-    swapRight < prevChildren.length
-    && prevKeys[firstMismatch] === nextKeys[swapRight]
-    && prevKeys[swapRight] === nextKeys[firstMismatch]
-  ) {
-    let restMatches = true;
-    for (let index = swapRight + 1; index < prevChildren.length; index += 1) {
-      if (prevKeys[index] !== nextKeys[index]) {
-        restMatches = false;
-        break;
-      }
-    }
-    if (restMatches) {
-      return {
-        transition: { kind: 'adjacent_swap', left: firstMismatch, right: swapRight },
-        stableDirtyIndices,
-      };
-    }
-  }
-
   return {
-    transition: analyzeSequenceTransition(prevKeys, nextKeys, (left, right) => left === right),
+    transition: analyzeSequenceTransition(prevChildren, nextChildren, (left, right) => left.key === right.key),
     stableDirtyIndices,
   };
 };
@@ -837,8 +810,6 @@ interface GenericKeyedEntry {
 
 interface GenericKeyedState {
   entries: GenericKeyedEntry[];
-  entriesByKey: Map<string | number, GenericKeyedEntry>;
-  order: Array<string | number>;
 }
 
 const createForListState = (entries: ForListEntry[]): ForListState => ({
@@ -851,8 +822,6 @@ const genericKeyedStates: WeakMap<DomElementLike, GenericKeyedState> = new WeakM
 
 const createGenericKeyedState = (entries: GenericKeyedEntry[]): GenericKeyedState => ({
   entries,
-  entriesByKey: new Map(entries.map((entry) => [entry.key, entry] as const)),
-  order: entries.map((entry) => entry.key),
 });
 
 const buildKeyedOrder = (
@@ -870,24 +839,6 @@ const buildKeyedOrder = (
     order.push(key);
   }
   return order;
-};
-
-const swapSequenceItems = <T>(entries: T[], left: number, right: number): T[] => {
-  const nextEntries = entries.slice();
-  const previousLeft = nextEntries[left];
-  nextEntries[left] = nextEntries[right] as T;
-  nextEntries[right] = previousLeft as T;
-  return nextEntries;
-};
-
-const moveSequenceItems = <T>(entries: T[], from: number, to: number): T[] => {
-  const nextEntries = entries.slice();
-  const moving = nextEntries.splice(from, 1)[0];
-  if (!moving) {
-    return nextEntries;
-  }
-  nextEntries.splice(to, 0, moving);
-  return nextEntries;
 };
 
 const buildGenericKeyedState = (
@@ -908,7 +859,7 @@ const isGenericKeyedStateValid = (
   state: GenericKeyedState | undefined,
   children: Array<VNode & { key: string | number }>
 ): state is GenericKeyedState => {
-  if (!state || state.entries.length !== children.length || state.order.length !== children.length) {
+  if (!state || state.entries.length !== children.length) {
     return false;
   }
   for (let index = 0; index < children.length; index += 1) {
@@ -950,14 +901,16 @@ const syncGenericKeyedStateForTransition = (
   nextChildren: Array<VNode & { key: string | number }>,
   transition: Extract<KeyedListTransition, { kind: 'adjacent_swap' | 'single_move' }>
 ): void => {
-  state.entries =
-    transition.kind === 'adjacent_swap'
-      ? swapSequenceItems(state.entries, transition.left, transition.right)
-      : moveSequenceItems(state.entries, transition.from, transition.to);
-  state.order =
-    transition.kind === 'adjacent_swap'
-      ? swapSequenceItems(state.order, transition.left, transition.right)
-      : moveSequenceItems(state.order, transition.from, transition.to);
+  if (transition.kind === 'adjacent_swap') {
+    const leftEntry = state.entries[transition.left];
+    state.entries[transition.left] = state.entries[transition.right] as GenericKeyedEntry;
+    state.entries[transition.right] = leftEntry as GenericKeyedEntry;
+  } else {
+    const moving = state.entries.splice(transition.from, 1)[0];
+    if (moving) {
+      state.entries.splice(transition.to, 0, moving);
+    }
+  }
   for (let index = 0; index < nextChildren.length; index += 1) {
     const entry = state.entries[index];
     if (!entry) continue;
@@ -967,10 +920,9 @@ const syncGenericKeyedStateForTransition = (
 
 const replaceGenericKeyedState = (
   host: DomElementLike,
-  nextChildren: Array<VNode & { key: string | number }>,
-  nextDomChildren: DomNodeLike[]
+  nextEntries: GenericKeyedEntry[]
 ): void => {
-  genericKeyedStates.set(host, buildGenericKeyedState(nextChildren, nextDomChildren));
+  genericKeyedStates.set(host, createGenericKeyedState(nextEntries));
 };
 
 const analyzeKeyedOrderTransition = (
@@ -1926,6 +1878,71 @@ const patchTransitionAffectedRange = (
   }
 };
 
+const patchStableGenericKeyedEntryAt = (
+  entries: GenericKeyedEntry[],
+  nextChildren: Array<VNode & { key: string | number }>,
+  index: number,
+  documentLike: DomDocumentLike,
+  eventStore: DomEventStore,
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore,
+  equalsValue: (left: unknown, right: unknown) => boolean
+): void => {
+  const entry = entries[index];
+  const nextChild = nextChildren[index];
+  if (!entry || !nextChild || canSkipDomPatch(entry.vnode, nextChild, equalsValue)) {
+    return;
+  }
+  patchDomNode(
+    entry.domNode,
+    entry.vnode,
+    nextChild,
+    documentLike,
+    eventStore,
+    portalStore,
+    liveTextStore,
+    equalsValue
+  );
+};
+
+const patchTransitionAffectedGenericKeyedEntries = (
+  entries: GenericKeyedEntry[],
+  nextChildren: Array<VNode & { key: string | number }>,
+  transition: Extract<KeyedListTransition, { kind: 'adjacent_swap' | 'single_move' }>,
+  documentLike: DomDocumentLike,
+  eventStore: DomEventStore,
+  portalStore: DomPortalStore,
+  liveTextStore: DomLiveTextStore,
+  equalsValue: (left: unknown, right: unknown) => boolean
+): void => {
+  const range = getTransitionAffectedRange(transition, nextChildren.length);
+  if (!range) {
+    return;
+  }
+
+  for (let index = range.start; index <= range.end; index += 1) {
+    const sourceIndex =
+      transition.kind === 'adjacent_swap'
+        ? (index === transition.left ? transition.right : transition.left)
+        : remapMovedIndex(index, transition.from, transition.to);
+    const entry = entries[sourceIndex];
+    const nextChild = nextChildren[index];
+    if (!entry || !nextChild || canSkipDomPatch(entry.vnode, nextChild, equalsValue)) {
+      continue;
+    }
+    patchDomNode(
+      entry.domNode,
+      entry.vnode,
+      nextChild,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
+  }
+};
+
 const patchDomChildrenWithKeys = (
   element: DomElementLike,
   prevChildren: VNode[],
@@ -1969,34 +1986,61 @@ const patchDomChildrenWithKeys = (
   }
 
   if (keyedTransition?.kind === 'adjacent_swap') {
+    const currentEntries = genericKeyedState?.entries ?? null;
     const currentDomChildren =
-      (genericKeyedState?.entries.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
-    const leftDom = currentDomChildren[keyedTransition.left] as DomNodeLike | undefined;
-    const rightDom = currentDomChildren[keyedTransition.right] as DomNodeLike | undefined;
+      (currentEntries?.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
+    const leftDom = currentEntries?.[keyedTransition.left]?.domNode ?? currentDomChildren[keyedTransition.left];
+    const rightDom = currentEntries?.[keyedTransition.right]?.domNode ?? currentDomChildren[keyedTransition.right];
     if (leftDom && rightDom && typeof element.insertBefore === 'function') {
-      patchTransitionAffectedRange(
-        currentDomChildren,
-        prevChildren,
-        nextChildren,
-        keyedTransition,
-        documentLike,
-        eventStore,
-        portalStore,
-        liveTextStore,
-        equalsValue
-      );
-      for (const index of keyedAnalysis.stableDirtyIndices) {
-        patchStableKeyedChildAt(
-          currentDomChildren,
-          prevChildren,
+      if (currentEntries && allNextChildrenKeyed) {
+        patchTransitionAffectedGenericKeyedEntries(
+          currentEntries,
           nextChildren,
-          index,
+          keyedTransition,
           documentLike,
           eventStore,
           portalStore,
           liveTextStore,
           equalsValue
         );
+      } else {
+        patchTransitionAffectedRange(
+          currentDomChildren,
+          prevChildren,
+          nextChildren,
+          keyedTransition,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
+      }
+      for (const index of keyedAnalysis.stableDirtyIndices) {
+        if (currentEntries && allNextChildrenKeyed) {
+          patchStableGenericKeyedEntryAt(
+            currentEntries,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
+        } else {
+          patchStableKeyedChildAt(
+            currentDomChildren,
+            prevChildren,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
+        }
       }
       element.insertBefore(rightDom, leftDom);
       if (genericKeyedState && allNextChildrenKeyed) {
@@ -2007,41 +2051,68 @@ const patchDomChildrenWithKeys = (
   }
 
   if (keyedTransition?.kind === 'single_move') {
+    const currentEntries = genericKeyedState?.entries ?? null;
     const currentDomChildren =
-      (genericKeyedState?.entries.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
-    const movingDom = currentDomChildren[keyedTransition.from];
+      (currentEntries?.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
+    const movingDom = currentEntries?.[keyedTransition.from]?.domNode ?? currentDomChildren[keyedTransition.from];
     if (movingDom && typeof element.insertBefore === 'function') {
       const reference =
         keyedTransition.from < keyedTransition.to
-          ? (currentDomChildren[keyedTransition.to + 1] ?? null)
-          : (currentDomChildren[keyedTransition.to] ?? null);
-      patchTransitionAffectedRange(
-        currentDomChildren,
-        prevChildren,
-        nextChildren,
-        keyedTransition,
-        documentLike,
-        eventStore,
-        portalStore,
-        liveTextStore,
-        equalsValue
-      );
-      const affectedRange = getTransitionAffectedRange(keyedTransition, nextChildren.length);
-      for (const index of keyedAnalysis.stableDirtyIndices) {
-        if (affectedRange && index >= affectedRange.start && index <= affectedRange.end) {
-          continue;
-        }
-        patchStableKeyedChildAt(
-          currentDomChildren,
-          prevChildren,
+          ? (currentEntries?.[keyedTransition.to + 1]?.domNode ?? currentDomChildren[keyedTransition.to + 1] ?? null)
+          : (currentEntries?.[keyedTransition.to]?.domNode ?? currentDomChildren[keyedTransition.to] ?? null);
+      if (currentEntries && allNextChildrenKeyed) {
+        patchTransitionAffectedGenericKeyedEntries(
+          currentEntries,
           nextChildren,
-          index,
+          keyedTransition,
           documentLike,
           eventStore,
           portalStore,
           liveTextStore,
           equalsValue
         );
+      } else {
+        patchTransitionAffectedRange(
+          currentDomChildren,
+          prevChildren,
+          nextChildren,
+          keyedTransition,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
+      }
+      const affectedRange = getTransitionAffectedRange(keyedTransition, nextChildren.length);
+      for (const index of keyedAnalysis.stableDirtyIndices) {
+        if (affectedRange && index >= affectedRange.start && index <= affectedRange.end) {
+          continue;
+        }
+        if (currentEntries && allNextChildrenKeyed) {
+          patchStableGenericKeyedEntryAt(
+            currentEntries,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
+        } else {
+          patchStableKeyedChildAt(
+            currentDomChildren,
+            prevChildren,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
+        }
       }
       element.insertBefore(movingDom as DomNodeLike, reference as DomNodeLike | null);
       if (genericKeyedState && allNextChildrenKeyed) {
@@ -2067,6 +2138,7 @@ const patchDomChildrenWithKeys = (
         : findStableSequenceWindow(prevChildren, nextChildren, (left, right) => left.key === right.key);
     if (window) {
       const nextDomChildren: DomNodeLike[] = new Array(nextChildren.length);
+      const nextEntries: GenericKeyedEntry[] = new Array(nextChildren.length);
 
       for (let index = 0; index < window.currentStart; index += 1) {
         const domChild = currentDomChildren[index];
@@ -2076,6 +2148,7 @@ const patchDomChildrenWithKeys = (
           continue;
         }
         nextDomChildren[index] = domChild;
+        nextEntries[index] = { key: nextChild.key, vnode: nextChild, domNode: domChild };
         if (canSkipDomPatch(prevChild, nextChild, equalsValue)) {
           continue;
         }
@@ -2102,6 +2175,7 @@ const patchDomChildrenWithKeys = (
           continue;
         }
         nextDomChildren[nextIndex] = domChild;
+        nextEntries[nextIndex] = { key: nextChild.key, vnode: nextChild, domNode: domChild };
         if (canSkipDomPatch(prevChild, nextChild, equalsValue)) {
           continue;
         }
@@ -2133,7 +2207,7 @@ const patchDomChildrenWithKeys = (
         const prevEntry = prevKeyedWindow.get(nextChild.key);
         if (!prevEntry) {
           structureChanged = true;
-          nextDomChildren[nextIndex] = createDomNode(
+          const createdDomNode = createDomNode(
             nextChild,
             documentLike,
             eventStore,
@@ -2141,10 +2215,12 @@ const patchDomChildrenWithKeys = (
             liveTextStore,
             equalsValue
           );
+          nextDomChildren[nextIndex] = createdDomNode;
+          nextEntries[nextIndex] = { key: nextChild.key, vnode: nextChild, domNode: createdDomNode };
           continue;
         }
         prevKeyedWindow.delete(nextChild.key);
-        nextDomChildren[nextIndex] =
+        const nextDomNode =
           canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue)
             ? prevEntry.domNode
             : patchDomNode(
@@ -2157,6 +2233,8 @@ const patchDomChildrenWithKeys = (
                 liveTextStore,
                 equalsValue
               );
+        nextDomChildren[nextIndex] = nextDomNode;
+        nextEntries[nextIndex] = { key: nextChild.key, vnode: nextChild, domNode: nextDomNode };
       }
 
       for (const stale of prevKeyedWindow.values()) {
@@ -2193,7 +2271,10 @@ const patchDomChildrenWithKeys = (
               structureChanged: false,
             }
       );
-      replaceGenericKeyedState(element, nextChildren, nextDomChildren);
+      replaceGenericKeyedState(
+        element,
+        nextEntries.filter((entry): entry is GenericKeyedEntry => Boolean(entry))
+      );
       return;
     }
   }
