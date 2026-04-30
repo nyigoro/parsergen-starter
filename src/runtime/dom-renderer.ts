@@ -829,7 +829,27 @@ interface ForListState {
   order: Array<string | number>;
 }
 
+interface GenericKeyedEntry {
+  key: string | number;
+  vnode: VNode;
+  domNode: DomNodeLike;
+}
+
+interface GenericKeyedState {
+  entries: GenericKeyedEntry[];
+  entriesByKey: Map<string | number, GenericKeyedEntry>;
+  order: Array<string | number>;
+}
+
 const createForListState = (entries: ForListEntry[]): ForListState => ({
+  entries,
+  entriesByKey: new Map(entries.map((entry) => [entry.key, entry] as const)),
+  order: entries.map((entry) => entry.key),
+});
+
+const genericKeyedStates: WeakMap<DomElementLike, GenericKeyedState> = new WeakMap();
+
+const createGenericKeyedState = (entries: GenericKeyedEntry[]): GenericKeyedState => ({
   entries,
   entriesByKey: new Map(entries.map((entry) => [entry.key, entry] as const)),
   order: entries.map((entry) => entry.key),
@@ -850,6 +870,107 @@ const buildKeyedOrder = (
     order.push(key);
   }
   return order;
+};
+
+const swapSequenceItems = <T>(entries: T[], left: number, right: number): T[] => {
+  const nextEntries = entries.slice();
+  const previousLeft = nextEntries[left];
+  nextEntries[left] = nextEntries[right] as T;
+  nextEntries[right] = previousLeft as T;
+  return nextEntries;
+};
+
+const moveSequenceItems = <T>(entries: T[], from: number, to: number): T[] => {
+  const nextEntries = entries.slice();
+  const moving = nextEntries.splice(from, 1)[0];
+  if (!moving) {
+    return nextEntries;
+  }
+  nextEntries.splice(to, 0, moving);
+  return nextEntries;
+};
+
+const buildGenericKeyedState = (
+  children: Array<VNode & { key: string | number }>,
+  domChildren: DomNodeLike[]
+): GenericKeyedState => createGenericKeyedState(
+  children
+    .map((child, index) => ({
+      key: child.key,
+      vnode: child,
+      domNode: domChildren[index] as DomNodeLike,
+    }))
+    .filter((entry) => Boolean(entry.domNode))
+);
+
+const isGenericKeyedStateValid = (
+  host: DomElementLike,
+  state: GenericKeyedState | undefined,
+  children: Array<VNode & { key: string | number }>
+): state is GenericKeyedState => {
+  if (!state || state.entries.length !== children.length || state.order.length !== children.length) {
+    return false;
+  }
+  for (let index = 0; index < children.length; index += 1) {
+    const entry = state.entries[index];
+    const child = children[index];
+    if (!entry || entry.key !== child.key || entry.domNode.parentNode !== host) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const ensureGenericKeyedState = (
+  host: DomElementLike,
+  children: Array<VNode & { key: string | number }>
+): GenericKeyedState => {
+  const existing = genericKeyedStates.get(host);
+  if (isGenericKeyedStateValid(host, existing, children)) {
+    return existing;
+  }
+  const rebuilt = buildGenericKeyedState(children, readChildNodes(host) as DomNodeLike[]);
+  genericKeyedStates.set(host, rebuilt);
+  return rebuilt;
+};
+
+const syncGenericKeyedStateForSameOrder = (
+  state: GenericKeyedState,
+  nextChildren: Array<VNode & { key: string | number }>
+): void => {
+  for (let index = 0; index < nextChildren.length; index += 1) {
+    const entry = state.entries[index];
+    if (!entry) continue;
+    entry.vnode = nextChildren[index];
+  }
+};
+
+const syncGenericKeyedStateForTransition = (
+  state: GenericKeyedState,
+  nextChildren: Array<VNode & { key: string | number }>,
+  transition: Extract<KeyedListTransition, { kind: 'adjacent_swap' | 'single_move' }>
+): void => {
+  state.entries =
+    transition.kind === 'adjacent_swap'
+      ? swapSequenceItems(state.entries, transition.left, transition.right)
+      : moveSequenceItems(state.entries, transition.from, transition.to);
+  state.order =
+    transition.kind === 'adjacent_swap'
+      ? swapSequenceItems(state.order, transition.left, transition.right)
+      : moveSequenceItems(state.order, transition.from, transition.to);
+  for (let index = 0; index < nextChildren.length; index += 1) {
+    const entry = state.entries[index];
+    if (!entry) continue;
+    entry.vnode = nextChildren[index];
+  }
+};
+
+const replaceGenericKeyedState = (
+  host: DomElementLike,
+  nextChildren: Array<VNode & { key: string | number }>,
+  nextDomChildren: DomNodeLike[]
+): void => {
+  genericKeyedStates.set(host, buildGenericKeyedState(nextChildren, nextDomChildren));
 };
 
 const analyzeKeyedOrderTransition = (
@@ -1815,11 +1936,17 @@ const patchDomChildrenWithKeys = (
   liveTextStore: DomLiveTextStore,
   equalsValue: (left: unknown, right: unknown) => boolean
 ): void => {
+  const allPrevChildrenKeyed = areAllChildrenKeyed(prevChildren);
+  const allNextChildrenKeyed = areAllChildrenKeyed(nextChildren);
+  const genericKeyedState =
+    allPrevChildrenKeyed && allNextChildrenKeyed
+      ? ensureGenericKeyedState(element, prevChildren)
+      : (genericKeyedStates.delete(element), null);
   const keyedAnalysis = analyzeKeyedChildTransition(prevChildren, nextChildren, equalsValue);
   const keyedTransition = keyedAnalysis.transition;
   if (keyedTransition?.kind === 'same_order') {
     for (const index of keyedAnalysis.stableDirtyIndices) {
-      const domChild = element.childNodes[index];
+      const domChild = genericKeyedState?.entries[index]?.domNode ?? element.childNodes[index];
       if (!domChild) {
         element.appendChild(createDomNode(nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
         continue;
@@ -1835,11 +1962,15 @@ const patchDomChildrenWithKeys = (
         equalsValue
       );
     }
+    if (genericKeyedState && allNextChildrenKeyed) {
+      syncGenericKeyedStateForSameOrder(genericKeyedState, nextChildren);
+    }
     return;
   }
 
   if (keyedTransition?.kind === 'adjacent_swap') {
-    const currentDomChildren = element.childNodes as ArrayLike<DomNodeLike>;
+    const currentDomChildren =
+      (genericKeyedState?.entries.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
     const leftDom = currentDomChildren[keyedTransition.left] as DomNodeLike | undefined;
     const rightDom = currentDomChildren[keyedTransition.right] as DomNodeLike | undefined;
     if (leftDom && rightDom && typeof element.insertBefore === 'function') {
@@ -1868,12 +1999,16 @@ const patchDomChildrenWithKeys = (
         );
       }
       element.insertBefore(rightDom, leftDom);
+      if (genericKeyedState && allNextChildrenKeyed) {
+        syncGenericKeyedStateForTransition(genericKeyedState, nextChildren, keyedTransition);
+      }
       return;
     }
   }
 
   if (keyedTransition?.kind === 'single_move') {
-    const currentDomChildren = element.childNodes as ArrayLike<DomNodeLike>;
+    const currentDomChildren =
+      (genericKeyedState?.entries.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
     const movingDom = currentDomChildren[keyedTransition.from];
     if (movingDom && typeof element.insertBefore === 'function') {
       const reference =
@@ -1908,13 +2043,16 @@ const patchDomChildrenWithKeys = (
           equalsValue
         );
       }
-      element.insertBefore(movingDom, reference);
+      element.insertBefore(movingDom as DomNodeLike, reference as DomNodeLike | null);
+      if (genericKeyedState && allNextChildrenKeyed) {
+        syncGenericKeyedStateForTransition(genericKeyedState, nextChildren, keyedTransition);
+      }
       return;
     }
   }
 
-  if (areAllChildrenKeyed(prevChildren) && areAllChildrenKeyed(nextChildren)) {
-    const currentDomChildren = readChildNodes(element) as DomNodeLike[];
+  if (allPrevChildrenKeyed && allNextChildrenKeyed) {
+    const currentDomChildren = genericKeyedState?.entries.map((entry) => entry.domNode) ?? (readChildNodes(element) as DomNodeLike[]);
     const window =
       keyedTransition?.kind === 'complex_reorder'
       && typeof keyedTransition.start === 'number'
@@ -1932,7 +2070,7 @@ const patchDomChildrenWithKeys = (
 
       for (let index = 0; index < window.currentStart; index += 1) {
         const domChild = currentDomChildren[index];
-        const prevChild = prevChildren[index];
+        const prevChild = genericKeyedState?.entries[index]?.vnode ?? prevChildren[index];
         const nextChild = nextChildren[index];
         if (!domChild || !prevChild || !nextChild) {
           continue;
@@ -1958,7 +2096,7 @@ const patchDomChildrenWithKeys = (
         const currentIndex = prevChildren.length - offset;
         const nextIndex = nextChildren.length - offset;
         const domChild = currentDomChildren[currentIndex];
-        const prevChild = prevChildren[currentIndex];
+        const prevChild = genericKeyedState?.entries[currentIndex]?.vnode ?? prevChildren[currentIndex];
         const nextChild = nextChildren[nextIndex];
         if (!domChild || !prevChild || !nextChild) {
           continue;
@@ -1981,9 +2119,10 @@ const patchDomChildrenWithKeys = (
 
       const prevKeyedWindow = new Map<string | number, { vnode: VNode; domNode: DomNodeLike }>();
       for (let index = window.currentStart; index <= window.currentEnd; index += 1) {
-        const prevChild = prevChildren[index];
-        const domChild = currentDomChildren[index];
-        if (!domChild) continue;
+        const entry = genericKeyedState?.entries[index];
+        const prevChild = entry?.vnode ?? prevChildren[index];
+        const domChild = entry?.domNode ?? currentDomChildren[index];
+        if (!domChild || !prevChild || prevChild.key == null) continue;
         prevKeyedWindow.set(prevChild.key, { vnode: prevChild, domNode: domChild });
       }
 
@@ -2054,10 +2193,12 @@ const patchDomChildrenWithKeys = (
               structureChanged: false,
             }
       );
+      replaceGenericKeyedState(element, nextChildren, nextDomChildren);
       return;
     }
   }
 
+  genericKeyedStates.delete(element);
   const currentDomChildren = readChildNodes(element) as DomNodeLike[];
   const prevKeyed = new Map<string | number, { vnode: VNode; domNode: DomNodeLike }>();
   const prevUnkeyed: Array<{ vnode: VNode; domNode: DomNodeLike }> = [];

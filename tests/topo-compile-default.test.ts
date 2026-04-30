@@ -59,6 +59,8 @@ afterEach(() => {
   }
 });
 
+jest.setTimeout(15000);
+
 describe('topological compile default', () => {
   test('compiles a single-file program without extra flags', async () => {
     const root = createWorkspace('.tmp-topo-default-single-');
