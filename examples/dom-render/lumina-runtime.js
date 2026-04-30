@@ -5945,24 +5945,17 @@ var trySkipStableKeyedChildFast = /* @__PURE__ */ __name((prevNode, nextNode) =>
   }
   return true;
 }, "trySkipStableKeyedChildFast");
-var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChildren, equalsValue) => {
+var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChildren) => {
   if (prevChildren.length !== nextChildren.length) {
-    return {
-      transition: null,
-      stableDirtyIndices: []
-    };
+    return null;
   }
   const seenNextKeys = /* @__PURE__ */ new Set();
   let sawMismatch = false;
-  const stableDirtyIndices = [];
   for (let index = 0; index < prevChildren.length; index += 1) {
     const prevChild = prevChildren[index];
     const nextChild = nextChildren[index];
     if (!hasVNodeKey(prevChild) || !hasVNodeKey(nextChild)) {
-      return {
-        transition: null,
-        stableDirtyIndices: []
-      };
+      return null;
     }
     const prevKey = prevChild.key;
     const nextKey = nextChild.key;
@@ -5970,27 +5963,14 @@ var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChil
       throw duplicateKeyError(nextKey);
     }
     seenNextKeys.add(nextKey);
-    if (prevKey === nextKey) {
-      const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
-      if (fastSkip !== true && (fastSkip === false || !canSkipDomPatch(prevChild, nextChild, equalsValue))) {
-        stableDirtyIndices.push(index);
-      }
-      continue;
-    }
-    sawMismatch = true;
+    sawMismatch || (sawMismatch = prevKey !== nextKey);
   }
   if (!sawMismatch) {
     return {
-      transition: {
-        kind: "same_order"
-      },
-      stableDirtyIndices
+      kind: "same_order"
     };
   }
-  return {
-    transition: analyzeSequenceTransition(prevChildren, nextChildren, (left, right) => left.key === right.key),
-    stableDirtyIndices
-  };
+  return analyzeSequenceTransition(prevChildren, nextChildren, (left, right) => left.key === right.key);
 }, "analyzeKeyedChildTransition");
 var createForListState = /* @__PURE__ */ __name((entries) => ({
   entries,
@@ -6773,16 +6753,24 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
   const allPrevChildrenKeyed = areAllChildrenKeyed(prevChildren);
   const allNextChildrenKeyed = areAllChildrenKeyed(nextChildren);
   const genericKeyedState = allPrevChildrenKeyed && allNextChildrenKeyed ? ensureGenericKeyedState(element, prevChildren) : (genericKeyedStates.delete(element), null);
-  const keyedAnalysis = analyzeKeyedChildTransition(prevChildren, nextChildren, equalsValue);
-  const keyedTransition = keyedAnalysis.transition;
+  const keyedTransition = analyzeKeyedChildTransition(prevChildren, nextChildren);
   if (keyedTransition?.kind === "same_order") {
-    for (const index of keyedAnalysis.stableDirtyIndices) {
+    for (let index = 0; index < nextChildren.length; index += 1) {
       const domChild = genericKeyedState?.entries[index]?.domNode ?? element.childNodes[index];
-      if (!domChild) {
-        element.appendChild(createDomNode(nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+      const prevChild = genericKeyedState?.entries[index]?.vnode ?? prevChildren[index];
+      const nextChild = nextChildren[index];
+      if (!prevChild || !nextChild) {
         continue;
       }
-      patchDomNode(domChild, prevChildren[index], nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      if (!domChild) {
+        element.appendChild(createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+        continue;
+      }
+      const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
+      if (fastSkip === true || fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue)) {
+        continue;
+      }
+      patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
     }
     if (genericKeyedState && allNextChildrenKeyed) {
       syncGenericKeyedStateForSameOrder(genericKeyedState, nextChildren);
@@ -6800,7 +6788,10 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
       } else {
         patchTransitionAffectedRange(currentDomChildren2, prevChildren, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
-      for (const index of keyedAnalysis.stableDirtyIndices) {
+      for (let index = 0; index < nextChildren.length; index += 1) {
+        if (index === keyedTransition.left || index === keyedTransition.right) {
+          continue;
+        }
         if (currentEntries && allNextChildrenKeyed) {
           patchStableGenericKeyedEntryAt(currentEntries, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
         } else {
@@ -6826,7 +6817,7 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         patchTransitionAffectedRange(currentDomChildren2, prevChildren, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
       const affectedRange = getTransitionAffectedRange(keyedTransition, nextChildren.length);
-      for (const index of keyedAnalysis.stableDirtyIndices) {
+      for (let index = 0; index < nextChildren.length; index += 1) {
         if (affectedRange && index >= affectedRange.start && index <= affectedRange.end) {
           continue;
         }

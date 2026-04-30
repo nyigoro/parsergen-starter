@@ -741,22 +741,20 @@ const trySkipStableKeyedChildFast = (
 
 const analyzeKeyedChildTransition = (
   prevChildren: VNode[],
-  nextChildren: VNode[],
-  equalsValue: (left: unknown, right: unknown) => boolean
-): { transition: KeyedListTransition | null; stableDirtyIndices: number[] } => {
+  nextChildren: VNode[]
+): KeyedListTransition | null => {
   if (prevChildren.length !== nextChildren.length) {
-    return { transition: null, stableDirtyIndices: [] };
+    return null;
   }
 
   const seenNextKeys = new Set<string | number>();
   let sawMismatch = false;
-  const stableDirtyIndices: number[] = [];
 
   for (let index = 0; index < prevChildren.length; index += 1) {
     const prevChild = prevChildren[index];
     const nextChild = nextChildren[index];
     if (!hasVNodeKey(prevChild) || !hasVNodeKey(nextChild)) {
-      return { transition: null, stableDirtyIndices: [] };
+      return null;
     }
 
     const prevKey = prevChild.key;
@@ -766,25 +764,14 @@ const analyzeKeyedChildTransition = (
     }
     seenNextKeys.add(nextKey);
 
-    if (prevKey === nextKey) {
-      const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
-      if (fastSkip !== true && (fastSkip === false || !canSkipDomPatch(prevChild, nextChild, equalsValue))) {
-        stableDirtyIndices.push(index);
-      }
-      continue;
-    }
-
-    sawMismatch = true;
+    sawMismatch ||= prevKey !== nextKey;
   }
 
   if (!sawMismatch) {
-    return { transition: { kind: 'same_order' }, stableDirtyIndices };
+    return { kind: 'same_order' };
   }
 
-  return {
-    transition: analyzeSequenceTransition(prevChildren, nextChildren, (left, right) => left.key === right.key),
-    stableDirtyIndices,
-  };
+  return analyzeSequenceTransition(prevChildren, nextChildren, (left, right) => left.key === right.key);
 };
 
 interface ForListEntry {
@@ -1959,19 +1946,27 @@ const patchDomChildrenWithKeys = (
     allPrevChildrenKeyed && allNextChildrenKeyed
       ? ensureGenericKeyedState(element, prevChildren)
       : (genericKeyedStates.delete(element), null);
-  const keyedAnalysis = analyzeKeyedChildTransition(prevChildren, nextChildren, equalsValue);
-  const keyedTransition = keyedAnalysis.transition;
+  const keyedTransition = analyzeKeyedChildTransition(prevChildren, nextChildren);
   if (keyedTransition?.kind === 'same_order') {
-    for (const index of keyedAnalysis.stableDirtyIndices) {
+    for (let index = 0; index < nextChildren.length; index += 1) {
       const domChild = genericKeyedState?.entries[index]?.domNode ?? element.childNodes[index];
+      const prevChild = genericKeyedState?.entries[index]?.vnode ?? prevChildren[index];
+      const nextChild = nextChildren[index];
+      if (!prevChild || !nextChild) {
+        continue;
+      }
       if (!domChild) {
-        element.appendChild(createDomNode(nextChildren[index], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+        element.appendChild(createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+        continue;
+      }
+      const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
+      if (fastSkip === true || (fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue))) {
         continue;
       }
       patchDomNode(
         domChild,
-        prevChildren[index],
-        nextChildren[index],
+        prevChild,
+        nextChild,
         documentLike,
         eventStore,
         portalStore,
@@ -2016,7 +2011,10 @@ const patchDomChildrenWithKeys = (
           equalsValue
         );
       }
-      for (const index of keyedAnalysis.stableDirtyIndices) {
+      for (let index = 0; index < nextChildren.length; index += 1) {
+        if (index === keyedTransition.left || index === keyedTransition.right) {
+          continue;
+        }
         if (currentEntries && allNextChildrenKeyed) {
           patchStableGenericKeyedEntryAt(
             currentEntries,
@@ -2085,7 +2083,7 @@ const patchDomChildrenWithKeys = (
         );
       }
       const affectedRange = getTransitionAffectedRange(keyedTransition, nextChildren.length);
-      for (const index of keyedAnalysis.stableDirtyIndices) {
+      for (let index = 0; index < nextChildren.length; index += 1) {
         if (affectedRange && index >= affectedRange.start && index <= affectedRange.end) {
           continue;
         }
