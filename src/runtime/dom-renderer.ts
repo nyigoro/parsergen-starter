@@ -1988,10 +1988,9 @@ const patchDomChildrenWithKeys = (
 
   if (keyedTransition?.kind === 'adjacent_swap') {
     const currentEntries = genericKeyedState?.entries ?? null;
-    const currentDomChildren =
-      (currentEntries?.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
-    const leftDom = currentEntries?.[keyedTransition.left]?.domNode ?? currentDomChildren[keyedTransition.left];
-    const rightDom = currentEntries?.[keyedTransition.right]?.domNode ?? currentDomChildren[keyedTransition.right];
+    const currentDomChildren = currentEntries ? null : (Array.from(element.childNodes) as ArrayLike<DomNodeLike>);
+    const leftDom = currentEntries?.[keyedTransition.left]?.domNode ?? currentDomChildren?.[keyedTransition.left];
+    const rightDom = currentEntries?.[keyedTransition.right]?.domNode ?? currentDomChildren?.[keyedTransition.right];
     if (leftDom && rightDom && typeof element.insertBefore === 'function') {
       if (currentEntries && allNextChildrenKeyed) {
         patchTransitionAffectedGenericKeyedEntries(
@@ -2006,7 +2005,7 @@ const patchDomChildrenWithKeys = (
         );
       } else {
         patchTransitionAffectedRange(
-          currentDomChildren,
+          currentDomChildren as ArrayLike<DomNodeLike>,
           prevChildren,
           nextChildren,
           keyedTransition,
@@ -2034,7 +2033,7 @@ const patchDomChildrenWithKeys = (
           );
         } else {
           patchStableKeyedChildAt(
-            currentDomChildren,
+            currentDomChildren as ArrayLike<DomNodeLike>,
             prevChildren,
             nextChildren,
             index,
@@ -2056,14 +2055,13 @@ const patchDomChildrenWithKeys = (
 
   if (keyedTransition?.kind === 'single_move') {
     const currentEntries = genericKeyedState?.entries ?? null;
-    const currentDomChildren =
-      (currentEntries?.map((entry) => entry.domNode) ?? Array.from(element.childNodes)) as ArrayLike<DomNodeLike>;
-    const movingDom = currentEntries?.[keyedTransition.from]?.domNode ?? currentDomChildren[keyedTransition.from];
+    const currentDomChildren = currentEntries ? null : (Array.from(element.childNodes) as ArrayLike<DomNodeLike>);
+    const movingDom = currentEntries?.[keyedTransition.from]?.domNode ?? currentDomChildren?.[keyedTransition.from];
     if (movingDom && typeof element.insertBefore === 'function') {
       const reference =
         keyedTransition.from < keyedTransition.to
-          ? (currentEntries?.[keyedTransition.to + 1]?.domNode ?? currentDomChildren[keyedTransition.to + 1] ?? null)
-          : (currentEntries?.[keyedTransition.to]?.domNode ?? currentDomChildren[keyedTransition.to] ?? null);
+          ? (currentEntries?.[keyedTransition.to + 1]?.domNode ?? currentDomChildren?.[keyedTransition.to + 1] ?? null)
+          : (currentEntries?.[keyedTransition.to]?.domNode ?? currentDomChildren?.[keyedTransition.to] ?? null);
       if (currentEntries && allNextChildrenKeyed) {
         patchTransitionAffectedGenericKeyedEntries(
           currentEntries,
@@ -2077,7 +2075,7 @@ const patchDomChildrenWithKeys = (
         );
       } else {
         patchTransitionAffectedRange(
-          currentDomChildren,
+          currentDomChildren as ArrayLike<DomNodeLike>,
           prevChildren,
           nextChildren,
           keyedTransition,
@@ -2106,7 +2104,7 @@ const patchDomChildrenWithKeys = (
           );
         } else {
           patchStableKeyedChildAt(
-            currentDomChildren,
+            currentDomChildren as ArrayLike<DomNodeLike>,
             prevChildren,
             nextChildren,
             index,

@@ -6784,9 +6784,9 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
   }
   if (keyedTransition?.kind === "adjacent_swap") {
     const currentEntries = genericKeyedState?.entries ?? null;
-    const currentDomChildren2 = currentEntries?.map((entry) => entry.domNode) ?? Array.from(element.childNodes);
-    const leftDom = currentEntries?.[keyedTransition.left]?.domNode ?? currentDomChildren2[keyedTransition.left];
-    const rightDom = currentEntries?.[keyedTransition.right]?.domNode ?? currentDomChildren2[keyedTransition.right];
+    const currentDomChildren2 = currentEntries ? null : Array.from(element.childNodes);
+    const leftDom = currentEntries?.[keyedTransition.left]?.domNode ?? currentDomChildren2?.[keyedTransition.left];
+    const rightDom = currentEntries?.[keyedTransition.right]?.domNode ?? currentDomChildren2?.[keyedTransition.right];
     if (leftDom && rightDom && typeof element.insertBefore === "function") {
       if (currentEntries && allNextChildrenKeyed) {
         patchTransitionAffectedGenericKeyedEntries(currentEntries, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
@@ -6812,10 +6812,10 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
   }
   if (keyedTransition?.kind === "single_move") {
     const currentEntries = genericKeyedState?.entries ?? null;
-    const currentDomChildren2 = currentEntries?.map((entry) => entry.domNode) ?? Array.from(element.childNodes);
-    const movingDom = currentEntries?.[keyedTransition.from]?.domNode ?? currentDomChildren2[keyedTransition.from];
+    const currentDomChildren2 = currentEntries ? null : Array.from(element.childNodes);
+    const movingDom = currentEntries?.[keyedTransition.from]?.domNode ?? currentDomChildren2?.[keyedTransition.from];
     if (movingDom && typeof element.insertBefore === "function") {
-      const reference = keyedTransition.from < keyedTransition.to ? currentEntries?.[keyedTransition.to + 1]?.domNode ?? currentDomChildren2[keyedTransition.to + 1] ?? null : currentEntries?.[keyedTransition.to]?.domNode ?? currentDomChildren2[keyedTransition.to] ?? null;
+      const reference = keyedTransition.from < keyedTransition.to ? currentEntries?.[keyedTransition.to + 1]?.domNode ?? currentDomChildren2?.[keyedTransition.to + 1] ?? null : currentEntries?.[keyedTransition.to]?.domNode ?? currentDomChildren2?.[keyedTransition.to] ?? null;
       if (currentEntries && allNextChildrenKeyed) {
         patchTransitionAffectedGenericKeyedEntries(currentEntries, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       } else {
