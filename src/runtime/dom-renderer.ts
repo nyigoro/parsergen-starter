@@ -2165,7 +2165,6 @@ const patchDomChildrenWithKeys = (
           }
         : findStableSequenceWindow(prevChildren, nextChildren, (left, right) => left.key === right.key);
     if (window) {
-      const nextDomChildren: DomNodeLike[] = new Array(nextChildren.length);
       const nextEntries: GenericKeyedEntry[] = new Array(nextChildren.length);
 
       for (let index = 0; index < window.currentStart; index += 1) {
@@ -2190,7 +2189,6 @@ const patchDomChildrenWithKeys = (
                 liveTextStore,
                 equalsValue
               );
-        nextDomChildren[index] = nextDomNode;
         if (entry) {
           entry.vnode = nextChild;
           entry.domNode = nextDomNode;
@@ -2225,7 +2223,6 @@ const patchDomChildrenWithKeys = (
                 liveTextStore,
                 equalsValue
               );
-        nextDomChildren[nextIndex] = nextDomNode;
         if (entry) {
           entry.vnode = nextChild;
           entry.domNode = nextDomNode;
@@ -2261,7 +2258,6 @@ const patchDomChildrenWithKeys = (
             liveTextStore,
             equalsValue
           );
-          nextDomChildren[nextIndex] = createdDomNode;
           nextEntries[nextIndex] = { key: nextChild.key, vnode: nextChild, domNode: createdDomNode };
           continue;
         }
@@ -2282,7 +2278,6 @@ const patchDomChildrenWithKeys = (
               );
         prevEntry.vnode = nextChild;
         prevEntry.domNode = nextDomNode;
-        nextDomChildren[nextIndex] = nextDomNode;
         nextEntries[nextIndex] = prevEntry;
       }
 
@@ -2294,6 +2289,11 @@ const patchDomChildrenWithKeys = (
         }
       }
 
+      const nextDomChildren = collectGenericEntryDomChildren(
+        nextEntries as GenericKeyedEntry[],
+        element,
+        false
+      );
       const reconcilerCurrentChildren =
         structureChanged
           ? (currentEntries
