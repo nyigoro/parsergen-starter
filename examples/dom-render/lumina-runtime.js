@@ -6048,7 +6048,12 @@ var syncGenericKeyedStateForTransition = /* @__PURE__ */ __name((state2, nextChi
     entry.vnode = nextChildren[index];
   }
 }, "syncGenericKeyedStateForTransition");
-var replaceGenericKeyedState = /* @__PURE__ */ __name((host, nextEntries) => {
+var replaceGenericKeyedState = /* @__PURE__ */ __name((host, nextEntries, existingState) => {
+  if (existingState) {
+    existingState.entries = nextEntries;
+    genericKeyedStates.set(host, existingState);
+    return;
+  }
   genericKeyedStates.set(host, createGenericKeyedState(nextEntries));
 }, "replaceGenericKeyedState");
 var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, keyOf) => {
@@ -6835,7 +6840,8 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
     }
   }
   if (allPrevChildrenKeyed && allNextChildrenKeyed) {
-    const currentDomChildren2 = genericKeyedState?.entries.map((entry) => entry.domNode) ?? readChildNodes(element);
+    const currentEntries = genericKeyedState?.entries ?? null;
+    const currentDomChildren2 = currentEntries?.map((entry) => entry.domNode) ?? readChildNodes(element);
     const window2 = keyedTransition?.kind === "complex_reorder" && typeof keyedTransition.start === "number" && typeof keyedTransition.end === "number" && prevChildren.length === nextChildren.length ? {
       currentStart: keyedTransition.start,
       currentEnd: keyedTransition.end,
@@ -6846,51 +6852,60 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
       const nextDomChildren2 = new Array(nextChildren.length);
       const nextEntries = new Array(nextChildren.length);
       for (let index = 0; index < window2.currentStart; index += 1) {
-        const domChild = currentDomChildren2[index];
-        const prevChild = genericKeyedState?.entries[index]?.vnode ?? prevChildren[index];
+        const entry = currentEntries?.[index];
+        const domChild = entry?.domNode ?? currentDomChildren2[index];
+        const prevChild = entry?.vnode ?? prevChildren[index];
         const nextChild = nextChildren[index];
         if (!domChild || !prevChild || !nextChild) {
           continue;
         }
-        nextDomChildren2[index] = domChild;
+        const nextDomNode = canSkipDomPatch(prevChild, nextChild, equalsValue) ? domChild : patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        nextDomChildren2[index] = nextDomNode;
+        if (entry) {
+          entry.vnode = nextChild;
+          entry.domNode = nextDomNode;
+          nextEntries[index] = entry;
+          continue;
+        }
         nextEntries[index] = {
           key: nextChild.key,
           vnode: nextChild,
-          domNode: domChild
+          domNode: nextDomNode
         };
-        if (canSkipDomPatch(prevChild, nextChild, equalsValue)) {
-          continue;
-        }
-        patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
       const stableSuffixCount = prevChildren.length - (window2.currentEnd + 1);
       for (let offset = 1; offset <= stableSuffixCount; offset += 1) {
         const currentIndex = prevChildren.length - offset;
         const nextIndex = nextChildren.length - offset;
-        const domChild = currentDomChildren2[currentIndex];
-        const prevChild = genericKeyedState?.entries[currentIndex]?.vnode ?? prevChildren[currentIndex];
+        const entry = currentEntries?.[currentIndex];
+        const domChild = entry?.domNode ?? currentDomChildren2[currentIndex];
+        const prevChild = entry?.vnode ?? prevChildren[currentIndex];
         const nextChild = nextChildren[nextIndex];
         if (!domChild || !prevChild || !nextChild) {
           continue;
         }
-        nextDomChildren2[nextIndex] = domChild;
+        const nextDomNode = canSkipDomPatch(prevChild, nextChild, equalsValue) ? domChild : patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        nextDomChildren2[nextIndex] = nextDomNode;
+        if (entry) {
+          entry.vnode = nextChild;
+          entry.domNode = nextDomNode;
+          nextEntries[nextIndex] = entry;
+          continue;
+        }
         nextEntries[nextIndex] = {
           key: nextChild.key,
           vnode: nextChild,
-          domNode: domChild
+          domNode: nextDomNode
         };
-        if (canSkipDomPatch(prevChild, nextChild, equalsValue)) {
-          continue;
-        }
-        patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
       }
       const prevKeyedWindow = /* @__PURE__ */ new Map();
       for (let index = window2.currentStart; index <= window2.currentEnd; index += 1) {
-        const entry = genericKeyedState?.entries[index];
+        const entry = currentEntries?.[index];
         const prevChild = entry?.vnode ?? prevChildren[index];
         const domChild = entry?.domNode ?? currentDomChildren2[index];
         if (!domChild || !prevChild || prevChild.key == null) continue;
-        prevKeyedWindow.set(prevChild.key, {
+        prevKeyedWindow.set(prevChild.key, entry ?? {
+          key: prevChild.key,
           vnode: prevChild,
           domNode: domChild
         });
@@ -6913,12 +6928,10 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         }
         prevKeyedWindow.delete(nextChild.key);
         const nextDomNode = canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        prevEntry.vnode = nextChild;
+        prevEntry.domNode = nextDomNode;
         nextDomChildren2[nextIndex] = nextDomNode;
-        nextEntries[nextIndex] = {
-          key: nextChild.key,
-          vnode: nextChild,
-          domNode: nextDomNode
-        };
+        nextEntries[nextIndex] = prevEntry;
       }
       for (const stale of prevKeyedWindow.values()) {
         structureChanged2 = true;
@@ -6943,7 +6956,7 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         transition: keyedTransition?.kind === "complex_reorder" ? keyedTransition : null,
         structureChanged: false
       });
-      replaceGenericKeyedState(element, nextEntries.filter((entry) => Boolean(entry)));
+      replaceGenericKeyedState(element, nextEntries.filter((entry) => Boolean(entry)), genericKeyedState);
       return;
     }
   }
