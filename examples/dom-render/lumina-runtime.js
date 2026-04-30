@@ -6049,6 +6049,23 @@ var replaceGenericKeyedState = /* @__PURE__ */ __name((host, nextEntries, existi
   }
   genericKeyedStates.set(host, createGenericKeyedState(nextEntries));
 }, "replaceGenericKeyedState");
+var collectGenericEntryDomChildren = /* @__PURE__ */ __name((entries, host, attachedOnly) => {
+  if (!attachedOnly) {
+    const children3 = new Array(entries.length);
+    for (let index = 0; index < entries.length; index += 1) {
+      children3[index] = entries[index].domNode;
+    }
+    return children3;
+  }
+  const children2 = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const domNode = entries[index].domNode;
+    if (domNode.parentNode === host) {
+      children2.push(domNode);
+    }
+  }
+  return children2;
+}, "collectGenericEntryDomChildren");
 var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, keyOf) => {
   if (items.length !== previousOrder.length) {
     return {
@@ -6919,7 +6936,6 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         });
       }
       let structureChanged2 = prevChildren.length !== nextChildren.length;
-      const alreadyDisposedStaleNodes2 = /* @__PURE__ */ new WeakSet();
       for (let nextIndex = window2.nextStart; nextIndex <= window2.nextEnd; nextIndex += 1) {
         const nextChild = nextChildren[nextIndex];
         const prevEntry = prevKeyedWindow.get(nextChild.key);
@@ -6945,19 +6961,12 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
       for (const stale of prevKeyedWindow.values()) {
         structureChanged2 = true;
         disposeDomNode(stale.domNode, eventStore, portalStore, liveTextStore);
-        alreadyDisposedStaleNodes2.add(stale.domNode);
         if (stale.domNode.parentNode === element) {
           element.removeChild(stale.domNode);
         }
       }
-      const reconcilerCurrentChildren = structureChanged2 ? currentEntries ? currentEntries.map((entry) => entry.domNode).filter((child) => child.parentNode === element) : currentDomChildren2.filter((child) => child.parentNode === element) : currentEntries ? currentEntries.map((entry) => entry.domNode) : currentDomChildren2;
-      reorderChildren(element, nextDomChildren2, (child) => {
-        const domChild = child;
-        if (alreadyDisposedStaleNodes2.has(domChild)) {
-          return;
-        }
-        disposeDomNode(domChild, eventStore, portalStore, liveTextStore);
-      }, structureChanged2 ? {
+      const reconcilerCurrentChildren = structureChanged2 ? currentEntries ? collectGenericEntryDomChildren(currentEntries, element, true) : currentDomChildren2.filter((child) => child.parentNode === element) : currentEntries ? collectGenericEntryDomChildren(currentEntries, element, false) : currentDomChildren2;
+      reorderChildren(element, nextDomChildren2, (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), structureChanged2 ? {
         currentChildren: reconcilerCurrentChildren,
         structureChanged: false
       } : {
