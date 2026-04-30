@@ -872,17 +872,6 @@ const ensureGenericKeyedState = (
   return rebuilt;
 };
 
-const syncGenericKeyedStateForSameOrder = (
-  state: GenericKeyedState,
-  nextChildren: Array<VNode & { key: string | number }>
-): void => {
-  for (let index = 0; index < nextChildren.length; index += 1) {
-    const entry = state.entries[index];
-    if (!entry) continue;
-    entry.vnode = nextChildren[index];
-  }
-};
-
 const syncGenericKeyedStateForTransition = (
   state: GenericKeyedState,
   nextChildren: Array<VNode & { key: string | number }>,
@@ -1883,10 +1872,14 @@ const patchStableGenericKeyedEntryAt = (
 ): void => {
   const entry = entries[index];
   const nextChild = nextChildren[index];
-  if (!entry || !nextChild || canSkipDomPatch(entry.vnode, nextChild, equalsValue)) {
+  if (!entry || !nextChild) {
     return;
   }
-  patchDomNode(
+  const fastSkip = trySkipStableKeyedChildFast(entry.vnode, nextChild);
+  if (fastSkip === true || (fastSkip !== false && canSkipDomPatch(entry.vnode, nextChild, equalsValue))) {
+    return;
+  }
+  entry.domNode = patchDomNode(
     entry.domNode,
     entry.vnode,
     nextChild,
@@ -1920,10 +1913,14 @@ const patchTransitionAffectedGenericKeyedEntries = (
         : remapMovedIndex(index, transition.from, transition.to);
     const entry = entries[sourceIndex];
     const nextChild = nextChildren[index];
-    if (!entry || !nextChild || canSkipDomPatch(entry.vnode, nextChild, equalsValue)) {
+    if (!entry || !nextChild) {
       continue;
     }
-    patchDomNode(
+    const fastSkip = trySkipStableKeyedChildFast(entry.vnode, nextChild);
+    if (fastSkip === true || (fastSkip !== false && canSkipDomPatch(entry.vnode, nextChild, equalsValue))) {
+      continue;
+    }
+    entry.domNode = patchDomNode(
       entry.domNode,
       entry.vnode,
       nextChild,
@@ -1955,8 +1952,9 @@ const patchDomChildrenWithKeys = (
   const keyedTransition = analyzeKeyedChildTransition(prevChildren, nextChildren);
   if (keyedTransition?.kind === 'same_order') {
     for (let index = 0; index < nextChildren.length; index += 1) {
-      const domChild = genericKeyedState?.entries[index]?.domNode ?? element.childNodes[index];
-      const prevChild = genericKeyedState?.entries[index]?.vnode ?? prevChildren[index];
+      const entry = genericKeyedState?.entries[index];
+      const domChild = entry?.domNode ?? element.childNodes[index];
+      const prevChild = entry?.vnode ?? prevChildren[index];
       const nextChild = nextChildren[index];
       if (!prevChild || !nextChild) {
         continue;
@@ -1967,9 +1965,12 @@ const patchDomChildrenWithKeys = (
       }
       const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
       if (fastSkip === true || (fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue))) {
+        if (entry) {
+          entry.vnode = nextChild;
+        }
         continue;
       }
-      patchDomNode(
+      const nextDomNode = patchDomNode(
         domChild,
         prevChild,
         nextChild,
@@ -1979,9 +1980,10 @@ const patchDomChildrenWithKeys = (
         liveTextStore,
         equalsValue
       );
-    }
-    if (genericKeyedState && allNextChildrenKeyed) {
-      syncGenericKeyedStateForSameOrder(genericKeyedState, nextChildren);
+      if (entry) {
+        entry.vnode = nextChild;
+        entry.domNode = nextDomNode;
+      }
     }
     return;
   }
@@ -2126,7 +2128,7 @@ const patchDomChildrenWithKeys = (
 
   if (allPrevChildrenKeyed && allNextChildrenKeyed) {
     const currentEntries = genericKeyedState?.entries ?? null;
-    const currentDomChildren = currentEntries?.map((entry) => entry.domNode) ?? (readChildNodes(element) as DomNodeLike[]);
+    const currentDomChildren = currentEntries ? null : (readChildNodes(element) as DomNodeLike[]);
     const window =
       keyedTransition?.kind === 'complex_reorder'
       && typeof keyedTransition.start === 'number'
@@ -2145,14 +2147,15 @@ const patchDomChildrenWithKeys = (
 
       for (let index = 0; index < window.currentStart; index += 1) {
         const entry = currentEntries?.[index];
-        const domChild = entry?.domNode ?? currentDomChildren[index];
+        const domChild = entry?.domNode ?? currentDomChildren?.[index];
         const prevChild = entry?.vnode ?? prevChildren[index];
         const nextChild = nextChildren[index];
         if (!domChild || !prevChild || !nextChild) {
           continue;
         }
+        const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
         const nextDomNode =
-          canSkipDomPatch(prevChild, nextChild, equalsValue)
+          fastSkip === true || (fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue))
             ? domChild
             : patchDomNode(
                 domChild,
@@ -2179,14 +2182,15 @@ const patchDomChildrenWithKeys = (
         const currentIndex = prevChildren.length - offset;
         const nextIndex = nextChildren.length - offset;
         const entry = currentEntries?.[currentIndex];
-        const domChild = entry?.domNode ?? currentDomChildren[currentIndex];
+        const domChild = entry?.domNode ?? currentDomChildren?.[currentIndex];
         const prevChild = entry?.vnode ?? prevChildren[currentIndex];
         const nextChild = nextChildren[nextIndex];
         if (!domChild || !prevChild || !nextChild) {
           continue;
         }
+        const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
         const nextDomNode =
-          canSkipDomPatch(prevChild, nextChild, equalsValue)
+          fastSkip === true || (fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue))
             ? domChild
             : patchDomNode(
                 domChild,
@@ -2212,7 +2216,7 @@ const patchDomChildrenWithKeys = (
       for (let index = window.currentStart; index <= window.currentEnd; index += 1) {
         const entry = currentEntries?.[index];
         const prevChild = entry?.vnode ?? prevChildren[index];
-        const domChild = entry?.domNode ?? currentDomChildren[index];
+        const domChild = entry?.domNode ?? currentDomChildren?.[index];
         if (!domChild || !prevChild || prevChild.key == null) continue;
         prevKeyedWindow.set(
           prevChild.key,
@@ -2240,8 +2244,9 @@ const patchDomChildrenWithKeys = (
           continue;
         }
         prevKeyedWindow.delete(nextChild.key);
+        const fastSkip = trySkipStableKeyedChildFast(prevEntry.vnode, nextChild);
         const nextDomNode =
-          canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue)
+          fastSkip === true || (fastSkip !== false && canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue))
             ? prevEntry.domNode
             : patchDomNode(
                 prevEntry.domNode,
@@ -2270,8 +2275,12 @@ const patchDomChildrenWithKeys = (
 
       const reconcilerCurrentChildren =
         structureChanged
-          ? currentDomChildren.filter((child) => child.parentNode === element)
-          : currentDomChildren;
+          ? (currentEntries
+              ? currentEntries.map((entry) => entry.domNode).filter((child) => child.parentNode === element)
+              : (currentDomChildren as DomNodeLike[]).filter((child) => child.parentNode === element))
+          : (currentEntries
+              ? currentEntries.map((entry) => entry.domNode)
+              : (currentDomChildren as DomNodeLike[]));
       reorderChildren(
         element,
         nextDomChildren,
@@ -2295,7 +2304,7 @@ const patchDomChildrenWithKeys = (
       );
       replaceGenericKeyedState(
         element,
-        nextEntries.filter((entry): entry is GenericKeyedEntry => Boolean(entry)),
+        nextEntries as GenericKeyedEntry[],
         genericKeyedState
       );
       return;
