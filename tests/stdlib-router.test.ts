@@ -29,9 +29,16 @@ type RouterApi = {
   currentPath: (routerValue: unknown) => unknown;
   currentParams: (routerValue: unknown) => unknown;
   matchRoute: (pattern: string, path: string) => boolean;
+  isActive: (routerValue: unknown, pattern: string) => boolean;
   extractParams: (pattern: string, path: string) => unknown;
   onRouteChange: (routerValue: unknown, handler: (path: string) => void) => unknown;
   link: (routerValue: unknown, href: string, label: string) => VNode;
+  linkWithProps: (
+    routerValue: unknown,
+    href: string,
+    props: Record<string, unknown>,
+    children: VNode[]
+  ) => VNode;
 };
 
 type BrowserEnvHandle = {
@@ -52,7 +59,7 @@ type BrowserEnvHandle = {
 
 const parseProgram = (source: string): LuminaProgram => parseLuminaProgram(source);
 
-const getTag = (value: unknown): string => ((value as { $tag?: string })?.$tag ?? '');
+const getTag = (value: unknown): string => (value as { $tag?: string })?.$tag ?? '';
 const getPayload = <T = unknown>(value: unknown): T => (value as { $payload?: T }).$payload as T;
 const some = <T>(value: T): OptionValue<T> => ({ $tag: 'Some', $payload: value });
 const none = (): OptionValue => ({ $tag: 'None' });
@@ -120,8 +127,9 @@ const runtimeReactive = {
 };
 
 const runtimeRender = {
-  props_merge: (...parts: Array<Record<string, unknown> | null | undefined>): Record<string, unknown> =>
-    Object.assign({}, ...parts.filter(Boolean)),
+  props_merge: (
+    ...parts: Array<Record<string, unknown> | null | undefined>
+  ): Record<string, unknown> => Object.assign({}, ...parts.filter(Boolean)),
   props_class: (className: string): Record<string, unknown> => ({ className }),
   props_href: (href: string): Record<string, unknown> => ({ href }),
   props_on_click: (handler: () => unknown): Record<string, unknown> => ({
@@ -141,35 +149,45 @@ const runtimeRender = {
 };
 
 const splitPathSegments = (value: string): string[] =>
-  value
-    .split('/')
-    .filter((segment) => segment.length > 0);
+  value.split('/').filter((segment) => segment.length > 0);
 
 const runtimeRouter = {
-  getCurrentPath: (): string => String((globalThis as { location?: { pathname?: string } }).location?.pathname ?? '/'),
-  getCurrentHash: (): string => String((globalThis as { location?: { hash?: string } }).location?.hash ?? ''),
-  getCurrentSearch: (): string => String((globalThis as { location?: { search?: string } }).location?.search ?? ''),
+  getCurrentPath: (): string =>
+    String((globalThis as { location?: { pathname?: string } }).location?.pathname ?? '/'),
+  getCurrentHash: (): string =>
+    String((globalThis as { location?: { hash?: string } }).location?.hash ?? ''),
+  getCurrentSearch: (): string =>
+    String((globalThis as { location?: { search?: string } }).location?.search ?? ''),
   push: (path: string): void => {
-    (globalThis as { history?: { pushState?: (data: unknown, unused: string, url?: string | URL | null) => void } }).history?.pushState?.(
-      null,
-      '',
-      path
-    );
-    (globalThis as { window?: { dispatchEvent?: (event: Event) => boolean } }).window?.dispatchEvent?.(new Event('popstate'));
+    (
+      globalThis as {
+        history?: {
+          pushState?: (data: unknown, unused: string, url?: string | URL | null) => void;
+        };
+      }
+    ).history?.pushState?.(null, '', path);
+    (
+      globalThis as { window?: { dispatchEvent?: (event: Event) => boolean } }
+    ).window?.dispatchEvent?.(new Event('popstate'));
   },
   replace: (path: string): void => {
-    (globalThis as { history?: { replaceState?: (data: unknown, unused: string, url?: string | URL | null) => void } }).history?.replaceState?.(
-      null,
-      '',
-      path
-    );
-    (globalThis as { window?: { dispatchEvent?: (event: Event) => boolean } }).window?.dispatchEvent?.(new Event('popstate'));
+    (
+      globalThis as {
+        history?: {
+          replaceState?: (data: unknown, unused: string, url?: string | URL | null) => void;
+        };
+      }
+    ).history?.replaceState?.(null, '', path);
+    (
+      globalThis as { window?: { dispatchEvent?: (event: Event) => boolean } }
+    ).window?.dispatchEvent?.(new Event('popstate'));
   },
   onPopState: (listener: (pathname: string) => void): void => {
-    (globalThis as { window?: { addEventListener?: (type: string, listener: EventListener) => void } }).window?.addEventListener?.(
-      'popstate',
-      () => listener(runtimeRouter.getCurrentPath())
-    );
+    (
+      globalThis as {
+        window?: { addEventListener?: (type: string, listener: EventListener) => void };
+      }
+    ).window?.addEventListener?.('popstate', () => listener(runtimeRouter.getCurrentPath()));
   },
   parseSearchParams: (search: string): Map<string, string> => {
     const params = new Map<string, string>();
@@ -210,14 +228,8 @@ const runtimeRouter = {
 
 const bindRouterRuntime = (js: string): string =>
   js
-    .replace(
-      /const str = \{[\s\S]*?\};\n/,
-      'const str = __runtimeStr;\n'
-    )
-    .replace(
-      /const router = \{[\s\S]*?\};\n/,
-      'const router = __runtimeRouter;\n'
-    );
+    .replace(/const str = \{[\s\S]*?\};\n/, 'const str = __runtimeStr;\n')
+    .replace(/const router = \{[\s\S]*?\};\n/, 'const router = __runtimeRouter;\n');
 
 const compileRouterStdlib = (): RouterApi => {
   if (cachedRouterApi) {
@@ -233,14 +245,16 @@ const compileRouterStdlib = (): RouterApi => {
   const hmErrors = inferred.diagnostics.filter((diag) => diag.severity === 'error');
   expect(hmErrors).toHaveLength(0);
 
-  const js = bindRouterRuntime(generateJSFromAst(ast, { target: 'cjs', includeRuntime: false }).code);
+  const js = bindRouterRuntime(
+    generateJSFromAst(ast, { target: 'cjs', includeRuntime: false }).code
+  );
   const factory = new Function(
     '__runtimeRouter',
     '__runtimeStr',
     'reactive',
     'render',
     'module',
-    `${js}\nreturn { createRouter, navigate, replace, currentPath, currentParams, matchRoute, extractParams, onRouteChange, link };`
+    `${js}\nreturn { createRouter, navigate, replace, currentPath, currentParams, matchRoute, isActive, extractParams, onRouteChange, link, linkWithProps };`
   ) as (
     routerModule: typeof runtimeRouter,
     strModule: typeof runtimeStr,
@@ -249,13 +263,9 @@ const compileRouterStdlib = (): RouterApi => {
     moduleHandle: { exports: Record<string, unknown> }
   ) => RouterApi;
 
-  cachedRouterApi = factory(
-    runtimeRouter,
-    runtimeStr,
-    runtimeReactive,
-    runtimeRender,
-    { exports: {} }
-  );
+  cachedRouterApi = factory(runtimeRouter, runtimeStr, runtimeReactive, runtimeRender, {
+    exports: {},
+  });
   return cachedRouterApi;
 };
 
@@ -467,5 +477,35 @@ describe('@std/router', () => {
     expect(preventDefault).toHaveBeenCalled();
     expect(env.window.location.pathname).toBe('/app/lumina');
     expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/lumina');
+  });
+
+  test('linkWithProps composes app props and isActive reads the current route', () => {
+    const env = installBrowserEnv('/app/tasks', { baseURI: 'https://lumina.dev/app/' });
+    const routerApi = compileRouterStdlib();
+
+    const routerValue = routerApi.createRouter('/app');
+    const node = routerApi.linkWithProps(
+      routerValue,
+      '/settings',
+      { className: 'nav-link', 'aria-current': 'page' },
+      [{ kind: 'text', text: 'Settings' }]
+    );
+    const props = node.props as {
+      href?: string;
+      className?: string;
+      onClick?: (event: Event) => void;
+    };
+    const preventDefault = jest.fn();
+
+    expect(routerApi.isActive(routerValue, '/tasks')).toBe(true);
+    expect(props.href).toBe('/app/settings');
+    expect(props.className).toBe('nav-link');
+    expect(node.children[0]?.text).toBe('Settings');
+
+    props.onClick?.({ preventDefault } as unknown as Event);
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(env.window.location.pathname).toBe('/app/settings');
+    expect(routerApi.isActive(routerValue, '/settings')).toBe(true);
   });
 });

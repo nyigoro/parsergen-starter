@@ -8,12 +8,37 @@ type CompilerModule = {
   parseLumina: (parser: unknown, input: string, options?: Record<string, unknown>) => unknown;
   generateJSFromAst: (
     program: unknown,
-    options?: { target?: 'esm' | 'cjs'; includeRuntime?: boolean; sourceMap?: boolean; sourceFile?: string; sourceContent?: string }
+    options?: {
+      target?: 'esm' | 'cjs';
+      includeRuntime?: boolean;
+      sourceMap?: boolean;
+      sourceFile?: string;
+      sourceContent?: string;
+    }
   ) => { code: string };
 };
 
-const runtimeImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<CompilerModule>;
-const nodeRequire = createRequire(__filename);
+const runtimeImport = new Function('specifier', 'return import(specifier)') as (
+  specifier: string
+) => Promise<CompilerModule>;
+
+const findRepoRoot = (): string => {
+  const candidates = [
+    typeof __dirname === 'string' ? path.resolve(__dirname, '..') : null,
+    process.cwd(),
+    path.resolve(process.cwd(), '..'),
+  ].filter((candidate): candidate is string => !!candidate);
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'src', 'grammar', 'lumina.peg'))) {
+      return candidate;
+    }
+  }
+  return path.resolve(process.cwd(), '..');
+};
+
+const repoRoot = findRepoRoot();
+const currentDir = path.join(repoRoot, 'demo');
+const nodeRequire = createRequire(path.join(currentDir, 'vite-plugin-lumina.ts'));
 
 const importStatementRegex = /^\s*import\s+.+?from\s+["']([^"']+)["'];?\s*$/gm;
 const sourceBackedStdModules = new Set([
@@ -73,7 +98,38 @@ const collectPublicExports = (source: string): string[] => {
 
 const appendExports = (code: string, names: string[]): string => {
   if (names.length === 0) return code;
-  return `${code.trimEnd()}\nexport { ${Array.from(new Set(names)).join(', ')} };\n`;
+  const existingExports = collectExistingNamedExports(code);
+  const missingExports = Array.from(new Set(names)).filter((name) => !existingExports.has(name));
+  if (missingExports.length === 0) return code;
+  return `${code.trimEnd()}\nexport { ${missingExports.join(', ')} };\n`;
+};
+
+const collectExistingNamedExports = (code: string): Set<string> => {
+  const names = new Set<string>();
+  const exportListRegex = /\bexport\s*\{([^}]*)\}/gm;
+  for (const match of code.matchAll(exportListRegex)) {
+    const specifiers = match[1]?.split(',') ?? [];
+    for (const specifier of specifiers) {
+      const trimmed = specifier.trim();
+      if (!trimmed) continue;
+      const [, exportedName = trimmed] = trimmed.split(/\s+as\s+/);
+      const normalized = exportedName.trim();
+      if (normalized) names.add(normalized);
+    }
+  }
+
+  const declarationPatterns = [
+    /\bexport\s+(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm,
+    /\bexport\s+class\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm,
+    /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm,
+  ];
+  for (const pattern of declarationPatterns) {
+    for (const match of code.matchAll(pattern)) {
+      if (match[1]) names.add(match[1]);
+    }
+  }
+
+  return names;
 };
 
 const resolveLuminaImportSpecifier = (fromFile: string, spec: string): string | null => {
@@ -82,7 +138,7 @@ const resolveLuminaImportSpecifier = (fromFile: string, spec: string): string | 
   }
   if (spec.startsWith('@std/')) {
     const moduleName = spec.slice('@std/'.length);
-    const stdlibPath = resolveStdModulePath(path.resolve(__dirname, '..'), moduleName);
+    const stdlibPath = resolveStdModulePath(path.resolve(currentDir, '..'), moduleName);
     if (stdlibPath) {
       return normalizeSpecifier(path.dirname(fromFile), stdlibPath);
     }
@@ -104,8 +160,7 @@ const collectResolvedImportStatements = (source: string, fromFile: string): stri
 };
 
 export function luminaPlugin(): Plugin {
-  const demoRoot = path.resolve(__dirname);
-  const repoRoot = path.resolve(demoRoot, '..');
+  const demoRoot = path.resolve(currentDir);
   const grammarPath = path.join(repoRoot, 'src', 'grammar', 'lumina.peg');
   const runtimePath = path.join(repoRoot, 'dist', 'lumina-runtime.js');
   const debug = process.env.LUMINA_VITE_DEBUG === '1';
@@ -118,7 +173,11 @@ export function luminaPlugin(): Plugin {
       const moduleName = source.slice('@std/'.length);
       return resolveStdModulePath(repoRoot, moduleName);
     }
-    if ((source.startsWith('./') || source.startsWith('../')) && source.endsWith('.lm') && importer) {
+    if (
+      (source.startsWith('./') || source.startsWith('../')) &&
+      source.endsWith('.lm') &&
+      importer
+    ) {
       return path.resolve(path.dirname(importer), source);
     }
     return null;
@@ -127,9 +186,13 @@ export function luminaPlugin(): Plugin {
   const getCompiler = async (): Promise<CompilerModule> => {
     if (!compilerPromise) {
       if (process.env.JEST_WORKER_ID) {
-        compilerPromise = Promise.resolve(nodeRequire(path.join(repoRoot, 'src', 'index.ts')) as CompilerModule);
+        compilerPromise = Promise.resolve(
+          nodeRequire(path.join(repoRoot, 'src', 'index.ts')) as CompilerModule
+        );
       } else {
-        compilerPromise = runtimeImport(pathToFileUrl(path.join(repoRoot, 'dist', 'index.js')).href);
+        compilerPromise = runtimeImport(
+          pathToFileUrl(path.join(repoRoot, 'dist', 'index.js')).href
+        );
       }
     }
     return compilerPromise;
@@ -165,11 +228,13 @@ export function luminaPlugin(): Plugin {
       });
 
       const runtimeSpecifier = normalizeSpecifier(path.dirname(id), runtimePath);
-      const rewritten = generated.code.replace(/from\s+["']\.\/lumina-runtime\.js["']/g, `from ${JSON.stringify(runtimeSpecifier)}`);
+      const rewritten = generated.code.replace(
+        /from\s+["']\.\/lumina-runtime\.js["']/g,
+        `from ${JSON.stringify(runtimeSpecifier)}`
+      );
       const resolvedImports = collectResolvedImportStatements(source, id);
-      const withResolvedImports = resolvedImports.length > 0
-        ? `${resolvedImports.join('\n')}\n${rewritten}`
-        : rewritten;
+      const withResolvedImports =
+        resolvedImports.length > 0 ? `${resolvedImports.join('\n')}\n${rewritten}` : rewritten;
       const publicExports = collectPublicExports(source);
       const final = appendExports(withResolvedImports, publicExports);
 
@@ -179,7 +244,9 @@ export function luminaPlugin(): Plugin {
 
       return final;
     } catch (error) {
-      throw new Error(`Failed to compile ${id}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to compile ${id}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   };
 
@@ -198,7 +265,9 @@ export function luminaPlugin(): Plugin {
       try {
         return await compileModule(id);
       } catch (error) {
-        this.error(`Lumina plugin error in ${id}:\n${error instanceof Error ? error.message : String(error)}`);
+        this.error(
+          `Lumina plugin error in ${id}:\n${error instanceof Error ? error.message : String(error)}`
+        );
       }
       return null;
     },

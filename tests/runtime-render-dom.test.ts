@@ -654,6 +654,48 @@ describe('render DOM renderer', () => {
     root.unmount();
   });
 
+  test('forList rerenders plain row bodies when values and indexes change', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const rows = render.signal([
+      { id: 'a', label: 'Alpha' },
+      { id: 'b', label: 'Beta' },
+    ]);
+
+    const root = render.mount(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row, index) =>
+            render.element('li', null, [
+              render.text(`${render.get(row).label}:${render.get(index)}`),
+            ])
+        ),
+      ])
+    );
+
+    const host = (container.childNodes[0] as FakeElement).childNodes[0] as FakeElement;
+    const rowA = host.childNodes[0] as FakeElement;
+    const rowB = host.childNodes[1] as FakeElement;
+
+    render.set(rows, [
+      { id: 'b', label: 'Beta*' },
+      { id: 'a', label: 'Alpha' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(rowB);
+    expect(host.childNodes[1]).toBe(rowA);
+    expect((host.childNodes[0] as FakeElement).childNodes[0].textContent).toBe('Beta*:0');
+    expect((host.childNodes[1] as FakeElement).childNodes[0].textContent).toBe('Alpha:1');
+
+    root.unmount();
+  });
+
   test('forList adjacent keyed swaps use one DOM move without rebuild', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -2110,6 +2152,125 @@ describe('render DOM renderer', () => {
         ])
       )
     ).toThrow("Duplicate keyed child 'a'");
+  });
+
+  test('throws on duplicate keyed siblings during mount and hydrate', () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+
+    const duplicateTree = render.element('section', null, [
+      render.element('button', { key: 'a' }, [render.text('A')]),
+      render.element('button', { key: 'a' }, [render.text('Again')]),
+    ]);
+
+    expect(render.mount(renderer, container, duplicateTree)).toMatchObject({
+      $tag: 'Err',
+      $payload: expect.stringContaining("Duplicate keyed child 'a'"),
+    });
+
+    const hydratedContainer = fakeDocument.createElement('div');
+    hydratedContainer.appendChild(fakeDocument.createElement('section'));
+    expect(render.hydrate(renderer, hydratedContainer, duplicateTree)).toMatchObject({
+      $tag: 'Err',
+      $payload: expect.stringContaining("Duplicate keyed child 'a'"),
+    });
+  });
+
+  test('hydrates keyed children by hydration key while preserving focus and DOM identity', () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const section = fakeDocument.createElement('section');
+    const buttonA = fakeDocument.createElement('button');
+    buttonA.setAttribute('data-lumina-key', 'a');
+    buttonA.appendChild(fakeDocument.createTextNode('A'));
+    const buttonB = fakeDocument.createElement('button');
+    buttonB.setAttribute('data-lumina-key', 'b');
+    buttonB.appendChild(fakeDocument.createTextNode('B'));
+    section.appendChild(buttonA);
+    section.appendChild(buttonB);
+    container.appendChild(section);
+    buttonA.focus();
+
+    const root = render.hydrate(
+      renderer,
+      container,
+      render.element('section', null, [
+        render.element('button', { key: 'b' }, [render.text('B!')]),
+        render.element('button', { key: 'a' }, [render.text('A!')]),
+      ])
+    );
+
+    expect(container.childNodes[0]).toBe(section);
+    expect(section.childNodes[0]).toBe(buttonB);
+    expect(section.childNodes[1]).toBe(buttonA);
+    expect(buttonB.childNodes[0].textContent).toBe('B!');
+    expect(buttonA.childNodes[0].textContent).toBe('A!');
+    expect(fakeDocument.activeElement).toBe(buttonA);
+    render.unmount(root);
+  });
+
+  test('hydrates forList rows from SSR keys without remounting retained input state', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const ul = fakeDocument.createElement('ul');
+    const host = fakeDocument.createElement('lumina-for-list');
+    const rowA = fakeDocument.createElement('li');
+    rowA.setAttribute('data-lumina-key', 'a');
+    const inputA = fakeDocument.createElement('input');
+    inputA.value = 'typed A';
+    rowA.appendChild(inputA);
+    rowA.appendChild(fakeDocument.createTextNode('Alpha'));
+    const rowB = fakeDocument.createElement('li');
+    rowB.setAttribute('data-lumina-key', 'b');
+    const inputB = fakeDocument.createElement('input');
+    inputB.value = 'typed B';
+    rowB.appendChild(inputB);
+    rowB.appendChild(fakeDocument.createTextNode('Beta'));
+    host.appendChild(rowA);
+    host.appendChild(rowB);
+    ul.appendChild(host);
+    container.appendChild(ul);
+    inputA.focus();
+
+    const rows = render.signal([
+      { id: 'b', label: 'Beta' },
+      { id: 'a', label: 'Alpha' },
+    ]);
+
+    const root = render.hydrate(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row) =>
+            render.element('li', { 'data-id': render.memo(() => render.get(row).id) }, [
+              render.element('input', null, []),
+              render.liveText(render.memo(() => render.get(row).label)),
+            ])
+        ),
+      ])
+    );
+
+    expect(host.childNodes[0]).toBe(rowB);
+    expect(host.childNodes[1]).toBe(rowA);
+    expect((rowA.childNodes[0] as FakeElement).value).toBe('typed A');
+    expect((rowB.childNodes[0] as FakeElement).value).toBe('typed B');
+    expect(fakeDocument.activeElement).toBe(inputA);
+
+    render.set(rows, [
+      { id: 'b', label: 'Beta!' },
+      { id: 'a', label: 'Alpha' },
+    ]);
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(rowB);
+    expect(rowB.childNodes[1].textContent).toBe('Beta!');
+    render.unmount(root);
   });
 
   test('context, lazy children, and slot helpers compose without prop drilling', () => {

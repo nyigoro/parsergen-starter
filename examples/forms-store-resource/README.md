@@ -23,3 +23,5 @@ Then open:
 - checkbox state
 - resource loading with suspense fallback
 - persisted draft state after submit
+- keyed list authoring with `for (... key ...)`
+- `aria-live` status updates for list reorders

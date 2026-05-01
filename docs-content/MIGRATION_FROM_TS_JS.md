@@ -16,17 +16,17 @@ Do not start with framework glue code. Start with domain logic first.
 
 ## 2. Concept Mapping (TS/JS -> Lumina)
 
-| TypeScript / JavaScript | Lumina |
-|---|---|
-| `number` | `i32`, `f64`, or explicit numeric type |
-| `Array<T>` | `Vec<T>` and array literals `[a, b, c]` |
-| `Map<K, V>` | `HashMap<K, V>` |
-| `Set<T>` | `HashSet<T>` |
-| `undefined` / `null` checks | `Option<T>` |
-| `throw` / `try-catch` flow | `Result<T, E>` + `?` |
-| Interfaces | Traits |
-| Generic constraints (`T extends X`) | Trait bounds (`T: X`) |
-| `async/await` | `async/await` |
+| TypeScript / JavaScript             | Lumina                                  |
+| ----------------------------------- | --------------------------------------- |
+| `number`                            | `i32`, `f64`, or explicit numeric type  |
+| `Array<T>`                          | `Vec<T>` and array literals `[a, b, c]` |
+| `Map<K, V>`                         | `HashMap<K, V>`                         |
+| `Set<T>`                            | `HashSet<T>`                            |
+| `undefined` / `null` checks         | `Option<T>`                             |
+| `throw` / `try-catch` flow          | `Result<T, E>` + `?`                    |
+| Interfaces                          | Traits                                  |
+| Generic constraints (`T extends X`) | Trait bounds (`T: X`)                   |
+| `async/await`                       | `async/await`                           |
 
 ## 3. Key Syntax Translations
 
@@ -37,8 +37,8 @@ TypeScript:
 ```ts
 const nums = [1, 2, 3];
 const m = new Map<string, number>();
-m.set("alice", 30);
-const age = m.get("alice");
+m.set('alice', 30);
+const age = m.get('alice');
 ```
 
 Lumina:
@@ -55,7 +55,7 @@ let age = m.get("alice"); // Option<i32>
 TypeScript:
 
 ```ts
-const age = map.get("alice");
+const age = map.get('alice');
 if (age !== undefined) {
   console.log(age);
 }
@@ -70,13 +70,82 @@ match map.get("alice") {
 }
 ```
 
+## Collection indexing
+
+TypeScript:
+
+```ts
+const nums = [10, 20, 30];
+const index = 5;
+const value = nums[index]; // undefined
+```
+
+Lumina direct indexing is for cases where the index must exist. It returns the
+element type directly and fails loudly if the index is out of bounds:
+
+```lumina
+let nums = [10, 20, 30];
+let value = nums[1]; // 20
+```
+
+When an index might be missing, use `get(index)` and handle `Option<T>`:
+
+```lumina
+let nums = [10, 20, 30];
+let index = 5;
+
+match nums.get(index) {
+  Some(value) => io.println(str.from_int(value)),
+  None => io.println("missing")
+}
+```
+
+Normal `for` loops do not create an automatic index variable. Name the index
+yourself with a range loop:
+
+```lumina
+for index in 0..nums.len() {
+  match nums.get(index) {
+    Some(value) => io.println(str.from_int(value)),
+    None => io.println("missing")
+  }
+}
+```
+
+## React/TS keyed lists
+
+TypeScript/JSX:
+
+```tsx
+items.map((item, index) => (
+  <li key={item.id}>
+    {item.label}:{index}
+  </li>
+));
+```
+
+Lumina:
+
+```lumina
+render.element("ul", render.props_empty(), [
+  for (item, index in items key item.id) =>
+    render.element("li", props { key: item.id }, [
+      render.text(item.label),
+      render.text(index)
+    ])
+])
+```
+
+The key must be stable and unique among siblings. Lumina uses it for DOM moves,
+component-frame reuse, and SSR hydration.
+
 ## Error propagation
 
 TypeScript:
 
 ```ts
 async function load(path: string): Promise<string> {
-  const content = await fs.readFile(path, "utf8");
+  const content = await fs.readFile(path, 'utf8');
   return content;
 }
 ```
@@ -129,9 +198,10 @@ lumina compile src/core.lm --target esm --out dist/core.js
   - Lumina does not silently coerce across numeric types.
   - Use explicit casts with `as`.
 - Option/Result discipline:
-  - Avoid “nullable” thinking; handle `Some/None` and `Ok/Err`.
+  - Avoid "nullable" thinking; handle `Some/None` and `Ok/Err`.
 - Collection indexing:
-  - Treat index results as safe/checked flows (`Option` patterns).
+  - Use `get(index)` for maybe-missing values.
+  - Use `items[index]` only when an out-of-bounds index should fail.
 - Trait method resolution:
   - Ensure trait impl exists for method-style calls.
 
@@ -151,13 +221,20 @@ npm run build
 ## 7. Suggested Migration Milestones
 
 1. Milestone A:
-  - 10-20% of core domain logic in Lumina.
+
+- 10-20% of core domain logic in Lumina.
+
 2. Milestone B:
-  - Error handling moved to `Result` model.
+
+- Error handling moved to `Result` model.
+
 3. Milestone C:
-  - Data structures moved to Lumina collections.
+
+- Data structures moved to Lumina collections.
+
 4. Milestone D:
-  - Performance-sensitive modules moved to WASM target.
+
+- Performance-sensitive modules moved to WASM target.
 
 ## 8. Current Limits to Plan Around
 

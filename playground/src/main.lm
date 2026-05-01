@@ -1,7 +1,7 @@
 import { createDomRenderer, mount_reactive, dom_get_element_by_id } from "@std/render";
 import { app } from "./app.lm";
 
-pub fn main() -> void {
+fn main() -> void {
   let container = dom_get_element_by_id("root");
   let renderer = createDomRenderer();
   let _mounted = mount_reactive(renderer, container, || app());

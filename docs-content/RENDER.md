@@ -47,6 +47,7 @@ For idiomatic language-level state APIs, use `@std/reactive` (`createSignal`, `c
 ## Reactivity Model
 
 ### `Signal<T>`
+
 - Mutable source value.
 - Reads via `render.get(signal)` are tracked.
 - Writes via `render.set(signal, value)` notify dependents only when value changes.
@@ -54,16 +55,19 @@ For idiomatic language-level state APIs, use `@std/reactive` (`createSignal`, `c
 - Values are cloned on read/write using runtime clone helpers, reducing accidental shared mutation.
 
 ### `Memo<T>`
+
 - Derived value based on tracked reads.
 - Recomputes lazily when stale.
 - Notifies downstream dependents when computed result changes.
 
 ### `Effect`
+
 - Runs side effects when dependencies change.
 - Supports cleanup via `onCleanup`.
 - Cleanup runs before rerun and on dispose.
 
 ### `batch` and `untrack`
+
 - `render.batch(fn)` coalesces effect flushes for multiple writes.
 - `render.untrack(fn)` executes without dependency collection.
 
@@ -113,8 +117,35 @@ Patch behavior:
 
 - Text nodes update in place.
 - Element props/styles/events are diffed and patched.
-- Children are patched by index with append/remove for length differences.
+- Children without keys are patched by index with append/remove for length differences.
+- Children with keys are matched by identity, moved with DOM insertion APIs, and checked for duplicate sibling keys.
 - Unchanged signal writes do not trigger re-render.
+
+### Keyed Lists
+
+Use keys whenever a list can reorder, insert in the middle, remove retained
+items, or contain stateful child components:
+
+```lumina
+render.element("ol", render.props_class("task-list"), [
+  for (row, index in rows key row.id) =>
+    render.element("li", props { key: row.id, class: "task-row" }, [
+      render.text(row.label),
+      render.text(index)
+    ])
+])
+```
+
+The lower-level API is `render.forList(rows, keyOf, renderRow)`. The key must
+be a string or number and must be unique among siblings. `props_key(value)` is
+the helper form for explicit VNode construction.
+
+Server rendering emits `data-lumina-key` for keyed elements so hydration can
+adopt existing DOM by identity before applying updates. This follows the web
+platform behavior that moving an existing node with `insertBefore` preserves the
+node object, and keeps focus order meaningful for keyboard users. References:
+WHATWG DOM insertion/move algorithms, MDN `Node.insertBefore`, W3C WCAG Focus
+Order, and TC39 keyed collection insertion-order semantics.
 
 ## Additional Targets (Phase 3)
 

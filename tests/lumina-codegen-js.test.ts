@@ -9,7 +9,8 @@ const parser = compileGrammar(luminaGrammar, { cache: true });
 
 describe('Lumina AST JS codegen', () => {
   test('emits basic function and let binding', () => {
-    const program = `
+    const program =
+      `
       fn add(a: int, b: int) { return a + b; }
       fn main() {
         let x = add(1, 2);
@@ -24,7 +25,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('emits match expression as IIFE', () => {
-    const program = `
+    const program =
+      `
       enum Option<T> { Some(T), None }
       fn main() {
         let x = Option.Some(1);
@@ -45,7 +47,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('optimizes simple enum match expressions to switch-on-tag', () => {
-    const program = `
+    const program =
+      `
       enum Option<T> { Some(T), None }
       fn main() {
         let x = Option.Some(1);
@@ -65,7 +68,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('registers Hash/Eq trait impls and tags struct literals', () => {
-    const program = `
+    const program =
+      `
       trait Hash { fn hash(self: Self) -> u64; }
       trait Eq { fn eq(self: Self, other: Self) -> bool; }
 
@@ -92,7 +96,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('hoists static render props and static vnode subtrees in JS codegen', () => {
-    const program = `
+    const program =
+      `
       import { vnode, text, props_class } from "@std/render";
 
       fn shell(label: string) -> VNode {
@@ -111,7 +116,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('hoists static namespace render trees after render lowering', () => {
-    const program = `
+    const program =
+      `
       import { render } from "@std";
 
       component shell(label: string) -> VNode {
@@ -130,7 +136,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('emits DOM template metadata for fully static render subtrees', () => {
-    const program = `
+    const program =
+      `
       import { render } from "@std";
 
       component shell(label: string) -> VNode {
@@ -147,7 +154,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('lowers text(get(signal)) into liveText on the JS DOM path', () => {
-    const program = `
+    const program =
+      `
       import { get } from "@std/reactive";
       import { text } from "@std/render";
 
@@ -163,7 +171,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('includes list helper imports for compiled render list lowering', () => {
-    const program = `
+    const program =
+      `
       import { get } from "@std/reactive";
       import { forList, indexList, text, vnode } from "@std/render";
 
@@ -186,13 +195,16 @@ describe('Lumina AST JS codegen', () => {
 
     const ast = parser.parse(program) as never;
     const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
-    expect(code).toMatch(/import \{[^}]*\bliveText\b[^}]*\bindexList\b[^}]*\bforList\b[^}]*\} from "\.\/lumina-runtime\.js";/s);
+    expect(code).toMatch(
+      /import \{[^}]*\bliveText\b[^}]*\bindexList\b[^}]*\bforList\b[^}]*\} from "\.\/lumina-runtime\.js";/s
+    );
     expect(code).toContain('function compiledIndexList');
     expect(code).toContain('function compiledForList');
   });
 
   test('promotes mapped signal children into specialized list helpers during codegen', () => {
-    const program = `
+    const program =
+      `
       import { get } from "@std/reactive";
       import { render } from "@std";
 
@@ -211,8 +223,31 @@ describe('Lumina AST JS codegen', () => {
     expect(code).not.toContain('get(rows).map');
   });
 
+  test('promotes props-sugar keyed mapped children into forList during codegen', () => {
+    const program =
+      `
+      import { get } from "@std/reactive";
+      import { render } from "@std";
+
+      component Rows(rows: Signal<Vec<any>>) -> VNode {
+        render.element("ul", render.props_empty(), [
+          get(rows).map(fn(row: any, index: int) -> VNode {
+            render.element("li", props { class: "row", key: row.id }, [render.text(row.label)])
+          })
+        ])
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
+    expect(code).toContain('forList(rows');
+    expect(code).toContain('render.props_key(row.id)');
+    expect(code).not.toContain('get(rows).map');
+  });
+
   test('disables static render hoisting when source maps are enabled', () => {
-    const program = `
+    const program =
+      `
       import { vnode, text, props_class } from "@std/render";
 
       fn shell() -> VNode {
@@ -223,14 +258,19 @@ describe('Lumina AST JS codegen', () => {
     `.trim() + '\n';
 
     const ast = parser.parse(program) as never;
-    const { code, map } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true, sourceMap: true });
+    const { code, map } = generateJSFromAst(ast, {
+      target: 'esm',
+      includeRuntime: true,
+      sourceMap: true,
+    });
     expect(map).toBeDefined();
     expect(code).not.toContain('__lumina_static_render_');
     expect(code).not.toContain('__LUMINA_STATIC_RENDER_HOISTS__');
   });
 
   test('emits default parameter initialization and lowers authoring syntax into render helpers', () => {
-    const program = `
+    const program =
+      `
       import { render } from "@std";
 
       component Card(
@@ -279,7 +319,8 @@ describe('Lumina AST JS codegen', () => {
   });
 
   test('lowers native for authoring syntax into render.forList', () => {
-    const program = `
+    const program =
+      `
       import { render } from "@std";
 
       fn rows(items: Signal<Vec<any>>) -> VNode {

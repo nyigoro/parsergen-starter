@@ -78,7 +78,12 @@ import {
   createCoreRuntime,
   LuminaPanic,
 } from './runtime/core-runtime.js';
-import { AtomicI32, createConcurrencyRuntime, Thread, ThreadHandle } from './runtime/concurrency-runtime.js';
+import {
+  AtomicI32,
+  createConcurrencyRuntime,
+  Thread,
+  ThreadHandle,
+} from './runtime/concurrency-runtime.js';
 import {
   createDomRenderer as createDomRendererBase,
   type DomDocumentLike,
@@ -99,9 +104,7 @@ import {
   Signal,
   type ReactiveCleanup,
 } from './runtime/reactive-core.js';
-import {
-  mergeProps,
-} from './runtime/props-core.js';
+import { mergeProps } from './runtime/props-core.js';
 import { createHeadlessUiRuntime } from './runtime/headless-ui-runtime.js';
 import {
   configureResourceCore,
@@ -362,16 +365,20 @@ const devtools = createDevtoolsController<ReactiveRenderRoot, VNode | null>({
     ],
   }),
   snapshotResources: () =>
-    listResourceRecords().map((record): DevtoolsResourceSnapshot => ({
-      key: record.key,
-      status: record.status.peek(),
-      hasData: record.hasData.peek(),
-      error: record.error.peek(),
-    })),
+    listResourceRecords().map(
+      (record): DevtoolsResourceSnapshot => ({
+        key: record.key,
+        status: record.status.peek(),
+        hasData: record.hasData.peek(),
+        error: record.error.peek(),
+      })
+    ),
 });
 
-const registerDevtoolsSignal = (kind: 'signal' | 'memo', signal: Signal<unknown> | Memo<unknown>): number =>
-  devtools.registerSignal(kind, signal);
+const registerDevtoolsSignal = (
+  kind: 'signal' | 'memo',
+  signal: Signal<unknown> | Memo<unknown>
+): number => devtools.registerSignal(kind, signal);
 
 const unregisterDevtoolsSignal = (id: number): void => {
   devtools.unregisterSignal(id);
@@ -412,19 +419,29 @@ export const createDomRenderer = (options?: DomRendererOptions): Renderer =>
 const ssrRuntime = createSsrRuntime<VNode>({
   normalizeNodeForHtml: (node) => {
     if (node.kind === 'index_list') {
-      return vnodeElement('lumina-index-list', indexListHostProps, materializeIndexListChildren(node, false));
+      return vnodeElement(
+        'lumina-index-list',
+        indexListHostProps,
+        materializeIndexListChildren(node, false)
+      );
     }
     if (node.kind === 'for_list') {
-      return vnodeElement('lumina-for-list', forListHostProps, materializeForListChildren(node, false));
+      return vnodeElement(
+        'lumina-for-list',
+        forListHostProps,
+        materializeForListChildren(node, false)
+      );
     }
     return node;
   },
   getKind: (node) => node.kind,
   getTag: (node) => node.tag,
+  getKey: (node) => node.key,
   getProps: (node) => node.props,
   getChildren: (node) => node.children ?? [],
   getText: (node) => node.text,
   getSignalValue: (node) => node.signal?.get(),
+  getTarget: (node) => node.target,
 });
 
 export const createSsrRenderer = (): Renderer => ssrRuntime.createRenderer();
@@ -462,13 +479,18 @@ const runWithFrameManager = frameRuntime.runWithFrameManager;
 export const createCanvasRenderer = (options?: CanvasRendererOptions): Renderer =>
   renderTargetsRuntime.createCanvasRenderer(options);
 
-export const renderToTerminal = (node: VNode): string => renderTargetsRuntime.renderToTerminal(node);
+export const renderToTerminal = (node: VNode): string =>
+  renderTargetsRuntime.renderToTerminal(node);
 
 export const createTerminalRenderer = (): Renderer => renderTargetsRuntime.createTerminalRenderer();
 
 export class RenderRoot extends RenderRootBase<VNode> {}
 
-export class ReactiveRenderRoot extends ReactiveRenderRootBase<VNode, FrameManager['rootFrame'], FrameManager> {
+export class ReactiveRenderRoot extends ReactiveRenderRootBase<
+  VNode,
+  FrameManager['rootFrame'],
+  FrameManager
+> {
   constructor(
     readonly root: RenderRoot,
     readonly effect: Effect,
@@ -480,11 +502,9 @@ export class ReactiveRenderRoot extends ReactiveRenderRootBase<VNode, FrameManag
     });
   }
 }
-
 const registerDevtoolsRoot = (root: ReactiveRenderRoot): void => {
   devtools.registerRoot(root);
 };
-
 const unregisterDevtoolsRoot = (root: ReactiveRenderRoot): void => {
   devtools.unregisterRoot(root);
 };
@@ -502,9 +522,6 @@ const toRenderErrorMessage = (error: unknown): string => {
   if (message.includes('Terminal renderer')) {
     return 'Terminal renderer not available in this environment';
   }
-  if (message.toLowerCase().includes('not supported')) {
-    return 'Canvas renderer not available in this environment';
-  }
   return message;
 };
 
@@ -518,7 +535,8 @@ const rootRuntime = createRootRuntime<
   createRenderRoot: (renderer, container) => new RenderRoot(renderer, container),
   createFrameManager: () => new FrameManager(),
   runWithFrameManager,
-  createReactiveRoot: (root, effect, frameManager) => new ReactiveRenderRoot(root, effect, frameManager),
+  createReactiveRoot: (root, effect, frameManager) =>
+    new ReactiveRenderRoot(root, effect, frameManager),
   renderError: (message) => Result.Err(message),
   toRenderErrorMessage,
 });
@@ -929,6 +947,3 @@ export const applicative = algebraRuntime.applicative;
 export const monad = algebraRuntime.monad;
 export const foldable = algebraRuntime.foldable;
 export const traversable = algebraRuntime.traversable;
-
-
-

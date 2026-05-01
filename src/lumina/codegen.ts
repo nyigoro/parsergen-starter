@@ -24,13 +24,13 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       builder.append(
-        `const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");`,
+        `const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");`,
         'Runtime'
       );
       builder.append('\n');
     } else {
       builder.append(
-        `import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";`,
+        `import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";`,
         'Runtime'
       );
       builder.append('\n');
@@ -91,7 +91,10 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
       'Runtime'
     );
     builder.append('\n');
-    builder.append(`const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };`, 'Runtime');
+    builder.append(
+      `const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };`,
+      'Runtime'
+    );
     builder.append('\n');
     builder.append(
       `const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };`,
@@ -144,7 +147,10 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
       'Runtime'
     );
     builder.append('\n');
-    builder.append(`function __set(obj, prop, value) { obj[prop] = value; return value; }`, 'Runtime');
+    builder.append(
+      `function __set(obj, prop, value) { obj[prop] = value; return value; }`,
+      'Runtime'
+    );
     builder.append('\n');
     builder.append(`function __lumina_stringify(value) { return String(value); }`, 'Runtime');
     builder.append('\n');
@@ -168,9 +174,15 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
       'Runtime'
     );
     builder.append('\n');
-    builder.append(`function __lumina_debug(value) { return __lumina_stringify(value); }`, 'Runtime');
+    builder.append(
+      `function __lumina_debug(value) { return __lumina_stringify(value); }`,
+      'Runtime'
+    );
     builder.append('\n');
-    builder.append(`function __lumina_eq(left, right) { return JSON.stringify(left) === JSON.stringify(right); }`, 'Runtime');
+    builder.append(
+      `function __lumina_eq(left, right) { return JSON.stringify(left) === JSON.stringify(right); }`,
+      'Runtime'
+    );
     builder.append('\n');
     builder.append(`function __lumina_struct(_name, fields) { return fields; }`, 'Runtime');
     builder.append('\n');
@@ -189,16 +201,18 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   if (includeRuntime) {
     if (target === 'cjs') {
       code +=
-        'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
+        'module.exports = { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
     } else {
       code +=
-        'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
+        'export { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, createSignal, get, set, createMemo, createEffect, vnode, text, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, dom_get_element_by_id, fs, opfs, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic };\n';
     }
   } else {
     if (target === 'cjs') {
-      code += 'module.exports = { io, str, math, fs, opfs, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
+      code +=
+        'module.exports = { io, str, math, fs, opfs, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
     } else {
-      code += 'export { io, str, math, fs, opfs, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
+      code +=
+        'export { io, str, math, fs, opfs, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl };\n';
     }
   }
 
@@ -250,7 +264,10 @@ function collectSsaNames(nodes: IRNode[], out: Set<string>): void {
         collectSsaNames(node.args, out);
         break;
       case 'StructLiteral':
-        collectSsaNames(node.fields.map((field) => field.value), out);
+        collectSsaNames(
+          node.fields.map((field) => field.value),
+          out
+        );
         break;
       case 'Member':
         collectSsaNames([node.object], out);
@@ -263,7 +280,10 @@ function collectSsaNames(nodes: IRNode[], out: Set<string>): void {
         break;
       case 'MatchExpr':
         collectSsaNames([node.value], out);
-        collectSsaNames(node.arms.map((arm) => arm.body), out);
+        collectSsaNames(
+          node.arms.map((arm) => arm.body),
+          out
+        );
         break;
       default:
         break;
@@ -282,7 +302,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}function ${node.name}(${params}) {`,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.append('\n');
       let ssaNames: Set<string> | null = null;
@@ -315,7 +337,13 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       } else {
         node.body.forEach((n) => emit(n, indent + 1, out, nextCtx));
       }
-      out.append(`${pad}}`, node.kind, node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined);
+      out.append(
+        `${pad}}`,
+        node.kind,
+        node.location
+          ? { line: node.location.end.line, column: node.location.end.column }
+          : undefined
+      );
       out.append('\n');
       return;
     }
@@ -324,13 +352,17 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
         out.append(
           `${pad}${node.name} = `,
           node.kind,
-          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+          node.location
+            ? { line: node.location.start.line, column: node.location.start.column }
+            : undefined
         );
       } else {
         out.append(
           `${pad}let ${node.name} = `,
           node.kind,
-          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+          node.location
+            ? { line: node.location.start.line, column: node.location.start.column }
+            : undefined
         );
       }
       out.appendExpr(emitExpr(node.value));
@@ -342,14 +374,18 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
         out.append(
           `${pad}let ${node.name};`,
           node.kind,
-          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+          node.location
+            ? { line: node.location.start.line, column: node.location.start.column }
+            : undefined
         );
         out.append('\n');
       }
       out.append(
         `${pad}if (`,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.appendExpr(emitExpr(node.condition));
       out.append(') {');
@@ -371,7 +407,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}return `,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.appendExpr(emitExpr(node.value));
       out.append(';');
@@ -381,7 +419,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}`,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.appendExpr(emitExpr(node.expr));
       out.append(';');
@@ -391,7 +431,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}if (`,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.appendExpr(emitExpr(node.condition));
       out.append(') {');
@@ -401,7 +443,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
         out.append(
           `${pad}} else {`,
           node.kind,
-          node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+          node.location
+            ? { line: node.location.start.line, column: node.location.start.column }
+            : undefined
         );
         out.append('\n');
         node.elseBody.forEach((n) => emit(n, indent + 1, out, ctx));
@@ -409,7 +453,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}}`,
         node.kind,
-        node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined
+        node.location
+          ? { line: node.location.end.line, column: node.location.end.column }
+          : undefined
       );
       out.append('\n');
       return;
@@ -418,7 +464,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}while (`,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.appendExpr(emitExpr(node.condition));
       out.append(') {');
@@ -427,7 +475,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}}`,
         node.kind,
-        node.location ? { line: node.location.end.line, column: node.location.end.column } : undefined
+        node.location
+          ? { line: node.location.end.line, column: node.location.end.column }
+          : undefined
       );
       out.append('\n');
       return;
@@ -436,7 +486,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}${node.target} = `,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.appendExpr(emitExpr(node.value));
       out.append(';');
@@ -456,7 +508,9 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(
         `${pad}`,
         node.kind,
-        node.location ? { line: node.location.start.line, column: node.location.start.column } : undefined
+        node.location
+          ? { line: node.location.start.line, column: node.location.start.column }
+          : undefined
       );
       out.appendExpr(emitExpr(node));
       out.append(';');
@@ -481,7 +535,8 @@ const normalizeNumericTypeName = (typeName: string): string => {
 const isIntegerTypeName = (typeName: string): boolean =>
   typeName === 'int' || typeName.startsWith('i') || typeName.startsWith('u');
 
-const isFloatTypeName = (typeName: string): boolean => typeName === 'f32' || typeName === 'f64' || typeName === 'float';
+const isFloatTypeName = (typeName: string): boolean =>
+  typeName === 'f32' || typeName === 'f64' || typeName === 'float';
 
 function emitExpr(node: IRNode): EmitResult {
   const baseLoc = node.location?.start
@@ -507,13 +562,13 @@ function emitExpr(node: IRNode): EmitResult {
     return { code, mappings };
   };
 
-    switch (node.kind) {
-      case 'Binary':
+  switch (node.kind) {
+    case 'Binary':
       if (node.op === '+' && (node.left.kind === 'String' || node.right.kind === 'String')) {
         return withBase(concat('(', emitExpr(node.left), ' + ', emitExpr(node.right), ')'));
       }
       return withBase(concat('(', emitExpr(node.left), ` ${node.op} `, emitExpr(node.right), ')'));
-      case 'Call': {
+    case 'Call': {
       const parts: Array<string | EmitResult> = [`${node.callee}(`];
       node.args.forEach((arg, idx) => {
         if (idx > 0) parts.push(', ');
@@ -536,7 +591,11 @@ function emitExpr(node: IRNode): EmitResult {
       return withBase(concat(...parts));
     }
     case 'StructLiteral': {
-      const parts: Array<string | EmitResult> = ['__lumina_struct(', JSON.stringify(node.name), ', { '];
+      const parts: Array<string | EmitResult> = [
+        '__lumina_struct(',
+        JSON.stringify(node.name),
+        ', { ',
+      ];
       node.fields.forEach((field, idx) => {
         if (idx > 0) parts.push(', ');
         parts.push(`${field.name}: `);
@@ -545,7 +604,7 @@ function emitExpr(node: IRNode): EmitResult {
       parts.push(' })');
       return withBase(concat(...parts));
     }
-      case 'MatchExpr': {
+    case 'MatchExpr': {
       const tempName = `__match_expr_${Math.random().toString(36).slice(2, 8)}`;
       const result: EmitResult = { code: '', mappings: [] };
       const add = (piece: string | EmitResult) => {
@@ -580,40 +639,41 @@ function emitExpr(node: IRNode): EmitResult {
       });
       add('\n})()');
       return withBase(result);
-      }
-      case 'Cast': {
-        const value = emitExpr(node.expr);
-        const target = normalizeNumericTypeName(node.targetType);
-        const concatCast = (prefix: string, suffix: string = ''): EmitResult => concat(prefix, value, suffix);
+    }
+    case 'Cast': {
+      const value = emitExpr(node.expr);
+      const target = normalizeNumericTypeName(node.targetType);
+      const concatCast = (prefix: string, suffix: string = ''): EmitResult =>
+        concat(prefix, value, suffix);
 
-        if (isFloatTypeName(target)) {
-          if (target === 'f32') return withBase(concatCast('Math.fround(', ')'));
-          return withBase(value);
-        }
-
-        if (isIntegerTypeName(target)) {
-          const base = concatCast('Math.trunc(', ')');
-          switch (target) {
-            case 'i8':
-              return withBase(concat('(', base, ' << 24) >> 24'));
-            case 'u8':
-              return withBase(concat('(', base, ' & 0xFF)'));
-            case 'i16':
-              return withBase(concat('(', base, ' << 16) >> 16'));
-            case 'u16':
-              return withBase(concat('(', base, ' & 0xFFFF)'));
-            case 'u32':
-              return withBase(concat('(', base, ' >>> 0)'));
-            case 'i32':
-              return withBase(concat('(', base, ' | 0)'));
-            default:
-              return withBase(base);
-          }
-        }
+      if (isFloatTypeName(target)) {
+        if (target === 'f32') return withBase(concatCast('Math.fround(', ')'));
         return withBase(value);
       }
-      case 'Number':
-        return withBase({ code: String(node.value), mappings: [] });
+
+      if (isIntegerTypeName(target)) {
+        const base = concatCast('Math.trunc(', ')');
+        switch (target) {
+          case 'i8':
+            return withBase(concat('(', base, ' << 24) >> 24'));
+          case 'u8':
+            return withBase(concat('(', base, ' & 0xFF)'));
+          case 'i16':
+            return withBase(concat('(', base, ' << 16) >> 16'));
+          case 'u16':
+            return withBase(concat('(', base, ' & 0xFFFF)'));
+          case 'u32':
+            return withBase(concat('(', base, ' >>> 0)'));
+          case 'i32':
+            return withBase(concat('(', base, ' | 0)'));
+          default:
+            return withBase(base);
+        }
+      }
+      return withBase(value);
+    }
+    case 'Number':
+      return withBase({ code: String(node.value), mappings: [] });
     case 'Boolean':
       return withBase({ code: node.value ? 'true' : 'false', mappings: [] });
     case 'String':
@@ -625,7 +685,8 @@ function emitExpr(node: IRNode): EmitResult {
   }
 }
 
-const tryHelperSource = (): string => `
+const tryHelperSource = (): string =>
+  `
 function __lumina_try(value) {
   if (value && typeof value === 'object') {
     const tag = value.$tag ?? value.tag;
@@ -669,7 +730,11 @@ const collectTryFunctions = (root: IRNode): Set<string> => {
       case 'MatchExpr':
         return visit(node.value) || node.arms.some((arm) => visit(arm.body));
       case 'If':
-        return visit(node.condition) || node.thenBody.some(visit) || (node.elseBody ? node.elseBody.some(visit) : false);
+        return (
+          visit(node.condition) ||
+          node.thenBody.some(visit) ||
+          (node.elseBody ? node.elseBody.some(visit) : false)
+        );
       case 'While':
         return visit(node.condition) || node.body.some(visit);
       case 'Program':
@@ -691,7 +756,14 @@ class CodeBuilder {
   private chunks: string[] = [];
   private line = 1;
   private column = 0;
-  readonly map?: { mappings: Array<{ line: number; column: number; kind: string; source?: { line: number; column: number } }> };
+  readonly map?: {
+    mappings: Array<{
+      line: number;
+      column: number;
+      kind: string;
+      source?: { line: number; column: number };
+    }>;
+  };
 
   constructor(trackMap: boolean) {
     if (trackMap) {
@@ -739,7 +811,10 @@ class CodeBuilder {
   }
 }
 
-function offsetToLineCol(code: string, offset: number): { lineOffset: number; columnOffset: number } {
+function offsetToLineCol(
+  code: string,
+  offset: number
+): { lineOffset: number; columnOffset: number } {
   let lineOffset = 0;
   let columnOffset = 0;
   const max = Math.min(offset, code.length);
@@ -775,4 +850,3 @@ function buildSourceMap(builder: CodeBuilder, options: CodegenOptions): RawSourc
   }
   return generator.toJSON();
 }
-

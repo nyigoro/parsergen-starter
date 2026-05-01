@@ -117,6 +117,106 @@
     return createRenderCallNode("get", [value], loc);
   }
 
+  function exprUsesIdentifier(expr, name, shadowed) {
+    if (!expr || !name) return false;
+    const hidden = shadowed || new Set();
+    switch (expr.type) {
+      case "Identifier":
+        return expr.name === name && !hidden.has(name);
+      case "Member":
+        return exprUsesIdentifier(expr.object, name, hidden);
+      case "Call":
+        if (!expr.receiver && !expr.enumName && expr.callee && expr.callee.type !== "Identifier") {
+          if (exprUsesIdentifier(expr.callee, name, hidden)) return true;
+        }
+        if (expr.receiver && exprUsesIdentifier(expr.receiver, name, hidden)) return true;
+        return (expr.args || []).some(arg => exprUsesIdentifier(arg && arg.value, name, hidden));
+      case "Lambda": {
+        const lambdaHidden = new Set(hidden);
+        for (const param of expr.params || []) lambdaHidden.add(param.name);
+        return (expr.body && expr.body.body || []).some(stmt => stmtUsesIdentifier(stmt, name, lambdaHidden));
+      }
+      case "Binary":
+        return exprUsesIdentifier(expr.left, name, hidden) || exprUsesIdentifier(expr.right, name, hidden);
+      case "Move":
+        return exprUsesIdentifier(expr.target, name, hidden);
+      case "Await":
+      case "Try":
+        return exprUsesIdentifier(expr.value, name, hidden);
+      case "Cast":
+        return exprUsesIdentifier(expr.expr, name, hidden);
+      case "StructLiteral":
+        return (expr.fields || []).some(field => exprUsesIdentifier(field.value, name, hidden));
+      case "ArrayLiteral":
+        return (expr.elements || []).some(element => exprUsesIdentifier(element, name, hidden));
+      case "ArrayRepeatLiteral":
+        return exprUsesIdentifier(expr.value, name, hidden) || exprUsesIdentifier(expr.count, name, hidden);
+      case "TupleLiteral":
+        return (expr.elements || []).some(element => exprUsesIdentifier(element, name, hidden));
+      case "Index":
+        return exprUsesIdentifier(expr.object, name, hidden) || exprUsesIdentifier(expr.index, name, hidden);
+      case "IsExpr":
+        return exprUsesIdentifier(expr.value, name, hidden);
+      case "MatchExpr":
+        return exprUsesIdentifier(expr.value, name, hidden)
+          || (expr.arms || []).some(arm => exprUsesIdentifier(arm.guard, name, hidden) || exprUsesIdentifier(arm.body, name, hidden));
+      case "SelectExpr":
+        return (expr.arms || []).some(arm => exprUsesIdentifier(arm.value, name, hidden) || exprUsesIdentifier(arm.body, name, hidden));
+      case "InterpolatedString":
+        return (expr.parts || []).some(part => typeof part !== "string" && exprUsesIdentifier(part, name, hidden));
+      case "Range":
+        return exprUsesIdentifier(expr.start, name, hidden) || exprUsesIdentifier(expr.end, name, hidden);
+      case "MacroInvoke":
+        return (expr.args || []).some(arg => exprUsesIdentifier(arg, name, hidden));
+      case "ListComprehension":
+        return exprUsesIdentifier(expr.source, name, hidden)
+          || exprUsesIdentifier(expr.source2, name, hidden)
+          || exprUsesIdentifier(expr.filter, name, hidden)
+          || exprUsesIdentifier(expr.body, name, hidden);
+      default:
+        return false;
+    }
+  }
+
+  function stmtUsesIdentifier(stmt, name, shadowed) {
+    if (!stmt) return false;
+    switch (stmt.type) {
+      case "Let":
+        return exprUsesIdentifier(stmt.value, name, shadowed);
+      case "LetTuple":
+        return exprUsesIdentifier(stmt.value, name, shadowed);
+      case "LetElse":
+        return exprUsesIdentifier(stmt.value, name, shadowed) || stmtUsesIdentifier(stmt.elseBlock, name, shadowed);
+      case "Return":
+        return exprUsesIdentifier(stmt.value, name, shadowed);
+      case "ExprStmt":
+        return exprUsesIdentifier(stmt.expr, name, shadowed);
+      case "Assign":
+        return exprUsesIdentifier(stmt.target, name, shadowed) || exprUsesIdentifier(stmt.value, name, shadowed);
+      case "If":
+        return exprUsesIdentifier(stmt.condition, name, shadowed)
+          || stmtUsesIdentifier(stmt.thenBlock, name, shadowed)
+          || stmtUsesIdentifier(stmt.elseBlock, name, shadowed);
+      case "IfLet":
+        return exprUsesIdentifier(stmt.value, name, shadowed)
+          || stmtUsesIdentifier(stmt.thenBlock, name, shadowed)
+          || stmtUsesIdentifier(stmt.elseBlock, name, shadowed);
+      case "While":
+        return exprUsesIdentifier(stmt.condition, name, shadowed) || stmtUsesIdentifier(stmt.body, name, shadowed);
+      case "For":
+        return exprUsesIdentifier(stmt.iterable, name, shadowed) || stmtUsesIdentifier(stmt.body, name, shadowed);
+      case "WhileLet":
+        return exprUsesIdentifier(stmt.value, name, shadowed) || stmtUsesIdentifier(stmt.body, name, shadowed);
+      case "MatchStmt":
+        return exprUsesIdentifier(stmt.value, name, shadowed)
+          || (stmt.arms || []).some(arm => exprUsesIdentifier(arm.guard, name, shadowed) || stmtUsesIdentifier(arm.body, name, shadowed));
+      case "Block":
+        return (stmt.body || []).some(inner => stmtUsesIdentifier(inner, name, shadowed));
+      default:
+        return false;
+    }
+  }
+
   function buildPropsPart(name, value, loc) {
     switch (name) {
       case "class":
@@ -234,9 +334,14 @@
     const itemSignalName = `__lumina_for_item_${++nodeId}`;
     const indexSignalName = `__lumina_for_index_${++nodeId}`;
     const authorParams = [createParamNode(itemParam, "any", loc)].concat(indexParam ? [createParamNode(indexParam, "int", loc)] : []);
+    const keyParams = [
+      createParamNode(exprUsesIdentifier(keyExpr, itemParam) ? itemParam : `_${itemParam}`, "any", loc)
+    ].concat(indexParam ? [
+      createParamNode(exprUsesIdentifier(keyExpr, indexParam) ? indexParam : `_${indexParam}`, "int", loc)
+    ] : []);
     const keyLambda = createNode("Lambda", {
       async: false,
-      params: authorParams,
+      params: keyParams,
       returnType: null,
       body: createBlockFromExpr(keyExpr, loc),
       typeParams: [],

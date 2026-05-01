@@ -1,5 +1,9 @@
 import type { LuminaCall, LuminaProgram, LuminaStatement } from '../src/lumina/ast.js';
-import { getStaticDomTemplateHtml, isReactiveGetCall, lowerRenderProgram } from '../src/lumina/render-lowering.js';
+import {
+  getStaticDomTemplateHtml,
+  isReactiveGetCall,
+  lowerRenderProgram,
+} from '../src/lumina/render-lowering.js';
 import { parseLuminaProgram } from './helpers/lumina-parser.js';
 
 const collectCalls = (node: unknown, result: LuminaCall[] = []): LuminaCall[] => {
@@ -20,8 +24,14 @@ const collectCalls = (node: unknown, result: LuminaCall[] = []): LuminaCall[] =>
   return result;
 };
 
-const findFnDecl = (program: LuminaProgram, name: string): Extract<LuminaStatement, { type: 'FnDecl' }> =>
-  program.body.find((stmt): stmt is Extract<LuminaStatement, { type: 'FnDecl' }> => stmt.type === 'FnDecl' && stmt.name === name)!;
+const findFnDecl = (
+  program: LuminaProgram,
+  name: string
+): Extract<LuminaStatement, { type: 'FnDecl' }> =>
+  program.body.find(
+    (stmt): stmt is Extract<LuminaStatement, { type: 'FnDecl' }> =>
+      stmt.type === 'FnDecl' && stmt.name === name
+  )!;
 
 describe('render lowering', () => {
   test('preserves component declarations and annotates namespace render calls', () => {
@@ -75,7 +85,9 @@ describe('render lowering', () => {
     expect(calls.filter((call) => call.renderLowering?.callee === 'vnode')).toHaveLength(1);
     expect(calls.filter((call) => call.renderLowering?.callee === 'text')).toHaveLength(2);
     expect(calls.filter((call) => call.renderLowering?.callee === 'props_class')).toHaveLength(1);
-    const helperCall = calls.find((call) => call.callee.type === 'Identifier' && call.callee.name === 'helper');
+    const helperCall = calls.find(
+      (call) => call.callee.type === 'Identifier' && call.callee.name === 'helper'
+    );
     expect(helperCall?.renderLowering ?? null).toBeNull();
   });
 
@@ -99,7 +111,9 @@ describe('render lowering', () => {
     expect(reactiveGet).toBeDefined();
 
     const staticSpan = calls.find(
-      (call) => call.renderLowering?.callee === 'vnode' && getStaticDomTemplateHtml(call) === '<span class="eyebrow">Profile</span>'
+      (call) =>
+        call.renderLowering?.callee === 'vnode' &&
+        getStaticDomTemplateHtml(call) === '<span class="eyebrow">Profile</span>'
     );
     expect(staticSpan).toBeDefined();
   });
@@ -114,6 +128,27 @@ describe('render lowering', () => {
           render.element("ul", render.props_empty(), [
             get(rows).map(fn(row: any, index: int) -> VNode {
               render.element("li", render.props_key(row.id), [render.text(row.label)])
+            })
+          ])
+        }
+      `.trim() + '\n'
+    );
+
+    const lowered = lowerRenderProgram(program);
+    const calls = collectCalls(lowered);
+    expect(calls.some((call) => call.renderLowering?.callee === 'forList')).toBe(true);
+  });
+
+  test('promotes mapped signal children with props-sugar keys into forList lowering', () => {
+    const program = parseLuminaProgram(
+      `
+        import { get } from "@std/reactive";
+        import { render } from "@std";
+
+        component Rows(rows: Signal<Vec<any>>) -> VNode {
+          render.element("ul", render.props_empty(), [
+            get(rows).map(fn(row: any, index: int) -> VNode {
+              render.element("li", props { class: "row", key: row.id }, [render.text(row.label)])
             })
           ])
         }
@@ -207,7 +242,9 @@ describe('render lowering', () => {
     const lowered = lowerRenderProgram(program);
     const calls = collectCalls(lowered);
     const appDecl = findFnDecl(lowered, 'app');
-    const cardCall = calls.find((call) => call.callee.type === 'Identifier' && call.callee.name === 'Card');
+    const cardCall = calls.find(
+      (call) => call.callee.type === 'Identifier' && call.callee.name === 'Card'
+    );
 
     expect(appDecl.params[0]?.defaultValue ?? null).toBeNull();
     expect(cardCall?.args.every((arg) => !arg.named)).toBe(true);

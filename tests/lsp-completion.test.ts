@@ -13,11 +13,7 @@ const parser = compileGrammar(luminaGrammar);
 const moduleRegistry = createStdModuleRegistry();
 const preludeExportMap = new Map(getPreludeExports(moduleRegistry).map((exp) => [exp.name, exp]));
 
-function makeCompletionResult(
-  source: string,
-  marker: string,
-  extraFiles?: Record<string, string>
-) {
+function makeCompletionResult(source: string, marker: string, extraFiles?: Record<string, string>) {
   const project = new ProjectContext(parser);
   project.setHmDiagnostics(true);
 
@@ -223,6 +219,19 @@ fn main() {
 
     expect(labels).toContain('return');
     expect(labels).toContain('ref');
+  });
+
+  test('includes keyed-list contextual keyword completion', () => {
+    const { labels } = makeCompletionResult(
+      `
+fn main() {
+  ke__CURSOR__
+}
+`,
+      '__CURSOR__'
+    );
+
+    expect(labels).toContain('key');
   });
 
   test('does not duplicate completion labels', () => {

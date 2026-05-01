@@ -70,6 +70,7 @@ const luminaKeywords = [
   'else',
   'while',
   'for',
+  'key',
   'return',
   'async',
   'await',
@@ -136,7 +137,10 @@ function getIdentifierPrefix(doc: TextDocument, position: Position): string {
   return text.slice(start, offset);
 }
 
-function getLexicalState(text: string, offset: number): {
+function getLexicalState(
+  text: string,
+  offset: number
+): {
   inLineComment: boolean;
   inBlockComment: boolean;
   inString: boolean;
@@ -217,7 +221,10 @@ function getMemberChain(doc: TextDocument, position: Position): MemberChain | nu
   const offset = doc.offsetAt(position);
   if (offset <= 0) return null;
   const head = text.slice(0, offset);
-  const match = /([A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?)*)\s*\.$/m.exec(head);
+  const match =
+    /([A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?)*)\s*\.$/m.exec(
+      head
+    );
   if (!match) return null;
   return match[1]
     .split('.')
@@ -275,7 +282,10 @@ function detailForFunction(fn: ModuleFunction): string {
 }
 
 function detailForOverload(fn: ModuleOverloadedFunction): string {
-  return fn.variants.slice(0, 3).map((variant) => detailForFunction(variant)).join(' | ');
+  return fn.variants
+    .slice(0, 3)
+    .map((variant) => detailForFunction(variant))
+    .join(' | ');
 }
 
 function detailForSymbol(sym: SymbolInfo): string | undefined {
@@ -290,7 +300,11 @@ function detailForSymbol(sym: SymbolInfo): string | undefined {
   return sym.type;
 }
 
-function moduleExportToCompletion(label: string, exp: ModuleExport, sortPrefix: string): CompletionItem {
+function moduleExportToCompletion(
+  label: string,
+  exp: ModuleExport,
+  sortPrefix: string
+): CompletionItem {
   if (exp.kind === 'module') {
     return {
       label,
@@ -475,14 +489,22 @@ function collectVisibleLocals(program: LuminaProgram | null, position: Position)
   return collected;
 }
 
-function resolveFieldType(symbols: SymbolTable | undefined, typeName: string, field: string): string | null {
+function resolveFieldType(
+  symbols: SymbolTable | undefined,
+  typeName: string,
+  field: string
+): string | null {
   if (!symbols) return null;
   const baseType = typeName.split('<')[0]?.trim() ?? typeName;
   const structSym = symbols.get(baseType);
   return structSym?.structFields?.get(field) ?? null;
 }
 
-function resolveMethodReturnType(symbols: SymbolTable | undefined, typeName: string, method: string): string | null {
+function resolveMethodReturnType(
+  symbols: SymbolTable | undefined,
+  typeName: string,
+  method: string
+): string | null {
   if (!symbols) return null;
   const baseType = typeName.split('<')[0]?.trim() ?? typeName;
   const methodSym = symbols.get(`${baseType}_${method}`);
@@ -490,10 +512,7 @@ function resolveMethodReturnType(symbols: SymbolTable | undefined, typeName: str
   return null;
 }
 
-function resolveCallableReturnType(
-  name: string,
-  options: CompletionOptions
-): string | null {
+function resolveCallableReturnType(name: string, options: CompletionOptions): string | null {
   const binding = options.moduleBindings?.get(name);
   if (binding?.kind === 'function') return binding.returnType;
   if (binding?.kind === 'overloaded-function') return binding.variants[0]?.returnType ?? null;
@@ -515,11 +534,10 @@ function resolveCallableReturnType(
   return null;
 }
 
-function findLocalBindingType(
-  options: CompletionOptions,
-  name: string
-): string | null {
-  const local = collectVisibleLocals(options.ast ?? null, options.position).find((binding) => binding.name === name);
+function findLocalBindingType(options: CompletionOptions, name: string): string | null {
+  const local = collectVisibleLocals(options.ast ?? null, options.position).find(
+    (binding) => binding.name === name
+  );
   if (local?.detail) return local.detail;
   const sym = options.symbols?.get(name);
   if (sym?.type) return sym.type;
@@ -541,7 +559,9 @@ function resolveChainTarget(
   if (!first.call && firstBinding?.kind === 'module') {
     current = { kind: 'module', module: firstBinding };
   } else {
-    const initialType = first.call ? resolveCallableReturnType(first.name, options) : findLocalBindingType(options, first.name);
+    const initialType = first.call
+      ? resolveCallableReturnType(first.name, options)
+      : findLocalBindingType(options, first.name);
     if (initialType) {
       current = { kind: 'type', typeName: initialType };
     } else if (!first.call && firstBinding?.kind === 'value') {
@@ -633,9 +653,7 @@ function collectNamespaceItems(base: string, options: CompletionOptions): Comple
     );
   }
 
-  const sym =
-    options.symbols?.get(base) ??
-    options.resolveImportedSymbol?.(base);
+  const sym = options.symbols?.get(base) ?? options.resolveImportedSymbol?.(base);
   if (sym?.enumVariants) {
     return sym.enumVariants.map((variant) => ({
       label: variant.name,
@@ -702,7 +720,9 @@ function collectImportPathItems(options: CompletionOptions): CompletionItem[] {
         const current = options.uri.replace(/^virtual:\/\//, '');
         const target = doc.uri.replace(/^virtual:\/\//, '');
         const currentDir = current.includes('/') ? current.slice(0, current.lastIndexOf('/')) : '';
-        const relative = currentDir ? requireRelativeVirtualPath(currentDir, target) : `./${target}`;
+        const relative = currentDir
+          ? requireRelativeVirtualPath(currentDir, target)
+          : `./${target}`;
         label = relative;
       } else if (options.uri.startsWith('file://') && doc.uri.startsWith('file://')) {
         const currentFs = URI.parse(options.uri).fsPath;
@@ -746,7 +766,9 @@ function collectImportNameItems(source: string, options: CompletionOptions): Com
   const registry = options.moduleRegistry ?? defaultModuleRegistry;
   const mod = registry.get(source);
   if (mod) {
-    return Array.from(mod.exports.entries()).map(([label, exp]) => moduleExportToCompletion(label, exp, '0'));
+    return Array.from(mod.exports.entries()).map(([label, exp]) =>
+      moduleExportToCompletion(label, exp, '0')
+    );
   }
 
   if (options.project && options.uri) {
@@ -776,7 +798,11 @@ export function resolveCompletions(options: CompletionOptions): CompletionItem[]
       const target = resolveChainTarget(context.chain, options);
       if (!target) return [];
       return target.kind === 'module'
-        ? dedupeItems(Array.from(target.module.exports.entries()).map(([label, exp]) => moduleExportToCompletion(label, exp, '0')))
+        ? dedupeItems(
+            Array.from(target.module.exports.entries()).map(([label, exp]) =>
+              moduleExportToCompletion(label, exp, '0')
+            )
+          )
         : collectTypeMembers(target.typeName, options);
     }
     case 'namespace':

@@ -1,4 +1,13 @@
-import type { LuminaArg, LuminaCall, LuminaExpr, LuminaFnDecl, LuminaImport, LuminaImportSpec, LuminaLambda, LuminaProgram } from './ast.js';
+import type {
+  LuminaArg,
+  LuminaCall,
+  LuminaExpr,
+  LuminaFnDecl,
+  LuminaImport,
+  LuminaImportSpec,
+  LuminaLambda,
+  LuminaProgram,
+} from './ast.js';
 
 const DIRECT_RENDER_IMPORTS = new Map<string, string>([
   ['vnode', 'vnode'],
@@ -37,9 +46,7 @@ const DIRECT_RENDER_IMPORTS = new Map<string, string>([
   ['transitionPresence', 'transitionPresence'],
 ]);
 
-const DIRECT_REACTIVE_IMPORTS = new Map<string, string>([
-  ['get', 'get'],
-]);
+const DIRECT_REACTIVE_IMPORTS = new Map<string, string>([['get', 'get']]);
 
 const RENDER_NAMESPACE_CALLS = new Map<string, string>([
   ['vnode', 'vnode'],
@@ -200,15 +207,17 @@ const getNormalizedRenderCalleeNameFromContext = (
   return context.directRenderCalls.get(expr.callee.name) ?? null;
 };
 
-export const getNormalizedRenderCalleeName = (expr: Extract<LuminaExpr, { type: 'Call' }>): string | null =>
-  expr.renderLowering?.callee ?? null;
+export const getNormalizedRenderCalleeName = (
+  expr: Extract<LuminaExpr, { type: 'Call' }>
+): string | null => expr.renderLowering?.callee ?? null;
 
 const getNormalizedReactiveCalleeNameFromContext = (
   expr: Extract<LuminaExpr, { type: 'Call' }>,
   context: RenderImportContext
 ): string | null => {
   if (expr.receiver) return null;
-  const calleeName = expr.callee.type === 'Identifier' ? expr.callee.name : (expr.callee.name ?? null);
+  const calleeName =
+    expr.callee.type === 'Identifier' ? expr.callee.name : (expr.callee.name ?? null);
   if (!calleeName) return null;
 
   if (expr.enumName && context.renderNamespaces.has(expr.enumName)) {
@@ -236,7 +245,13 @@ export const stripRenderLoweringMetadata = (value: unknown): unknown => {
   const source = value as Record<string, unknown>;
   const next: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(source)) {
-    if (key === 'id' || key === 'location' || key === 'renderLowering' || key === 'reactiveLowering') continue;
+    if (
+      key === 'id' ||
+      key === 'location' ||
+      key === 'renderLowering' ||
+      key === 'reactiveLowering'
+    )
+      continue;
     next[key] = stripRenderLoweringMetadata(entry);
   }
   return next;
@@ -249,7 +264,9 @@ export const isStaticRenderHoistableExpr = (expr: LuminaExpr): boolean => {
     case 'String':
       return true;
     case 'InterpolatedString':
-      return expr.parts.every((part) => typeof part === 'string' || isStaticRenderHoistableExpr(part));
+      return expr.parts.every(
+        (part) => typeof part === 'string' || isStaticRenderHoistableExpr(part)
+      );
     case 'ArrayLiteral':
     case 'TupleLiteral':
       return expr.elements.every((element) => isStaticRenderHoistableExpr(element));
@@ -347,11 +364,7 @@ const getBlockResultExpr = (lambda: LuminaLambda): LuminaExpr | null => {
   return null;
 };
 
-const extractVNodeKeyExpr = (expr: LuminaExpr): LuminaExpr | null => {
-  if (expr.type !== 'Call' || getNormalizedRenderCalleeName(expr) !== 'vnode') return null;
-  const propsExpr = expr.args[1]?.value;
-  if (!propsExpr) return null;
-
+const extractPropsKeyExpr = (propsExpr: LuminaExpr): LuminaExpr | null => {
   if (propsExpr.type === 'StructLiteral') {
     const keyField = propsExpr.fields.find((field) => field.name === 'key');
     return keyField ? keyField.value : null;
@@ -362,9 +375,21 @@ const extractVNodeKeyExpr = (expr: LuminaExpr): LuminaExpr | null => {
     if (callee === 'props_key' && propsExpr.args.length === 1) {
       return propsExpr.args[0].value;
     }
+    if (callee === 'props_merge') {
+      for (const arg of propsExpr.args) {
+        const found = extractPropsKeyExpr(arg.value);
+        if (found) return found;
+      }
+    }
   }
 
   return null;
+};
+
+const extractVNodeKeyExpr = (expr: LuminaExpr): LuminaExpr | null => {
+  if (expr.type !== 'Call' || getNormalizedRenderCalleeName(expr) !== 'vnode') return null;
+  const propsExpr = expr.args[1]?.value;
+  return propsExpr ? extractPropsKeyExpr(propsExpr) : null;
 };
 
 const exprReferencesIdentifier = (expr: unknown, name: string): boolean => {
@@ -434,7 +459,10 @@ const collectLocalFunctions = (program: LuminaProgram): Map<string, LuminaFnDecl
   return functions;
 };
 
-const normalizeNamedArgsForParams = (rawArgs: LuminaArg[], params: LuminaFnDecl['params']): LuminaArg[] | null => {
+const normalizeNamedArgsForParams = (
+  rawArgs: LuminaArg[],
+  params: LuminaFnDecl['params']
+): LuminaArg[] | null => {
   if (!rawArgs.some((arg) => arg.named)) return null;
   const resolved: Array<LuminaArg | null> = Array(params.length).fill(null);
   let positionalIndex = 0;
@@ -507,7 +535,11 @@ const promoteMappedSignalChildren = (node: unknown): void => {
           if (!mapInfo) return child;
 
           const { mapLambda, sourceSignal } = mapInfo;
-          if (mapLambda.type !== 'Lambda' || mapLambda.params.length === 0 || mapLambda.params.length > 2) {
+          if (
+            mapLambda.type !== 'Lambda' ||
+            mapLambda.params.length === 0 ||
+            mapLambda.params.length > 2
+          ) {
             return child;
           }
 
@@ -546,8 +578,14 @@ const promoteMappedSignalChildren = (node: unknown): void => {
                 {
                   type: 'ExprStmt',
                   expr: createCall(cloneNode(originalLambda) as LuminaExpr & { name?: string }, [
-                    createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [createIdentifier(itemSignalName)]),
-                    keyExpr ? createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [createIdentifier(indexSignalName)]) : createIdentifier(indexSignalName),
+                    createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [
+                      createIdentifier(itemSignalName),
+                    ]),
+                    keyExpr
+                      ? createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [
+                          createIdentifier(indexSignalName),
+                        ])
+                      : createIdentifier(indexSignalName),
                   ]),
                 },
               ],
@@ -633,14 +671,9 @@ export const lowerRenderProgram = (program: LuminaProgram): LuminaProgram => {
 };
 
 const escapeHtmlText = (value: string): string =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const escapeHtmlAttr = (value: string): string =>
-  escapeHtmlText(value)
-    .replace(/"/g, '&quot;');
+const escapeHtmlAttr = (value: string): string => escapeHtmlText(value).replace(/"/g, '&quot;');
 
 const camelToKebab = (value: string): string =>
   value.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
@@ -658,7 +691,9 @@ const normalizeAuthoringPropName = (name: string): string => {
   return name.replace(/_([a-zA-Z0-9])/g, (_match, ch: string) => ch.toUpperCase());
 };
 
-const isLiteralStaticValue = (expr: LuminaExpr): expr is Extract<LuminaExpr, { type: 'String' | 'Number' | 'Boolean' }> =>
+const isLiteralStaticValue = (
+  expr: LuminaExpr
+): expr is Extract<LuminaExpr, { type: 'String' | 'Number' | 'Boolean' }> =>
   expr.type === 'String' || expr.type === 'Number' || expr.type === 'Boolean';
 
 const staticExprToString = (expr: LuminaExpr): string | null => {
@@ -685,7 +720,11 @@ const mergeStaticProps = (
   source: Record<string, string | boolean>
 ): Record<string, string | boolean> => {
   for (const [key, value] of Object.entries(source)) {
-    if ((key === 'class' || key === 'className') && typeof target[key] === 'string' && typeof value === 'string') {
+    if (
+      (key === 'class' || key === 'className') &&
+      typeof target[key] === 'string' &&
+      typeof value === 'string'
+    ) {
       target[key] = `${String(target[key])} ${value}`.trim();
       continue;
     }
@@ -825,7 +864,11 @@ const serializeStaticAttrs = (record: Record<string, string | boolean>): string 
 };
 
 const getTextHtml = (expr: LuminaExpr): string | null => {
-  if (expr.type !== 'Call' || getNormalizedRenderCalleeName(expr) !== 'text' || expr.args.length !== 1) {
+  if (
+    expr.type !== 'Call' ||
+    getNormalizedRenderCalleeName(expr) !== 'text' ||
+    expr.args.length !== 1
+  ) {
     return null;
   }
   const textValue = staticExprToString(expr.args[0].value);

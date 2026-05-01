@@ -138,18 +138,19 @@ The current implementation uses runtime frame bookkeeping and stable slot order 
 
 ## Identity and Reconciliation
 
-Component identity must become stronger than today's positional child patching.
+Component identity is stronger than positional child patching on the JS/DOM path.
 
-`key` should become a first-class identity boundary for both component frames and DOM reconciliation.
+`key` is a first-class identity boundary for component frames, DOM reconciliation, and SSR hydration.
 
 That means:
 
 - keyed list items preserve local state when reordered
 - keyed conditional branches preserve the right instance when switched
 - removing a keyed item disposes its frame and cleanup correctly
-- DOM patching can stay simple when keys are absent, but should respect keyed identity when keys are present
+- DOM patching stays simple when keys are absent, but respects keyed identity when keys are present
+- SSR emits hydration key markers so keyed client hydration can adopt existing DOM nodes
 
-That requirement is now implemented on the DOM renderer path and is one of the core reasons the current headless primitives feel stable.
+That requirement is implemented on the DOM renderer path and is one of the core reasons the current headless primitives feel stable.
 
 ## Composition Model
 

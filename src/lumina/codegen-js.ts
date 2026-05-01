@@ -35,7 +35,8 @@ const normalizeNumericTypeName = (typeName: string): string => {
 const isIntegerTypeName = (typeName: string): boolean =>
   typeName === 'int' || typeName.startsWith('i') || typeName.startsWith('u');
 
-const isFloatTypeName = (typeName: string): boolean => typeName === 'f32' || typeName === 'f64' || typeName === 'float';
+const isFloatTypeName = (typeName: string): boolean =>
+  typeName === 'f32' || typeName === 'f64' || typeName === 'float';
 
 const splitTypeArgs = (input: string): string[] => {
   const result: string[] = [];
@@ -85,7 +86,10 @@ export interface CodegenJsResult {
   map?: RawSourceMap;
 }
 
-export function generateJSFromAst(program: LuminaProgram, options: CodegenJsOptions = {}): CodegenJsResult {
+export function generateJSFromAst(
+  program: LuminaProgram,
+  options: CodegenJsOptions = {}
+): CodegenJsResult {
   expandDerivesInProgram(program);
   expandMacrosInProgram(program);
   program = desugarListComprehensions(program);
@@ -106,7 +110,7 @@ export function generateJSFromAst(program: LuminaProgram, options: CodegenJsOpti
 class JSGenerator {
   private static readonly STATIC_HOIST_MARKER = '/*__LUMINA_STATIC_RENDER_HOISTS__*/\n';
   private static readonly INCLUDE_RUNTIME_EXPORTS =
-    'io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic';
+    'io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, dom_get_element_by_id, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic';
   private static readonly NO_RUNTIME_EXPORTS =
     'io, str, math, list, vec, hashmap, hashset, fs, opfs, url, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, async_channel, sab_channel, webgpu, regex, crypto, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, __set, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl';
   private indentLevel = 0;
@@ -123,11 +127,16 @@ class JSGenerator {
   private readonly activeStaticRenderHoists = new Set<string>();
   private readonly staticRenderHoistDecls: string[] = [];
   private readonly publicBindings = new Set<string>();
-  private defaultMethodContext:
-    | { traitType: string; forType: string; selfParams: Set<string> }
-    | null = null;
+  private defaultMethodContext: {
+    traitType: string;
+    forType: string;
+    selfParams: Set<string>;
+  } | null = null;
 
-  constructor(private readonly builder: CodeBuilder, options: CodegenJsOptions) {
+  constructor(
+    private readonly builder: CodeBuilder,
+    options: CodegenJsOptions
+  ) {
     this.target = options.target ?? 'esm';
     this.includeRuntime = options.includeRuntime !== false;
     this.enableStaticRenderHoists = options.sourceMap !== true;
@@ -153,61 +162,103 @@ class JSGenerator {
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
         this.builder.append(
-          'const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");'
+          'const { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } = require("./lumina-runtime.cjs");'
         );
       } else {
         this.builder.append(
-          'import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_key, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";'
+          'import { io, str, math, list, vec, hashmap, hashset, deque, btreemap, btreeset, priority_queue, channel, async_channel, thread, sync, render, reactive, functor, applicative, monad, foldable, traversable, iter, map_vec, filter_vec, filter_option, zip_vec, enumerate_vec, flatten_vec, flat_map_vec, chunk_vec, window_vec, partition_vec, take_vec, skip_vec, any_vec, all_vec, find_vec, count_vec, sum_vec, sum_vec_f64, unique_vec, reverse_vec, sort_vec, sort_by_vec, sort_by_desc_vec, group_by_vec, intersperse_vec, join_vec, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, createSignal, get, set, createMemo, createEffect, vnode, text, liveText, indexList, forList, mount_reactive, createDomRenderer, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_merge, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, dom_get_element_by_id, fs, opfs, url, router, web_storage, dom, web_worker, web_streams, path, env, process, json, http, time, join_all, timeout, sab_channel, webgpu, regex, crypto, Result, Option, __set, formatValue, __lumina_stringify, __lumina_range, __lumina_slice, __lumina_index, __lumina_fixed_array, __lumina_array_bounds_check, __lumina_array_literal, __lumina_clone, __lumina_debug, __lumina_eq, __lumina_struct, __lumina_register_trait_impl, LuminaPanic } from "./lumina-runtime.js";'
         );
       }
     } else {
-      this.builder.append('const io = { println: (...args) => console.log(...args), print: (...args) => console.log(...args), eprint: (...args) => console.error(...args), eprintln: (...args) => console.error(...args) };');
+      this.builder.append(
+        'const io = { println: (...args) => console.log(...args), print: (...args) => console.log(...args), eprint: (...args) => console.error(...args), eprintln: (...args) => console.error(...args) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const str = { length: (value) => value.length, concat: (a, b) => a + b, split: (value, sep) => value.split(sep), trim: (value) => value.trim(), contains: (haystack, needle) => haystack.includes(needle) };');
+      this.builder.append(
+        'const str = { length: (value) => value.length, concat: (a, b) => a + b, split: (value, sep) => value.split(sep), trim: (value) => value.trim(), contains: (haystack, needle) => haystack.includes(needle) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const math = { abs: (value) => Math.abs(value), min: (a, b) => Math.min(a, b), max: (a, b) => Math.max(a, b), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), powf: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };');
+      this.builder.append(
+        'const math = { abs: (value) => Math.abs(value), min: (a, b) => Math.min(a, b), max: (a, b) => Math.max(a, b), absf: (value) => Math.abs(value), minf: (a, b) => Math.min(a, b), maxf: (a, b) => Math.max(a, b), sqrt: (value) => Math.sqrt(value), pow: (base, exp) => Math.pow(base, exp), powf: (base, exp) => Math.pow(base, exp), floor: (value) => Math.floor(value), ceil: (value) => Math.ceil(value), round: (value) => Math.round(value), pi: Math.PI, e: Math.E };'
+      );
       this.builder.append('\n');
       this.builder.append('const __luminaNone = { $tag: "None" };');
       this.builder.append('\n');
       this.builder.append('const __luminaSome = (value) => ({ $tag: "Some", $payload: value });');
       this.builder.append('\n');
-      this.builder.append('const __luminaCount = (value) => Math.max(0, Math.trunc(Number(value)));');
+      this.builder.append(
+        'const __luminaCount = (value) => Math.max(0, Math.trunc(Number(value)));'
+      );
       this.builder.append('\n');
-      this.builder.append('const __luminaHashKey = (value) => { if (typeof value === "string") return `s:${value}`; if (typeof value === "number") return `n:${value}`; if (typeof value === "boolean") return `b:${value}`; if (typeof value === "bigint") return `i:${value.toString()}`; if (value == null) return String(value); return `j:${JSON.stringify(value)}`; };');
+      this.builder.append(
+        'const __luminaHashKey = (value) => { if (typeof value === "string") return `s:${value}`; if (typeof value === "number") return `n:${value}`; if (typeof value === "boolean") return `b:${value}`; if (typeof value === "bigint") return `i:${value.toString()}`; if (value == null) return String(value); return `j:${JSON.stringify(value)}`; };'
+      );
       this.builder.append('\n');
-      this.builder.append('const vec = { new: () => [], from: (items) => Array.from(items ?? []), push: (v, value) => { v.push(value); }, get: (v, index) => { const idx = Math.trunc(Number(index)); return idx >= 0 && idx < v.length ? __luminaSome(v[idx]) : __luminaNone; }, len: (v) => v.length, pop: (v) => v.length > 0 ? __luminaSome(v.pop()) : __luminaNone, clear: (v) => { v.length = 0; }, map: (v, f) => v.map((value) => f(value)), filter: (v, pred) => v.filter((value) => pred(value)), fold: (v, init, f) => v.reduce((acc, value) => f(acc, value), init), for_each: (v, f) => { for (const value of v) f(value); }, any: (v, pred) => v.some((value) => pred(value)), all: (v, pred) => v.every((value) => pred(value)), find: (v, pred) => { const found = v.find((value) => pred(value)); return found === undefined ? __luminaNone : __luminaSome(found); }, position: (v, pred) => { const idx = v.findIndex((value) => pred(value)); return idx === -1 ? __luminaNone : __luminaSome(idx); }, take: (v, n) => v.slice(0, __luminaCount(n)), skip: (v, n) => v.slice(__luminaCount(n)), zip: (v, other) => v.slice(0, Math.min(v.length, other.length)).map((value, idx) => [value, other[idx]]), enumerate: (v) => v.map((value, idx) => [idx, value]) };');
+      this.builder.append(
+        'const vec = { new: () => [], from: (items) => Array.from(items ?? []), push: (v, value) => { v.push(value); }, get: (v, index) => { const idx = Math.trunc(Number(index)); return idx >= 0 && idx < v.length ? __luminaSome(v[idx]) : __luminaNone; }, len: (v) => v.length, pop: (v) => v.length > 0 ? __luminaSome(v.pop()) : __luminaNone, clear: (v) => { v.length = 0; }, map: (v, f) => v.map((value) => f(value)), filter: (v, pred) => v.filter((value) => pred(value)), fold: (v, init, f) => v.reduce((acc, value) => f(acc, value), init), for_each: (v, f) => { for (const value of v) f(value); }, any: (v, pred) => v.some((value) => pred(value)), all: (v, pred) => v.every((value) => pred(value)), find: (v, pred) => { const found = v.find((value) => pred(value)); return found === undefined ? __luminaNone : __luminaSome(found); }, position: (v, pred) => { const idx = v.findIndex((value) => pred(value)); return idx === -1 ? __luminaNone : __luminaSome(idx); }, take: (v, n) => v.slice(0, __luminaCount(n)), skip: (v, n) => v.slice(__luminaCount(n)), zip: (v, other) => v.slice(0, Math.min(v.length, other.length)).map((value, idx) => [value, other[idx]]), enumerate: (v) => v.map((value, idx) => [idx, value]) };'
+      );
       this.builder.append('\n');
       this.builder.append('const list = vec;');
       this.builder.append('\n');
-      this.builder.append('const hashmap = { new: () => new Map(), insert: (m, k, v) => { const key = __luminaHashKey(k); const prev = m.get(key); m.set(key, { key: k, value: v }); return prev ? __luminaSome(prev.value) : __luminaNone; }, get: (m, k) => { const entry = m.get(__luminaHashKey(k)); return entry ? __luminaSome(entry.value) : __luminaNone; }, remove: (m, k) => { const key = __luminaHashKey(k); const entry = m.get(key); if (!entry) return __luminaNone; m.delete(key); return __luminaSome(entry.value); }, contains_key: (m, k) => m.has(__luminaHashKey(k)), len: (m) => m.size, clear: (m) => m.clear(), keys: (m) => Array.from(m.values(), (entry) => entry.key), values: (m) => Array.from(m.values(), (entry) => entry.value) };');
+      this.builder.append(
+        'const hashmap = { new: () => new Map(), insert: (m, k, v) => { const key = __luminaHashKey(k); const prev = m.get(key); m.set(key, { key: k, value: v }); return prev ? __luminaSome(prev.value) : __luminaNone; }, get: (m, k) => { const entry = m.get(__luminaHashKey(k)); return entry ? __luminaSome(entry.value) : __luminaNone; }, remove: (m, k) => { const key = __luminaHashKey(k); const entry = m.get(key); if (!entry) return __luminaNone; m.delete(key); return __luminaSome(entry.value); }, contains_key: (m, k) => m.has(__luminaHashKey(k)), len: (m) => m.size, clear: (m) => m.clear(), keys: (m) => Array.from(m.values(), (entry) => entry.key), values: (m) => Array.from(m.values(), (entry) => entry.value) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const hashset = { new: () => new Map(), insert: (s, v) => { const key = __luminaHashKey(v); const had = s.has(key); s.set(key, v); return !had; }, contains: (s, v) => s.has(__luminaHashKey(v)), remove: (s, v) => s.delete(__luminaHashKey(v)), len: (s) => s.size, clear: (s) => s.clear(), values: (s) => Array.from(s.values()) };');
+      this.builder.append(
+        'const hashset = { new: () => new Map(), insert: (s, v) => { const key = __luminaHashKey(v); const had = s.has(key); s.set(key, v); return !had; }, contains: (s, v) => s.has(__luminaHashKey(v)), remove: (s, v) => s.delete(__luminaHashKey(v)), len: (s) => s.size, clear: (s) => s.clear(), values: (s) => Array.from(s.values()) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };');
+      this.builder.append(
+        'const fs = { readFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No fs runtime" }) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const opfs = { is_available: () => false, readFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), readDir: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), metadata: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), exists: async () => false, mkdir: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), removeFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }) };');
+      this.builder.append(
+        'const opfs = { is_available: () => false, readFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), writeFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), readDir: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), metadata: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), exists: async () => false, mkdir: async () => ({ $tag: "Err", $payload: "No opfs runtime" }), removeFile: async () => ({ $tag: "Err", $payload: "No opfs runtime" }) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const url = { is_available: () => typeof URL === "function", parse: (raw) => { try { return ({ $tag: "Ok", $payload: new URL(String(raw)) }); } catch (e) { return ({ $tag: "Err", $payload: String(e) }); } }, build: () => ({ $tag: "Err", $payload: "No url runtime" }), get_origin: (u) => String(u?.origin ?? ""), get_pathname: (u) => String(u?.pathname ?? ""), get_search: (u) => String(u?.search ?? ""), get_hash: (u) => String(u?.hash ?? ""), set_pathname: (u, p) => ({ ...(u ?? {}), pathname: String(p ?? "") }), set_search: (u, p) => ({ ...(u ?? {}), search: String(p ?? "") }), append_param: (u) => (u ?? {}) };');
+      this.builder.append(
+        'const url = { is_available: () => typeof URL === "function", parse: (raw) => { try { return ({ $tag: "Ok", $payload: new URL(String(raw)) }); } catch (e) { return ({ $tag: "Err", $payload: String(e) }); } }, build: () => ({ $tag: "Err", $payload: "No url runtime" }), get_origin: (u) => String(u?.origin ?? ""), get_pathname: (u) => String(u?.pathname ?? ""), get_search: (u) => String(u?.search ?? ""), get_hash: (u) => String(u?.hash ?? ""), set_pathname: (u, p) => ({ ...(u ?? {}), pathname: String(p ?? "") }), set_search: (u, p) => ({ ...(u ?? {}), search: String(p ?? "") }), append_param: (u) => (u ?? {}) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const router = { getCurrentPath: () => "/", getCurrentHash: () => "", getCurrentSearch: () => "", push: () => {}, replace: () => {}, onPopState: () => {}, offPopState: () => {}, getBasePath: () => "/" };');
+      this.builder.append(
+        'const router = { getCurrentPath: () => "/", getCurrentHash: () => "", getCurrentSearch: () => "", push: () => {}, replace: () => {}, onPopState: () => {}, offPopState: () => {}, getBasePath: () => "/" };'
+      );
       this.builder.append('\n');
-      this.builder.append('const __wsLocal = new Map(); const __wsSession = new Map(); const web_storage = { is_available: () => false, local_get: (k) => __wsLocal.has(String(k)) ? ({ $tag: "Some", $payload: __wsLocal.get(String(k)) }) : ({ $tag: "None" }), local_set: (k, v) => { __wsLocal.set(String(k), String(v)); return ({ $tag: "Ok", $payload: undefined }); }, local_remove: (k) => { __wsLocal.delete(String(k)); }, local_clear: () => { __wsLocal.clear(); }, local_length: () => __wsLocal.size, session_get: (k) => __wsSession.has(String(k)) ? ({ $tag: "Some", $payload: __wsSession.get(String(k)) }) : ({ $tag: "None" }), session_set: (k, v) => { __wsSession.set(String(k), String(v)); return ({ $tag: "Ok", $payload: undefined }); }, session_remove: (k) => { __wsSession.delete(String(k)); }, session_clear: () => { __wsSession.clear(); }, session_length: () => __wsSession.size };');
+      this.builder.append(
+        'const __wsLocal = new Map(); const __wsSession = new Map(); const web_storage = { is_available: () => false, local_get: (k) => __wsLocal.has(String(k)) ? ({ $tag: "Some", $payload: __wsLocal.get(String(k)) }) : ({ $tag: "None" }), local_set: (k, v) => { __wsLocal.set(String(k), String(v)); return ({ $tag: "Ok", $payload: undefined }); }, local_remove: (k) => { __wsLocal.delete(String(k)); }, local_clear: () => { __wsLocal.clear(); }, local_length: () => __wsLocal.size, session_get: (k) => __wsSession.has(String(k)) ? ({ $tag: "Some", $payload: __wsSession.get(String(k)) }) : ({ $tag: "None" }), session_set: (k, v) => { __wsSession.set(String(k), String(v)); return ({ $tag: "Ok", $payload: undefined }); }, session_remove: (k) => { __wsSession.delete(String(k)); }, session_clear: () => { __wsSession.clear(); }, session_length: () => __wsSession.size };'
+      );
       this.builder.append('\n');
-      this.builder.append('const dom = { is_available: () => false, query: () => ({ $tag: "None" }), query_all: () => [], create: () => 0, get_attr: () => ({ $tag: "None" }), set_attr: () => {}, remove_attr: () => {}, get_text: () => "", set_text: () => {}, get_html: () => "", set_html: () => {}, append_child: () => {}, remove_child: () => {}, add_event: () => 0, remove_event: () => {}, get_style: () => "", set_style: () => {} };');
+      this.builder.append(
+        'const dom = { is_available: () => false, query: () => ({ $tag: "None" }), query_all: () => [], create: () => 0, get_attr: () => ({ $tag: "None" }), set_attr: () => {}, remove_attr: () => {}, get_text: () => "", set_text: () => {}, get_html: () => "", set_html: () => {}, append_child: () => {}, remove_child: () => {}, add_event: () => 0, remove_event: () => {}, get_style: () => "", set_style: () => {} };'
+      );
       this.builder.append('\n');
-      this.builder.append('const web_worker = { is_available: () => false, spawn: async () => ({ $tag: "Err", $payload: "No web_worker runtime" }), spawn_inline: async () => ({ $tag: "Err", $payload: "No web_worker runtime" }), post: () => ({ $tag: "Err", $payload: "No web_worker runtime" }), on_message: () => {}, on_error: () => {}, terminate: () => {}, is_worker_context: () => false, self_post: () => {}, self_on_message: () => {} };');
+      this.builder.append(
+        'const web_worker = { is_available: () => false, spawn: async () => ({ $tag: "Err", $payload: "No web_worker runtime" }), spawn_inline: async () => ({ $tag: "Err", $payload: "No web_worker runtime" }), post: () => ({ $tag: "Err", $payload: "No web_worker runtime" }), on_message: () => {}, on_error: () => {}, terminate: () => {}, is_worker_context: () => false, self_post: () => {}, self_on_message: () => {} };'
+      );
       this.builder.append('\n');
-      this.builder.append('const web_streams = { is_available: () => false, from_fetch: async () => ({ $tag: "Err", $payload: "No web_streams runtime" }), from_string: () => 0, from_bytes: () => 0, read_chunk: async () => ({ $tag: "Ok", $payload: ({ $tag: "None" }) }), read_all: async () => ({ $tag: "Ok", $payload: [] }), read_text: async () => ({ $tag: "Ok", $payload: "" }), pipe: () => 0, cancel: () => {} };');
+      this.builder.append(
+        'const web_streams = { is_available: () => false, from_fetch: async () => ({ $tag: "Err", $payload: "No web_streams runtime" }), from_string: () => 0, from_bytes: () => 0, read_chunk: async () => ({ $tag: "Ok", $payload: ({ $tag: "None" }) }), read_all: async () => ({ $tag: "Ok", $payload: [] }), read_text: async () => ({ $tag: "Ok", $payload: "" }), pipe: () => 0, cancel: () => {} };'
+      );
       this.builder.append('\n');
-      this.builder.append('const path = { join: (a, b) => `${a}/${b}`, is_absolute: () => false, extension: () => ({ $tag: "None" }), dirname: (v) => v, basename: (v) => v, normalize: (v) => v };');
+      this.builder.append(
+        'const path = { join: (a, b) => `${a}/${b}`, is_absolute: () => false, extension: () => ({ $tag: "None" }), dirname: (v) => v, basename: (v) => v, normalize: (v) => v };'
+      );
       this.builder.append('\n');
-      this.builder.append('const env = { var: () => ({ $tag: "Err", $payload: "No env runtime" }), set_var: () => ({ $tag: "Err", $payload: "No env runtime" }), remove_var: () => ({ $tag: "Err", $payload: "No env runtime" }), args: () => [], cwd: () => ({ $tag: "Err", $payload: "No env runtime" }) };');
+      this.builder.append(
+        'const env = { var: () => ({ $tag: "Err", $payload: "No env runtime" }), set_var: () => ({ $tag: "Err", $payload: "No env runtime" }), remove_var: () => ({ $tag: "Err", $payload: "No env runtime" }), args: () => [], cwd: () => ({ $tag: "Err", $payload: "No env runtime" }) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const process = { spawn: () => ({ $tag: "Err", $payload: "No process runtime" }), exit: () => {}, cwd: () => "", pid: () => -1 };');
+      this.builder.append(
+        'const process = { spawn: () => ({ $tag: "Err", $payload: "No process runtime" }), exit: () => {}, cwd: () => "", pid: () => -1 };'
+      );
       this.builder.append('\n');
-      this.builder.append('const json = { to_string: () => ({ $tag: "Err", $payload: "No json runtime" }), to_pretty_string: () => ({ $tag: "Err", $payload: "No json runtime" }), from_string: () => ({ $tag: "Err", $payload: "No json runtime" }), parse: () => ({ $tag: "Err", $payload: "No json runtime" }) };');
+      this.builder.append(
+        'const json = { to_string: () => ({ $tag: "Err", $payload: "No json runtime" }), to_pretty_string: () => ({ $tag: "Err", $payload: "No json runtime" }), from_string: () => ({ $tag: "Err", $payload: "No json runtime" }), parse: () => ({ $tag: "Err", $payload: "No json runtime" }) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };');
+      this.builder.append(
+        'const http = { fetch: async () => ({ $tag: "Err", $payload: "No http runtime" }) };'
+      );
       this.builder.append('\n');
       this.builder.append(
         'const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };'
@@ -217,13 +268,19 @@ class JSGenerator {
       this.builder.append('\n');
       this.builder.append('const async_channel = channel;');
       this.builder.append('\n');
-      this.builder.append('const sab_channel = { is_available: () => false, bounded_i32: () => ({ sender: {}, receiver: {} }), bounded_u32: () => ({ sender: {}, receiver: {} }), bounded_f32: () => ({ sender: {}, receiver: {} }), bounded_f64: () => ({ sender: {}, receiver: {} }), send_i32: () => false, try_send_i32: () => false, send_async_i32: async () => false, send_timeout_i32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_i32: async () => ({ $tag: "None" }), try_recv_i32: () => ({ $tag: "None" }), close_sender_i32: () => {}, close_receiver_i32: () => {}, is_sender_closed_i32: () => true, is_receiver_closed_i32: () => true, close_i32: () => {}, send_u32: () => false, try_send_u32: () => false, send_async_u32: async () => false, send_timeout_u32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_u32: async () => ({ $tag: "None" }), try_recv_u32: () => ({ $tag: "None" }), close_sender_u32: () => {}, close_receiver_u32: () => {}, is_sender_closed_u32: () => true, is_receiver_closed_u32: () => true, close_u32: () => {}, send_f32: () => false, try_send_f32: () => false, send_async_f32: async () => false, send_timeout_f32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_f32: async () => ({ $tag: "None" }), try_recv_f32: () => ({ $tag: "None" }), close_sender_f32: () => {}, close_receiver_f32: () => {}, is_sender_closed_f32: () => true, is_receiver_closed_f32: () => true, close_f32: () => {}, send_f64: () => false, try_send_f64: () => false, send_async_f64: async () => false, send_timeout_f64: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_f64: async () => ({ $tag: "None" }), try_recv_f64: () => ({ $tag: "None" }), close_sender_f64: () => {}, close_receiver_f64: () => {}, is_sender_closed_f64: () => true, is_receiver_closed_f64: () => true, close_f64: () => {} };');
+      this.builder.append(
+        'const sab_channel = { is_available: () => false, bounded_i32: () => ({ sender: {}, receiver: {} }), bounded_u32: () => ({ sender: {}, receiver: {} }), bounded_f32: () => ({ sender: {}, receiver: {} }), bounded_f64: () => ({ sender: {}, receiver: {} }), send_i32: () => false, try_send_i32: () => false, send_async_i32: async () => false, send_timeout_i32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_i32: async () => ({ $tag: "None" }), try_recv_i32: () => ({ $tag: "None" }), close_sender_i32: () => {}, close_receiver_i32: () => {}, is_sender_closed_i32: () => true, is_receiver_closed_i32: () => true, close_i32: () => {}, send_u32: () => false, try_send_u32: () => false, send_async_u32: async () => false, send_timeout_u32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_u32: async () => ({ $tag: "None" }), try_recv_u32: () => ({ $tag: "None" }), close_sender_u32: () => {}, close_receiver_u32: () => {}, is_sender_closed_u32: () => true, is_receiver_closed_u32: () => true, close_u32: () => {}, send_f32: () => false, try_send_f32: () => false, send_async_f32: async () => false, send_timeout_f32: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_f32: async () => ({ $tag: "None" }), try_recv_f32: () => ({ $tag: "None" }), close_sender_f32: () => {}, close_receiver_f32: () => {}, is_sender_closed_f32: () => true, is_receiver_closed_f32: () => true, close_f32: () => {}, send_f64: () => false, try_send_f64: () => false, send_async_f64: async () => false, send_timeout_f64: async () => ({ $tag: "Err", $payload: "No sab_channel runtime" }), recv_f64: async () => ({ $tag: "None" }), try_recv_f64: () => ({ $tag: "None" }), close_sender_f64: () => {}, close_receiver_f64: () => {}, is_sender_closed_f64: () => true, is_receiver_closed_f64: () => true, close_f64: () => {} };'
+      );
       this.builder.append('\n');
-      this.builder.append('const webgpu = { GPU_BUFFER_USAGE_STORAGE: 0x80, GPU_BUFFER_USAGE_UNIFORM: 0x40, GPU_BUFFER_USAGE_VERTEX: 0x20, GPU_BUFFER_USAGE_INDEX: 0x10, GPU_BUFFER_USAGE_COPY_SRC: 0x04, GPU_BUFFER_USAGE_COPY_DST: 0x08, is_available: () => false, request_adapter: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), request_device: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_write: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_read: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_destroy: () => {}, uniform_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_update: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_destroy: () => {}, vertex_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), index_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), vertex_buffer_destroy: () => {}, index_buffer_destroy: () => {}, canvas: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), canvas_destroy: () => {}, present: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_pipeline: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_pipeline_destroy: () => {}, render_frame: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute_i32: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), __debug_counts: () => ({ buffers: 0, pipelines: 0, canvases: 0 }) };');
+      this.builder.append(
+        'const webgpu = { GPU_BUFFER_USAGE_STORAGE: 0x80, GPU_BUFFER_USAGE_UNIFORM: 0x40, GPU_BUFFER_USAGE_VERTEX: 0x20, GPU_BUFFER_USAGE_INDEX: 0x10, GPU_BUFFER_USAGE_COPY_SRC: 0x04, GPU_BUFFER_USAGE_COPY_DST: 0x08, is_available: () => false, request_adapter: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), request_device: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_write: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_read: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), buffer_destroy: () => {}, uniform_create: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_update: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), uniform_destroy: () => {}, vertex_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), index_buffer: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), vertex_buffer_destroy: () => {}, index_buffer_destroy: () => {}, canvas: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), canvas_destroy: () => {}, present: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_pipeline: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), render_pipeline_destroy: () => {}, render_frame: () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), compute_i32: async () => ({ $tag: "Err", $payload: "No webgpu runtime" }), __debug_counts: () => ({ buffers: 0, pipelines: 0, canvases: 0 }) };'
+      );
       this.builder.append('\n');
       this.builder.append('const timeout = async (ms) => await time.sleep(ms);');
       this.builder.append('\n');
-      this.builder.append('const join_all = async (values) => { const arr = Array.isArray(values) ? values : (values && values[Symbol.iterator]) ? Array.from(values) : []; return await Promise.all(arr.map((v) => Promise.resolve(v))); };');
+      this.builder.append(
+        'const join_all = async (values) => { const arr = Array.isArray(values) ? values : (values && values[Symbol.iterator]) ? Array.from(values) : []; return await Promise.all(arr.map((v) => Promise.resolve(v))); };'
+      );
       this.builder.append('\n');
       this.builder.append(
         'const regex = { isValid: () => false, test: async () => ({ $tag: "Err", $payload: "No regex runtime" }), find: () => ({ $tag: "None" }), findAll: async () => ({ $tag: "Err", $payload: "No regex runtime" }), replace: async () => ({ $tag: "Err", $payload: "No regex runtime" }) };'
@@ -233,47 +290,75 @@ class JSGenerator {
         'const crypto = { isAvailable: async () => false, sha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), hmacSha256: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomBytes: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), randomInt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmEncrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }), aesGcmDecrypt: async () => ({ $tag: "Err", $payload: "No crypto runtime" }) };'
       );
       this.builder.append('\n');
-      this.builder.append('const functor = { map_option: (value, f) => value, map_result: (value, f) => value, map_vec: (values, f) => values, map_hashmap_values: (values, f) => values };');
+      this.builder.append(
+        'const functor = { map_option: (value, f) => value, map_result: (value, f) => value, map_vec: (values, f) => values, map_hashmap_values: (values, f) => values };'
+      );
       this.builder.append('\n');
-      this.builder.append('const applicative = { pure_option: (value) => ({ $tag: "Some", $payload: value }), pure_result: (value) => ({ $tag: "Ok", $payload: value }), pure_vec: (value) => [value], ap_option: () => ({ $tag: "None" }), ap_result: () => ({ $tag: "Err", $payload: "No runtime" }), ap_vec: () => [] };');
+      this.builder.append(
+        'const applicative = { pure_option: (value) => ({ $tag: "Some", $payload: value }), pure_result: (value) => ({ $tag: "Ok", $payload: value }), pure_vec: (value) => [value], ap_option: () => ({ $tag: "None" }), ap_result: () => ({ $tag: "Err", $payload: "No runtime" }), ap_vec: () => [] };'
+      );
       this.builder.append('\n');
-      this.builder.append('const monad = { flat_map_option: (value, f) => value, flat_map_result: (value, f) => value, flat_map_vec: (values, f) => values, join_option: (value) => value, join_result: (value) => value, join_vec: (value) => value };');
+      this.builder.append(
+        'const monad = { flat_map_option: (value, f) => value, flat_map_result: (value, f) => value, flat_map_vec: (values, f) => values, join_option: (value) => value, join_result: (value) => value, join_vec: (value) => value };'
+      );
       this.builder.append('\n');
-      this.builder.append('const foldable = { fold_option: (value, init, f) => init, fold_result: (value, init, f) => init, fold_vec: (values, init, f) => init, fold_hashmap_values: (values, init, f) => init };');
+      this.builder.append(
+        'const foldable = { fold_option: (value, init, f) => init, fold_result: (value, init, f) => init, fold_vec: (values, init, f) => init, fold_hashmap_values: (values, init, f) => init };'
+      );
       this.builder.append('\n');
-      this.builder.append('const traversable = { traverse_vec_option: () => ({ $tag: "None" }), traverse_vec_result: () => ({ $tag: "Err", $payload: "No runtime" }), sequence_vec_option: () => ({ $tag: "None" }), sequence_vec_result: () => ({ $tag: "Err", $payload: "No runtime" }) };');
+      this.builder.append(
+        'const traversable = { traverse_vec_option: () => ({ $tag: "None" }), traverse_vec_result: () => ({ $tag: "Err", $payload: "No runtime" }), sequence_vec_option: () => ({ $tag: "None" }), sequence_vec_result: () => ({ $tag: "Err", $payload: "No runtime" }) };'
+      );
       this.builder.append('\n');
-      this.builder.append('const iter = { map_vec: (values, f) => values, filter_vec: (values, pred) => values, filter_option: (value, pred) => value, zip_vec: (left, right) => left, enumerate_vec: (values) => values, flatten_vec: (values) => values, flat_map_vec: (values, mapper) => values, chunk_vec: (values) => values, window_vec: (values) => values, partition_vec: (values) => [values, values], take_vec: (values) => values, skip_vec: (values) => values, any_vec: () => false, all_vec: () => false, find_vec: () => ({ $tag: "None" }), count_vec: (values) => Array.isArray(values) ? values.length : 0, sum_vec: () => 0, sum_vec_f64: () => 0, unique_vec: (values) => values, reverse_vec: (values) => values, sort_vec: (values) => values, sort_by_vec: (values) => values, sort_by_desc_vec: (values) => values, group_by_vec: () => ({}), intersperse_vec: (values) => values, join_vec: (left) => left };');
+      this.builder.append(
+        'const iter = { map_vec: (values, f) => values, filter_vec: (values, pred) => values, filter_option: (value, pred) => value, zip_vec: (left, right) => left, enumerate_vec: (values) => values, flatten_vec: (values) => values, flat_map_vec: (values, mapper) => values, chunk_vec: (values) => values, window_vec: (values) => values, partition_vec: (values) => [values, values], take_vec: (values) => values, skip_vec: (values) => values, any_vec: () => false, all_vec: () => false, find_vec: () => ({ $tag: "None" }), count_vec: (values) => Array.isArray(values) ? values.length : 0, sum_vec: () => 0, sum_vec_f64: () => 0, unique_vec: (values) => values, reverse_vec: (values) => values, sort_vec: (values) => values, sort_by_vec: (values) => values, sort_by_desc_vec: (values) => values, group_by_vec: () => ({}), intersperse_vec: (values) => values, join_vec: (left) => left };'
+      );
       this.builder.append('\n');
-      this.builder.append('const map_vec = iter.map_vec, filter_vec = iter.filter_vec, filter_option = iter.filter_option, zip_vec = iter.zip_vec, enumerate_vec = iter.enumerate_vec, flatten_vec = iter.flatten_vec, flat_map_vec = iter.flat_map_vec, chunk_vec = iter.chunk_vec, window_vec = iter.window_vec, partition_vec = iter.partition_vec, take_vec = iter.take_vec, skip_vec = iter.skip_vec, any_vec = iter.any_vec, all_vec = iter.all_vec, find_vec = iter.find_vec, count_vec = iter.count_vec, sum_vec = iter.sum_vec, sum_vec_f64 = iter.sum_vec_f64, unique_vec = iter.unique_vec, reverse_vec = iter.reverse_vec, sort_vec = iter.sort_vec, sort_by_vec = iter.sort_by_vec, sort_by_desc_vec = iter.sort_by_desc_vec, group_by_vec = iter.group_by_vec, intersperse_vec = iter.intersperse_vec, join_vec = iter.join_vec;');
+      this.builder.append(
+        'const map_vec = iter.map_vec, filter_vec = iter.filter_vec, filter_option = iter.filter_option, zip_vec = iter.zip_vec, enumerate_vec = iter.enumerate_vec, flatten_vec = iter.flatten_vec, flat_map_vec = iter.flat_map_vec, chunk_vec = iter.chunk_vec, window_vec = iter.window_vec, partition_vec = iter.partition_vec, take_vec = iter.take_vec, skip_vec = iter.skip_vec, any_vec = iter.any_vec, all_vec = iter.all_vec, find_vec = iter.find_vec, count_vec = iter.count_vec, sum_vec = iter.sum_vec, sum_vec_f64 = iter.sum_vec_f64, unique_vec = iter.unique_vec, reverse_vec = iter.reverse_vec, sort_vec = iter.sort_vec, sort_by_vec = iter.sort_by_vec, sort_by_desc_vec = iter.sort_by_desc_vec, group_by_vec = iter.group_by_vec, intersperse_vec = iter.intersperse_vec, join_vec = iter.join_vec;'
+      );
       this.builder.append('\n');
-      this.builder.append('const query = (items) => ({ items }), where_q = (q) => q, select_q = (q) => q, order_by_q = (q) => q, order_by_desc_q = (q) => q, limit_q = (q) => q, offset_q = (q) => q, group_by_q = () => ({}), count_q = (q) => Array.isArray(q?.items) ? q.items.length : 0, first_q = () => ({ $tag: "None" }), to_vec_q = (q) => q?.items ?? [], join_q = (left) => ({ items: left?.items ?? [] });');
+      this.builder.append(
+        'const query = (items) => ({ items }), where_q = (q) => q, select_q = (q) => q, order_by_q = (q) => q, order_by_desc_q = (q) => q, limit_q = (q) => q, offset_q = (q) => q, group_by_q = () => ({}), count_q = (q) => Array.isArray(q?.items) ? q.items.length : 0, first_q = () => ({ $tag: "None" }), to_vec_q = (q) => q?.items ?? [], join_q = (left) => ({ items: left?.items ?? [] });'
+      );
       this.builder.append('\n');
       this.builder.append('function __set(obj, prop, value) { obj[prop] = value; return value; }');
       this.builder.append('\n');
       this.builder.append('function __lumina_stringify(value) { return String(value); }');
       this.builder.append('\n');
-      this.builder.append('function __lumina_range(start, end, inclusive, hasStart, hasEnd) { return { start: hasStart ? Number(start) : null, end: hasEnd ? Number(end) : null, inclusive: !!inclusive }; }');
+      this.builder.append(
+        'function __lumina_range(start, end, inclusive, hasStart, hasEnd) { return { start: hasStart ? Number(start) : null, end: hasEnd ? Number(end) : null, inclusive: !!inclusive }; }'
+      );
       this.builder.append('\n');
       this.builder.append(
         'function __lumina_slice(target, start, end, inclusive) { const length = target?.length ?? 0; const actualStart = start ?? 0; const actualEnd = end ?? length; const finalEnd = inclusive ? actualEnd + 1 : actualEnd; if (actualStart < 0 || actualStart > length) { throw new Error(`Slice start index ${actualStart} out of bounds`); } if (finalEnd < 0 || finalEnd > length) { throw new Error(`Slice end index ${finalEnd} out of bounds`); } if (typeof target === "string") { return target.substring(actualStart, finalEnd); } if (Array.isArray(target)) { return target.slice(actualStart, finalEnd); } return undefined; }'
       );
       this.builder.append('\n');
-      this.builder.append('function __lumina_fixed_array(size, initializer) { const arr = new Array(Math.max(0, Math.trunc(size))); if (typeof initializer === "function") { for (let i = 0; i < arr.length; i++) arr[i] = initializer(i); } return arr; }');
+      this.builder.append(
+        'function __lumina_fixed_array(size, initializer) { const arr = new Array(Math.max(0, Math.trunc(size))); if (typeof initializer === "function") { for (let i = 0; i < arr.length; i++) arr[i] = initializer(i); } return arr; }'
+      );
       this.builder.append('\n');
-      this.builder.append('function __lumina_array_bounds_check(array, index, expectedSize) { const idx = Math.trunc(Number(index)); if (expectedSize !== undefined && array.length !== expectedSize) { throw new Error(`Array size mismatch: expected ${expectedSize}, got ${array.length}`); } if (idx < 0 || idx >= array.length) { throw new Error(`Array index out of bounds: ${idx} (array length: ${array.length})`); } }');
+      this.builder.append(
+        'function __lumina_array_bounds_check(array, index, expectedSize) { const idx = Math.trunc(Number(index)); if (expectedSize !== undefined && array.length !== expectedSize) { throw new Error(`Array size mismatch: expected ${expectedSize}, got ${array.length}`); } if (idx < 0 || idx >= array.length) { throw new Error(`Array index out of bounds: ${idx} (array length: ${array.length})`); } }'
+      );
       this.builder.append('\n');
-      this.builder.append('function __lumina_array_literal(elements, expectedSize) { if (expectedSize !== undefined && elements.length !== expectedSize) { throw new Error(`Array literal has wrong size: expected ${expectedSize}, got ${elements.length}`); } return elements; }');
+      this.builder.append(
+        'function __lumina_array_literal(elements, expectedSize) { if (expectedSize !== undefined && elements.length !== expectedSize) { throw new Error(`Array literal has wrong size: expected ${expectedSize}, got ${elements.length}`); } return elements; }'
+      );
       this.builder.append('\n');
       this.builder.append(
         'function __lumina_index(target, index, expectedSize) { if (typeof target === "string" && index && typeof index === "object" && "start" in index) { const start = index.start == null ? 0 : Math.max(0, index.start); const endBase = index.end == null ? target.length : Math.max(0, index.end); return __lumina_slice(target, start, endBase, index.inclusive); } if (Array.isArray(target)) { __lumina_array_bounds_check(target, index, expectedSize); return target[Math.trunc(Number(index))]; } return target ? target[index] : undefined; }'
       );
       this.builder.append('\n');
-      this.builder.append('function __lumina_clone(value) { if (value == null || typeof value !== "object") return value; if (Array.isArray(value)) return value.map((entry) => __lumina_clone(entry)); return { ...value }; }');
+      this.builder.append(
+        'function __lumina_clone(value) { if (value == null || typeof value !== "object") return value; if (Array.isArray(value)) return value.map((entry) => __lumina_clone(entry)); return { ...value }; }'
+      );
       this.builder.append('\n');
       this.builder.append('function __lumina_debug(value) { return __lumina_stringify(value); }');
       this.builder.append('\n');
-      this.builder.append('function __lumina_eq(left, right) { return JSON.stringify(left) === JSON.stringify(right); }');
+      this.builder.append(
+        'function __lumina_eq(left, right) { return JSON.stringify(left) === JSON.stringify(right); }'
+      );
       this.builder.append('\n');
       this.builder.append('function __lumina_struct(_name, fields) { return fields; }');
       this.builder.append('\n');
@@ -292,9 +377,8 @@ class JSGenerator {
       this.emitStatement(stmt);
     }
 
-    const publicExportSuffix = this.publicBindings.size > 0
-      ? `, ${Array.from(this.publicBindings).join(', ')}`
-      : '';
+    const publicExportSuffix =
+      this.publicBindings.size > 0 ? `, ${Array.from(this.publicBindings).join(', ')}` : '';
 
     if (this.includeRuntime) {
       if (this.target === 'cjs') {
@@ -308,7 +392,9 @@ class JSGenerator {
       }
     } else {
       if (this.target === 'cjs') {
-        this.builder.append(`module.exports = { ${JSGenerator.NO_RUNTIME_EXPORTS}${publicExportSuffix} };`);
+        this.builder.append(
+          `module.exports = { ${JSGenerator.NO_RUNTIME_EXPORTS}${publicExportSuffix} };`
+        );
       } else {
         this.builder.append(`export { ${JSGenerator.NO_RUNTIME_EXPORTS}${publicExportSuffix} };`);
       }
@@ -331,7 +417,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}${keyword} ${stmt.name} = `,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.value));
         this.builder.append(';\n');
@@ -342,7 +430,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}const ${tupleTemp} = `,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.value));
         this.builder.append(';\n');
@@ -363,7 +453,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}const ${matchTemp} = `,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.value));
         this.builder.append(';\n');
@@ -380,7 +472,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}return `,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.value));
         this.builder.append(';\n');
@@ -390,7 +484,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}break;`,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.append('\n');
         return;
@@ -399,7 +495,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}continue;`,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.append('\n');
         return;
@@ -408,7 +506,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}`,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.target as LuminaExpr));
         this.builder.append(' = ');
@@ -420,7 +520,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}`,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.expr));
         this.builder.append(';\n');
@@ -430,7 +532,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}if (`,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.condition));
         this.builder.append(') ');
@@ -447,7 +551,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}const ${matchTemp} = `,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.value));
         this.builder.append(';\n');
@@ -473,7 +579,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}while (`,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.condition));
         this.builder.append(') ');
@@ -487,11 +595,15 @@ class JSGenerator {
         this.builder.append(
           `${pad}const ${rangeTemp} = `,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.appendExpr(this.emitExpr(stmt.iterable));
         this.builder.append(';\n');
-        this.builder.append(`${pad}const ${endTemp} = ${rangeTemp}.end ?? (${rangeTemp}.start ?? 0);\n`);
+        this.builder.append(
+          `${pad}const ${endTemp} = ${rangeTemp}.end ?? (${rangeTemp}.start ?? 0);\n`
+        );
         this.builder.append(
           `${pad}for (let ${stmt.iterator} = (${rangeTemp}.start ?? 0); ${rangeTemp}.inclusive ? ${stmt.iterator} <= ${endTemp} : ${stmt.iterator} < ${endTemp}; ${stmt.iterator}++) `
         );
@@ -504,7 +616,9 @@ class JSGenerator {
         this.builder.append(
           `${pad}while (true) {`,
           stmt.type,
-          stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+          stmt.location
+            ? { line: stmt.location.start.line, column: stmt.location.start.column }
+            : undefined
         );
         this.builder.append('\n');
         this.indentLevel++;
@@ -561,7 +675,9 @@ class JSGenerator {
     this.builder.append(
       `${pad}${asyncKeyword}function ${name}(${params}) {`,
       stmt.type,
-      stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+      stmt.location
+        ? { line: stmt.location.start.line, column: stmt.location.start.column }
+        : undefined
     );
     this.builder.append('\n');
     this.indentLevel++;
@@ -585,7 +701,9 @@ class JSGenerator {
     this.builder.append(`${pad}}\n`);
   }
 
-  private emitDefaultParamInitializers(params: Array<{ name: string; defaultValue?: LuminaExpr | null }>): void {
+  private emitDefaultParamInitializers(
+    params: Array<{ name: string; defaultValue?: LuminaExpr | null }>
+  ): void {
     for (const param of params) {
       if (!param.defaultValue) continue;
       this.builder.append(`${this.pad()}if (${param.name} === undefined) ${param.name} = `);
@@ -600,7 +718,10 @@ class JSGenerator {
   ): string {
     return params
       .filter((param) => !!param.defaultValue)
-      .map((param) => `${indent}if (${param.name} === undefined) ${param.name} = ${this.emitExpr(param.defaultValue as LuminaExpr).code};\n`)
+      .map(
+        (param) =>
+          `${indent}if (${param.name} === undefined) ${param.name} = ${this.emitExpr(param.defaultValue as LuminaExpr).code};\n`
+      )
       .join('');
   }
 
@@ -664,7 +785,9 @@ class JSGenerator {
     this.builder.append(
       `${pad}class ${stmt.name} {`,
       stmt.type,
-      stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+      stmt.location
+        ? { line: stmt.location.start.line, column: stmt.location.start.column }
+        : undefined
     );
     this.builder.append('\n');
     this.indentLevel++;
@@ -996,7 +1119,9 @@ class JSGenerator {
     this.builder.append(
       `${pad}const ${matchId} = `,
       stmt.type,
-      stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+      stmt.location
+        ? { line: stmt.location.start.line, column: stmt.location.start.column }
+        : undefined
     );
     this.builder.appendExpr(this.emitExpr(stmt.value));
     this.builder.append(';\n');
@@ -1039,7 +1164,12 @@ class JSGenerator {
     arms: Array<{ pattern: LuminaMatchPattern; guard?: LuminaExpr | null }>
   ): boolean {
     const isSimpleNestedPayloadPattern = (pattern: LuminaMatchPattern): boolean => {
-      if (pattern.type === 'BindingPattern' || pattern.type === 'RefBindingPattern' || pattern.type === 'WildcardPattern') return true;
+      if (
+        pattern.type === 'BindingPattern' ||
+        pattern.type === 'RefBindingPattern' ||
+        pattern.type === 'WildcardPattern'
+      )
+        return true;
       return false;
     };
     let hasEnumPattern = false;
@@ -1055,7 +1185,11 @@ class JSGenerator {
         }
         continue;
       }
-      if (arm.pattern.type === 'WildcardPattern' || arm.pattern.type === 'BindingPattern' || arm.pattern.type === 'RefBindingPattern') {
+      if (
+        arm.pattern.type === 'WildcardPattern' ||
+        arm.pattern.type === 'BindingPattern' ||
+        arm.pattern.type === 'RefBindingPattern'
+      ) {
         catchAllCount += 1;
         if (catchAllCount > 1) return false;
         continue;
@@ -1075,11 +1209,15 @@ class JSGenerator {
     this.builder.append(
       `${pad}const ${matchId} = `,
       stmt.type,
-      stmt.location ? { line: stmt.location.start.line, column: stmt.location.start.column } : undefined
+      stmt.location
+        ? { line: stmt.location.start.line, column: stmt.location.start.column }
+        : undefined
     );
     this.builder.appendExpr(this.emitExpr(stmt.value));
     this.builder.append(';\n');
-    this.builder.append(`${pad}const ${tagId} = (${matchId} && (${matchId}.$tag ?? ${matchId}.tag));\n`);
+    this.builder.append(
+      `${pad}const ${tagId} = (${matchId} && (${matchId}.$tag ?? ${matchId}.tag));\n`
+    );
     this.builder.append(`${pad}switch (${tagId}) {\n`);
     this.indentLevel++;
     let hasDefault = false;
@@ -1122,7 +1260,10 @@ class JSGenerator {
       case 'LiteralPattern':
         return `${valueExpr} === ${JSON.stringify(pattern.value)}`;
       case 'TuplePattern': {
-        const clauses = [`Array.isArray(${valueExpr})`, `${valueExpr}.length >= ${pattern.elements.length}`];
+        const clauses = [
+          `Array.isArray(${valueExpr})`,
+          `${valueExpr}.length >= ${pattern.elements.length}`,
+        ];
         pattern.elements.forEach((element, idx) => {
           clauses.push(this.emitPatternCondition(element, `${valueExpr}[${idx}]`));
         });
@@ -1136,7 +1277,10 @@ class JSGenerator {
         return clauses.join(' && ');
       }
       case 'EnumPattern': {
-        const clauses = [`${valueExpr} != null`, `((${valueExpr}.$tag ?? ${valueExpr}.tag) === ${JSON.stringify(pattern.variant)})`];
+        const clauses = [
+          `${valueExpr} != null`,
+          `((${valueExpr}.$tag ?? ${valueExpr}.tag) === ${JSON.stringify(pattern.variant)})`,
+        ];
         if (pattern.patterns && pattern.patterns.length > 0) {
           pattern.patterns.forEach((nested, idx) => {
             const payloadExpr =
@@ -1174,9 +1318,10 @@ class JSGenerator {
         case 'EnumPattern':
           if (pat.patterns && pat.patterns.length > 0) {
             pat.patterns.forEach((nested, idx) => {
-              const payloadExpr = pat.patterns && pat.patterns.length === 1
-                ? `${valueCode}.$payload`
-                : `${valueCode}.$payload[${idx}]`;
+              const payloadExpr =
+                pat.patterns && pat.patterns.length === 1
+                  ? `${valueCode}.$payload`
+                  : `${valueCode}.$payload[${idx}]`;
               emit(nested, payloadExpr);
             });
             return;
@@ -1400,7 +1545,9 @@ class JSGenerator {
         return withBase(concat('__lumina_index(', object, ', ', index, ')'));
       }
       case 'MacroInvoke': {
-        const message = JSON.stringify(`Unsupported macro invocation '${expr.name}!' (macro expansion is not implemented)`);
+        const message = JSON.stringify(
+          `Unsupported macro invocation '${expr.name}!' (macro expansion is not implemented)`
+        );
         return withBase({ code: `(() => { throw new Error(${message}); })()`, mappings: [] });
       }
       case 'Identifier':
@@ -1419,7 +1566,8 @@ class JSGenerator {
         const value = this.emitExpr(expr.expr);
         const targetType = typeof expr.targetType === 'string' ? expr.targetType : 'any';
         const target = normalizeNumericTypeName(targetType);
-        const wrap = (prefix: string, suffix: string = ''): EmitResult => concat(prefix, value, suffix);
+        const wrap = (prefix: string, suffix: string = ''): EmitResult =>
+          concat(prefix, value, suffix);
 
         if (isFloatTypeName(target)) {
           if (target === 'f32') return withBase(wrap('Math.fround(', ')'));
@@ -1447,19 +1595,23 @@ class JSGenerator {
         return withBase(value);
       }
       case 'Binary':
-        return withBase(concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')'));
+        return withBase(
+          concat('(', this.emitExpr(expr.left), ` ${expr.op} `, this.emitExpr(expr.right), ')')
+        );
       case 'Call': {
         const argValues = expr.args.map((arg) => arg.value);
         const directCalleeName = expr.callee.type === 'Identifier' ? expr.callee.name : null;
         const calleeName = directCalleeName ?? expr.callee.name ?? '__computed__';
         if (
-          this.includeRuntime
-          && expr.renderLowering?.callee === 'text'
-          && argValues.length === 1
-          && isReactiveGetCall(argValues[0])
-          && argValues[0].args.length === 1
+          this.includeRuntime &&
+          expr.renderLowering?.callee === 'text' &&
+          argValues.length === 1 &&
+          isReactiveGetCall(argValues[0]) &&
+          argValues[0].args.length === 1
         ) {
-          return withBase(concat('render.liveText(', this.emitExpr(argValues[0].args[0].value), ')'));
+          return withBase(
+            concat('render.liveText(', this.emitExpr(argValues[0].args[0].value), ')')
+          );
         }
         if (!expr.receiver && !expr.enumName && !directCalleeName) {
           const parts: Array<string | EmitResult> = ['(', this.emitExpr(expr.callee), ')('];
@@ -1470,7 +1622,13 @@ class JSGenerator {
           parts.push(')');
           return withBase(concat(...parts));
         }
-        if (!expr.receiver && !expr.enumName && calleeName === 'cast' && (expr.typeArgs?.length ?? 0) === 1 && argValues.length === 1) {
+        if (
+          !expr.receiver &&
+          !expr.enumName &&
+          calleeName === 'cast' &&
+          (expr.typeArgs?.length ?? 0) === 1 &&
+          argValues.length === 1
+        ) {
           const targetArg = expr.typeArgs?.[0];
           const targetType = normalizeNumericTypeName(
             typeof targetArg === 'string' ? targetArg : 'any'
@@ -1494,7 +1652,10 @@ class JSGenerator {
             name: expr.enumName as string,
             location: expr.location,
           };
-          const parts: Array<string | EmitResult> = [`${resolution.mangledName}(`, this.emitExpr(receiverExpr)];
+          const parts: Array<string | EmitResult> = [
+            `${resolution.mangledName}(`,
+            this.emitExpr(receiverExpr),
+          ];
           argValues.forEach((arg) => {
             parts.push(', ');
             parts.push(this.emitExpr(arg));
@@ -1502,13 +1663,20 @@ class JSGenerator {
           parts.push(')');
           return withBase(concat(...parts));
         }
-        if (this.defaultMethodContext && expr.enumName && this.defaultMethodContext.selfParams.has(expr.enumName)) {
+        if (
+          this.defaultMethodContext &&
+          expr.enumName &&
+          this.defaultMethodContext.selfParams.has(expr.enumName)
+        ) {
           const mangledName = mangleTraitMethodName(
             this.defaultMethodContext.traitType,
             this.defaultMethodContext.forType,
             calleeName
           );
-          const parts: Array<string | EmitResult> = [`${mangledName}(`, this.emitExpr({ type: 'Identifier', name: expr.enumName })];
+          const parts: Array<string | EmitResult> = [
+            `${mangledName}(`,
+            this.emitExpr({ type: 'Identifier', name: expr.enumName }),
+          ];
           argValues.forEach((arg) => {
             parts.push(', ');
             parts.push(this.emitExpr(arg));
@@ -1542,7 +1710,12 @@ class JSGenerator {
           }
         }
         if (expr.receiver) {
-          const parts: Array<string | EmitResult> = [this.emitExpr(expr.receiver), '.', calleeName, '('];
+          const parts: Array<string | EmitResult> = [
+            this.emitExpr(expr.receiver),
+            '.',
+            calleeName,
+            '(',
+          ];
           argValues.forEach((arg, idx) => {
             if (idx > 0) parts.push(', ');
             parts.push(this.emitExpr(arg));
@@ -1560,13 +1733,21 @@ class JSGenerator {
         return withBase(concat(...parts));
       }
       case 'Member': {
-        if (expr.object.type === 'Identifier' && isUpperIdent(expr.object.name) && isUpperIdent(expr.property)) {
+        if (
+          expr.object.type === 'Identifier' &&
+          isUpperIdent(expr.object.name) &&
+          isUpperIdent(expr.property)
+        ) {
           return this.emitEnumConstruct(expr.object.name, expr.property, [], baseLoc);
         }
         return withBase(concat(this.emitExpr(expr.object), '.', expr.property));
       }
       case 'StructLiteral': {
-        const parts: Array<string | EmitResult> = ['__lumina_struct(', JSON.stringify(expr.name), ', { '];
+        const parts: Array<string | EmitResult> = [
+          '__lumina_struct(',
+          JSON.stringify(expr.name),
+          ', { ',
+        ];
         expr.fields.forEach((field, idx) => {
           if (idx > 0) parts.push(', ');
           parts.push(`${field.name}: `);
@@ -1599,7 +1780,9 @@ class JSGenerator {
               )
             );
           } else {
-            armParts.push(concat('(async () => { await ', valueExpr, '; return ', bodyExpr, '; })()'));
+            armParts.push(
+              concat('(async () => { await ', valueExpr, '; return ', bodyExpr, '; })()')
+            );
           }
         });
         return withBase(concat('(await Promise.race([', ...armParts, ']))'));
@@ -1677,13 +1860,18 @@ class JSGenerator {
       return { code, mappings };
     };
 
-    if (args.length === 0) return withBase({ code: `{ $tag: ${JSON.stringify(variant)} }`, mappings: [] });
+    if (args.length === 0)
+      return withBase({ code: `{ $tag: ${JSON.stringify(variant)} }`, mappings: [] });
     if (args.length === 1) {
       return withBase(
         concat('{ $tag: ', JSON.stringify(variant), ', $payload: ', this.emitExpr(args[0]), ' }')
       );
     }
-    const parts: Array<string | EmitResult> = ['{ $tag: ', JSON.stringify(variant), ', $payload: ['];
+    const parts: Array<string | EmitResult> = [
+      '{ $tag: ',
+      JSON.stringify(variant),
+      ', $payload: [',
+    ];
     args.forEach((arg, idx) => {
       if (idx > 0) parts.push(', ');
       parts.push(this.emitExpr(arg));
@@ -1851,7 +2039,8 @@ class JSGenerator {
   }
 }
 
-const tryHelperSource = (): string => `
+const tryHelperSource = (): string =>
+  `
 function __lumina_try(value) {
   if (value && typeof value === 'object') {
     const tag = value.$tag ?? value.tag;
@@ -1900,7 +2089,11 @@ const statementUsesTry = (stmt: LuminaStatement): boolean => {
         (stmt.elseBlock ? blockUsesTry(stmt.elseBlock) : false)
       );
     case 'IfLet':
-      return exprUsesTry(stmt.value) || blockUsesTry(stmt.thenBlock) || (stmt.elseBlock ? blockUsesTry(stmt.elseBlock) : false);
+      return (
+        exprUsesTry(stmt.value) ||
+        blockUsesTry(stmt.thenBlock) ||
+        (stmt.elseBlock ? blockUsesTry(stmt.elseBlock) : false)
+      );
     case 'While':
       return exprUsesTry(stmt.condition) || blockUsesTry(stmt.body);
     case 'For':
@@ -1908,7 +2101,12 @@ const statementUsesTry = (stmt: LuminaStatement): boolean => {
     case 'WhileLet':
       return exprUsesTry(stmt.value) || blockUsesTry(stmt.body);
     case 'MatchStmt':
-      return exprUsesTry(stmt.value) || stmt.arms.some((arm) => (arm.guard ? exprUsesTry(arm.guard) : false) || blockUsesTry(arm.body));
+      return (
+        exprUsesTry(stmt.value) ||
+        stmt.arms.some(
+          (arm) => (arm.guard ? exprUsesTry(arm.guard) : false) || blockUsesTry(arm.body)
+        )
+      );
     case 'Block':
       return blockUsesTry(stmt);
     default:
@@ -1939,7 +2137,12 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
     case 'StructLiteral':
       return expr.fields.some((field) => exprUsesTry(field.value));
     case 'MatchExpr':
-      return exprUsesTry(expr.value) || expr.arms.some((arm) => (arm.guard ? exprUsesTry(arm.guard) : false) || exprUsesTry(arm.body));
+      return (
+        exprUsesTry(expr.value) ||
+        expr.arms.some(
+          (arm) => (arm.guard ? exprUsesTry(arm.guard) : false) || exprUsesTry(arm.body)
+        )
+      );
     case 'SelectExpr':
       return expr.arms.some((arm) => exprUsesTry(arm.value) || exprUsesTry(arm.body));
     case 'Move':
@@ -1955,7 +2158,9 @@ const exprUsesTry = (expr: LuminaExpr): boolean => {
     case 'MacroInvoke':
       return expr.args.some((arg) => exprUsesTry(arg));
     case 'Range':
-      return (expr.start ? exprUsesTry(expr.start) : false) || (expr.end ? exprUsesTry(expr.end) : false);
+      return (
+        (expr.start ? exprUsesTry(expr.start) : false) || (expr.end ? exprUsesTry(expr.end) : false)
+      );
     case 'Index':
       return exprUsesTry(expr.object) || exprUsesTry(expr.index);
     default:
@@ -1970,7 +2175,14 @@ class CodeBuilder {
   private chunks: string[] = [];
   private line = 1;
   private column = 0;
-  readonly map?: { mappings: Array<{ line: number; column: number; kind: string; source?: { line: number; column: number } }> };
+  readonly map?: {
+    mappings: Array<{
+      line: number;
+      column: number;
+      kind: string;
+      source?: { line: number; column: number };
+    }>;
+  };
 
   constructor(trackMap: boolean) {
     if (trackMap) {
@@ -2018,7 +2230,10 @@ class CodeBuilder {
   }
 }
 
-function offsetToLineCol(code: string, offset: number): { lineOffset: number; columnOffset: number } {
+function offsetToLineCol(
+  code: string,
+  offset: number
+): { lineOffset: number; columnOffset: number } {
   let lineOffset = 0;
   let columnOffset = 0;
   const max = Math.min(offset, code.length);
@@ -2055,4 +2270,3 @@ function buildSourceMap(builder: CodeBuilder, options: CodegenJsOptions): RawSou
 function isUpperIdent(name: string): boolean {
   return /^[A-Z]/.test(name);
 }
-

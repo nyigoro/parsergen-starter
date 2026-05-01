@@ -1,9 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runLumina } from '../src/bin/lumina-core.js';
-const formsStoreResourceExamplePath = path.resolve(__dirname, '../examples/forms-store-resource/main.lm');
+const formsStoreResourceExamplePath = path.resolve(
+  __dirname,
+  '../examples/forms-store-resource/main.lm'
+);
 const formsStoreResourceSource = fs.readFileSync(formsStoreResourceExamplePath, 'utf-8');
-const formsStoreResourceIndexPath = path.resolve(__dirname, '../examples/forms-store-resource/index.html');
+const formsStoreResourceIndexPath = path.resolve(
+  __dirname,
+  '../examples/forms-store-resource/index.html'
+);
 const formsStoreResourceIndexSource = fs.readFileSync(formsStoreResourceIndexPath, 'utf-8');
 const webComponentsExamplePath = path.resolve(__dirname, '../examples/web-components/main.lm');
 const webComponentsSource = fs.readFileSync(webComponentsExamplePath, 'utf-8');
@@ -68,6 +74,8 @@ describe('app-layer examples', () => {
     expect(formsStoreResourceSource).toContain('component ProfileWorkspace');
     expect(formsStoreResourceSource).toContain('render.suspense');
     expect(formsStoreResourceSource).toContain('render.errorBoundary');
+    expect(formsStoreResourceSource).toContain('for (item, index in queue key item)');
+    expect(formsStoreResourceSource).toContain('aria-live');
     expect(formsStoreResourceSource).toContain('mount_reactive');
   });
 

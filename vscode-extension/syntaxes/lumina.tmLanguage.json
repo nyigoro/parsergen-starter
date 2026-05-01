@@ -87,7 +87,7 @@
       "patterns": [
         {
           "name": "keyword.control.lumina",
-          "match": "\\b(?:if|else|match|while|for|in|return|break|continue|await|async|move|is|as|try|compute|vertex|fragment)\\b"
+          "match": "\\b(?:if|else|match|while|for|in|key|return|break|continue|await|async|move|is|as|try|compute|vertex|fragment)\\b"
         },
         {
           "name": "keyword.declaration.lumina",

@@ -42,15 +42,15 @@ import { ensureRuntimeForOutput } from './runtime.js';
 import { extractImports } from '../project/imports.js';
 import { parseWithPanicRecovery } from '../project/panic.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
-import { collectStyleLintIssues, formatLuminaSource, generateLuminaDocsMarkdown } from '../lumina/tooling.js';
+import {
+  collectStyleLintIssues,
+  formatLuminaSource,
+  generateLuminaDocsMarkdown,
+} from '../lumina/tooling.js';
 import { startLuminaRepl } from '../repl/repl.js';
 import { runParsergen } from './cli-core.js';
 import { type RawSourceMap } from 'source-map';
-import {
-  initProject,
-  removePackages,
-  listPackages,
-} from '../commands/package.js';
+import { initProject, removePackages, listPackages } from '../commands/package.js';
 import { runLuminaAdd } from './lumina-add.js';
 import { runLuminaInstall } from './lumina-install.js';
 import { runLuminaPublish } from './lumina-publish.js';
@@ -61,9 +61,7 @@ import { resolveRegistryConfig, search as searchRegistry } from '../lumina/regis
 import { readLockfileSync } from '../lumina/lockfile.js';
 import { scanDirectory } from '../lumina/secret-scan.js';
 import { generateExportsMap } from '../lumina/dual-output.js';
-import {
-  type AnalyzeTarget,
-} from '../lumina/target-profiles.js';
+import { type AnalyzeTarget } from '../lumina/target-profiles.js';
 
 type Target = 'cjs' | 'esm' | 'wasm' | 'dual';
 type CliTarget = Target | 'js' | 'wasm-web' | 'wasm-standalone';
@@ -115,8 +113,12 @@ function validateConfig(raw: LuminaConfig): LuminaConfig {
       raw.target === 'js' ||
       raw.target === 'wasm-web' ||
       raw.target === 'wasm-standalone'
-    ) normalized.target = raw.target;
-    else errors.push('target must be "cjs", "esm", "wasm", "dual", "js", "wasm-web", or "wasm-standalone"');
+    )
+      normalized.target = raw.target;
+    else
+      errors.push(
+        'target must be "cjs", "esm", "wasm", "dual", "js", "wasm-web", or "wasm-standalone"'
+      );
   }
   if ((raw as LuminaConfig & { module?: unknown }).module !== undefined) {
     const moduleValue = (raw as LuminaConfig & { module?: unknown }).module;
@@ -241,7 +243,10 @@ function resolveModuleFormat(value: string | undefined): ModuleFormat | null {
   return value === 'esm' || value === 'cjs' ? value : null;
 }
 
-function resolveCompilePlan(target: CliTarget, moduleFormat?: ModuleFormat): {
+function resolveCompilePlan(
+  target: CliTarget,
+  moduleFormat?: ModuleFormat
+): {
   compileTarget: Target;
   semanticTarget: AnalyzeTarget;
 } {
@@ -344,7 +349,10 @@ function resolveOutPath(
 ): string {
   if (target === 'dual') {
     if (outPathArg) return validateOutputPath(outPathArg);
-    if (outDir) return validateOutputPath(path.resolve(outDir, path.basename(sourcePath, path.extname(sourcePath))));
+    if (outDir)
+      return validateOutputPath(
+        path.resolve(outDir, path.basename(sourcePath, path.extname(sourcePath)))
+      );
     return validateOutputPath(path.resolve('dist'));
   }
   if (outPathArg) return validateOutputPath(outPathArg);
@@ -440,7 +448,11 @@ async function emitWasmArtifacts(
     await fs.mkdir(path.dirname(wasmPath), { recursive: true });
     await fs.writeFile(wasmPath, binary);
     if (options.sourceMap && !options.inlineSourceMap && module.debugMetadata) {
-      await fs.writeFile(`${wasmPath}.map`, `${JSON.stringify(module.debugMetadata, null, 2)}\n`, 'utf-8');
+      await fs.writeFile(
+        `${wasmPath}.map`,
+        `${JSON.stringify(module.debugMetadata, null, 2)}\n`,
+        'utf-8'
+      );
     }
     if (watPath) {
       await fs.mkdir(path.dirname(watPath), { recursive: true });
@@ -751,7 +763,10 @@ async function writeDiskCache(sourcePath: string, entry: FileCacheEntry) {
   }
 }
 
-function formatDiagnosticsWithSnippet(source: string, diagnostics: readonly ReportableDiagnostic[]) {
+function formatDiagnosticsWithSnippet(
+  source: string,
+  diagnostics: readonly ReportableDiagnostic[]
+) {
   for (const diag of diagnostics) {
     const code = diag.code !== undefined ? String(diag.code) : 'DIAG';
     console.error(`[${code}] ${diag.message}`);
@@ -769,7 +784,10 @@ function formatDiagnosticsWithSnippet(source: string, diagnostics: readonly Repo
   }
 }
 
-function reportDiagnosticsAndFail(source: string, diagnostics: readonly ReportableDiagnostic[]): false {
+function reportDiagnosticsAndFail(
+  source: string,
+  diagnostics: readonly ReportableDiagnostic[]
+): false {
   if (diagnostics.length > 0) {
     formatDiagnosticsWithSnippet(source, diagnostics);
   }
@@ -827,7 +845,10 @@ function parseSource(
 
 type ImportBindingLite = { local: string; original: string; source: string; namespace: boolean };
 
-function collectImportBindingsLite(program: { type?: string; body?: unknown[] }): ImportBindingLite[] {
+function collectImportBindingsLite(program: {
+  type?: string;
+  body?: unknown[];
+}): ImportBindingLite[] {
   const bindings: ImportBindingLite[] = [];
   if (!program || !Array.isArray(program.body)) return bindings;
   for (const stmt of program.body) {
@@ -977,9 +998,13 @@ function rewriteTypeNameLiteScoped(
   if (typeof typeExpr !== 'string') return typeExpr;
   const parsed = parseTypeNameLite(typeExpr);
   if (!parsed) return typeScope.has(typeExpr) ? typeExpr : (renameMap.get(typeExpr) ?? typeExpr);
-  const base = typeScope.has(parsed.base) ? parsed.base : (renameMap.get(parsed.base) ?? parsed.base);
+  const base = typeScope.has(parsed.base)
+    ? parsed.base
+    : (renameMap.get(parsed.base) ?? parsed.base);
   if (parsed.args.length === 0) return base;
-  const args = parsed.args.map((arg) => rewriteTypeNameLiteScoped(arg, renameMap, typeScope) as string);
+  const args = parsed.args.map(
+    (arg) => rewriteTypeNameLiteScoped(arg, renameMap, typeScope) as string
+  );
   return `${base}<${args.join(',')}>`;
 }
 
@@ -994,7 +1019,9 @@ function rewriteTypeParamsLite(
     const node = param as { name?: unknown; bound?: unknown[] };
     const next = { ...(param as Record<string, unknown>) };
     if (Array.isArray(node.bound)) {
-      next.bound = node.bound.map((bound) => rewriteTypeNameLiteScoped(bound, renameMap, currentScope.types));
+      next.bound = node.bound.map((bound) =>
+        rewriteTypeNameLiteScoped(bound, renameMap, currentScope.types)
+      );
     }
     if (typeof node.name === 'string') {
       currentScope = extendTypeScopeLite(currentScope, [node.name], renameMap);
@@ -1011,11 +1038,12 @@ function rewriteProgramImports(
   resolvedImports: Set<string>,
   namespaceMemberRenames: Map<string, Map<string, string>> = new Map()
 ): { type: string; body: unknown[]; location?: unknown } {
-  const makeIdentifier = (name: string, location?: unknown) => ({ type: 'Identifier', name, location });
-  const rewriteWhereTypeBounds = (
-    bounds: unknown,
-    scope: RewriteScopeLite
-  ): unknown =>
+  const makeIdentifier = (name: string, location?: unknown) => ({
+    type: 'Identifier',
+    name,
+    location,
+  });
+  const rewriteWhereTypeBounds = (bounds: unknown, scope: RewriteScopeLite): unknown =>
     Array.isArray(bounds)
       ? bounds.map((bound) => {
           const node = bound as { bounds?: unknown[] };
@@ -1030,7 +1058,13 @@ function rewriteProgramImports(
 
   const rewritePattern = (pattern: unknown, scope: RewriteScopeLite): unknown => {
     if (!pattern || typeof pattern !== 'object') return pattern;
-    const node = pattern as { type?: string; enumName?: string | null; name?: string; fields?: unknown[]; patterns?: unknown[] };
+    const node = pattern as {
+      type?: string;
+      enumName?: string | null;
+      name?: string;
+      fields?: unknown[];
+      patterns?: unknown[];
+    };
     switch (node.type) {
       case 'EnumPattern':
         if (node.enumName) {
@@ -1047,13 +1081,17 @@ function rewriteProgramImports(
         return node;
       case 'TuplePattern':
         if (Array.isArray((node as { elements?: unknown[] }).elements)) {
-          (node as { elements: unknown[] }).elements = (node as { elements: unknown[] }).elements.map((child) =>
-            rewritePattern(child, scope)
-          );
+          (node as { elements: unknown[] }).elements = (
+            node as { elements: unknown[] }
+          ).elements.map((child) => rewritePattern(child, scope));
         }
         return node;
       case 'StructPattern':
-        if (typeof node.name === 'string' && !scope.types.has(node.name) && renameMap.has(node.name)) {
+        if (
+          typeof node.name === 'string' &&
+          !scope.types.has(node.name) &&
+          renameMap.has(node.name)
+        ) {
           node.name = renameMap.get(node.name) ?? node.name;
         }
         if (Array.isArray(node.fields)) {
@@ -1079,23 +1117,31 @@ function rewriteProgramImports(
         }
         return node;
       }
-        case 'Call': {
-          const enumName = node.enumName as string | null | undefined;
-          if (enumName) {
-            if (!scope.types.has(enumName) && renameMap.has(enumName)) {
-              node.enumName = renameMap.get(enumName);
+      case 'Call': {
+        const enumName = node.enumName as string | null | undefined;
+        if (enumName) {
+          if (!scope.types.has(enumName) && renameMap.has(enumName)) {
+            node.enumName = renameMap.get(enumName);
           } else if (!scope.values.has(enumName) && namespaceAliases.has(enumName)) {
             const replacement = namespaceAliases.get(enumName);
             node.enumName = replacement ?? null;
           }
-          }
-          const callee = node.callee as { name?: string } | undefined;
-          if (!node.receiver && !enumName && callee?.name && !scope.values.has(callee.name) && renameMap.has(callee.name)) {
-            callee.name = renameMap.get(callee.name);
-          }
-          if (Array.isArray(node.typeArgs)) {
-            node.typeArgs = node.typeArgs.map((arg) => rewriteTypeNameLiteScoped(arg, renameMap, scope.types));
-          }
+        }
+        const callee = node.callee as { name?: string } | undefined;
+        if (
+          !node.receiver &&
+          !enumName &&
+          callee?.name &&
+          !scope.values.has(callee.name) &&
+          renameMap.has(callee.name)
+        ) {
+          callee.name = renameMap.get(callee.name);
+        }
+        if (Array.isArray(node.typeArgs)) {
+          node.typeArgs = node.typeArgs.map((arg) =>
+            rewriteTypeNameLiteScoped(arg, renameMap, scope.types)
+          );
+        }
         if (node.receiver) {
           node.receiver = rewriteExpr(node.receiver, scope);
         }
@@ -1150,23 +1196,36 @@ function rewriteProgramImports(
       case 'FnExpr': {
         let lambdaScope = scope;
         if (Array.isArray(node.typeParams)) {
-          const rewrittenTypeParams = rewriteTypeParamsLite(node.typeParams, lambdaScope, renameMap);
+          const rewrittenTypeParams = rewriteTypeParamsLite(
+            node.typeParams,
+            lambdaScope,
+            renameMap
+          );
           node.typeParams = rewrittenTypeParams.typeParams as never;
           lambdaScope = rewrittenTypeParams.scope;
         }
         if (Array.isArray(node.params)) {
-          node.params = node.params.map((param: { name?: unknown; typeName?: unknown; defaultValue?: unknown }) => {
-            const rewritten = {
-              ...param,
-              typeName: rewriteTypeNameLiteScoped(param.typeName, renameMap, lambdaScope.types),
-              defaultValue:
-                'defaultValue' in param ? rewriteExpr(param.defaultValue, lambdaScope) : param.defaultValue,
-            };
-            if (typeof param.name === 'string') {
-              lambdaScope = extendValueScopeLite(lambdaScope, [param.name], renameMap, namespaceAliases);
+          node.params = node.params.map(
+            (param: { name?: unknown; typeName?: unknown; defaultValue?: unknown }) => {
+              const rewritten = {
+                ...param,
+                typeName: rewriteTypeNameLiteScoped(param.typeName, renameMap, lambdaScope.types),
+                defaultValue:
+                  'defaultValue' in param
+                    ? rewriteExpr(param.defaultValue, lambdaScope)
+                    : param.defaultValue,
+              };
+              if (typeof param.name === 'string') {
+                lambdaScope = extendValueScopeLite(
+                  lambdaScope,
+                  [param.name],
+                  renameMap,
+                  namespaceAliases
+                );
+              }
+              return rewritten;
             }
-            return rewritten;
-          });
+          );
         }
         node.returnType = rewriteTypeNameLiteScoped(node.returnType, renameMap, lambdaScope.types);
         node.body = rewriteStmt(node.body, false, lambdaScope);
@@ -1189,7 +1248,9 @@ function rewriteProgramImports(
           node.name = renameMap.get(name);
         }
         if (Array.isArray(node.typeArgs)) {
-          node.typeArgs = node.typeArgs.map((arg) => rewriteTypeNameLiteScoped(arg, renameMap, scope.types));
+          node.typeArgs = node.typeArgs.map((arg) =>
+            rewriteTypeNameLiteScoped(arg, renameMap, scope.types)
+          );
         }
         if (Array.isArray(node.fields)) {
           node.fields = node.fields.map((field: { value?: unknown }) => ({
@@ -1202,21 +1263,23 @@ function rewriteProgramImports(
       case 'MatchExpr': {
         node.value = rewriteExpr(node.value, scope);
         if (Array.isArray(node.arms)) {
-          node.arms = node.arms.map((arm: { pattern?: unknown; guard?: unknown; body?: unknown }) => {
-            const pattern = rewritePattern(arm.pattern, scope);
-            const armScope = extendValueScopeLite(
-              scope,
-              collectPatternBindingsLite(pattern),
-              renameMap,
-              namespaceAliases
-            );
-            return {
-              ...arm,
-              pattern,
-              guard: rewriteExpr(arm.guard, armScope),
-              body: rewriteExpr(arm.body, armScope),
-            };
-          });
+          node.arms = node.arms.map(
+            (arm: { pattern?: unknown; guard?: unknown; body?: unknown }) => {
+              const pattern = rewritePattern(arm.pattern, scope);
+              const armScope = extendValueScopeLite(
+                scope,
+                collectPatternBindingsLite(pattern),
+                renameMap,
+                namespaceAliases
+              );
+              return {
+                ...arm,
+                pattern,
+                guard: rewriteExpr(arm.guard, armScope),
+                body: rewriteExpr(arm.body, armScope),
+              };
+            }
+          );
         }
         return node;
       }
@@ -1235,7 +1298,9 @@ function rewriteProgramImports(
       }
       case 'InterpolatedString':
         if (Array.isArray(node.parts)) {
-          node.parts = node.parts.map((part) => (typeof part === 'string' ? part : rewriteExpr(part, scope)));
+          node.parts = node.parts.map((part) =>
+            typeof part === 'string' ? part : rewriteExpr(part, scope)
+          );
         }
         return node;
       case 'TupleLiteral':
@@ -1253,22 +1318,29 @@ function rewriteProgramImports(
         return node;
       case 'SelectExpr':
         if (Array.isArray(node.arms)) {
-          node.arms = node.arms.map((arm: { binding?: unknown; value?: unknown; body?: unknown }) => {
-            const armScope =
-              typeof arm.binding === 'string'
-                ? extendValueScopeLite(scope, [arm.binding], renameMap, namespaceAliases)
-                : scope;
-            return {
-              ...arm,
-              value: rewriteExpr(arm.value, scope),
-              body: rewriteExpr(arm.body, armScope),
-            };
-          });
+          node.arms = node.arms.map(
+            (arm: { binding?: unknown; value?: unknown; body?: unknown }) => {
+              const armScope =
+                typeof arm.binding === 'string'
+                  ? extendValueScopeLite(scope, [arm.binding], renameMap, namespaceAliases)
+                  : scope;
+              return {
+                ...arm,
+                value: rewriteExpr(arm.value, scope),
+                body: rewriteExpr(arm.body, armScope),
+              };
+            }
+          );
         }
         return node;
       case 'ListComprehension': {
         node.source = rewriteExpr(node.source, scope);
-        let comprehensionScope = extendValueScopeLite(scope, [String(node.binding ?? '')], renameMap, namespaceAliases);
+        let comprehensionScope = extendValueScopeLite(
+          scope,
+          [String(node.binding ?? '')],
+          renameMap,
+          namespaceAliases
+        );
         if (node.source2) {
           node.source2 = rewriteExpr(node.source2, comprehensionScope);
         }
@@ -1342,18 +1414,27 @@ function rewriteProgramImports(
           bodyScope = rewrittenTypeParams.scope;
         }
         if (Array.isArray(node.params)) {
-          node.params = node.params.map((param: { name?: unknown; typeName?: unknown; defaultValue?: unknown }) => {
-            const rewritten = {
-              ...param,
-              typeName: rewriteTypeNameLiteScoped(param.typeName, renameMap, bodyScope.types),
-              defaultValue:
-                'defaultValue' in param ? rewriteExpr(param.defaultValue, bodyScope) : param.defaultValue,
-            };
-            if (typeof param.name === 'string') {
-              bodyScope = extendValueScopeLite(bodyScope, [param.name], renameMap, namespaceAliases);
+          node.params = node.params.map(
+            (param: { name?: unknown; typeName?: unknown; defaultValue?: unknown }) => {
+              const rewritten = {
+                ...param,
+                typeName: rewriteTypeNameLiteScoped(param.typeName, renameMap, bodyScope.types),
+                defaultValue:
+                  'defaultValue' in param
+                    ? rewriteExpr(param.defaultValue, bodyScope)
+                    : param.defaultValue,
+              };
+              if (typeof param.name === 'string') {
+                bodyScope = extendValueScopeLite(
+                  bodyScope,
+                  [param.name],
+                  renameMap,
+                  namespaceAliases
+                );
+              }
+              return rewritten;
             }
-            return rewritten;
-          });
+          );
         }
         if (!isTopLevel && typeof node.name === 'string') {
           bodyScope = extendValueScopeLite(bodyScope, [node.name], renameMap, namespaceAliases);
@@ -1433,21 +1514,23 @@ function rewriteProgramImports(
       case 'MatchStmt':
         node.value = rewriteExpr(node.value, scope);
         if (Array.isArray(node.arms)) {
-          node.arms = node.arms.map((arm: { pattern?: unknown; guard?: unknown; body?: unknown }) => {
-            const pattern = rewritePattern(arm.pattern, scope);
-            const armScope = extendValueScopeLite(
-              scope,
-              collectPatternBindingsLite(pattern),
-              renameMap,
-              namespaceAliases
-            );
-            return {
-              ...arm,
-              pattern,
-              guard: rewriteExpr(arm.guard, armScope),
-              body: rewriteStmt(arm.body, false, armScope),
-            };
-          });
+          node.arms = node.arms.map(
+            (arm: { pattern?: unknown; guard?: unknown; body?: unknown }) => {
+              const pattern = rewritePattern(arm.pattern, scope);
+              const armScope = extendValueScopeLite(
+                scope,
+                collectPatternBindingsLite(pattern),
+                renameMap,
+                namespaceAliases
+              );
+              return {
+                ...arm,
+                pattern,
+                guard: rewriteExpr(arm.guard, armScope),
+                body: rewriteStmt(arm.body, false, armScope),
+              };
+            }
+          );
         }
         return node;
       case 'Block':
@@ -1490,7 +1573,9 @@ function rewriteProgramImports(
           node.variants = node.variants.map((variant: { params?: unknown[] }) => ({
             ...variant,
             params: Array.isArray(variant.params)
-              ? variant.params.map((param) => rewriteTypeNameLiteScoped(param, renameMap, typeScope.types))
+              ? variant.params.map((param) =>
+                  rewriteTypeNameLiteScoped(param, renameMap, typeScope.types)
+                )
               : variant.params,
           }));
         }
@@ -1540,7 +1625,10 @@ async function bundleProgram(
   lockfileRoot?: string | null
 ): Promise<{ program: unknown; sources: Map<string, string> } | null> {
   const stdRegistry = createStdModuleRegistry();
-  const visited = new Map<string, { ast: unknown; text: string; bindings: ImportBindingLite[]; resolvedImports: Set<string> }>();
+  const visited = new Map<
+    string,
+    { ast: unknown; text: string; bindings: ImportBindingLite[]; resolvedImports: Set<string> }
+  >();
   const order: string[] = [];
   const sources = new Map<string, string>();
 
@@ -1659,7 +1747,9 @@ async function runSsgCommand(options: {
     sourceFile: options.sourcePath,
     sourceContent,
   }).code;
-  const entryExportPattern = new RegExp(`export\\s+(?:function|const|let|var|\\{[^}]*\\b${options.exportName}\\b)`);
+  const entryExportPattern = new RegExp(
+    `export\\s+(?:function|const|let|var|\\{[^}]*\\b${options.exportName}\\b)`
+  );
   const bundledSource = entryExportPattern.test(generated)
     ? generated
     : `${generated.trimEnd()}\nexport { ${options.exportName} };\n`;
@@ -1676,7 +1766,9 @@ async function runSsgCommand(options: {
       try {
         props = JSON.parse(options.propsJson);
       } catch (error) {
-        console.error(`Invalid --props JSON: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Invalid --props JSON: ${error instanceof Error ? error.message : String(error)}`
+        );
         return false;
       }
     }
@@ -1731,7 +1823,9 @@ function monomorphizeAst(
   const comptimeResult = options.noComptime
     ? { ast: monomorphized, diagnostics: [] as Diagnostic[] }
     : comptimePass(monomorphized as never);
-  const inlined = options.noInline ? comptimeResult.ast : inlinePass(comptimeResult.ast as never).ast;
+  const inlined = options.noInline
+    ? comptimeResult.ast
+    : inlinePass(comptimeResult.ast as never).ast;
   return {
     ast: fuseVecPipelines(inlined as never),
     diagnostics: comptimeResult.diagnostics ?? [],
@@ -1747,7 +1841,12 @@ function collectModuleExportEnv(program: unknown): ExportEnv {
     if (!stmt || typeof stmt !== 'object') continue;
     const node = stmt as { type?: string; name?: string };
     if (!node.type || !node.name) continue;
-    if (node.type === 'FnDecl' || node.type === 'Let' || node.type === 'TraitDecl' || node.type === 'ImplDecl') {
+    if (
+      node.type === 'FnDecl' ||
+      node.type === 'Let' ||
+      node.type === 'TraitDecl' ||
+      node.type === 'ImplDecl'
+    ) {
       symbols.set(node.name, { name: node.name, kind: node.type });
       continue;
     }
@@ -1797,14 +1896,14 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
   const visitExpr = (expr: unknown): boolean => {
     if (!expr || typeof expr !== 'object') return false;
     const node = expr as { type?: string; [key: string]: unknown };
-	    if (
-	      node.type === 'Lambda' ||
-	      node.type === 'ListComprehension' ||
-	      node.type === 'ArrayLiteral' ||
-	      node.type === 'TupleLiteral' ||
-	      node.type === 'SelectExpr'
-	    ) {
-	      return true;
+    if (
+      node.type === 'Lambda' ||
+      node.type === 'ListComprehension' ||
+      node.type === 'ArrayLiteral' ||
+      node.type === 'TupleLiteral' ||
+      node.type === 'SelectExpr'
+    ) {
+      return true;
     }
     switch (node.type) {
       case 'Binary':
@@ -1812,10 +1911,14 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
       case 'Call':
         return (
           visitExpr(node.receiver) ||
-          (Array.isArray(node.args) ? node.args.some((arg) => visitExpr(arg)) : false)
+          (Array.isArray(node.args)
+            ? node.args.some((arg) => visitExpr((arg as { value?: unknown }).value ?? arg))
+            : false)
         );
       case 'ArrayLiteral':
-        return Array.isArray(node.elements) ? node.elements.some((element) => visitExpr(element)) : false;
+        return Array.isArray(node.elements)
+          ? node.elements.some((element) => visitExpr(element))
+          : false;
       case 'Member':
         return visitExpr(node.object);
       case 'StructLiteral':
@@ -1827,10 +1930,19 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
           visitExpr(node.value) ||
           (Array.isArray(node.arms)
             ? node.arms.some((arm) => {
-                const armNode = arm as { body?: unknown; guard?: unknown; pattern?: { type?: string } };
+                const armNode = arm as {
+                  body?: unknown;
+                  guard?: unknown;
+                  pattern?: { type?: string };
+                };
                 if (armNode.guard && visitExpr(armNode.guard)) return true;
                 const patternType = armNode.pattern?.type;
-                if (patternType && patternType !== 'EnumPattern' && patternType !== 'WildcardPattern') return true;
+                if (
+                  patternType &&
+                  patternType !== 'EnumPattern' &&
+                  patternType !== 'WildcardPattern'
+                )
+                  return true;
                 return visitExpr(armNode.body);
               })
             : false)
@@ -1867,7 +1979,7 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
     switch (node.type) {
       case 'FnDecl':
         return Array.isArray((node.body as { body?: unknown[] } | undefined)?.body)
-          ? ((node.body as { body: unknown[] }).body).some((inner) => visitStmt(inner))
+          ? (node.body as { body: unknown[] }).body.some((inner) => visitStmt(inner))
           : false;
       case 'LetElse':
       case 'IfLet':
@@ -1894,10 +2006,19 @@ function programUsesAstOnlySyntax(program: unknown): boolean {
           visitExpr(node.value) ||
           (Array.isArray(node.arms)
             ? node.arms.some((arm) => {
-                const armNode = arm as { body?: unknown; guard?: unknown; pattern?: { type?: string } };
+                const armNode = arm as {
+                  body?: unknown;
+                  guard?: unknown;
+                  pattern?: { type?: string };
+                };
                 if (armNode.guard && visitExpr(armNode.guard)) return true;
                 const patternType = armNode.pattern?.type;
-                if (patternType && patternType !== 'EnumPattern' && patternType !== 'WildcardPattern') return true;
+                if (
+                  patternType &&
+                  patternType !== 'EnumPattern' &&
+                  patternType !== 'WildcardPattern'
+                )
+                  return true;
                 return visitStmt(armNode.body);
               })
             : false)
@@ -2063,7 +2184,13 @@ async function compileLumina(
     }
     return mono.ast;
   };
-  await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath, lockfileRoot);
+  await updateDependenciesForFile(
+    sourcePath,
+    source,
+    configFileExtensions,
+    configStdPath,
+    lockfileRoot
+  );
   const stdRegistry = createStdModuleRegistry();
   const needsBundling = extractImports(source).some((imp) => !stdRegistry.has(imp));
   if (target === 'wasm') {
@@ -2097,7 +2224,11 @@ async function compileLumina(
       return emitWasmArtifacts(outPath, wasm.module, emitWat, { sourceMap, inlineSourceMap });
     }
 
-    const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+    const {
+      ast,
+      diagnostics: parseDiagnostics,
+      parseError,
+    } = parseSource(source, parser, useRecovery);
     if (parseError) return { ok: false };
     if (!ast) return { ok: false };
     const analysis = analyzeLumina(ast as never, analysisOptions);
@@ -2131,7 +2262,13 @@ async function compileLumina(
     );
     if (!bundle) return { ok: false };
     for (const [depPath, depSource] of bundle.sources.entries()) {
-      await updateDependenciesForFile(depPath, depSource, configFileExtensions, configStdPath, lockfileRoot);
+      await updateDependenciesForFile(
+        depPath,
+        depSource,
+        configFileExtensions,
+        configStdPath,
+        lockfileRoot
+      );
     }
     const analysis = analyzeLumina(bundle.program as never, analysisOptions);
     if (analysis.diagnostics.length > 0) {
@@ -2161,8 +2298,13 @@ async function compileLumina(
       const monoAst = applyMonomorphize(bundle.program as never);
       if (!monoAst) return { ok: false };
       const lowered = lowerLumina(monoAst as never);
-      optimized = noOptimize ? lowered : optimizeIR(lowered) ?? lowered;
-      const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
+      optimized = noOptimize ? lowered : (optimizeIR(lowered) ?? lowered);
+      const gen = generateJS(optimized, {
+        target,
+        sourceMap,
+        sourceFile: sourcePath,
+        sourceContent: source,
+      });
       out = gen.code;
       result = gen;
     }
@@ -2335,7 +2477,11 @@ async function compileLumina(
   }
   buildCache.stats.misses += 1;
 
-  const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+  const {
+    ast,
+    diagnostics: parseDiagnostics,
+    parseError,
+  } = parseSource(source, parser, useRecovery);
   if (parseError) {
     return { ok: false };
   }
@@ -2371,8 +2517,13 @@ async function compileLumina(
     const monoAst = applyMonomorphize(ast as never);
     if (!monoAst) return { ok: false };
     const lowered = lowerLumina(monoAst as never);
-    optimized = noOptimize ? lowered : optimizeIR(lowered) ?? lowered;
-    const gen = generateJS(optimized, { target, sourceMap, sourceFile: sourcePath, sourceContent: source });
+    optimized = noOptimize ? lowered : (optimizeIR(lowered) ?? lowered);
+    const gen = generateJS(optimized, {
+      target,
+      sourceMap,
+      sourceFile: sourcePath,
+      sourceContent: source,
+    });
     out = gen.code;
     result = gen;
   }
@@ -2428,7 +2579,13 @@ async function checkLumina(
   const lockfileRoot = findLockfileRoot(sourcePath);
   const stdRegistry = createStdModuleRegistry();
   const needsBundling = extractImports(source).some((imp) => !stdRegistry.has(imp));
-  await updateDependenciesForFile(sourcePath, source, configFileExtensions, configStdPath, lockfileRoot);
+  await updateDependenciesForFile(
+    sourcePath,
+    source,
+    configFileExtensions,
+    configStdPath,
+    lockfileRoot
+  );
   const fileHash = hashText(source);
   const cached = buildCache.files.get(sourcePath);
   if (
@@ -2464,7 +2621,11 @@ async function checkLumina(
     return { ok: true };
   }
   buildCache.stats.misses += 1;
-  const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+  const {
+    ast,
+    diagnostics: parseDiagnostics,
+    parseError,
+  } = parseSource(source, parser, useRecovery);
   if (parseError) {
     return { ok: false };
   }
@@ -2707,7 +2868,11 @@ export function createWatchSessionController(options: {
       session.lastSeenHashes.set(resolved, nextHash);
     } else {
       const hadPreviousValue = session.lastSeenHashes.delete(resolved);
-      if (!hadPreviousValue && !session.pendingPaths.has(resolved) && !session.dirtyPaths.has(resolved)) {
+      if (
+        !hadPreviousValue &&
+        !session.pendingPaths.has(resolved) &&
+        !session.dirtyPaths.has(resolved)
+      ) {
         session.dirtyPaths.add(resolved);
         scheduleRebuild();
         return;
@@ -2753,7 +2918,10 @@ async function watchLumina(
   const expandedSources = globbed.length > 0 ? globbed : resolvedSources;
   const resolvedGrammarPath = path.resolve(grammarPath);
   const watchRoots = Array.from(
-    new Set([...expandedSources.map((sourcePath) => path.dirname(sourcePath)), path.dirname(resolvedGrammarPath)])
+    new Set([
+      ...expandedSources.map((sourcePath) => path.dirname(sourcePath)),
+      path.dirname(resolvedGrammarPath),
+    ])
   );
   const worker = createWorkerRunner({
     fileExtensions: configFileExtensions,
@@ -2813,7 +2981,10 @@ async function watchLumina(
     return { ok: result.ok };
   };
 
-  const syncGraphHashes = (graph: ModuleGraph, controller: ReturnType<typeof createWatchSessionController>) => {
+  const syncGraphHashes = (
+    graph: ModuleGraph,
+    controller: ReturnType<typeof createWatchSessionController>
+  ) => {
     for (const node of graph.nodes.values()) {
       if (node.path && node.contentHash) {
         controller.seedHash(node.path, node.contentHash);
@@ -2888,7 +3059,10 @@ async function watchLumina(
             continue;
           }
 
-          const result = await runCompile(sourcePath, resolveOutPath(sourcePath, outPathArg, outDir, target));
+          const result = await runCompile(
+            sourcePath,
+            resolveOutPath(sourcePath, outPathArg, outDir, target)
+          );
           if (result?.ok) {
             await refreshEntryGraph(sourcePath);
           }
@@ -2910,7 +3084,10 @@ async function watchLumina(
     }
   }
   try {
-    controller.seedHash(resolvedGrammarPath, hashText(await fs.readFile(resolvedGrammarPath, 'utf-8')));
+    controller.seedHash(
+      resolvedGrammarPath,
+      hashText(await fs.readFile(resolvedGrammarPath, 'utf-8'))
+    );
   } catch {
     // ignore missing grammar hash seed
   }
@@ -2977,10 +3154,9 @@ function createWorkerRunner(config: BuildConfig) {
   const workerPath = resolveWorkerPath();
   if (!workerPath) return null;
   const isCjs = workerPath.endsWith('.cjs');
-  const worker = new Worker(
-    workerPath,
-    { type: isCjs ? 'commonjs' : 'module' } as unknown as ConstructorParameters<typeof Worker>[1]
-  );
+  const worker = new Worker(workerPath, {
+    type: isCjs ? 'commonjs' : 'module',
+  } as unknown as ConstructorParameters<typeof Worker>[1]);
   let requestId = 0;
   const pending = new Map<number, { resolve: (value: { ok: boolean; error?: string }) => void }>();
 
@@ -3003,7 +3179,24 @@ function createWorkerRunner(config: BuildConfig) {
   worker.postMessage({ type: 'init', payload: config } satisfies WorkerRequest);
 
   return {
-    async compile(payload: { sourcePath: string; outPath: string; target: Target; emitWat?: boolean; semanticTarget?: AnalyzeTarget; grammarPath: string; useRecovery: boolean; diCfg: boolean; useAstJs?: boolean; noOptimize?: boolean; noInline?: boolean; noComptime?: boolean; sourceMap?: boolean; inlineSourceMap?: boolean; stopOnUnresolvedMemberError?: boolean; useBundledCompile?: boolean }) {
+    async compile(payload: {
+      sourcePath: string;
+      outPath: string;
+      target: Target;
+      emitWat?: boolean;
+      semanticTarget?: AnalyzeTarget;
+      grammarPath: string;
+      useRecovery: boolean;
+      diCfg: boolean;
+      useAstJs?: boolean;
+      noOptimize?: boolean;
+      noInline?: boolean;
+      noComptime?: boolean;
+      sourceMap?: boolean;
+      inlineSourceMap?: boolean;
+      stopOnUnresolvedMemberError?: boolean;
+      useBundledCompile?: boolean;
+    }) {
       const id = requestId++;
       return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         pending.set(id, { resolve });
@@ -3112,13 +3305,16 @@ async function resolveLuminaInputs(inputs: string[], extensions: string[]): Prom
     if (existsSync(abs)) {
       const stats = statSync(abs);
       if (stats.isDirectory()) {
-        const globbed = await fg(extensions.map((ext) => `**/*${ext}`), {
-          cwd: abs,
-          onlyFiles: true,
-          unique: true,
-          dot: false,
-          absolute: true,
-        });
+        const globbed = await fg(
+          extensions.map((ext) => `**/*${ext}`),
+          {
+            cwd: abs,
+            onlyFiles: true,
+            unique: true,
+            dot: false,
+            absolute: true,
+          }
+        );
         globbed.forEach((filePath) => resolved.add(path.resolve(filePath)));
       } else if (stats.isFile()) {
         resolved.add(abs);
@@ -3138,7 +3334,11 @@ async function resolveLuminaInputs(inputs: string[], extensions: string[]): Prom
   return Array.from(resolved).sort((a, b) => a.localeCompare(b));
 }
 
-async function runFmtCommand(inputs: string[], extensions: string[], checkOnly: boolean): Promise<boolean> {
+async function runFmtCommand(
+  inputs: string[],
+  extensions: string[],
+  checkOnly: boolean
+): Promise<boolean> {
   const files = await resolveLuminaInputs(inputs, extensions);
   if (files.length === 0) {
     console.error('No Lumina files found for formatting.');
@@ -3168,7 +3368,9 @@ async function runFmtCommand(inputs: string[], extensions: string[], checkOnly: 
     return false;
   }
 
-  console.log(`Formatting complete: ${changed} file(s) updated, ${files.length - changed} unchanged.`);
+  console.log(
+    `Formatting complete: ${changed} file(s) updated, ${files.length - changed} unchanged.`
+  );
   return true;
 }
 
@@ -3192,7 +3394,11 @@ async function runLintCommand(
 
   for (const filePath of files) {
     const source = await fs.readFile(filePath, 'utf-8');
-    const { ast, diagnostics: parseDiagnostics, parseError } = parseSource(source, parser, useRecovery);
+    const {
+      ast,
+      diagnostics: parseDiagnostics,
+      parseError,
+    } = parseSource(source, parser, useRecovery);
 
     if (parseError) {
       errorCount += 1;
@@ -3215,7 +3421,9 @@ async function runLintCommand(
         if (seenDiagnostics.has(key)) continue;
         seenDiagnostics.add(key);
         const code = diag.code ?? 'DIAG';
-        const where = diag.location ? `:${diag.location.start.line}:${diag.location.start.column}` : '';
+        const where = diag.location
+          ? `:${diag.location.start.line}:${diag.location.start.column}`
+          : '';
         const level = diag.severity === 'error' ? 'error' : 'warning';
         console.error(`${filePath}${where} [${code}] ${diag.message}`);
         if (diag.location) {
@@ -3238,7 +3446,9 @@ async function runLintCommand(
     }
   }
 
-  console.log(`Lint summary: ${files.length} file(s), ${errorCount} error(s), ${warningCount} warning(s).`);
+  console.log(
+    `Lint summary: ${files.length} file(s), ${errorCount} error(s), ${warningCount} warning(s).`
+  );
   return errorCount === 0;
 }
 
@@ -3301,7 +3511,9 @@ async function runSecretScanCommand(dir: string | undefined): Promise<boolean> {
   }
   console.error(`Secret scan found ${result.findings.length} issue(s) in ${targetDir}:`);
   for (const finding of result.findings) {
-    console.error(`${finding.file}:${finding.line}:${finding.column} [${finding.kind}] ${finding.preview}`);
+    console.error(
+      `${finding.file}:${finding.line}:${finding.column} [${finding.kind}] ${finding.preview}`
+    );
   }
   return false;
 }
@@ -3476,12 +3688,9 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       : config.grammarPath
   );
   const cliTarget =
-    resolveTarget(args.get('--target') as string | undefined) ??
-    config.target ??
-    'esm';
+    resolveTarget(args.get('--target') as string | undefined) ?? config.target ?? 'esm';
   const moduleFormat =
-    resolveModuleFormat(args.get('--module') as string | undefined) ??
-    config.module;
+    resolveModuleFormat(args.get('--module') as string | undefined) ?? config.module;
   const { compileTarget: target, semanticTarget } = resolveCompilePlan(cliTarget, moduleFormat);
   const outArg = (args.get('--out') as string) ?? undefined;
   const outDir = config.outDir;
@@ -3522,7 +3731,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   );
   configStdPath = config.stdPath
     ? path.resolve(config.stdPath)
-    : (configStdPath || path.resolve('std'));
+    : configStdPath || path.resolve('std');
   await loadDepsCache();
 
   if (clearModuleCache) {
@@ -3582,12 +3791,18 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === 'ssg') {
-    const sourcePath = file ? path.resolve(file) : positionalArgs[0] ? path.resolve(positionalArgs[0]) : '';
+    const sourcePath = file
+      ? path.resolve(file)
+      : positionalArgs[0]
+        ? path.resolve(positionalArgs[0])
+        : '';
     if (!sourcePath) {
       console.error('Usage: lumina ssg <file> --out <file> [--export main] [--props <json>]');
       process.exit(1);
     }
-    const defaultSsgOut = outDir ? path.join(outDir, 'index.html') : path.join(process.cwd(), 'index.html');
+    const defaultSsgOut = outDir
+      ? path.join(outDir, 'index.html')
+      : path.join(process.cwd(), 'index.html');
     const outPath = path.resolve(String(args.get('--out') ?? defaultSsgOut));
     const ok = await runSsgCommand({
       sourcePath,
@@ -3596,7 +3811,8 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       propsJson: typeof args.get('--props') === 'string' ? String(args.get('--props')) : undefined,
       title: typeof args.get('--title') === 'string' ? String(args.get('--title')) : undefined,
       lang: typeof args.get('--lang') === 'string' ? String(args.get('--lang')) : undefined,
-      hydrateModule: typeof args.get('--hydrate') === 'string' ? String(args.get('--hydrate')) : undefined,
+      hydrateModule:
+        typeof args.get('--hydrate') === 'string' ? String(args.get('--hydrate')) : undefined,
       grammarPath,
       useRecovery,
     });
@@ -3605,10 +3821,13 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === 'compile') {
-    const entries = file ? [file] : config.entries ?? [];
+    const entries = file ? [file] : (config.entries ?? []);
     const extensions = config.fileExtensions ?? ['.lm', '.lumina'];
     if (entries.length === 0) {
-      const globbed = await fg(extensions.map((ext) => `**/*${ext}`), { onlyFiles: true, unique: true, dot: false });
+      const globbed = await fg(
+        extensions.map((ext) => `**/*${ext}`),
+        { onlyFiles: true, unique: true, dot: false }
+      );
       entries.push(...globbed);
     }
     if (entries.length === 0) throw new Error('Missing <file> for compile');
@@ -3654,7 +3873,9 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
         if (profileCache) {
           const graph = buildDepGraph();
           const stats = graphStats(graph);
-          console.log(`Cache: ${buildCache.stats.hits} hit(s), ${buildCache.stats.misses} miss(es), ${buildCache.stats.writes} write(s), ${buildCache.stats.invalidations} invalidation(s)`);
+          console.log(
+            `Cache: ${buildCache.stats.hits} hit(s), ${buildCache.stats.misses} miss(es), ${buildCache.stats.writes} write(s), ${buildCache.stats.invalidations} invalidation(s)`
+          );
           console.log(`Deps: ${stats.nodes} file(s), ${stats.edges} edge(s)`);
         }
       }
@@ -3683,10 +3904,13 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === 'check') {
-    const entries = file ? [file] : config.entries ?? [];
+    const entries = file ? [file] : (config.entries ?? []);
     const extensions = config.fileExtensions ?? ['.lm', '.lumina'];
     if (entries.length === 0) {
-      const globbed = await fg(extensions.map((ext) => `**/*${ext}`), { onlyFiles: true, unique: true, dot: false });
+      const globbed = await fg(
+        extensions.map((ext) => `**/*${ext}`),
+        { onlyFiles: true, unique: true, dot: false }
+      );
       entries.push(...globbed);
     }
     if (entries.length === 0) throw new Error('Missing <file> for check');
@@ -3703,7 +3927,9 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
       if (profileCache) {
         const graph = buildDepGraph();
         const stats = graphStats(graph);
-        console.log(`Cache: ${buildCache.stats.hits} hit(s), ${buildCache.stats.misses} miss(es), ${buildCache.stats.writes} write(s), ${buildCache.stats.invalidations} invalidation(s)`);
+        console.log(
+          `Cache: ${buildCache.stats.hits} hit(s), ${buildCache.stats.misses} miss(es), ${buildCache.stats.writes} write(s), ${buildCache.stats.invalidations} invalidation(s)`
+        );
         console.log(`Deps: ${stats.nodes} file(s), ${stats.edges} edge(s)`);
       }
     }
@@ -3711,7 +3937,7 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === 'watch') {
-    const sources = file ? [file] : config.watch ?? config.entries ?? [];
+    const sources = file ? [file] : (config.watch ?? config.entries ?? []);
     const extensions = config.fileExtensions ?? ['.lm', '.lumina'];
     if (sources.length === 0) {
       sources.push(...extensions.map((ext) => `**/*${ext}`));
@@ -3748,7 +3974,6 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     await runParsergen(process.argv.slice(3));
     return;
   }
-
 
   printHelp();
 }

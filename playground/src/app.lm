@@ -1,5 +1,181 @@
-import { vnode, text, props_id } from "@std/render";
+import {
+  vnode,
+  text,
+  props_class,
+  props_id,
+  props_href,
+  props_merge
+} from "@std/render";
+
+fn attrs2(left: any, right: any) -> any {
+  props_merge(left, right)
+}
+
+fn attrs3(first: any, second: any, third: any) -> any {
+  props_merge(props_merge(first, second), third)
+}
+
+fn attrs4(first: any, second: any, third: any, fourth: any) -> any {
+  props_merge(props_merge(props_merge(first, second), third), fourth)
+}
+
+fn div_node(cls: string, children: any) -> VNode {
+  vnode("div", props_class(cls), children)
+}
+
+fn panel(title: string, bodyId: string, bodyClass: string) -> VNode {
+  let heading = vnode("div", props_class("panel-title"), [text(title)]);
+  let body = vnode("div", attrs2(props_class(bodyClass), props_id(bodyId)), []);
+  vnode("section", props_class("panel"), [heading, body])
+}
+
+fn tool_button(id: string, label: string, tone: string) -> VNode {
+  vnode(
+    "button",
+    attrs2(
+      props_class("tool-button " + tone),
+      props_id(id)
+    ),
+    [text(label)]
+  )
+}
+
+fn preset_button(id: string, label: string, detail: string) -> VNode {
+  let labelNode = vnode("span", props_class("preset-label"), [text(label)]);
+  let detailNode = vnode("span", props_class("preset-detail"), [text(detail)]);
+  vnode(
+    "button",
+    attrs2(
+      props_class("preset-button"),
+      props_id("preset-" + id)
+    ),
+    [labelNode, detailNode]
+  )
+}
+
+fn link_node(id: string, cls: string, href: string, label: string) -> VNode {
+  vnode("a", attrs3(props_class(cls), props_id(id), props_href(href)), [text(label)])
+}
+
+fn stat(label: string, value: string, id: string) -> VNode {
+  let top = vnode("span", props_class("stat-label"), [text(label)]);
+  let bottom = vnode("span", attrs2(props_class("stat-value"), props_id(id)), [text(value)]);
+  div_node("stat", [top, bottom])
+}
+
+fn insight_row(label: string, value: string) -> VNode {
+  let keyNode = vnode("span", props_class("insight-key"), [text(label)]);
+  let valueNode = vnode("span", props_class("insight-value"), [text(value)]);
+  div_node("insight-row", [keyNode, valueNode])
+}
 
 pub fn app() -> VNode {
-  return vnode("div", props_id("playground-root"), [text("Loading Lumina playground...")]);
+  let brandMark = vnode("span", props_class("brand-mark"), [text("L")]);
+  let brandTitle = vnode("strong", props_class("brand-title"), [text("Lumina Playground")]);
+  let brandSubtitle = vnode("span", props_class("brand-subtitle"), [text("v0.5.7")]);
+  let brandCopy = div_node("brand-copy", [brandTitle, brandSubtitle]);
+  let brand = div_node("brand", [
+    brandMark,
+    brandCopy
+  ]);
+
+  let homeLink = link_node("home-link", "top-link", "../", "Home");
+  let docsLink = link_node("docs-link", "top-link", "../docs/", "Docs");
+  let githubLink = link_node("github-link", "top-link primary", "https://github.com/nyigoro/lumina-lang", "GitHub");
+  let nav = vnode("nav", props_class("top-links"), [
+    homeLink,
+    docsLink,
+    githubLink
+  ]);
+
+  let header = vnode("header", props_class("topbar"), [brand, nav]);
+
+  let runButton = tool_button("run-button", "Run", "primary");
+  let checkButton = tool_button("check-button", "Check", "secondary");
+  let formatButton = tool_button("format-button", "Format", "secondary");
+  let shareButton = tool_button("share-button", "Share", "secondary");
+  let copyButton = tool_button("copy-js-button", "Copy JS", "secondary");
+  let toolRow = div_node("tool-row", [
+    runButton,
+    checkButton,
+    formatButton,
+    shareButton,
+    copyButton
+  ]);
+
+  let statusStat = stat("Status", "Waiting", "compile-status");
+  let diagnosticStat = stat("Diagnostics", "0", "diagnostic-count");
+  let outputStat = stat("Output", "JS", "output-mode");
+  let status = div_node("status-strip", [
+    statusStat,
+    diagnosticStat,
+    outputStat
+  ]);
+
+  let toolbar = div_node("workspace-toolbar", [toolRow, status]);
+
+  let basicsPreset = preset_button("basics", "Basics", "Functions and return values");
+  let indexingPreset = preset_button("safe-index", "Safe Indexing", "Option instead of undefined");
+  let iteratorsPreset = preset_button("iterators", "Iterators", "Vec map, fold, and match");
+  let resultsPreset = preset_button("results", "Results", "Error flow with Result");
+  let keyedPreset = preset_button("keyed-ui", "Keyed UI", "Stable list identity and SSR keys");
+  let presets = div_node("preset-grid", [
+    basicsPreset,
+    indexingPreset,
+    iteratorsPreset,
+    resultsPreset,
+    keyedPreset
+  ]);
+
+  let sourceTitle = vnode("div", props_class("panel-title"), [text("Source")]);
+  let sourceSize = vnode("span", attrs2(props_class("small-pill"), props_id("source-size")), [text("0 lines")]);
+  let editorTop = div_node("panel-heading-row", [
+    sourceTitle,
+    sourceSize
+  ]);
+  let editorMount = vnode("div", props_id("editor-root"), []);
+  let editorPanel = vnode("section", props_class("editor-panel"), [
+    editorTop,
+    presets,
+    editorMount
+  ]);
+
+  let consoleHeading = vnode("div", props_class("panel-title"), [text("Console")]);
+  let consoleStatus = vnode("span", attrs2(props_class("small-pill"), props_id("run-status")), [text("Not run")]);
+  let consoleTitle = div_node("panel-heading-row", [
+    consoleHeading,
+    consoleStatus
+  ]);
+  let consoleOutput = vnode("pre", attrs2(props_class("console-output"), props_id("console-root")), [text("")]);
+  let consolePanel = vnode("section", props_class("panel"), [consoleTitle, consoleOutput]);
+
+  let diagnosticsPanel = panel("Diagnostics", "diagnostics-root", "diagnostics-list");
+  let jsTitle = vnode("div", props_class("panel-title"), [text("Generated JavaScript")]);
+  let jsBadge = vnode("span", props_class("small-pill"), [text("ES module")]);
+  let jsHeader = div_node("panel-heading-row", [jsTitle, jsBadge]);
+  let jsOutput = vnode("pre", attrs2(props_class("js-output"), props_id("output-root")), [text("")]);
+  let jsPanel = vnode("section", props_class("panel js-panel"), [
+    jsHeader,
+    jsOutput
+  ]);
+
+  let insightTitle = vnode("div", props_class("insight-title"), [text("Workbench")]);
+  let compileRow = insight_row("Compile", "Browser");
+  let runRow = insight_row("Run", "main()");
+  let shareRow = insight_row("Share", "URL");
+  let targetRow = insight_row("Target", "JavaScript");
+  let insightPanel = vnode("aside", props_class("insight-panel"), [
+    insightTitle,
+    compileRow,
+    runRow,
+    shareRow,
+    targetRow
+  ]);
+
+  let rightColumn = div_node("result-column", [consolePanel, diagnosticsPanel, jsPanel]);
+  let workspace = div_node("workspace-grid", [editorPanel, rightColumn]);
+
+  let toast = vnode("div", attrs2(props_class("toast"), props_id("toast-root")), [text("")]);
+  let body = div_node("playground-body", [header, toolbar, workspace, insightPanel, toast]);
+  return div_node("playground-shell", [body]);
 }

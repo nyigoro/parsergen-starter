@@ -153,6 +153,10 @@ pub fn matchRoute(pattern: string, path: string) -> bool {
   return router.matchRoute(pattern, path)
 }
 
+pub fn isActive(routerValue: Router, pattern: string) -> bool {
+  return matchRoute(pattern, reactive.get(routerValue.path))
+}
+
 pub fn extractParams(pattern: string, path: string) -> any {
   return router.extractParams(pattern, path)
 }
@@ -175,4 +179,18 @@ pub fn link(routerValue: Router, href: string, label: string) -> VNode {
     )
   )
   return render.element("a", attrs, [render.text(label)])
+}
+
+pub fn linkWithProps(routerValue: Router, href: string, props: any, children: any) -> VNode {
+  let attrs = render.props_merge(
+    props,
+    render.props_merge(
+      render.props_href(resolve_href(routerValue.base, href)),
+      render.props_on_click(fn() -> bool {
+        navigate(routerValue, href)
+        return false
+      })
+    )
+  )
+  return render.element("a", attrs, children)
 }

@@ -10,6 +10,7 @@ async fn loadProfile() -> string {
 component ProfileWorkspace(label: string) -> VNode {
   let name = reactive.createSignal("");
   let ready = reactive.createSignal(false);
+  let queue = reactive.createSignal(["draft", "review", "publish"]);
   let draft = createStore<string>("draft");
   let profile = createResource<string>("example:profile", || loadProfile());
 
@@ -34,6 +35,18 @@ component ProfileWorkspace(label: string) -> VNode {
     render.element("p", render.props_class("profile-preview"), [
       render.text("Stored draft: "),
       render.text(storeGet(draft))
+    ]),
+    render.element("div", render.props_class("profile-queue-panel"), [
+      render.element("button", render.props_on_click(fn() -> void {
+        let _ = reactive.set(queue, ["review", "publish", "draft"])
+      }), [render.text("Rotate queue")]),
+      render.element("ol", render.props_merge(render.props_class("profile-queue"), render.props_attr("aria-live", "polite")), [
+        for (item, index in queue key item) => render.element("li", props { key: item, class: "profile-queue-item" }, [
+          render.text(item),
+          render.text(" #"),
+          render.text(index)
+        ])
+      ])
     ])
   ])
 }

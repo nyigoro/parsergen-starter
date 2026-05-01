@@ -21,8 +21,8 @@ const emitChange = (elementId: string): void => {
 
 const editorTheme = EditorView.theme({
   '&': {
-    minHeight: '24rem',
-    borderRadius: '1rem',
+    minHeight: '32rem',
+    borderRadius: '8px',
     overflow: 'hidden',
   },
   '.cm-scroller': {
@@ -34,8 +34,8 @@ const editorTheme = EditorView.theme({
     padding: '1rem 0',
   },
   '.cm-gutters': {
-    backgroundColor: '#08101f',
-    color: '#64748b',
+    backgroundColor: '#0f1318',
+    color: '#7b8492',
     border: 'none',
   },
 });

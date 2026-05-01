@@ -33,7 +33,9 @@ describe('render prop helpers', () => {
     const onChecked = jest.fn();
     const onSubmit = jest.fn();
     const preventDefault = jest.fn();
-    const checkedProps = render.props_on_checked_change(onChecked) as { onChange?: (event: Event) => void };
+    const checkedProps = render.props_on_checked_change(onChecked) as {
+      onChange?: (event: Event) => void;
+    };
     const submitProps = render.props_on_submit(onSubmit) as { onSubmit?: (event: Event) => void };
 
     checkedProps.onChange?.({ target: { checked: true } } as unknown as Event);
@@ -52,7 +54,10 @@ describe('render prop helpers', () => {
     };
     expect(merged).toEqual({ className: 'x', id: 'y' });
 
-    const mergedHandler = render.props_merge(render.props_class('x'), render.props_on_input(handler)) as {
+    const mergedHandler = render.props_merge(
+      render.props_class('x'),
+      render.props_on_input(handler)
+    ) as {
       className?: string;
       onInput?: (event: Event) => void;
     };
@@ -105,7 +110,8 @@ describe('render prop helpers', () => {
   });
 
   test('stdlib wrappers emit render runtime calls for composition helpers', () => {
-    const source = `
+    const source =
+      `
       import {
         children,
         composeHandlers,
@@ -141,6 +147,9 @@ describe('render prop helpers', () => {
 
     const ast = parseLuminaProgram(source);
     const js = generateJSFromAst(ast, { target: 'esm', includeRuntime: true }).code;
+    expect(js).toMatch(
+      /import \{[^}]*\bprops_checked\b[^}]*\bprops_type\b[^}]*\bprops_name\b[^}]*\bprops_on_checked_change\b[^}]*\bprops_on_submit\b[^}]*\} from "\.\/lumina-runtime\.js";/s
+    );
     expect(js).toContain('createContext("light")');
     expect(js).toContain('withContext(theme, "dark"');
     expect(js).toContain('useContext(theme)');
@@ -151,8 +160,9 @@ describe('render prop helpers', () => {
     expect(js).toContain('props_on_submit');
     expect(js).toContain('composeHandlers');
     expect(
-      js.includes('children(text("item"))')
-      || (js.includes('const __lumina_static_render_') && js.includes('children(__lumina_static_render_'))
+      js.includes('children(text("item"))') ||
+        (js.includes('const __lumina_static_render_') &&
+          js.includes('children(__lumina_static_render_'))
     ).toBe(true);
     expect(js).toContain('slot(text(useContext(theme)), 0)');
   });

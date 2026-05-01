@@ -29,8 +29,11 @@ import { io, vec, str } from "@std";
 fn main() -> void {
   let nums = [1, 2, 3, 4];
 
-  match nums[2] {
-    Some(v) => io.println("nums[2] = {v}"),
+  let third = nums[2];
+  io.println("nums[2] = {third}");
+
+  match nums.get(8) {
+    Some(v) => io.println("nums[8] = {v}"),
     None => io.println("missing")
   }
 

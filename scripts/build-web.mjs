@@ -3,14 +3,16 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const repoRoot = process.cwd();
-const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCommand =
+  process.platform === 'win32'
+    ? { command: process.execPath, prefixArgs: [path.join(repoRoot, 'node_modules/npm/bin/npm-cli.js')] }
+    : { command: 'npm', prefixArgs: [] };
 
 const run = (command, args) => {
-  const needsShell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
   const result = spawnSync(command, args, {
     cwd: repoRoot,
     stdio: 'inherit',
-    shell: needsShell,
+    shell: false,
   });
   if (result.error) {
     console.error(result.error);
@@ -31,9 +33,9 @@ const copyIfExists = async (fromFile, toFile) => {
 };
 
 run(process.execPath, ['scripts/build-docs.mjs']);
-run(npmCmd, ['--prefix', 'demo', 'run', 'build']);
-run(npmCmd, ['--prefix', 'docs-site', 'run', 'build']);
-run(npmCmd, ['--prefix', 'playground', 'run', 'build']);
+run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'demo', 'run', 'build']);
+run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'docs-site', 'run', 'build']);
+run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'playground', 'run', 'build']);
 
 await copyIfExists(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'docs', '404.html'));
 await copyIfExists(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'playground', '404.html'));

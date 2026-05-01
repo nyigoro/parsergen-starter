@@ -68,12 +68,30 @@ Array literals:
 let nums = [1, 2, 3, 4, 5];
 ```
 
-Index safely (`Option<T>`):
+Direct indexing is for indexes that must exist. It returns the element type
+directly and fails loudly when the index is out of bounds:
 
 ```lumina
-match nums[2] {
+let third = nums[2]; // 3
+```
+
+Use `get(index)` when the index might be missing:
+
+```lumina
+match nums.get(10) {
   Some(x) => io.println(str.from_int(x)),
   None => io.println("out of bounds")
+}
+```
+
+For loop indexes are named explicitly:
+
+```lumina
+for index in 0..nums.len() {
+  match nums.get(index) {
+    Some(x) => io.println(str.from_int(x)),
+    None => io.println("out of bounds")
+  }
 }
 ```
 
@@ -92,6 +110,25 @@ Iterator-style helpers:
 let doubled = v.map(|x| x * 2);
 let sum = v.fold(0, |acc, x| acc + x);
 ```
+
+## Keyed UI Lists
+
+For reactive UI lists, use a stable key when rows can move or preserve local
+state:
+
+```lumina
+render.element("ol", render.props_class("task-list"), [
+  for (row, index in rows key row.id) =>
+    render.element("li", props { key: row.id }, [
+      render.text(row.label),
+      render.text(index)
+    ])
+])
+```
+
+Keys are string or number identity values. Duplicate sibling keys fail loudly.
+During SSR hydration, Lumina uses the emitted hydration key to adopt and move the
+existing DOM node instead of rebuilding the row.
 
 ## Error Handling (`?`)
 
@@ -139,6 +176,7 @@ import { thread, channel } from "@std";
 ```
 
 See tests/examples for current supported patterns:
+
 - `tests/runtime-stdlib-thread.test.ts`
 - `tests/runtime-stdlib-channel.test.ts`
 - `tests/runtime-thread-channel.test.ts`
