@@ -77,4 +77,39 @@ describe('lumina ssg', () => {
     expect(html).toContain('<title>Docs</title>');
     expect(html).toContain('Hello SSG');
   });
+
+  test('threads props into the hydration payload for client handoff', () => {
+    const root = createWorkspace('.tmp-lumina-ssg-props-');
+    const entry = path.join(root, 'main.lm');
+    const outPath = path.join(root, 'dist', 'index.html');
+
+    writeFile(
+      entry,
+      `
+        import { vnode, text } from "@std/render";
+
+        pub fn main(props: any) -> VNode {
+          vnode("main", 0, [text("Props SSG")])
+        }
+      `.trim() + '\n'
+    );
+
+    const result = runCommand([
+      'ssg',
+      entry,
+      '--out',
+      outPath,
+      '--hydrate',
+      '/main.js',
+      '--props',
+      '{"name":"Ada"}',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.errors).toHaveLength(0);
+    const html = fs.readFileSync(outPath, 'utf-8');
+    expect(html).toContain('__lumina-hydration');
+    expect(html).toContain('"name":"Ada"');
+    expect(html).toContain('/main.js');
+  });
 });

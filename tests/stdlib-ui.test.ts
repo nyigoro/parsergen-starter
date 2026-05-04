@@ -27,5 +27,10 @@ describe('@std/ui', () => {
     expect(js).toContain('buttonVariant');
     expect(js).toContain('themeRoot');
     expect(js).toContain('appShell');
+    expect(js).toContain('field');
+    expect(js).toContain('label');
+    expect(js).toContain('helpText');
+    expect(js).toContain('errorText');
+    expect(js).toContain('navList');
   });
 });

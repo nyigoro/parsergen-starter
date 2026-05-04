@@ -1781,6 +1781,20 @@ async function runSsgCommand(options: {
         throw new Error(${JSON.stringify(`SSG export '${options.exportName}' was not found in ${options.sourcePath}`)});
       }
       const props = ${JSON.stringify(props ?? null)};
+      const hydrationState = {
+        props,
+        route: runtime.router?.getCurrentPath?.() ?? '/',
+        resources: runtime.devtoolsSnapshot?.().resources ?? [],
+      };
+      const serializeHydrationState = (value) => JSON.stringify(value ?? null)
+        .replace(/</g, '\\\\u003c')
+        .replace(/\\u2028/g, '\\\\u2028')
+        .replace(/\\u2029/g, '\\\\u2029');
+      const ensureHydrationState = (html) => {
+        if (html.includes('__lumina-hydration')) return html;
+        const script = '<script type="application/json" id="__lumina-hydration">' + serializeHydrationState(hydrationState) + '</script>';
+        return html.includes('</body>') ? html.replace('</body>', script + '</body>') : html + script;
+      };
       const result = await exported(props === null ? undefined : props);
       const html = typeof result === 'string' && result.trimStart().toLowerCase().startsWith('<!doctype')
         ? result
@@ -1788,8 +1802,9 @@ async function runSsgCommand(options: {
             title: ${JSON.stringify(options.title ?? '')},
             lang: ${JSON.stringify(options.lang ?? 'en')},
             hydrateModule: ${JSON.stringify(options.hydrateModule ?? '')},
+            hydrationState,
           });
-      process.stdout.write(html);
+      process.stdout.write(ensureHydrationState(html));
     `;
 
     const child = spawnSync(process.execPath, ['--input-type=module', '--eval', runnerSource], {

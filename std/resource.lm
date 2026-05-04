@@ -36,6 +36,22 @@ pub fn invalidate<T>(resource: Resource<T>) -> void {
   render.resourceInvalidate(resource.raw)
 }
 
+pub fn invalidateKey(key: any) -> bool {
+  render.resourceInvalidateKey(key)
+}
+
+pub fn invalidatePrefix(prefix: string) -> int {
+  render.resourceInvalidatePrefix(prefix)
+}
+
+pub fn invalidateTag(tag: string) -> int {
+  render.resourceInvalidateTag(tag)
+}
+
+pub fn clearCache() -> void {
+  render.resourceClearCache()
+}
+
 pub fn mutate<T>(resource: Resource<T>, value: T) -> T {
   render.resourceMutate(resource.raw, value)
 }

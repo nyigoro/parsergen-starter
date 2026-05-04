@@ -13,6 +13,8 @@ describe('runtime ssg api', () => {
       appClassName: '',
       appId: 'app',
       hydrateModule: '',
+      hydrationState: null,
+      hydrationStateId: '__lumina-hydration',
     });
 
     const api = createSsgApi<string, (props: { label: string }) => string>({
@@ -33,6 +35,28 @@ describe('runtime ssg api', () => {
 
     const appHtml = api.renderAppPage((props) => `<main>${props.label}</main>`, { label: 'Hello' }, { appId: 'root' });
     expect(appHtml).toContain('<div id="root"><main>Hello</main></div>');
+  });
+
+  test('serializes hydration state safely before module hydration script', () => {
+    const api = createSsgApi<string, (props: { label: string }) => string>({
+      isVNode: (value): value is string => typeof value === 'string' && value.startsWith('<'),
+      renderToString: (node) => node,
+      coerceRenderableToVNode: (value) => `<p>${String(value)}</p>`,
+      escapeHtml: (value) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
+      resolvePath: (value) => path.resolve(value),
+      dirnamePath: (value) => path.dirname(value),
+      getNodeBuiltinModule: (id) => (id === 'node:fs' ? fs : null),
+      renderApp: (componentFn, props) => componentFn(props as { label: string }),
+    });
+
+    const html = api.renderPage('<main>Body</main>', {
+      hydrateModule: '/app.js',
+      hydrationState: { props: { title: '</script><img>' } },
+    });
+
+    expect(html).toContain('type="application/json" id="__lumina-hydration"');
+    expect(html).toContain('\\u003c/script>');
+    expect(html.indexOf('__lumina-hydration')).toBeLessThan(html.indexOf('/app.js'));
   });
 
   test('writes rendered pages to disk', () => {

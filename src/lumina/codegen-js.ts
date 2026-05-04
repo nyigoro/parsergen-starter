@@ -221,7 +221,7 @@ class JSGenerator {
       );
       this.builder.append('\n');
       this.builder.append(
-        'const router = { getCurrentPath: () => "/", getCurrentHash: () => "", getCurrentSearch: () => "", push: () => {}, replace: () => {}, onPopState: () => {}, offPopState: () => {}, getBasePath: () => "/" };'
+        'const router = { getCurrentPath: () => "/", getCurrentHash: () => "", getCurrentSearch: () => "", matchRoute: (pattern, path) => { if (pattern === "*") return true; const ps = String(pattern).split("/").filter(Boolean); const xs = String(path).split("/").filter(Boolean); for (let i = 0; i < ps.length; i++) { const p = ps[i] || ""; if (p === "*" || p.startsWith("*")) return true; if (p.startsWith(":")) continue; if (p !== (xs[i] || "")) return false; } return ps.length === xs.length; }, extractParams: (pattern, path) => { const out = new Map(); const ps = String(pattern).split("/").filter(Boolean); const xs = String(path).split("/").filter(Boolean); for (let i = 0; i < ps.length; i++) { const p = ps[i] || ""; const x = xs[i] || ""; if (p === "*" || p.startsWith("*")) { out.set(p.length > 1 ? p.slice(1) : "splat", xs.slice(i).join("/")); break; } if (p.startsWith(":")) out.set(p.slice(1), decodeURIComponent(x)); } return out; }, parseSearchParams: (search) => new Map(typeof URLSearchParams === "function" ? Array.from(new URLSearchParams(String(search).replace(/^\\?/, "")).entries()) : []), push: () => {}, replace: () => {}, onPopState: () => {}, offPopState: () => {}, getBasePath: () => "/", getScrollRestoration: () => "", setScrollRestoration: () => {}, scrollToTop: () => {} };'
       );
       this.builder.append('\n');
       this.builder.append(

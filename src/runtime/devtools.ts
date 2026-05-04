@@ -11,6 +11,7 @@ export interface DevtoolsResourceSnapshot {
   status: string;
   hasData: boolean;
   error: unknown;
+  tags?: string[];
 }
 
 export interface DevtoolsFrameSnapshot {

@@ -210,14 +210,14 @@ The current shipped baseline is:
 - select with anchored listbox positioning, option selection, indicator composition, and keyboard navigation
 - checkbox with signal-backed checked state, ARIA wiring, keyboard toggle, and indicator composition
 - radio group/item/indicator primitives with ARIA wiring, roving focus, and arrow-key navigation
-- forms helpers for controlled values, checked state, submit handling, and lightweight validation
+- forms helpers for controlled values, checked state, field dirty/touched/error state, submit handling, async action state, and lightweight validation
 - store helpers for app-level signals, derived memo slices, and context-backed sharing
-- route loader, prefetch, refresh, invalidation, and optimistic mutation helpers layered on `@std/router`
+- route match/view/outlet helpers plus loader, prefetch, refresh, key/prefix/tag invalidation, action lifecycle, and optimistic mutation helpers layered on `@std/router`
 - testing helpers for mount, hydrate, events, text queries, and role queries
 - transition presence helpers for CSS-first enter/exit state management
 - devtools helpers for signal/resource/frame snapshots, timeline events, and browser install hooks
-- SSG helpers for page wrapping, app rendering, and static file writing
-- a first `@std/ui` styled layer with Tailwind-oriented wrappers, app-shell composition, theme roots, and default button semantics over headless primitives
+- SSG helpers for page wrapping, app rendering, static file writing, and safe JSON hydration state handoff
+- a first `@std/ui` styled layer with Tailwind-oriented wrappers, app-shell composition, field composition, theme roots, and default button semantics over headless primitives
 
 The next goal is to widen that baseline while staying visually unopinionated.
 
@@ -249,10 +249,11 @@ After stable component frames and keyed identity are in place, Lumina can add:
 - retry and refetch control
 - optimistic update patterns
 
-The first route-data layer now exists in `@std/router` as route-keyed resource
-helpers: `routeLoader`, `prefetchRoute`, `refreshRoute`, `invalidateRoute`, and
-`optimisticRouteMutate`. This keeps the API close to the existing resource
-runtime while leaving room for richer route actions and nested boundaries later.
+The route-data layer now includes route-keyed and route-id-scoped resources,
+search-sensitive keys, `routeMatch`, `routeView`, `outlet`, loading/error
+boundaries, tag/prefix invalidation, and route actions with submitting/status
+state. This keeps the API close to the existing resource runtime while giving
+larger apps a real loader/action convention.
 
 This should come after the component foundation, not before it.
 

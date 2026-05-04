@@ -385,6 +385,7 @@ const runCompiledModule = async (result: CompileResult): Promise<string> => {
   const blob = new Blob([moduleSource], { type: 'text/javascript' });
   const moduleUrl = URL.createObjectURL(blob);
   const logs: string[] = [];
+  /* eslint-disable no-console */
   const originalLog = console.log;
   const originalError = console.error;
 
@@ -408,6 +409,7 @@ const runCompiledModule = async (result: CompileResult): Promise<string> => {
     console.error = originalError;
     URL.revokeObjectURL(moduleUrl);
   }
+  /* eslint-enable no-console */
 
   return logs.length > 0 ? logs.join('\n') : 'main() completed.';
 };

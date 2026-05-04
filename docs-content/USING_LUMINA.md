@@ -18,19 +18,25 @@ npm run dev
 Check program types/semantics:
 
 ```bash
-lumina check src/main.lm
+lumina check src/client.lm
 ```
 
 Compile to JavaScript:
 
 ```bash
-lumina compile src/main.lm --target js --module esm --out dist/main.js
+lumina compile src/client.lm --target js --module esm --out dist/main.js
+```
+
+Render a static HTML shell with hydration state:
+
+```bash
+lumina ssg src/ssg.lm --out dist/index.html --hydrate /dist/main.js --props '{"user":"Ada"}'
 ```
 
 Compile to CommonJS:
 
 ```bash
-lumina compile src/main.lm --target js --module cjs --out dist/main.cjs
+lumina compile src/client.lm --target js --module cjs --out dist/main.cjs
 ```
 
 Compile to `wasm-web`:

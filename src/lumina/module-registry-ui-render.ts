@@ -112,6 +112,9 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
     const resourceValueType: Type = fnType([resourceHandleType], primitive('any'));
     const resourceRefreshType: Type = fnType([resourceHandleType], promiseType(primitive('any')));
     const resourceInvalidateType: Type = fnType([resourceHandleType], primitive('void'));
+    const resourceInvalidateKeyType: Type = fnType([primitive('any')], primitive('bool'));
+    const resourceInvalidatePrefixType: Type = fnType([primitive('string')], primitive('int'));
+    const resourceClearCacheType: Type = fnType([], primitive('void'));
     const suspenseFallbackT = freshTypeVar();
     const suspenseChildrenT = freshTypeVar();
     const suspenseType: Type = fnType([suspenseFallbackT, fnType([], suspenseChildrenT)], vnodeT);
@@ -951,6 +954,10 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
             'std://render'
           ),
         ],
+        ['resourceInvalidateKey', moduleFunctionWithScheme('resourceInvalidateKey', ['any'], 'bool', schemeFromVars(resourceInvalidateKeyType, []), ['key'], 'std://render')],
+        ['resourceInvalidatePrefix', moduleFunctionWithScheme('resourceInvalidatePrefix', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['prefix'], 'std://render')],
+        ['resourceInvalidateTag', moduleFunctionWithScheme('resourceInvalidateTag', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['tag'], 'std://render')],
+        ['resourceClearCache', moduleFunctionWithScheme('resourceClearCache', [], 'void', schemeFromVars(resourceClearCacheType, []), [], 'std://render')],
         [
           'resourceMutate',
           moduleFunctionWithScheme(

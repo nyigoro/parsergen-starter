@@ -79,6 +79,64 @@ pub fn input(props: any) -> VNode {
   )
 }
 
+pub fn field(props: any, children: any) -> VNode {
+  vnode(
+    "div",
+    props_merge(
+      props_class("grid gap-2"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn label(props: any, children: any) -> VNode {
+  vnode(
+    "label",
+    props_merge(
+      props_class("text-sm font-medium text-slate-800"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn helpText(props: any, children: any) -> VNode {
+  vnode(
+    "p",
+    props_merge(
+      props_class("text-sm text-slate-500"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn errorText(props: any, children: any) -> VNode {
+  vnode(
+    "p",
+    props_merge(
+      props_class("text-sm font-medium text-rose-600"),
+      props_merge(
+        props_attr("role", "alert"),
+        props
+      )
+    ),
+    children
+  )
+}
+
+pub fn navList(props: any, children: any) -> VNode {
+  vnode(
+    "nav",
+    props_merge(
+      props_class("flex flex-wrap items-center gap-2"),
+      props
+    ),
+    children
+  )
+}
+
 pub fn card(props: any, children: any) -> VNode {
   vnode(
     "div",

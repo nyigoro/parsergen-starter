@@ -28,21 +28,62 @@ type RouterApi = {
   replace: (routerValue: unknown, path: string) => void;
   currentPath: (routerValue: unknown) => unknown;
   currentParams: (routerValue: unknown) => unknown;
+  currentSearchParams: (routerValue: unknown) => unknown;
+  getScrollRestoration: () => string;
+  setScrollRestoration: (mode: string) => void;
+  scrollToTop: () => void;
   routeResourceKey: (routerValue: unknown, name: string) => string;
+  routeScopedKey: (routerValue: unknown, routeId: string, name: string) => string;
   routeLoader: <T>(routerValue: unknown, name: string, loader: () => Promise<T>) => unknown;
+  routeLoaderWithOptions: <T>(
+    routerValue: unknown,
+    name: string,
+    loader: () => Promise<T>,
+    options: Record<string, unknown>
+  ) => unknown;
+  routeLoaderFor: <T>(
+    routerValue: unknown,
+    routeId: string,
+    name: string,
+    loader: () => Promise<T>
+  ) => unknown;
   prefetchRoute: <T>(
     routerValue: unknown,
     path: string,
     name: string,
     loader: () => Promise<T>
   ) => unknown;
+  prefetchRouteWithOptions: <T>(
+    routerValue: unknown,
+    path: string,
+    name: string,
+    loader: () => Promise<T>,
+    options: Record<string, unknown>
+  ) => unknown;
   routeStatus: (resource: unknown) => string;
   routeRead: <T>(resource: unknown) => T;
   refreshRoute: <T>(resource: unknown) => Promise<T>;
   invalidateRoute: (resource: unknown) => void;
+  invalidateRouteKey: (key: unknown) => boolean;
+  invalidateRoutePrefix: (prefix: string) => number;
+  invalidateRouteTag: (tag: string) => number;
   optimisticRouteMutate: <T>(resource: unknown, value: T) => T;
+  routeAction: <T>(routerValue: unknown, name: string, action: () => Promise<T>) => unknown;
+  submitRouteAction: <T>(action: unknown) => Promise<T>;
+  routeActionStatus: (action: unknown) => string;
+  routeActionData: (action: unknown) => unknown;
+  routeActionSubmitting: (action: unknown) => unknown;
   matchRoute: (pattern: string, path: string) => boolean;
   isActive: (routerValue: unknown, pattern: string) => boolean;
+  routeMatch: (routerValue: unknown, pattern: string) => { matched: boolean; params: unknown; search: unknown };
+  routeParams: (matchValue: unknown) => unknown;
+  routeView: (
+    routerValue: unknown,
+    pattern: string,
+    renderChildren: () => VNode[] | VNode,
+    fallback: VNode
+  ) => VNode;
+  outlet: (condition: boolean, renderChildren: () => VNode[] | VNode, fallback: VNode) => VNode;
   extractParams: (pattern: string, path: string) => unknown;
   onRouteChange: (routerValue: unknown, handler: (path: string) => void) => unknown;
   link: (routerValue: unknown, href: string, label: string) => VNode;
@@ -61,9 +102,11 @@ type BrowserEnvHandle = {
       pushes: string[];
       replacements: string[];
       state: unknown;
+      scrollRestoration: string;
       pushState: (data: unknown, unused: string, url?: string | URL | null) => void;
       replaceState: (data: unknown, unused: string, url?: string | URL | null) => void;
     };
+    scrollTo: jest.Mock<void, [number, number]>;
     addEventListener: (type: string, listener: EventListener) => void;
     removeEventListener: (type: string, listener: EventListener) => void;
     dispatchEvent: (event: Event) => boolean;
@@ -141,6 +184,7 @@ const runtimeReactive = {
 
 const runtimeRender = {
   props_empty: (): Record<string, unknown> => ({}),
+  props_attr: (name: string, value: unknown): Record<string, unknown> => ({ [name]: value }),
   createResource: (
     key: string,
     loader: () => Promise<unknown>,
@@ -165,9 +209,24 @@ const runtimeRender = {
   resourceInvalidate: (resource: Record<string, unknown>): void => {
     resource.invalidated = true;
   },
+  resourceInvalidateKey: (_key: unknown): boolean => true,
+  resourceInvalidatePrefix: (_prefix: string): number => 1,
+  resourceInvalidateTag: (_tag: string): number => 1,
   resourceMutate: (resource: Record<string, unknown>, value: unknown): unknown => {
     resource.data = value;
     return value;
+  },
+  show: (condition: unknown, renderChildren: () => VNode[] | VNode, fallback: VNode): VNode => {
+    const value = condition ? renderChildren() : fallback;
+    return Array.isArray(value) ? value[0] : value;
+  },
+  suspense: (_fallback: VNode, renderChildren: () => VNode[] | VNode): VNode => {
+    const value = renderChildren();
+    return Array.isArray(value) ? value[0] : value;
+  },
+  errorBoundary: (_fallback: VNode, renderChildren: () => VNode[] | VNode): VNode => {
+    const value = renderChildren();
+    return Array.isArray(value) ? value[0] : value;
   },
   props_merge: (
     ...parts: Array<Record<string, unknown> | null | undefined>
@@ -266,6 +325,15 @@ const runtimeRouter = {
     }
     return params;
   },
+  getScrollRestoration: (): string =>
+    String((globalThis as { history?: { scrollRestoration?: string } }).history?.scrollRestoration ?? ''),
+  setScrollRestoration: (mode: string): void => {
+    const history = (globalThis as { history?: { scrollRestoration?: string } }).history;
+    if (history) history.scrollRestoration = mode;
+  },
+  scrollToTop: (): void => {
+    (globalThis as { window?: { scrollTo?: (x: number, y: number) => void } }).window?.scrollTo?.(0, 0);
+  },
 };
 
 const bindRouterRuntime = (js: string): string =>
@@ -296,7 +364,7 @@ const compileRouterStdlib = (): RouterApi => {
     'reactive',
     'render',
     'module',
-    `${js}\nreturn { createRouter, navigate, replace, currentPath, currentParams, routeResourceKey, routeLoader, routeLoaderWithOptions, prefetchRoute, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, optimisticRouteMutate, matchRoute, isActive, extractParams, onRouteChange, link, linkWithProps };`
+    `${js}\nreturn { createRouter, navigate, replace, getScrollRestoration, setScrollRestoration, scrollToTop, currentPath, currentParams, currentSearchParams, routeResourceKey, routeScopedKey, routeLoader, routeLoaderWithOptions, routeLoaderFor, routeLoaderForWithOptions, prefetchRoute, prefetchRouteWithOptions, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, invalidateRouteKey, invalidateRoutePrefix, invalidateRouteTag, optimisticRouteMutate, routeAction, submitRouteAction, routeActionStatus, routeActionData, routeActionError, routeActionSubmitting, matchRoute, isActive, routeMatch, routeParams, routeView, outlet, layout, routeLoading, routeErrorBoundary, extractParams, onRouteChange, link, linkWithProps };`
   ) as (
     routerModule: typeof runtimeRouter,
     strModule: typeof runtimeStr,
@@ -325,6 +393,7 @@ const installBrowserEnv = (
     pushes: [] as string[],
     replacements: [] as string[],
     state: null as unknown,
+    scrollRestoration: 'auto',
     pushState: (_data: unknown, _unused: string, url?: string | URL | null) => {
       const next = typeof url === 'string' ? url : String(url ?? location.pathname);
       history.pushes.push(next);
@@ -343,6 +412,7 @@ const installBrowserEnv = (
   const fakeWindow = {
     location,
     history,
+    scrollTo: jest.fn<void, [number, number]>(),
     addEventListener: (type: string, listener: EventListener) => {
       const bucket = listeners.get(type) ?? new Set<EventListener>();
       bucket.add(listener);
@@ -473,14 +543,15 @@ describe('@std/router', () => {
   });
 
   test('route loaders, prefetch, invalidation, and optimistic mutation compose with router state', async () => {
-    installBrowserEnv('/app/tasks', { baseURI: 'https://lumina.dev/app/' });
+    installBrowserEnv('/app/tasks', { search: '?filter=open', baseURI: 'https://lumina.dev/app/' });
     const routerApi = compileRouterStdlib();
     const routerValue = routerApi.createRouter('/app');
 
-    expect(routerApi.routeResourceKey(routerValue, 'details')).toBe('route:/tasks:details');
+    expect(routerApi.routeResourceKey(routerValue, 'details')).toBe('route:/tasks?filter=open:details');
+    expect(routerApi.routeScopedKey(routerValue, 'task-list', 'details')).toBe('route:task-list:/tasks:?filter=open:details');
     const resource = routerApi.routeLoader(routerValue, 'details', async () => 'loaded');
     expect(routerApi.routeStatus(resource)).toBe('success');
-    expect(routerApi.routeRead(resource)).toBe('data:route:/tasks:details');
+    expect(routerApi.routeRead(resource)).toBe('data:route:/tasks?filter=open:details');
     expect(routerApi.optimisticRouteMutate(resource, 'optimistic')).toBe('optimistic');
     expect(routerApi.routeRead(resource)).toBe('optimistic');
     expect(await routerApi.refreshRoute(resource)).toBe('loaded');
@@ -488,6 +559,44 @@ describe('@std/router', () => {
 
     const prefetch = routerApi.prefetchRoute(routerValue, '/settings/', 'details', async () => 'prefetched');
     expect(routerApi.routeRead(prefetch)).toBe('data:route:/settings:details');
+    expect(routerApi.invalidateRouteKey('route:/tasks?filter=open:details')).toBe(true);
+    expect(routerApi.invalidateRoutePrefix('route:/tasks')).toBe(1);
+    expect(routerApi.invalidateRouteTag('tasks')).toBe(1);
+  });
+
+  test('route match, route view, action state, and scroll helpers compose', async () => {
+    const env = installBrowserEnv('/app/tasks/42', {
+      search: '?tab=activity',
+      baseURI: 'https://lumina.dev/app/',
+    });
+    const routerApi = compileRouterStdlib();
+    const routerValue = routerApi.createRouter('/app');
+
+    expect(routerApi.getScrollRestoration()).toBe('auto');
+    routerApi.setScrollRestoration('manual');
+    routerApi.scrollToTop();
+    expect(env.window.history.scrollRestoration).toBe('manual');
+    expect(env.window.scrollTo).toHaveBeenCalledWith(0, 0);
+
+    const match = routerApi.routeMatch(routerValue, '/tasks/:id');
+    expect(match.matched).toBe(true);
+    expect(getPayload(runtimeHashmap.get(routerApi.routeParams(match) as never, 'id'))).toBe('42');
+    expect(getPayload(runtimeHashmap.get(match.search as never, 'tab'))).toBe('activity');
+
+    const view = routerApi.routeView(
+      routerValue,
+      '/tasks/:id',
+      () => [{ kind: 'text', text: 'task' }],
+      { kind: 'text', text: 'fallback' }
+    );
+    expect(view.text).toBe('task');
+
+    const action = routerApi.routeAction(routerValue, 'save', async () => 'saved');
+    expect(routerApi.routeActionStatus(action)).toBe('success');
+    expect(runtimeReactive.get(routerApi.routeActionSubmitting(action) as never)).toBe(false);
+    expect(await routerApi.submitRouteAction(action)).toBe('saved');
+    expect(routerApi.routeActionData(action)).toBe('saved');
+    expect(runtimeReactive.get(routerApi.routeActionSubmitting(action) as never)).toBe(false);
   });
 
   test('back and forward style popstate dispatch updates the router signal', () => {

@@ -169,21 +169,39 @@ export async function initProject(options: { yes?: boolean } = {}): Promise<void
   const pkg = {
     name,
     version: '0.1.0',
-    lumina: './src/main.lm',
+    lumina: './src/client.lm',
     scripts: {
-      check: 'lumina check src/main.lm',
-      build: 'lumina compile src/main.lm --out dist/main.js --target esm',
-      dev: 'npm run build && npx vite --host 127.0.0.1',
+      check: 'lumina check src/client.lm && lumina check src/ssg.lm',
+      build: 'lumina compile src/client.lm --out dist/main.js --target esm',
+      ssg: 'lumina ssg src/ssg.lm --out dist/index.html --hydrate /dist/main.js --title "Lumina App"',
+      dev: 'npm run build && vite --host 127.0.0.1',
     },
     dependencies: {},
+    devDependencies: {
+      vite: '^7.2.6',
+    },
   };
   await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
   await writeJson(pkgPath, pkg);
   await writeJson(path.join(cwd, 'lumina.config.json'), {
-    entries: ['src/main.lm'],
+    entries: ['src/client.lm'],
     outDir: 'dist',
     target: 'esm',
   });
+  await writeFileIfMissing(
+    path.join(cwd, 'vite.config.ts'),
+    `import { defineConfig } from 'vite';
+
+export default defineConfig({
+  server: {
+    host: '127.0.0.1'
+  },
+  preview: {
+    host: '127.0.0.1'
+  }
+});
+`
+  );
   await writeFileIfMissing(
     path.join(cwd, 'index.html'),
     `<!doctype html>
@@ -246,28 +264,37 @@ body {
 `
   );
   await writeFileIfMissing(
-    path.join(cwd, 'src', 'main.lm'),
+    path.join(cwd, 'src', 'app.lm'),
     `import { render } from "@std";
 import {
   createRouter,
   currentPath,
+  Router,
+  routeAction,
+  routeActionStatus,
   linkWithProps,
   optimisticRouteMutate,
   prefetchRoute,
   refreshRoute,
+  routeLoading,
   routeLoader,
   routeRead,
-  routeStatus
+  routeStatus,
+  submitRouteAction
 } from "@std/router";
 
 async fn loadDashboard() -> string {
   "Lumina route data is ready"
 }
 
-component App() -> VNode {
-  let appRouter = createRouter("/");
+async fn saveDashboard() -> string {
+  "Route action saved"
+}
+
+pub component App(appRouter: Router) -> VNode {
   let dashboard = routeLoader<string>(appRouter, "dashboard", || loadDashboard());
   let _settingsPrefetch = prefetchRoute<string>(appRouter, "/settings", "dashboard", || loadDashboard());
+  let saveAction = routeAction<string>(appRouter, "save-dashboard", || saveDashboard());
 
   render.element("main", render.props_class("app-shell"), [
     render.element("section", render.props_class("app-panel"), [
@@ -284,7 +311,7 @@ component App() -> VNode {
         render.text("Loader status: "),
         render.text(routeStatus(dashboard))
       ]),
-      render.suspense(render.text("Loading route data"), || [
+      routeLoading(dashboard, render.text("Loading route data"), || [
         render.errorBoundary(render.text("Route data failed"), || [
           render.element("p", render.props_class("app-data"), [render.text(routeRead(dashboard))])
         ])
@@ -295,19 +322,44 @@ component App() -> VNode {
         })), [render.text("Refresh")]),
         render.element("button", render.props_merge(render.props_class("action-button"), render.props_on_click(fn() -> void {
           let _ = optimisticRouteMutate(dashboard, "Optimistic route data")
-        })), [render.text("Optimistic update")])
+        })), [render.text("Optimistic update")]),
+        render.element("button", render.props_merge(render.props_class("action-button"), render.props_on_click(fn() -> void {
+          let _ = submitRouteAction(saveAction)
+        })), [render.text("Save action")])
+      ]),
+      render.element("p", render.props_class("app-status"), [
+        render.text("Action status: "),
+        render.text(routeActionStatus(saveAction))
       ])
     ])
   ])
 }
+`
+  );
+  await writeFileIfMissing(
+    path.join(cwd, 'src', 'client.lm'),
+    `import { render } from "@std";
+import { createRouter } from "@std/router";
+import { App } from "./app.lm";
 
 pub fn main() -> void {
   let container = render.dom_get_element_by_id("app");
   let renderer = render.createDomRenderer();
-  let _root = render.mount_reactive(renderer, container, || App());
+  let appRouter = createRouter("/");
+  let _root = render.mount_reactive(renderer, container, || App(appRouter));
 }
 
 main();
+`
+  );
+  await writeFileIfMissing(
+    path.join(cwd, 'src', 'ssg.lm'),
+    `import { createRouter } from "@std/router";
+import { App } from "./app.lm";
+
+pub fn main() -> VNode {
+  App(createRouter("/"))
+}
 `
   );
   if (!options.yes) {

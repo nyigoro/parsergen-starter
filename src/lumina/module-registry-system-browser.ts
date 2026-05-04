@@ -652,6 +652,42 @@ export function createStdSystemBrowserDomainModules(): Pick<StdDomainModules,
           'std://router-runtime'
         ),
       ],
+      [
+        'getScrollRestoration',
+        moduleFunction(
+          'getScrollRestoration',
+          [],
+          'string',
+          [],
+          primitive('string'),
+          [],
+          'std://router-runtime'
+        ),
+      ],
+      [
+        'setScrollRestoration',
+        moduleFunction(
+          'setScrollRestoration',
+          ['string'],
+          'void',
+          [primitive('string')],
+          primitive('void'),
+          ['mode'],
+          'std://router-runtime'
+        ),
+      ],
+      [
+        'scrollToTop',
+        moduleFunction(
+          'scrollToTop',
+          [],
+          'void',
+          [],
+          primitive('void'),
+          [],
+          'std://router-runtime'
+        ),
+      ],
     ]),
   };
 

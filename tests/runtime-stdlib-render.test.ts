@@ -305,6 +305,29 @@ describe('runtime render module', () => {
     nowSpy.mockRestore();
   });
 
+  test('resource helpers invalidate by key, prefix, and tag while suppressing stale pending writes', async () => {
+    const key = `resource:${Date.now()}:actions`;
+    let resolveOld!: (value: string) => void;
+    const loader = jest.fn(() => new Promise<string>((resolve) => {
+      resolveOld = resolve;
+    }));
+
+    const resource = render.createResource(key, loader, { ttlMs: 10, tags: ['profile'], staleWhileRevalidate: true });
+    expect(render.resourceStatus(resource)).toBe('loading');
+    expect(render.resourceInvalidateTag('profile')).toBe(1);
+    expect(render.resourceInvalidatePrefix('resource:')).toBeGreaterThanOrEqual(1);
+    expect(render.resourceInvalidateKey(key)).toBe(true);
+
+    expect(render.resourceMutate(resource, 'newer')).toBe('newer');
+    resolveOld('older');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(render.resourceData(resource)).toBe('newer');
+    render.resourceClearCache();
+    expect(render.resourceInvalidateKey(key)).toBe(false);
+  });
+
   test('suspense and error boundary helpers catch the right thrown values', () => {
     const suspenseFallback = render.suspense(render.text('Loading'), () => {
       throw Promise.resolve('pending');

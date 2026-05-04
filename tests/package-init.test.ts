@@ -29,6 +29,7 @@ describe('lumina init', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
       lumina?: string;
       scripts?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
     const config = JSON.parse(
       fs.readFileSync(path.join(dir, 'lumina.config.json'), 'utf-8')
@@ -38,19 +39,28 @@ describe('lumina init', () => {
       target?: string;
     };
     const indexHtml = fs.readFileSync(path.join(dir, 'index.html'), 'utf-8');
-    const mainSource = fs.readFileSync(path.join(dir, 'src', 'main.lm'), 'utf-8');
+    const appSource = fs.readFileSync(path.join(dir, 'src', 'app.lm'), 'utf-8');
+    const clientSource = fs.readFileSync(path.join(dir, 'src', 'client.lm'), 'utf-8');
+    const ssgSource = fs.readFileSync(path.join(dir, 'src', 'ssg.lm'), 'utf-8');
     const styles = fs.readFileSync(path.join(dir, 'src', 'styles.css'), 'utf-8');
+    const viteConfig = fs.readFileSync(path.join(dir, 'vite.config.ts'), 'utf-8');
 
-    expect(pkg.lumina).toBe('./src/main.lm');
-    expect(pkg.scripts?.check).toBe('lumina check src/main.lm');
-    expect(pkg.scripts?.build).toContain('lumina compile src/main.lm');
-    expect(pkg.scripts?.dev).toContain('npx vite');
-    expect(config).toMatchObject({ entries: ['src/main.lm'], outDir: 'dist', target: 'esm' });
+    expect(pkg.lumina).toBe('./src/client.lm');
+    expect(pkg.scripts?.check).toContain('src/client.lm');
+    expect(pkg.scripts?.build).toContain('lumina compile src/client.lm');
+    expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
+    expect(pkg.scripts?.dev).toContain('vite --host 127.0.0.1');
+    expect(pkg.devDependencies?.vite).toBeTruthy();
+    expect(config).toMatchObject({ entries: ['src/client.lm'], outDir: 'dist', target: 'esm' });
     expect(indexHtml).toContain('/dist/main.js');
-    expect(mainSource).toContain('@std/router');
-    expect(mainSource).toContain('routeLoader');
-    expect(mainSource).toContain('prefetchRoute');
-    expect(mainSource).toContain('mount_reactive');
+    expect(appSource).toContain('@std/router');
+    expect(appSource).toContain('routeLoader');
+    expect(appSource).toContain('prefetchRoute');
+    expect(appSource).toContain('routeAction');
+    expect(appSource).toContain('submitRouteAction');
+    expect(clientSource).toContain('mount_reactive');
+    expect(ssgSource).toContain('App(createRouter("/")');
     expect(styles).toContain('.app-shell');
+    expect(viteConfig).toContain('defineConfig');
   });
 });

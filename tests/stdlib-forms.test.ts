@@ -28,5 +28,9 @@ describe('@std/forms', () => {
     expect(js).toContain('submitProps');
     expect(js).toContain('props_on_checked_change');
     expect(js).toContain('props_on_submit');
+    expect(js).toContain('createFieldState');
+    expect(js).toContain('submitAction');
+    expect(js).toContain('actionStatus');
+    expect(js).toContain('actionSubmitProps');
   });
 });

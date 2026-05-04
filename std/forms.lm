@@ -1,5 +1,16 @@
 import { reactive, render } from "@std";
 
+pub struct FieldState {
+  dirty: Signal<bool>,
+  touched: Signal<bool>,
+  error: Signal<string>
+}
+
+pub struct FormAction<T> {
+  resource: any,
+  submitting: Signal<bool>
+}
+
 pub fn bindValue(value: Signal<string>, props: any) -> any {
   render.props_merge(
     props,
@@ -61,6 +72,66 @@ pub fn radio(name: string, selected: Signal<string>, optionValue: string, props:
 
 pub fn submitProps(handler: fn() -> any, props: any) -> any {
   render.props_merge(props, render.props_on_submit(handler))
+}
+
+pub fn createFieldState() -> FieldState {
+  FieldState {
+    dirty: reactive.createSignal(false),
+    touched: reactive.createSignal(false),
+    error: reactive.createSignal("")
+  }
+}
+
+pub fn markDirty(field: FieldState) -> void {
+  let _ = reactive.set(field.dirty, true)
+}
+
+pub fn markTouched(field: FieldState) -> void {
+  let _ = reactive.set(field.touched, true)
+}
+
+pub fn setFieldError(field: FieldState, message: string) -> void {
+  let _ = reactive.set(field.error, message)
+}
+
+pub fn fieldIsValid(field: FieldState) -> bool {
+  return reactive.get(field.error) == ""
+}
+
+pub fn action<T>(key: any, submit: fn() -> Promise<T>) -> FormAction<T> {
+  FormAction<T> {
+    resource: render.createResource(key, fn() -> Promise<any> { submit() }, render.props_attr("enabled", false)),
+    submitting: reactive.createSignal(false)
+  }
+}
+
+pub async fn submitAction<T>(formAction: FormAction<T>) -> T {
+  let _start = reactive.set(formAction.submitting, true)
+  let value = await render.resourceRefresh<T>(formAction.resource)
+  let _done = reactive.set(formAction.submitting, false)
+  return value
+}
+
+pub fn actionStatus<T>(formAction: FormAction<T>) -> string {
+  render.resourceStatus(formAction.resource)
+}
+
+pub fn actionData<T>(formAction: FormAction<T>) -> any {
+  render.resourceData(formAction.resource)
+}
+
+pub fn actionError<T>(formAction: FormAction<T>) -> any {
+  render.resourceError(formAction.resource)
+}
+
+pub fn actionSubmitting<T>(formAction: FormAction<T>) -> Signal<bool> {
+  return formAction.submitting
+}
+
+pub fn actionSubmitProps<T>(formAction: FormAction<T>, props: any) -> any {
+  submitProps(fn() -> any {
+    let _ = submitAction(formAction)
+  }, props)
 }
 
 pub fn required(value: string, message: string) -> string {

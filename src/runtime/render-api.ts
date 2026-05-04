@@ -14,7 +14,11 @@ import {
 } from './reactive-core.js';
 import {
   asResourceHandle,
+  clearResourceRecords,
   ensureResourceCurrent,
+  invalidateResourceKey,
+  invalidateResourcePrefix,
+  invalidateResourceTag,
   ResourceHandle,
   resolveResourceRecord,
   startResourceLoad,
@@ -289,12 +293,33 @@ export const createRenderApi = <
     resource_invalidate: (resource: unknown): void => {
       const handle = asResourceHandle(resource, 'render.resource_invalidate');
       handle.record.expiresAt = 0;
-      handle.record.status.set('idle');
+      if (!handle.record.hasData.peek() || !handle.record.staleWhileRevalidate) handle.record.status.set('idle');
       ensureResourceCurrent(handle.record);
+      deps.scheduleDevtoolsNotify();
+    },
+    resource_invalidate_key: (key: unknown): boolean => {
+      const changed = invalidateResourceKey(key);
+      if (changed) deps.scheduleDevtoolsNotify();
+      return changed;
+    },
+    resource_invalidate_prefix: (prefix: string): number => {
+      const count = invalidateResourcePrefix(prefix);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    },
+    resource_invalidate_tag: (tag: string): number => {
+      const count = invalidateResourceTag(tag);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    },
+    resource_clear_cache: (): void => {
+      clearResourceRecords();
       deps.scheduleDevtoolsNotify();
     },
     resource_mutate: <T>(resource: unknown, value: T): T => {
       const handle = asResourceHandle<T>(resource, 'render.resource_mutate');
+      handle.record.version += 1;
+      handle.record.promise = null;
       handle.record.data.set(value as unknown);
       handle.record.hasData.set(true);
       handle.record.error.set(null);
@@ -357,6 +382,10 @@ export const createRenderApi = <
     resourceRead: <T>(resource: unknown): T => render.resource_read<T>(resource),
     resourceRefresh: <T>(resource: unknown): Promise<T> => render.resource_refresh<T>(resource),
     resourceInvalidate: (resource: unknown): void => render.resource_invalidate(resource),
+    resourceInvalidateKey: (key: unknown): boolean => render.resource_invalidate_key(key),
+    resourceInvalidatePrefix: (prefix: string): number => render.resource_invalidate_prefix(prefix),
+    resourceInvalidateTag: (tag: string): number => render.resource_invalidate_tag(tag),
+    resourceClearCache: (): void => render.resource_clear_cache(),
     resourceMutate: <T>(resource: unknown, value: T): T => render.resource_mutate(resource, value),
     errorBoundary: (fallback: unknown, renderChildren: () => ComponentRenderable): VNode =>
       render.error_boundary(fallback, renderChildren),

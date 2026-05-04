@@ -335,9 +335,12 @@ var coerceSsgPageOptions = /* @__PURE__ */ __name((options) => {
     bodyClassName: typeof candidate.bodyClassName === "string" ? candidate.bodyClassName : "",
     appClassName: typeof candidate.appClassName === "string" ? candidate.appClassName : "",
     appId: typeof candidate.appId === "string" && candidate.appId.length > 0 ? candidate.appId : "app",
-    hydrateModule: typeof candidate.hydrateModule === "string" ? candidate.hydrateModule : ""
+    hydrateModule: typeof candidate.hydrateModule === "string" ? candidate.hydrateModule : "",
+    hydrationState: candidate.hydrationState ?? candidate.state ?? null,
+    hydrationStateId: typeof candidate.hydrationStateId === "string" && candidate.hydrationStateId.length > 0 ? candidate.hydrationStateId : "__lumina-hydration"
   };
 }, "coerceSsgPageOptions");
+var serializeHydrationState = /* @__PURE__ */ __name((value) => JSON.stringify(value ?? null).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"), "serializeHydrationState");
 var createSsgApi = /* @__PURE__ */ __name((deps) => {
   const renderPage = /* @__PURE__ */ __name((body, options) => {
     const normalized = coerceSsgPageOptions(options);
@@ -349,9 +352,10 @@ var createSsgApi = /* @__PURE__ */ __name((deps) => {
       ...normalized.head
     ].filter((entry) => entry.length > 0).join("");
     const hydrateScript = normalized.hydrateModule ? `<script type="module" src="${deps.escapeHtml(normalized.hydrateModule)}"></script>` : "";
+    const hydrationStateScript = normalized.hydrationState !== null ? `<script type="application/json" id="${deps.escapeHtml(normalized.hydrationStateId)}">${serializeHydrationState(normalized.hydrationState)}</script>` : "";
     const bodyClass = normalized.bodyClassName ? ` class="${deps.escapeHtml(normalized.bodyClassName)}"` : "";
     const appClass = normalized.appClassName ? ` class="${deps.escapeHtml(normalized.appClassName)}"` : "";
-    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}>${bodyContent}</div>${hydrateScript}</body></html>`;
+    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
   }, "renderPage");
   const writePage = /* @__PURE__ */ __name((filePath, body, options) => {
     const resolvedPath = deps.resolvePath(filePath);
@@ -797,11 +801,13 @@ var snapshotComponentFrame = /* @__PURE__ */ __name((frame) => ({
 var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
   let nextSignalId = 1;
   let nextRootId = 1;
+  let nextEventId = 1;
   let notifyPending = false;
   const signalEntries = /* @__PURE__ */ new Map();
   const roots = /* @__PURE__ */ new Map();
   const rootIds = /* @__PURE__ */ new WeakMap();
   const listeners = /* @__PURE__ */ new Set();
+  const timeline = [];
   const snapshot = /* @__PURE__ */ __name(() => ({
     roots: Array.from(roots.entries()).map(([id, root]) => deps.snapshotRoot(root, id)),
     resources: deps.snapshotResources(),
@@ -809,7 +815,8 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
       id,
       kind: entry.kind,
       value: entry.source.peek()
-    }))
+    })),
+    timeline: timeline.slice()
   }), "snapshot");
   const scheduleNotify = /* @__PURE__ */ __name(() => {
     if (listeners.size === 0 || notifyPending) return;
@@ -861,6 +868,29 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
         scheduleNotify();
       }
     },
+    recordEvent(type, label, detail = null) {
+      const event = {
+        id: nextEventId++,
+        type,
+        label,
+        timestamp: Date.now(),
+        detail
+      };
+      timeline.push(event);
+      if (timeline.length > 500) {
+        timeline.splice(0, timeline.length - 500);
+      }
+      scheduleNotify();
+      return event;
+    },
+    timeline() {
+      return timeline.slice();
+    },
+    clearTimeline() {
+      if (timeline.length === 0) return;
+      timeline.splice(0, timeline.length);
+      scheduleNotify();
+    },
     snapshot,
     subscribe,
     install(key2 = "__LUMINA_DEVTOOLS__") {
@@ -868,7 +898,12 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
       const handle = {
         version: "beta",
         snapshot: /* @__PURE__ */ __name(() => snapshot(), "snapshot"),
-        subscribe
+        subscribe,
+        timeline: /* @__PURE__ */ __name(() => timeline.slice(), "timeline"),
+        clearTimeline: /* @__PURE__ */ __name(() => {
+          timeline.splice(0, timeline.length);
+          scheduleNotify();
+        }, "clearTimeline")
       };
       globalRecord[key2] = handle;
       return handle;
@@ -1074,6 +1109,13 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     return trimRouterTrailingSlash(withLeadingSlash);
   }, "normalizeRouterPath");
   const splitRouterSegments = /* @__PURE__ */ __name((value) => normalizeRouterPath(value).split("/").filter((segment) => segment.length > 0), "splitRouterSegments");
+  const decodeRouterComponent = /* @__PURE__ */ __name((value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }, "decodeRouterComponent");
   const createRouterParamMap = /* @__PURE__ */ __name((entries) => {
     const out = deps.createHashMap();
     for (const [key2, value] of entries) {
@@ -1085,28 +1127,44 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     if (pattern === "*") return true;
     const patternSegments = splitRouterSegments(pattern);
     const pathSegments = splitRouterSegments(path2);
-    if (patternSegments.length !== pathSegments.length) return false;
     for (let i = 0; i < patternSegments.length; i += 1) {
       const expected = patternSegments[i] ?? "";
+      if (expected === "*" || expected.startsWith("*")) return true;
       const actual = pathSegments[i] ?? "";
       if (expected.startsWith(":")) continue;
       if (expected !== actual) return false;
     }
-    return true;
+    return patternSegments.length === pathSegments.length;
   }, "matchRouterPattern");
   const extractRouterParams = /* @__PURE__ */ __name((pattern, path2) => {
     if (pattern === "*") return deps.createHashMap();
     const patternSegments = splitRouterSegments(pattern);
     const pathSegments = splitRouterSegments(path2);
-    if (patternSegments.length !== pathSegments.length) return deps.createHashMap();
     const entries = [];
     for (let i = 0; i < patternSegments.length; i += 1) {
       const expected = patternSegments[i] ?? "";
-      if (!expected.startsWith(":")) continue;
+      const actual = pathSegments[i] ?? "";
+      if (expected === "*" || expected.startsWith("*")) {
+        const name = expected.startsWith("*") && expected.length > 1 ? expected.slice(1) : "splat";
+        entries.push([
+          name,
+          pathSegments.slice(i).map(decodeRouterComponent).join("/")
+        ]);
+        return createRouterParamMap(entries);
+      }
+      if (actual.length === 0) return deps.createHashMap();
+      if (!expected.startsWith(":")) {
+        if (expected !== actual) return deps.createHashMap();
+        continue;
+      }
       entries.push([
         expected.slice(1),
-        pathSegments[i] ?? ""
+        decodeRouterComponent(actual)
       ]);
+      continue;
+    }
+    if (!matchRouterPattern(pattern, path2)) {
+      return deps.createHashMap();
     }
     return createRouterParamMap(entries);
   }, "extractRouterParams");
@@ -1115,13 +1173,22 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     const body = text2.startsWith("?") ? text2.slice(1) : text2;
     if (body.length === 0) return deps.createHashMap();
     const entries = [];
+    if (typeof URLSearchParams === "function") {
+      for (const [key2, value] of new URLSearchParams(body)) {
+        if (key2.length > 0) entries.push([
+          key2,
+          value
+        ]);
+      }
+      return createRouterParamMap(entries);
+    }
     for (const pair of body.split("&")) {
       if (!pair) continue;
       const [rawKey, rawValue = ""] = pair.split("=");
       if (!rawKey) continue;
       entries.push([
-        rawKey,
-        rawValue
+        decodeRouterComponent(rawKey),
+        decodeRouterComponent(rawValue.replace(/\+/g, " "))
       ]);
     }
     return createRouterParamMap(entries);
@@ -1130,10 +1197,10 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     const locationHandle = getRouterLocationHandle();
     if (!locationHandle) return;
     try {
-      const normalized = String(nextPath);
-      locationHandle.pathname = normalized;
-      locationHandle.hash = "";
-      locationHandle.search = "";
+      const parsed = typeof URL === "function" ? new URL(String(nextPath), "http://lumina.local") : null;
+      locationHandle.pathname = parsed?.pathname ?? String(nextPath);
+      locationHandle.search = parsed?.search ?? "";
+      locationHandle.hash = parsed?.hash ?? "";
     } catch {
     }
   }, "updateRouterLocationValue");
@@ -1429,6 +1496,7 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       if (historyHandle && typeof historyHandle.pushState === "function") {
         try {
           historyHandle.pushState(historyHandle.state ?? null, "", normalized);
+          updateRouterLocationValue(normalized);
         } catch {
           updateRouterLocationValue(normalized);
         }
@@ -1443,6 +1511,7 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       if (historyHandle && typeof historyHandle.replaceState === "function") {
         try {
           historyHandle.replaceState(historyHandle.state ?? null, "", normalized);
+          updateRouterLocationValue(normalized);
         } catch {
           updateRouterLocationValue(normalized);
         }
@@ -1476,7 +1545,27 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       }
       routerPopStateHandlers.delete(handler);
     }, "offPopState"),
-    getBasePath: /* @__PURE__ */ __name(() => readRouterBasePath(), "getBasePath")
+    getBasePath: /* @__PURE__ */ __name(() => readRouterBasePath(), "getBasePath"),
+    getScrollRestoration: /* @__PURE__ */ __name(() => {
+      const value = getRouterHistoryHandle()?.scrollRestoration;
+      return typeof value === "string" ? value : "";
+    }, "getScrollRestoration"),
+    setScrollRestoration: /* @__PURE__ */ __name((mode) => {
+      const historyHandle = getRouterHistoryHandle();
+      if (!historyHandle) return;
+      const normalized = String(mode) === "manual" ? "manual" : "auto";
+      try {
+        historyHandle.scrollRestoration = normalized;
+      } catch {
+      }
+    }, "setScrollRestoration"),
+    scrollToTop: /* @__PURE__ */ __name(() => {
+      const windowHandle = getRouterWindowHandle();
+      try {
+        windowHandle?.scrollTo?.(0, 0);
+      } catch {
+      }
+    }, "scrollToTop")
   };
   return {
     url: url2,
@@ -5263,6 +5352,11 @@ var htmlEscapeMap = {
 };
 var escapeHtml = /* @__PURE__ */ __name((value) => String(value ?? "").replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char), "escapeHtml");
 var kebabCase = /* @__PURE__ */ __name((value) => value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, "-ms-"), "kebabCase");
+var normalizeHtmlPropName = /* @__PURE__ */ __name((name) => {
+  if (name === "className") return "class";
+  if (name === "htmlFor") return "for";
+  return name;
+}, "normalizeHtmlPropName");
 var serializeStyleValue = /* @__PURE__ */ __name((value) => Object.entries(value).filter(([, entry]) => entry !== null && entry !== void 0).map(([key2, entry]) => `${kebabCase(key2)}:${String(entry)}`).join(";"), "serializeStyleValue");
 var serializePropsToHtml = /* @__PURE__ */ __name((props, hydrationKey) => {
   const propSource = props ?? {};
@@ -5272,16 +5366,17 @@ var serializePropsToHtml = /* @__PURE__ */ __name((props, hydrationKey) => {
     if (key2 === "key") continue;
     if (key2.startsWith("on") && typeof value === "function") continue;
     if (value === false || value === null || value === void 0) continue;
+    const attrName = normalizeHtmlPropName(key2);
     if (key2 === "style" && typeof value === "object" && value !== null) {
       const styleText = serializeStyleValue(value);
       if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);
       continue;
     }
     if (value === true) {
-      attrs.push(key2);
+      attrs.push(attrName);
       continue;
     }
-    attrs.push(`${key2}="${escapeHtml(String(value))}"`);
+    attrs.push(`${attrName}="${escapeHtml(String(value))}"`);
   }
   if (keyForHydration !== void 0 && !Object.prototype.hasOwnProperty.call(propSource, LUMINA_HYDRATION_KEY_ATTR)) {
     attrs.push(`${LUMINA_HYDRATION_KEY_ATTR}="${escapeHtml(String(keyForHydration))}"`);
@@ -5962,6 +6057,36 @@ var vnodeKindTag = /* @__PURE__ */ __name((node) => `${node.kind}:${node.tag ?? 
 var hasVNodeKey = /* @__PURE__ */ __name((node) => typeof node.key === "string" || typeof node.key === "number", "hasVNodeKey");
 var hasKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasKeyedChildren");
 var getDomHydrationKey = /* @__PURE__ */ __name((node) => getDomAttribute(node, LUMINA_HYDRATION_KEY_ATTR), "getDomHydrationKey");
+var getDomHydrationLabel = /* @__PURE__ */ __name((node) => {
+  const element = node;
+  if (typeof element.tagName === "string" && element.tagName.length > 0) {
+    return element.tagName.toLowerCase();
+  }
+  const candidate = node;
+  if (candidate.nodeType === 3 || candidate.nodeName === "#text") {
+    return "#text";
+  }
+  return "node";
+}, "getDomHydrationLabel");
+var childHydrationContext = /* @__PURE__ */ __name((hydration, segment) => hydration ? {
+  ...hydration,
+  path: `${hydration.path}.${String(segment)}`
+} : void 0, "childHydrationContext");
+var reportHydrationMismatch = /* @__PURE__ */ __name((hydration, mismatch) => {
+  if (!hydration) return;
+  const diagnostic = {
+    ...mismatch,
+    path: hydration.path
+  };
+  hydration.onMismatch?.(diagnostic);
+  if (hydration.strict) {
+    const details = [
+      diagnostic.expected && `expected ${diagnostic.expected}`,
+      diagnostic.actual && `actual ${diagnostic.actual}`
+    ].filter(Boolean).join(", ");
+    throw new Error(`Hydration mismatch at ${diagnostic.path}: ${diagnostic.kind}${details ? ` (${details})` : ""}`);
+  }
+}, "reportHydrationMismatch");
 var isIgnorableHydrationNode = /* @__PURE__ */ __name((node) => {
   const candidate = node;
   if (candidate.nodeType === 8) return true;
@@ -6538,7 +6663,7 @@ var bindIndexListHost = /* @__PURE__ */ __name((host, node, documentLike, eventS
   host.__luminaIndexListSource = source;
   host.__luminaIndexListRender = renderItem;
 }, "bindIndexListHost");
-var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydrateExisting = false) => {
+var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydrateExisting = false, hydration) => {
   const source = node.itemsSignal;
   const keyOf = node.listKey;
   const renderItem = node.listIndexedRender;
@@ -6563,7 +6688,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     const itemSignal = new Signal(value);
     const indexSignal = new Signal(index);
     const vnode2 = applyVNodeKey(coerceRenderableToVNode(renderItem(itemSignal, indexSignal)), key2);
-    const domNode = existingDomNode ? hydrateDomNode(existingDomNode, vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue) : createDomNode(vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    const domNode = existingDomNode ? hydrateDomNode(existingDomNode, vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue, childHydrationContext(hydration, `key:${String(key2)}`)) : createDomNode(vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
     return {
       key: key2,
       currentValue: value,
@@ -6577,16 +6702,12 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
   const createInitialEntries = /* @__PURE__ */ __name((items, existingChildren2 = []) => {
     const seen = /* @__PURE__ */ new Set();
     const keyedExisting = /* @__PURE__ */ new Map();
-    const unkeyedExisting = [];
     for (const child of existingChildren2) {
       const key2 = getDomHydrationKey(child);
-      if (key2 === null) {
-        unkeyedExisting.push(child);
-      } else if (!keyedExisting.has(key2)) {
+      if (key2 !== null && !keyedExisting.has(key2)) {
         keyedExisting.set(key2, child);
       }
     }
-    let unkeyedIndex = 0;
     return items.map((value, index) => {
       const key2 = coerceListKey(keyOf(value, index), index);
       if (seen.has(key2)) {
@@ -6594,11 +6715,14 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       }
       seen.add(key2);
       const keyedDom = keyedExisting.get(String(key2));
-      const fallbackDom = hydrateExisting ? unkeyedExisting[unkeyedIndex] : void 0;
-      if (!keyedDom && fallbackDom) {
-        unkeyedIndex += 1;
+      if (!keyedDom && hydrateExisting) {
+        reportHydrationMismatch(childHydrationContext(hydration, index), {
+          kind: "missing_keyed_child",
+          expected: String(key2),
+          key: key2
+        });
       }
-      return createEntry(value, index, keyedDom ?? fallbackDom, key2);
+      return createEntry(value, index, keyedDom, key2);
     });
   }, "createInitialEntries");
   const replaceOrHydrateInitialChildren = /* @__PURE__ */ __name((entries, existingChildren2) => {
@@ -6606,7 +6730,13 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       replaceChildren(host, entries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore);
       return;
     }
-    reorderChildren(host, entries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+    reorderChildren(host, entries.map((entry) => entry.domNode), (child) => {
+      reportHydrationMismatch(hydration, {
+        kind: "extra_node",
+        actual: getDomHydrationLabel(child)
+      });
+      disposeDomNode(child, eventStore, portalStore, liveTextStore);
+    }, {
       currentChildren: existingChildren2,
       structureChanged: true
     });
@@ -7341,10 +7471,15 @@ var patchDomNode = /* @__PURE__ */ __name((domNode, prevNode, nextNode, document
   }
   return element;
 }, "patchDomNode");
-var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydration) => {
   if (node.kind === "text") {
     const nextText = node.text ?? "";
     if (domNode.textContent !== nextText) {
+      reportHydrationMismatch(hydration, {
+        kind: "text",
+        expected: nextText,
+        actual: domNode.textContent ?? ""
+      });
       domNode.textContent = nextText;
     }
     return domNode;
@@ -7373,7 +7508,7 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
   }
   if (node.kind === "for_list") {
     updateDomProperties(domNode, void 0, forListHostProps, eventStore);
-    bindForListHost(domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, true);
+    bindForListHost(domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, true, childHydrationContext(hydration, "forList"));
     return domNode;
   }
   if (node.kind === "portal") {
@@ -7382,6 +7517,16 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
   }
   const element = domNode;
   if (node.kind === "element") {
+    const expectedTag = (node.tag ?? "div").toLowerCase();
+    const actualTag = getDomHydrationLabel(domNode);
+    if (actualTag !== expectedTag) {
+      reportHydrationMismatch(hydration, {
+        kind: "tag",
+        expected: expectedTag,
+        actual: actualTag
+      });
+      return createDomNode(node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    }
     updateDomProperties(element, void 0, node.props, eventStore);
   }
   const nextChildren = asDomChildren(node);
@@ -7423,16 +7568,28 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
       currentChild = keyedExisting.get(String(nextChild.key));
       if (currentChild) {
         usedExisting.add(currentChild);
+      } else {
+        reportHydrationMismatch(childHydrationContext(hydration, index), {
+          kind: "missing_keyed_child",
+          expected: String(nextChild.key),
+          key: nextChild.key
+        });
       }
     }
-    currentChild ?? (currentChild = keyedHydration ? takeUnkeyedExisting() : existingChildren[index]);
+    currentChild ?? (currentChild = keyedHydration && hasVNodeKey(nextChild) ? void 0 : keyedHydration ? takeUnkeyedExisting() : existingChildren[index]);
     if (currentChild) {
       usedExisting.add(currentChild);
     }
-    nextDomChildren.push(currentChild ? hydrateDomNode(currentChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue) : createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+    nextDomChildren.push(currentChild ? hydrateDomNode(currentChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue, childHydrationContext(hydration, index)) : createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
   }
   for (const existingChild of allExistingChildren) {
     if (!usedExisting.has(existingChild)) {
+      if (!isIgnorableHydrationNode(existingChild)) {
+        reportHydrationMismatch(hydration, {
+          kind: "extra_node",
+          actual: getDomHydrationLabel(existingChild)
+        });
+      }
       disposeDomNode(existingChild, eventStore, portalStore, liveTextStore);
     }
   }
@@ -7484,6 +7641,11 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
     },
     hydrate(node, container) {
       const domContainer = container;
+      const hydrationContext = {
+        path: "root",
+        onMismatch: options?.onHydrationMismatch,
+        strict: options?.strictHydration === true
+      };
       const existingChildren = readChildNodes(domContainer);
       const existing = findHydrationRootNode(existingChildren, node);
       if (!existing) {
@@ -7495,7 +7657,7 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
         currentVNode = node;
         return;
       }
-      const hydratedDom = hydrateDomNode(existing, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      const hydratedDom = hydrateDomNode(existing, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydrationContext);
       for (const child of existingChildren) {
         if (child === existing || !isIgnorableHydrationNode(child)) continue;
         disposeDomNode(child, eventStore, portalStore, liveTextStore);
@@ -11069,14 +11231,24 @@ var normalizeResourceKey = /* @__PURE__ */ __name((key2) => {
     return String(key2);
   }
 }, "normalizeResourceKey");
+var normalizeResourceTags = /* @__PURE__ */ __name((value) => {
+  const raw = Array.isArray(value) ? value : typeof value === "string" ? [
+    value
+  ] : [];
+  return raw.map((entry) => String(entry).trim()).filter((entry, index, list2) => entry.length > 0 && list2.indexOf(entry) === index);
+}, "normalizeResourceTags");
 var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
   const candidate = options && typeof options === "object" ? options : {};
   const ttlRaw = candidate.ttlMs;
   const ttlMs = typeof ttlRaw === "number" && Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : 0;
   const enabled = candidate.enabled !== false;
+  const staleWhileRevalidate = candidate.staleWhileRevalidate === true || candidate.swr === true;
+  const tags = normalizeResourceTags(candidate.tags ?? candidate.tag);
   return {
     ttlMs,
-    enabled
+    enabled,
+    staleWhileRevalidate,
+    tags
   };
 }, "normalizeResourceOptions");
 var resourceHasData = /* @__PURE__ */ __name((record) => !!record.hasData.peek(), "resourceHasData");
@@ -11085,18 +11257,23 @@ var createResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => ({
   loader,
   ttlMs: options.ttlMs,
   enabled: options.enabled,
+  staleWhileRevalidate: options.staleWhileRevalidate,
+  tags: new Set(options.tags),
   data: new Signal(null),
   hasData: new Signal(false),
   error: new Signal(null),
   status: new Signal("idle"),
   promise: null,
-  expiresAt: 0
+  expiresAt: 0,
+  version: 0
 }), "createResourceRecord");
 var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
-  if (record.promise) return record.promise;
+  if (record.promise && !force) return record.promise;
   if (!record.enabled && !force) {
     return Promise.reject(new Error(`Resource '${record.key}' is disabled`));
   }
+  const version = record.version + 1;
+  record.version = version;
   record.status.set("loading");
   record.error.set(null);
   let loadResult;
@@ -11106,6 +11283,9 @@ var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
     loadResult = Promise.reject(error);
   }
   const promise = loadResult.then((value) => {
+    if (record.version !== version) {
+      return value;
+    }
     record.data.set(value);
     record.hasData.set(true);
     record.error.set(null);
@@ -11115,6 +11295,9 @@ var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
     resourceHooks.notifyDevtools?.();
     return value;
   }, (error) => {
+    if (record.version !== version) {
+      throw error;
+    }
     record.error.set(error);
     record.status.set("error");
     record.expiresAt = 0;
@@ -11140,6 +11323,13 @@ var ensureResourceCurrent = /* @__PURE__ */ __name((record) => {
     startResourceLoad(record);
   }
 }, "ensureResourceCurrent");
+var invalidateResourceRecord = /* @__PURE__ */ __name((record) => {
+  record.expiresAt = 0;
+  if (!record.hasData.peek() || !record.staleWhileRevalidate) {
+    record.status.set("idle");
+  }
+  ensureResourceCurrent(record);
+}, "invalidateResourceRecord");
 var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
   const normalizedKey = normalizeResourceKey(key2);
   const normalizedOptions = normalizeResourceOptions(options);
@@ -11148,6 +11338,8 @@ var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
     existing.loader = loader;
     existing.ttlMs = normalizedOptions.ttlMs;
     existing.enabled = normalizedOptions.enabled;
+    existing.staleWhileRevalidate = normalizedOptions.staleWhileRevalidate;
+    existing.tags = new Set(normalizedOptions.tags);
     ensureResourceCurrent(existing);
     return existing;
   }
@@ -11163,6 +11355,42 @@ var asResourceHandle = /* @__PURE__ */ __name((candidate, apiName) => {
   throw new Error(`${apiName} expects a resource handle`);
 }, "asResourceHandle");
 var listResourceRecords = /* @__PURE__ */ __name(() => Array.from(resourceCache.values()), "listResourceRecords");
+var invalidateResourceKey = /* @__PURE__ */ __name((key2) => {
+  const normalizedKey = normalizeResourceKey(key2);
+  const record = resourceCache.get(normalizedKey);
+  if (!record) return false;
+  invalidateResourceRecord(record);
+  resourceHooks.notifyDevtools?.();
+  return true;
+}, "invalidateResourceKey");
+var invalidateResourcePrefix = /* @__PURE__ */ __name((prefix) => {
+  const normalizedPrefix = String(prefix);
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (!record.key.startsWith(normalizedPrefix)) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+}, "invalidateResourcePrefix");
+var invalidateResourceTag = /* @__PURE__ */ __name((tag) => {
+  const normalizedTag = String(tag).trim();
+  if (!normalizedTag) return 0;
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (!record.tags.has(normalizedTag)) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+}, "invalidateResourceTag");
+var clearResourceRecords = /* @__PURE__ */ __name(() => {
+  if (resourceCache.size === 0) return;
+  resourceCache.clear();
+  resourceHooks.notifyDevtools?.();
+}, "clearResourceRecords");
 
 // src/runtime/root-runtime.ts
 var coerceRenderer2 = /* @__PURE__ */ __name((candidate) => coerceRenderer(candidate), "coerceRenderer");
@@ -11282,12 +11510,33 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     resource_invalidate: /* @__PURE__ */ __name((resource) => {
       const handle = asResourceHandle(resource, "render.resource_invalidate");
       handle.record.expiresAt = 0;
-      handle.record.status.set("idle");
+      if (!handle.record.hasData.peek() || !handle.record.staleWhileRevalidate) handle.record.status.set("idle");
       ensureResourceCurrent(handle.record);
       deps.scheduleDevtoolsNotify();
     }, "resource_invalidate"),
+    resource_invalidate_key: /* @__PURE__ */ __name((key2) => {
+      const changed = invalidateResourceKey(key2);
+      if (changed) deps.scheduleDevtoolsNotify();
+      return changed;
+    }, "resource_invalidate_key"),
+    resource_invalidate_prefix: /* @__PURE__ */ __name((prefix) => {
+      const count = invalidateResourcePrefix(prefix);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    }, "resource_invalidate_prefix"),
+    resource_invalidate_tag: /* @__PURE__ */ __name((tag) => {
+      const count = invalidateResourceTag(tag);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    }, "resource_invalidate_tag"),
+    resource_clear_cache: /* @__PURE__ */ __name(() => {
+      clearResourceRecords();
+      deps.scheduleDevtoolsNotify();
+    }, "resource_clear_cache"),
     resource_mutate: /* @__PURE__ */ __name((resource, value) => {
       const handle = asResourceHandle(resource, "render.resource_mutate");
+      handle.record.version += 1;
+      handle.record.promise = null;
       handle.record.data.set(value);
       handle.record.hasData.set(true);
       handle.record.error.set(null);
@@ -11332,6 +11581,10 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     resourceRead: /* @__PURE__ */ __name((resource) => render2.resource_read(resource), "resourceRead"),
     resourceRefresh: /* @__PURE__ */ __name((resource) => render2.resource_refresh(resource), "resourceRefresh"),
     resourceInvalidate: /* @__PURE__ */ __name((resource) => render2.resource_invalidate(resource), "resourceInvalidate"),
+    resourceInvalidateKey: /* @__PURE__ */ __name((key2) => render2.resource_invalidate_key(key2), "resourceInvalidateKey"),
+    resourceInvalidatePrefix: /* @__PURE__ */ __name((prefix) => render2.resource_invalidate_prefix(prefix), "resourceInvalidatePrefix"),
+    resourceInvalidateTag: /* @__PURE__ */ __name((tag) => render2.resource_invalidate_tag(tag), "resourceInvalidateTag"),
+    resourceClearCache: /* @__PURE__ */ __name(() => render2.resource_clear_cache(), "resourceClearCache"),
     resourceMutate: /* @__PURE__ */ __name((resource, value) => render2.resource_mutate(resource, value), "resourceMutate"),
     errorBoundary: /* @__PURE__ */ __name((fallback, renderChildren) => render2.error_boundary(fallback, renderChildren), "errorBoundary"),
     mountApp: /* @__PURE__ */ __name((renderer, container, componentFn, props) => render2.mount_app(renderer, container, componentFn, props), "mountApp"),
@@ -11356,12 +11609,18 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     testingSubmit: /* @__PURE__ */ __name((node) => render2.testing_submit(node), "testingSubmit"),
     devtoolsSnapshot: /* @__PURE__ */ __name(() => render2.devtools_snapshot(), "devtoolsSnapshot"),
     installDevtools: /* @__PURE__ */ __name((key2) => render2.install_devtools(key2), "installDevtools"),
+    devtoolsRecordEvent: /* @__PURE__ */ __name((type, label, detail) => render2.devtools_record_event(type, label, detail), "devtoolsRecordEvent"),
+    devtoolsTimeline: /* @__PURE__ */ __name(() => render2.devtools_timeline(), "devtoolsTimeline"),
+    devtoolsClearTimeline: /* @__PURE__ */ __name(() => render2.devtools_clear_timeline(), "devtoolsClearTimeline"),
     ssgPage: /* @__PURE__ */ __name((body, options) => render2.ssg_page(body, options), "ssgPage"),
     ssgRenderApp: /* @__PURE__ */ __name((componentFn, props, options) => render2.ssg_render_app(componentFn, props, options), "ssgRenderApp"),
     ssgWritePage: /* @__PURE__ */ __name((filePath, body, options) => render2.ssg_write_page(filePath, body, options), "ssgWritePage"),
     ssgWriteApp: /* @__PURE__ */ __name((filePath, componentFn, props, options) => render2.ssg_write_app(filePath, componentFn, props, options), "ssgWriteApp"),
     devtools_snapshot: /* @__PURE__ */ __name(() => deps.snapshotDevtools(), "devtools_snapshot"),
     install_devtools: /* @__PURE__ */ __name((key2) => deps.installLuminaDevtools(key2), "install_devtools"),
+    devtools_record_event: /* @__PURE__ */ __name((type, label, detail) => deps.recordDevtoolsEvent(type, label, detail), "devtools_record_event"),
+    devtools_timeline: /* @__PURE__ */ __name(() => deps.readDevtoolsTimeline(), "devtools_timeline"),
+    devtools_clear_timeline: /* @__PURE__ */ __name(() => deps.clearDevtoolsTimeline(), "devtools_clear_timeline"),
     ssg_page: /* @__PURE__ */ __name((body, options) => deps.appRuntime.ssgApi.renderPage(body, options), "ssg_page"),
     ssg_render_app: /* @__PURE__ */ __name((componentFn, props, options) => deps.appRuntime.ssgApi.renderAppPage(componentFn, props, options), "ssg_render_app"),
     ssg_write_page: /* @__PURE__ */ __name((filePath, body, options) => deps.appRuntime.ssgApi.writePage(filePath, body, options), "ssg_write_page"),
@@ -12571,7 +12830,8 @@ var devtools = createDevtoolsController({
     key: record.key,
     status: record.status.peek(),
     hasData: record.hasData.peek(),
-    error: record.error.peek()
+    error: record.error.peek(),
+    tags: Array.from(record.tags)
   })), "snapshotResources")
 });
 var registerDevtoolsSignal = /* @__PURE__ */ __name((kind, signal) => devtools.registerSignal(kind, signal), "registerDevtoolsSignal");
@@ -12666,14 +12926,8 @@ var _ReactiveRenderRoot2 = class _ReactiveRenderRoot2 extends ReactiveRenderRoot
 };
 __name(_ReactiveRenderRoot2, "ReactiveRenderRoot");
 var ReactiveRenderRoot2 = _ReactiveRenderRoot2;
-var registerDevtoolsRoot = /* @__PURE__ */ __name((root) => {
-  devtools.registerRoot(root);
-}, "registerDevtoolsRoot");
-var unregisterDevtoolsRoot = /* @__PURE__ */ __name((root) => {
-  devtools.unregisterRoot(root);
-}, "unregisterDevtoolsRoot");
-var snapshotDevtools = /* @__PURE__ */ __name(() => devtools.snapshot(), "snapshotDevtools");
-var installLuminaDevtools = /* @__PURE__ */ __name((key2 = "__LUMINA_DEVTOOLS__") => devtools.install(key2), "installLuminaDevtools");
+var registerDevtoolsRoot = /* @__PURE__ */ __name((root) => void devtools.registerRoot(root), "registerDevtoolsRoot");
+var unregisterDevtoolsRoot = /* @__PURE__ */ __name((root) => devtools.unregisterRoot(root), "unregisterDevtoolsRoot");
 var toRenderErrorMessage = /* @__PURE__ */ __name((error) => {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("Canvas renderer requires")) {
@@ -12743,8 +12997,11 @@ var render = createRenderApi({
   hydrateReactiveView,
   renderError: /* @__PURE__ */ __name((message) => Result.Err(message), "renderError"),
   toRenderErrorMessage,
-  snapshotDevtools,
-  installLuminaDevtools,
+  snapshotDevtools: /* @__PURE__ */ __name(() => devtools.snapshot(), "snapshotDevtools"),
+  installLuminaDevtools: /* @__PURE__ */ __name((key2) => devtools.install(key2), "installLuminaDevtools"),
+  recordDevtoolsEvent: /* @__PURE__ */ __name((type, label, detail) => devtools.recordEvent(type, label, detail), "recordDevtoolsEvent"),
+  readDevtoolsTimeline: /* @__PURE__ */ __name(() => devtools.timeline(), "readDevtoolsTimeline"),
+  clearDevtoolsTimeline: /* @__PURE__ */ __name(() => devtools.clearTimeline(), "clearDevtoolsTimeline"),
   scheduleDevtoolsNotify
 });
 var renderSurface = {
@@ -12772,6 +13029,10 @@ var renderSurface = {
   resourceRead: render.resource_read,
   resourceRefresh: render.resource_refresh,
   resourceInvalidate: render.resource_invalidate,
+  resourceInvalidateKey: render.resource_invalidate_key,
+  resourceInvalidatePrefix: render.resource_invalidate_prefix,
+  resourceInvalidateTag: render.resource_invalidate_tag,
+  resourceClearCache: render.resource_clear_cache,
   resourceMutate: render.resource_mutate,
   suspense: render.suspense,
   errorBoundary: render.error_boundary,
@@ -12890,12 +13151,15 @@ var renderSurface = {
   testingQueryAllByRole: render.testing_query_all_by_role,
   devtoolsSnapshot: render.devtools_snapshot,
   installDevtools: render.install_devtools,
+  devtoolsRecordEvent: render.devtools_record_event,
+  devtoolsTimeline: render.devtools_timeline,
+  devtoolsClearTimeline: render.devtools_clear_timeline,
   ssgPage: render.ssg_page,
   ssgRenderApp: render.ssg_render_app,
   ssgWritePage: render.ssg_write_page,
   ssgWriteApp: render.ssg_write_app
 };
-var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingQueryAllByRole, devtoolsSnapshot, installDevtools, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
+var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceClearCache, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingQueryAllByRole, devtoolsSnapshot, installDevtools, devtoolsRecordEvent, devtoolsTimeline, devtoolsClearTimeline, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
 var reactive = {
   createSignal,
   get,
@@ -12990,7 +13254,10 @@ export {
   crypto,
   defineCustomElement,
   deque,
+  devtoolsClearTimeline,
+  devtoolsRecordEvent,
   devtoolsSnapshot,
+  devtoolsTimeline,
   dialogClose,
   dialogContent,
   dialogDescription,
@@ -13104,9 +13371,13 @@ export {
   renderToString,
   renderToStringApp,
   renderToTerminal,
+  resourceClearCache,
   resourceData,
   resourceError,
   resourceInvalidate,
+  resourceInvalidateKey,
+  resourceInvalidatePrefix,
+  resourceInvalidateTag,
   resourceMutate,
   resourceRead,
   resourceRefresh,

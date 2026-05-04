@@ -133,18 +133,19 @@ describe('runtime browser runtime', () => {
     const historyCalls: string[] = [];
     const history = {
       state: null,
+      scrollRestoration: 'auto',
       pushState: (_data: unknown, _unused: string, url?: string | URL | null) => {
         historyCalls.push(`push:${String(url)}`);
-        location.pathname = String(url ?? '/');
       },
       replaceState: (_data: unknown, _unused: string, url?: string | URL | null) => {
         historyCalls.push(`replace:${String(url)}`);
-        location.pathname = String(url ?? '/');
       },
     };
+    const scrollTo = jest.fn();
     const windowHandle = {
       location,
       history,
+      scrollTo,
       addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
       removeEventListener: (type: string) => listeners.delete(type),
       dispatchEvent: (_event: Event) => true,
@@ -189,14 +190,26 @@ describe('runtime browser runtime', () => {
     expect(router.getCurrentHash()).toBe('#a');
     expect(router.getCurrentSearch()).toBe('?q=1');
     expect(router.matchRoute('/users/:id', '/users/42')).toBe(true);
-    const params = router.extractParams('/users/:id', '/users/42') as TestHashMap<string, string>;
-    expect(params.data.get('id')).toBe('42');
-    const search = router.parseSearchParams('?page=2') as TestHashMap<string, string>;
+    expect(router.matchRoute('/files/*rest', '/files/a/b')).toBe(true);
+    const params = router.extractParams('/users/:id', '/users/a%20b') as TestHashMap<string, string>;
+    expect(params.data.get('id')).toBe('a b');
+    const splat = router.extractParams('/files/*rest', '/files/a/b') as TestHashMap<string, string>;
+    expect(splat.data.get('rest')).toBe('a/b');
+    const search = router.parseSearchParams('?page=2&name=Ada%20L') as TestHashMap<string, string>;
     expect(search.data.get('page')).toBe('2');
+    expect(search.data.get('name')).toBe('Ada L');
     expect(router.getBasePath()).toBe('/app/');
+    expect(router.getScrollRestoration()).toBe('auto');
+    router.setScrollRestoration('manual');
+    expect(history.scrollRestoration).toBe('manual');
+    router.scrollToTop();
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
 
-    router.push('/next');
-    router.replace('/final');
-    expect(historyCalls).toEqual(['push:/next', 'replace:/final']);
+    router.push('/next?tab=1#top');
+    router.replace('/final?tab=2#done');
+    expect(historyCalls).toEqual(['push:/next?tab=1#top', 'replace:/final?tab=2#done']);
+    expect(location.pathname).toBe('/final');
+    expect(location.search).toBe('?tab=2');
+    expect(location.hash).toBe('#done');
   });
 });

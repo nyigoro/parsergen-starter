@@ -9,6 +9,19 @@ pub struct RouteResource<T> {
   raw: any
 }
 
+pub struct RouteMatch {
+  pattern: string,
+  path: string,
+  matched: bool,
+  params: any,
+  search: any
+}
+
+pub struct RouteAction<T> {
+  resource: RouteResource<T>,
+  submitting: Signal<bool>
+}
+
 fn starts_with(value: string, prefix: string) -> bool {
   if (str.length(prefix) > str.length(value)) {
     return false
@@ -145,6 +158,18 @@ pub fn replace(routerValue: Router, path: string) -> void {
   router.replace(resolve_href(routerValue.base, path))
 }
 
+pub fn getScrollRestoration() -> string {
+  router.getScrollRestoration()
+}
+
+pub fn setScrollRestoration(mode: string) -> void {
+  router.setScrollRestoration(mode)
+}
+
+pub fn scrollToTop() -> void {
+  router.scrollToTop()
+}
+
 pub fn currentPath(routerValue: Router) -> Signal<string> {
   return routerValue.path
 }
@@ -153,8 +178,21 @@ pub fn currentParams(_routerValue: Router) -> any {
   return router.parseSearchParams(router.getCurrentSearch())
 }
 
+pub fn currentSearchParams(routerValue: Router) -> any {
+  return currentParams(routerValue)
+}
+
 pub fn routeResourceKey(routerValue: Router, name: string) -> string {
-  return str.concat(str.concat("route:", reactive.get(routerValue.path)), str.concat(":", name))
+  let path = reactive.get(routerValue.path)
+  let search = router.getCurrentSearch()
+  if (str.length(search) > 0) {
+    return str.concat(str.concat(str.concat("route:", path), search), str.concat(":", name))
+  }
+  return str.concat(str.concat("route:", path), str.concat(":", name))
+}
+
+pub fn routeScopedKey(routerValue: Router, routeId: string, name: string) -> string {
+  return str.concat(str.concat(str.concat(str.concat("route:", routeId), ":"), reactive.get(routerValue.path)), str.concat(str.concat(":", router.getCurrentSearch()), str.concat(":", name)))
 }
 
 pub fn routeLoader<T>(routerValue: Router, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
@@ -165,8 +203,20 @@ pub fn routeLoaderWithOptions<T>(routerValue: Router, name: string, loader: fn()
   RouteResource<T> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, options) }
 }
 
+pub fn routeLoaderFor<T>(routerValue: Router, routeId: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+}
+
+pub fn routeLoaderForWithOptions<T>(routerValue: Router, routeId: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, options) }
+}
+
 pub fn prefetchRoute<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
   RouteResource<T> { raw: render.createResource(str.concat(str.concat("route:", normalize_path(path)), str.concat(":", name)), fn() -> Promise<any> { loader() }, render.props_empty()) }
+}
+
+pub fn prefetchRouteWithOptions<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(str.concat(str.concat("route:", normalize_path(path)), str.concat(":", name)), fn() -> Promise<any> { loader() }, options) }
 }
 
 pub fn routeStatus<T>(resource: RouteResource<T>) -> string {
@@ -197,12 +247,88 @@ pub fn optimisticRouteMutate<T>(resource: RouteResource<T>, value: T) -> T {
   render.resourceMutate(resource.raw, value)
 }
 
+pub fn invalidateRouteKey(key: any) -> bool {
+  render.resourceInvalidateKey(key)
+}
+
+pub fn invalidateRoutePrefix(prefix: string) -> int {
+  render.resourceInvalidatePrefix(prefix)
+}
+
+pub fn invalidateRouteTag(tag: string) -> int {
+  render.resourceInvalidateTag(tag)
+}
+
+pub fn routeAction<T>(routerValue: Router, name: string, action: fn() -> Promise<T>) -> RouteAction<T> {
+  let options = render.props_attr("enabled", false)
+  let actionResource = RouteResource<T> { raw: render.createResource(str.concat(routeResourceKey(routerValue, name), ":action"), fn() -> Promise<any> { action() }, options) }
+  return RouteAction<T> { resource: actionResource, submitting: reactive.createSignal(false) }
+}
+
+pub async fn submitRouteAction<T>(action: RouteAction<T>) -> T {
+  let _start = reactive.set(action.submitting, true)
+  let value = await render.resourceRefresh<T>(action.resource.raw)
+  let _done = reactive.set(action.submitting, false)
+  return value
+}
+
+pub fn routeActionStatus<T>(action: RouteAction<T>) -> string {
+  render.resourceStatus(action.resource.raw)
+}
+
+pub fn routeActionData<T>(action: RouteAction<T>) -> any {
+  render.resourceData(action.resource.raw)
+}
+
+pub fn routeActionError<T>(action: RouteAction<T>) -> any {
+  render.resourceError(action.resource.raw)
+}
+
+pub fn routeActionSubmitting<T>(action: RouteAction<T>) -> Signal<bool> {
+  return action.submitting
+}
+
 pub fn matchRoute(pattern: string, path: string) -> bool {
   return router.matchRoute(pattern, path)
 }
 
 pub fn isActive(routerValue: Router, pattern: string) -> bool {
   return matchRoute(pattern, reactive.get(routerValue.path))
+}
+
+pub fn routeMatch(routerValue: Router, pattern: string) -> RouteMatch {
+  let path = reactive.get(routerValue.path)
+  return RouteMatch {
+    pattern: pattern,
+    path: path,
+    matched: matchRoute(pattern, path),
+    params: router.extractParams(pattern, path),
+    search: currentSearchParams(routerValue)
+  }
+}
+
+pub fn routeParams(matchValue: RouteMatch) -> any {
+  return matchValue.params
+}
+
+pub fn routeView(routerValue: Router, pattern: string, renderChildren: fn() -> any, fallback: any) -> VNode {
+  render.show(isActive(routerValue, pattern), renderChildren, fallback)
+}
+
+pub fn outlet(condition: bool, renderChildren: fn() -> any, fallback: any) -> VNode {
+  render.show(condition, renderChildren, fallback)
+}
+
+pub fn layout(shell: fn(any) -> VNode, child: any) -> VNode {
+  shell(child)
+}
+
+pub fn routeLoading<T>(_resource: RouteResource<T>, fallback: any, renderChildren: fn() -> any) -> VNode {
+  render.suspense(fallback, renderChildren)
+}
+
+pub fn routeErrorBoundary(fallback: any, renderChildren: fn() -> any) -> VNode {
+  render.errorBoundary(fallback, renderChildren)
 }
 
 pub fn extractParams(pattern: string, path: string) -> any {

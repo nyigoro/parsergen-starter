@@ -620,7 +620,20 @@ Pushes a browser history entry and updates the route signal.
 ### routeLoader<T>(router: Router, name: String, loader: fn() -> Promise<T>) -> RouteResource<T>
 
 Creates a cached resource whose key is tied to the current route path and loader
-name.
+name. Search strings are included in the key so filtered routes do not reuse
+stale data.
+
+### routeMatch / routeView / outlet
+
+`routeMatch(router, pattern)` returns match state, params, and search params.
+`routeView` and `outlet` render branch content with `render.show`, giving apps a
+small route-tree/layout convention without hiding the underlying signal model.
+
+### routeAction<T>(router: Router, name: String, action: fn() -> Promise<T>) -> RouteAction<T>
+
+Creates a disabled resource-backed action. Run it with `submitRouteAction`, then
+read `routeActionStatus`, `routeActionData`, `routeActionError`, and
+`routeActionSubmitting`.
 
 ### prefetchRoute<T>(router: Router, path: String, name: String, loader: fn() -> Promise<T>) -> RouteResource<T>
 
@@ -634,6 +647,10 @@ Reads route data. Use inside `render.suspense` and `render.errorBoundary`.
 ### refreshRoute / invalidateRoute / optimisticRouteMutate
 
 Refresh, invalidate, and optimistically update route data.
+
+### invalidateRouteKey / invalidateRoutePrefix / invalidateRouteTag
+
+Invalidates cached route/resource entries by exact key, prefix, or tag.
 
 ## @std/devtools
 

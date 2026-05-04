@@ -100,6 +100,22 @@ pub fn resourceInvalidate(resource: any) -> void {
   render.resourceInvalidate(resource)
 }
 
+pub fn resourceInvalidateKey(key: any) -> bool {
+  render.resourceInvalidateKey(key)
+}
+
+pub fn resourceInvalidatePrefix(prefix: string) -> int {
+  render.resourceInvalidatePrefix(prefix)
+}
+
+pub fn resourceInvalidateTag(tag: string) -> int {
+  render.resourceInvalidateTag(tag)
+}
+
+pub fn resourceClearCache() -> void {
+  render.resourceClearCache()
+}
+
 pub fn resourceMutate<T>(resource: any, value: T) -> T {
   render.resourceMutate(resource, value)
 }

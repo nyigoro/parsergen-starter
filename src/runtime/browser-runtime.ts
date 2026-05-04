@@ -49,12 +49,14 @@ type RouterHistoryLike = {
   pushState?: (data: unknown, unused: string, url?: string | URL | null) => void;
   replaceState?: (data: unknown, unused: string, url?: string | URL | null) => void;
   state?: unknown;
+  scrollRestoration?: string;
 };
 
 type RouterWindowLike = {
   addEventListener?: (type: string, listener: EventListener) => void;
   removeEventListener?: (type: string, listener: EventListener) => void;
   dispatchEvent?: (event: Event) => boolean;
+  scrollTo?: (x: number, y: number) => void;
   location?: RouterLocationLike;
   history?: RouterHistoryLike;
 };
@@ -315,6 +317,14 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
       .split('/')
       .filter((segment) => segment.length > 0);
 
+  const decodeRouterComponent = (value: string): string => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+
   const createRouterParamMap = (entries: Array<[string, string]>): HashMapLike<string, string> => {
     const out = deps.createHashMap<string, string>();
     for (const [key, value] of entries) {
@@ -327,26 +337,39 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
     if (pattern === '*') return true;
     const patternSegments = splitRouterSegments(pattern);
     const pathSegments = splitRouterSegments(path);
-    if (patternSegments.length !== pathSegments.length) return false;
     for (let i = 0; i < patternSegments.length; i += 1) {
       const expected = patternSegments[i] ?? '';
+      if (expected === '*' || expected.startsWith('*')) return true;
       const actual = pathSegments[i] ?? '';
       if (expected.startsWith(':')) continue;
       if (expected !== actual) return false;
     }
-    return true;
+    return patternSegments.length === pathSegments.length;
   };
 
   const extractRouterParams = (pattern: string, path: string): HashMapLike<string, string> => {
     if (pattern === '*') return deps.createHashMap<string, string>();
     const patternSegments = splitRouterSegments(pattern);
     const pathSegments = splitRouterSegments(path);
-    if (patternSegments.length !== pathSegments.length) return deps.createHashMap<string, string>();
     const entries: Array<[string, string]> = [];
     for (let i = 0; i < patternSegments.length; i += 1) {
       const expected = patternSegments[i] ?? '';
-      if (!expected.startsWith(':')) continue;
-      entries.push([expected.slice(1), pathSegments[i] ?? '']);
+      const actual = pathSegments[i] ?? '';
+      if (expected === '*' || expected.startsWith('*')) {
+        const name = expected.startsWith('*') && expected.length > 1 ? expected.slice(1) : 'splat';
+        entries.push([name, pathSegments.slice(i).map(decodeRouterComponent).join('/')]);
+        return createRouterParamMap(entries);
+      }
+      if (actual.length === 0) return deps.createHashMap<string, string>();
+      if (!expected.startsWith(':')) {
+        if (expected !== actual) return deps.createHashMap<string, string>();
+        continue;
+      }
+      entries.push([expected.slice(1), decodeRouterComponent(actual)]);
+      continue;
+    }
+    if (!matchRouterPattern(pattern, path)) {
+      return deps.createHashMap<string, string>();
     }
     return createRouterParamMap(entries);
   };
@@ -356,11 +379,17 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
     const body = text.startsWith('?') ? text.slice(1) : text;
     if (body.length === 0) return deps.createHashMap<string, string>();
     const entries: Array<[string, string]> = [];
+    if (typeof URLSearchParams === 'function') {
+      for (const [key, value] of new URLSearchParams(body)) {
+        if (key.length > 0) entries.push([key, value]);
+      }
+      return createRouterParamMap(entries);
+    }
     for (const pair of body.split('&')) {
       if (!pair) continue;
       const [rawKey, rawValue = ''] = pair.split('=');
       if (!rawKey) continue;
-      entries.push([rawKey, rawValue]);
+      entries.push([decodeRouterComponent(rawKey), decodeRouterComponent(rawValue.replace(/\+/g, ' '))]);
     }
     return createRouterParamMap(entries);
   };
@@ -369,10 +398,10 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
     const locationHandle = getRouterLocationHandle();
     if (!locationHandle) return;
     try {
-      const normalized = String(nextPath);
-      locationHandle.pathname = normalized;
-      locationHandle.hash = '';
-      locationHandle.search = '';
+      const parsed = typeof URL === 'function' ? new URL(String(nextPath), 'http://lumina.local') : null;
+      locationHandle.pathname = parsed?.pathname ?? String(nextPath);
+      locationHandle.search = parsed?.search ?? '';
+      locationHandle.hash = parsed?.hash ?? '';
     } catch {
       // Ignore host stubs with read-only location fields.
     }
@@ -666,6 +695,7 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
       if (historyHandle && typeof historyHandle.pushState === 'function') {
         try {
           historyHandle.pushState(historyHandle.state ?? null, '', normalized);
+          updateRouterLocationValue(normalized);
         } catch {
           updateRouterLocationValue(normalized);
         }
@@ -680,6 +710,7 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
       if (historyHandle && typeof historyHandle.replaceState === 'function') {
         try {
           historyHandle.replaceState(historyHandle.state ?? null, '', normalized);
+          updateRouterLocationValue(normalized);
         } catch {
           updateRouterLocationValue(normalized);
         }
@@ -715,6 +746,28 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
       routerPopStateHandlers.delete(handler);
     },
     getBasePath: (): string => readRouterBasePath(),
+    getScrollRestoration: (): string => {
+      const value = getRouterHistoryHandle()?.scrollRestoration;
+      return typeof value === 'string' ? value : '';
+    },
+    setScrollRestoration: (mode: string): void => {
+      const historyHandle = getRouterHistoryHandle();
+      if (!historyHandle) return;
+      const normalized = String(mode) === 'manual' ? 'manual' : 'auto';
+      try {
+        historyHandle.scrollRestoration = normalized;
+      } catch {
+        // Ignore host stubs with read-only history fields.
+      }
+    },
+    scrollToTop: (): void => {
+      const windowHandle = getRouterWindowHandle();
+      try {
+        windowHandle?.scrollTo?.(0, 0);
+      } catch {
+        // Ignore scroll failures from test stubs.
+      }
+    },
   };
 
   return {

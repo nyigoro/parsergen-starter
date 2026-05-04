@@ -6,6 +6,8 @@ export interface SsgPageOptions {
   appClassName?: string;
   appId?: string;
   hydrateModule?: string;
+  hydrationState?: unknown;
+  hydrationStateId?: string;
 }
 
 export interface SsgApiDeps<VNodeLike, TComponentFn> {
@@ -38,8 +40,19 @@ export const coerceSsgPageOptions = (options: unknown): Required<SsgPageOptions>
     appClassName: typeof candidate.appClassName === 'string' ? candidate.appClassName : '',
     appId: typeof candidate.appId === 'string' && candidate.appId.length > 0 ? candidate.appId : 'app',
     hydrateModule: typeof candidate.hydrateModule === 'string' ? candidate.hydrateModule : '',
+    hydrationState: candidate.hydrationState ?? candidate.state ?? null,
+    hydrationStateId:
+      typeof candidate.hydrationStateId === 'string' && candidate.hydrationStateId.length > 0
+        ? candidate.hydrationStateId
+        : '__lumina-hydration',
   };
 };
+
+const serializeHydrationState = (value: unknown): string =>
+  JSON.stringify(value ?? null)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 
 export const createSsgApi = <VNodeLike, TComponentFn>(deps: SsgApiDeps<VNodeLike, TComponentFn>) => {
   const renderPage = (body: unknown, options?: unknown): string => {
@@ -58,9 +71,12 @@ export const createSsgApi = <VNodeLike, TComponentFn>(deps: SsgApiDeps<VNodeLike
     const hydrateScript = normalized.hydrateModule
       ? `<script type="module" src="${deps.escapeHtml(normalized.hydrateModule)}"></script>`
       : '';
+    const hydrationStateScript = normalized.hydrationState !== null
+      ? `<script type="application/json" id="${deps.escapeHtml(normalized.hydrationStateId)}">${serializeHydrationState(normalized.hydrationState)}</script>`
+      : '';
     const bodyClass = normalized.bodyClassName ? ` class="${deps.escapeHtml(normalized.bodyClassName)}"` : '';
     const appClass = normalized.appClassName ? ` class="${deps.escapeHtml(normalized.appClassName)}"` : '';
-    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}>${bodyContent}</div>${hydrateScript}</body></html>`;
+    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
   };
 
   const writePage = (filePath: string, body: unknown, options?: unknown): string => {
