@@ -1,4 +1,5 @@
 import {
+  props_attr,
   props_class,
   props_merge,
   transitionPresence,
@@ -16,6 +17,51 @@ pub fn button(props: any, children: any) -> VNode {
     "button",
     props_merge(
       props_class("inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400"),
+      props_merge(
+        props_attr("type", "button"),
+        props
+      )
+    ),
+    children
+  )
+}
+
+fn button_variant_class(variant: string) -> string {
+  if (variant == "primary") {
+    return "border border-slate-950 bg-slate-950 text-white hover:bg-slate-800"
+  }
+  if (variant == "danger") {
+    return "border border-rose-600 bg-rose-600 text-white hover:bg-rose-700"
+  }
+  return "border border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+}
+
+pub fn buttonVariant(variant: string, props: any, children: any) -> VNode {
+  button(
+    props_merge(
+      props_class(button_variant_class(variant)),
+      props
+    ),
+    children
+  )
+}
+
+pub fn themeRoot(props: any, children: any) -> VNode {
+  vnode(
+    "div",
+    props_merge(
+      props_class("min-h-screen bg-[var(--lumina-color-bg,#f8fafc)] text-[var(--lumina-color-fg,#0f172a)]"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn appShell(props: any, children: any) -> VNode {
+  vnode(
+    "div",
+    props_merge(
+      props_class("mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 md:px-6"),
       props
     ),
     children

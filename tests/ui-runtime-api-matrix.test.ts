@@ -23,6 +23,8 @@ const renderFunctionNames = [
   'portal',
   'portalBody',
   'dialogPortal',
+  'keyed',
+  'key',
   'element',
   'props_empty',
   'props_class',

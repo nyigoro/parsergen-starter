@@ -150,6 +150,17 @@ describe('runtime render module', () => {
     expect(render.render_to_string(node)).toContain('Alpha*');
   });
 
+  test('generic keyed children serialize hydration keys for SSR', () => {
+    const node = render.keyed(
+      'settings-panel',
+      render.element('section', { className: 'panel' }, [render.text('Settings')])
+    );
+
+    expect(render.render_to_string(node)).toBe(
+      '<section class="panel" data-lumina-key="settings-panel">Settings</section>'
+    );
+  });
+
   test('renderer root lifecycle delegates to renderer hooks', () => {
     const events: string[] = [];
     const renderer = render.create_renderer({
@@ -414,6 +425,59 @@ describe('runtime render module', () => {
     render.dispose_reactive(reactive);
   });
 
+  test('hydrateApp adopts generic keyed app rows without losing input state', async () => {
+    const App = ({ rows }: { rows: Array<{ id: string; label: string }> }) =>
+      render.element(
+        'section',
+        { id: 'keyed-app' },
+        rows.map((row) =>
+          render.keyed(
+            row.id,
+            render.element('article', { id: `row-${row.id}` }, [
+              render.element('input', { id: `input-${row.id}` }, []),
+              render.text(row.label),
+            ])
+          )
+        )
+      );
+
+    const harness = render.testingCreateDomHarness() as { document: unknown; container: unknown };
+    const renderer = render.create_dom_renderer({ document: harness.document as never });
+    render.mount(renderer, harness.container, render.renderApp(App, {
+      rows: [
+        { id: 'a', label: 'Alpha' },
+        { id: 'b', label: 'Beta' },
+      ],
+    }));
+
+    const inputA = render.testingGetById(harness, 'input-a') as { value?: string; focus?: () => void };
+    const rowA = render.testingGetById(harness, 'row-a') as {
+      setAttribute?: (name: string, value: string) => void;
+    };
+    const rowB = render.testingGetById(harness, 'row-b') as {
+      setAttribute?: (name: string, value: string) => void;
+    };
+    rowA.setAttribute?.('data-lumina-key', 'a');
+    rowB.setAttribute?.('data-lumina-key', 'b');
+    inputA.value = 'typed A';
+    inputA.focus?.();
+
+    const reactive = render.hydrateApp(renderer, harness.container, App, {
+      rows: [
+        { id: 'b', label: 'Beta' },
+        { id: 'a', label: 'Alpha' },
+      ],
+    }) as ReturnType<typeof render.mount_reactive>;
+
+    const section = render.testingGetById(harness, 'keyed-app') as { childNodes: unknown[] };
+    expect(section.childNodes[0]).toBe(rowB);
+    expect(section.childNodes[1]).toBe(rowA);
+    expect((render.testingGetById(harness, 'input-a') as { value?: string }).value).toBe('typed A');
+    expect((harness.document as { activeElement?: unknown }).activeElement).toBe(inputA);
+
+    render.dispose_reactive(reactive);
+  });
+
   test('custom element helpers mount and react to attribute changes', async () => {
     const App = ({ label }: { label?: string | null }) =>
       render.element('span', { id: 'value' }, [render.text(label ?? 'unset')]);
@@ -597,6 +661,10 @@ describe('runtime render module', () => {
     expect(snapshot.resources.some((resource) => resource.key === 'devtools:profile')).toBe(true);
     expect(snapshot.signals.some((signal) => signal.kind === 'signal')).toBe(true);
     expect((globalThis as { __LUMINA_DEVTOOLS__?: unknown }).__LUMINA_DEVTOOLS__).toBe(globalHandle);
+    const event = render.devtoolsRecordEvent('resource', 'profile refreshed', { key: 'devtools:profile' });
+    expect(render.devtoolsTimeline()).toEqual(expect.arrayContaining([event]));
+    render.devtoolsClearTimeline();
+    expect(render.devtoolsTimeline()).toEqual([]);
 
     render.dispose_reactive(root);
   });

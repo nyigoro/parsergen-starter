@@ -4,6 +4,17 @@ This guide documents daily Lumina usage: CLI workflow, language patterns, and bu
 
 ## CLI Workflow
 
+Create a browser app starter:
+
+```bash
+mkdir my-lumina-app
+cd my-lumina-app
+lumina init --yes
+npm run check
+npm run build
+npm run dev
+```
+
 Check program types/semantics:
 
 ```bash
@@ -119,7 +130,7 @@ state:
 ```lumina
 render.element("ol", render.props_class("task-list"), [
   for (row, index in rows key row.id) =>
-    render.element("li", props { key: row.id }, [
+    render.element("li", 0, [
       render.text(row.label),
       render.text(index)
     ])
@@ -129,6 +140,13 @@ render.element("ol", render.props_class("task-list"), [
 Keys are string or number identity values. Duplicate sibling keys fail loudly.
 During SSR hydration, Lumina uses the emitted hydration key to adopt and move the
 existing DOM node instead of rebuilding the row.
+
+For non-list identity, use the generic keyed form:
+
+```lumina
+key("settings") =>
+  render.element("section", props { class: "panel" }, [render.text("Settings")])
+```
 
 ## Error Handling (`?`)
 

@@ -478,6 +478,12 @@ Creates a fragment node.
 Creates a keyed reactive list host. Use this when row identity matters across
 reorders, insertion, removal, hydration, or local child state.
 
+### keyed(key: String | Int, child: Any) -> VNode
+
+Marks any child VNode as a generic keyed identity boundary. Prefer `forList` or
+`for (... key ...)` for data lists; use `keyed` or `key(...) => ...` for manual
+panels, branches, slots, and already-built child arrays.
+
 ### indexList(items: Signal<Vec<T>>, renderItem: fn(Signal<T>, Int) -> VNode) -> VNode
 
 Creates an index-stable list host. Use this only when identity is the row
@@ -594,6 +600,87 @@ Unmounts current tree from root container.
 ### dispose_reactive(root: ReactiveRenderRoot) -> Void
 
 Disposes reactive mount and unmounts its root.
+
+## @std/router
+
+Browser routing plus route-scoped data helpers.
+
+### createRouter(base: String) -> Router
+
+Creates a router signal rooted at `base`.
+
+### currentPath(router: Router) -> Signal<String>
+
+Returns the current normalized path signal.
+
+### navigate(router: Router, path: String) -> Void
+
+Pushes a browser history entry and updates the route signal.
+
+### routeLoader<T>(router: Router, name: String, loader: fn() -> Promise<T>) -> RouteResource<T>
+
+Creates a cached resource whose key is tied to the current route path and loader
+name.
+
+### prefetchRoute<T>(router: Router, path: String, name: String, loader: fn() -> Promise<T>) -> RouteResource<T>
+
+Creates a route resource for a future path. Resource creation starts the load
+under the existing resource runtime.
+
+### routeRead<T>(resource: RouteResource<T>) -> T
+
+Reads route data. Use inside `render.suspense` and `render.errorBoundary`.
+
+### refreshRoute / invalidateRoute / optimisticRouteMutate
+
+Refresh, invalidate, and optimistically update route data.
+
+## @std/devtools
+
+Devtools helpers expose runtime snapshots and a small timeline API.
+
+### snapshot() -> Any
+
+Returns roots, frame tree, signals, resources, and timeline events.
+
+### install() -> Any
+
+Installs `globalThis.__LUMINA_DEVTOOLS__`.
+
+### record(eventType: String, label: String, detail: Any) -> Any
+
+Records a timeline event for render, resource, route, or hydration tooling.
+
+### timeline() -> Any
+
+Returns recorded timeline events.
+
+### clearTimeline() -> Void
+
+Clears the timeline buffer.
+
+## @std/ui
+
+Styled wrappers over headless primitives. The layer is intentionally thin:
+tokens, app shells, variants, and class composition live here while behavior
+stays in `@std/render` primitives.
+
+### button(props: Any, children: Any) -> VNode
+
+Renders a styled button with `type="button"` by default.
+
+### buttonVariant(variant: String, props: Any, children: Any) -> VNode
+
+Variant-aware button wrapper. Current variants: `primary`, `danger`, and the
+default secondary style.
+
+### themeRoot(props: Any, children: Any) -> VNode
+
+Theme-token root using CSS custom properties.
+
+### appShell(props: Any, children: Any) -> VNode
+
+Constrained application shell layout.
 
 ## Duration Helpers
 

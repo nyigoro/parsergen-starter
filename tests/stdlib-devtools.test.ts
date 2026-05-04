@@ -22,5 +22,8 @@ describe('@std/devtools', () => {
     const js = generateJSFromAst(ast, { target: 'esm', includeRuntime: true }).code;
     expect(js).toContain('devtoolsSnapshot');
     expect(js).toContain('installDevtools');
+    expect(js).toContain('devtoolsRecordEvent');
+    expect(js).toContain('devtoolsTimeline');
+    expect(js).toContain('devtoolsClearTimeline');
   });
 });

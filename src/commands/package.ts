@@ -58,6 +58,12 @@ async function writeJson(filePath: string, data: unknown): Promise<void> {
   await fs.writeFile(filePath, content, 'utf-8');
 }
 
+async function writeFileIfMissing(filePath: string, content: string): Promise<void> {
+  if (await fileExists(filePath)) return;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, 'utf-8');
+}
+
 async function findPackageRoot(startDir: string): Promise<string> {
   let current = path.resolve(startDir);
   while (true) {
@@ -164,10 +170,146 @@ export async function initProject(options: { yes?: boolean } = {}): Promise<void
     name,
     version: '0.1.0',
     lumina: './src/main.lm',
+    scripts: {
+      check: 'lumina check src/main.lm',
+      build: 'lumina compile src/main.lm --out dist/main.js --target esm',
+      dev: 'npm run build && npx vite --host 127.0.0.1',
+    },
     dependencies: {},
   };
   await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
   await writeJson(pkgPath, pkg);
+  await writeJson(path.join(cwd, 'lumina.config.json'), {
+    entries: ['src/main.lm'],
+    outDir: 'dist',
+    target: 'esm',
+  });
+  await writeFileIfMissing(
+    path.join(cwd, 'index.html'),
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lumina App</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/dist/main.js"></script>
+  </body>
+</html>
+`
+  );
+  await writeFileIfMissing(
+    path.join(cwd, 'src', 'styles.css'),
+    `:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #f7f7fb;
+  color: #15171d;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.app-panel {
+  max-width: 720px;
+  border: 1px solid #d9dce7;
+  border-radius: 8px;
+  background: white;
+  padding: 24px;
+}
+
+.nav-row,
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.nav-link,
+.action-button {
+  border: 1px solid #c9cedd;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1d2433;
+  padding: 8px 12px;
+  font: inherit;
+}
+`
+  );
+  await writeFileIfMissing(
+    path.join(cwd, 'src', 'main.lm'),
+    `import { render } from "@std";
+import {
+  createRouter,
+  currentPath,
+  linkWithProps,
+  optimisticRouteMutate,
+  prefetchRoute,
+  refreshRoute,
+  routeLoader,
+  routeRead,
+  routeStatus
+} from "@std/router";
+
+async fn loadDashboard() -> string {
+  "Lumina route data is ready"
+}
+
+component App() -> VNode {
+  let appRouter = createRouter("/");
+  let dashboard = routeLoader<string>(appRouter, "dashboard", || loadDashboard());
+  let _settingsPrefetch = prefetchRoute<string>(appRouter, "/settings", "dashboard", || loadDashboard());
+
+  render.element("main", render.props_class("app-shell"), [
+    render.element("section", render.props_class("app-panel"), [
+      render.element("nav", render.props_class("nav-row"), [
+        linkWithProps(appRouter, "/", render.props_class("nav-link"), [render.text("Home")]),
+        linkWithProps(appRouter, "/settings", render.props_class("nav-link"), [render.text("Settings")])
+      ]),
+      render.element("h1", render.props_class("app-title"), [render.text("Lumina App")]),
+      render.element("p", render.props_class("app-route"), [
+        render.text("Current route: "),
+        render.liveText(currentPath(appRouter))
+      ]),
+      render.element("p", render.props_class("app-status"), [
+        render.text("Loader status: "),
+        render.text(routeStatus(dashboard))
+      ]),
+      render.suspense(render.text("Loading route data"), || [
+        render.errorBoundary(render.text("Route data failed"), || [
+          render.element("p", render.props_class("app-data"), [render.text(routeRead(dashboard))])
+        ])
+      ]),
+      render.element("div", render.props_class("action-row"), [
+        render.element("button", render.props_merge(render.props_class("action-button"), render.props_on_click(fn() -> void {
+          let _ = refreshRoute(dashboard)
+        })), [render.text("Refresh")]),
+        render.element("button", render.props_merge(render.props_class("action-button"), render.props_on_click(fn() -> void {
+          let _ = optimisticRouteMutate(dashboard, "Optimistic route data")
+        })), [render.text("Optimistic update")])
+      ])
+    ])
+  ])
+}
+
+pub fn main() -> void {
+  let container = render.dom_get_element_by_id("app");
+  let renderer = render.createDomRenderer();
+  let _root = render.mount_reactive(renderer, container, || App());
+}
+
+main();
+`
+  );
   if (!options.yes) {
     console.log(`Initialized package.json in ${cwd}`);
   }

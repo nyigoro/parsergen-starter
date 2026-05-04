@@ -16,11 +16,13 @@ describe('runtime ssr renderer', () => {
     expect(
       serializePropsToHtml({
         id: 'hero',
+        className: 'panel',
+        htmlFor: 'field',
         hidden: true,
         style: { backgroundColor: 'red', width: 10 },
         onClick: () => null,
       })
-    ).toBe(' id="hero" hidden style="background-color:red;width:10"');
+    ).toBe(' id="hero" class="panel" for="field" hidden style="background-color:red;width:10"');
     expect(serializePropsToHtml({ key: 'row-a' })).toBe(' data-lumina-key="row-a"');
   });
 
@@ -91,7 +93,7 @@ describe('runtime ssr renderer', () => {
           },
         ],
       })
-    ).toBe('<ul><li className="row" data-lumina-key="a">A</li><li data-lumina-key="2">B</li></ul>');
+    ).toBe('<ul><li class="row" data-lumina-key="a">A</li><li data-lumina-key="2">B</li></ul>');
   });
 
   test('renders portals as hydration anchors instead of inline duplicate content', () => {

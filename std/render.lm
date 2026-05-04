@@ -16,6 +16,10 @@ pub fn forList(items: Signal<any>, keyOf: fn(any, int) -> any, renderItem: fn(Si
   render.forList(items, keyOf, renderItem)
 }
 
+pub fn keyed(key: any, child: any) -> VNode {
+  render.keyed(key, child)
+}
+
 pub fn fragment(children: any) -> VNode {
   render.fragment(children)
 }
@@ -482,6 +486,18 @@ pub fn devtoolsSnapshot() -> any {
 
 pub fn installDevtools() -> any {
   render.installDevtools()
+}
+
+pub fn devtoolsRecordEvent(eventType: string, label: string, detail: any) -> any {
+  render.devtoolsRecordEvent(eventType, label, detail)
+}
+
+pub fn devtoolsTimeline() -> any {
+  render.devtoolsTimeline()
+}
+
+pub fn devtoolsClearTimeline() -> void {
+  render.devtoolsClearTimeline()
 }
 
 pub fn ssgPage(body: any, options: any) -> string {

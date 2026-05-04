@@ -55,6 +55,8 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
       fnType([primitive('any'), primitive('int')], primitive('any')),
       fnType([adt('Signal', [primitive('any')]), adt('Signal', [primitive('int')])], vnodeT),
     ], vnodeT);
+    const keyedChildT = freshTypeVar();
+    const keyedType: Type = fnType([primitive('any'), keyedChildT], vnodeT);
     const elementType: Type = fnType([primitive('string'), attrsT, childrenT], vnodeT);
     const fragmentType: Type = fnType([fragmentChildrenT], vnodeT);
     const propsEmptyType: Type = fnType([], primitive('any'));
@@ -246,6 +248,12 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
     const testingSubmitType: Type = fnType([primitive('any')], primitive('void'));
     const devtoolsSnapshotType: Type = fnType([], primitive('any'));
     const installDevtoolsType: Type = fnType([], primitive('any'));
+    const devtoolsRecordEventType: Type = fnType(
+      [primitive('string'), primitive('string'), primitive('any')],
+      primitive('any')
+    );
+    const devtoolsTimelineType: Type = fnType([], primitive('any'));
+    const devtoolsClearTimelineType: Type = fnType([], primitive('void'));
     const ssgPageType: Type = fnType([primitive('any'), primitive('any')], primitive('string'));
     const ssgRenderAppType: Type = fnType([componentFnType, componentPropsT, primitive('any')], primitive('string'));
     const ssgWritePageType: Type = fnType([primitive('string'), primitive('any'), primitive('any')], primitive('string'));
@@ -445,6 +453,17 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
             'VNode',
             schemeFromVars(forListType, []),
             ['items', 'keyOf', 'renderItem'],
+            'std://render'
+          ),
+        ],
+        [
+          'keyed',
+          moduleFunctionWithScheme(
+            'keyed',
+            ['any', 'any'],
+            'VNode',
+            schemeFromVars(keyedType, [keyedChildT]),
+            ['key', 'child'],
             'std://render'
           ),
         ],
@@ -2017,6 +2036,39 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
             [],
             'any',
             schemeFromVars(installDevtoolsType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'devtoolsRecordEvent',
+          moduleFunctionWithScheme(
+            'devtoolsRecordEvent',
+            ['string', 'string', 'any'],
+            'any',
+            schemeFromVars(devtoolsRecordEventType, []),
+            ['eventType', 'label', 'detail'],
+            'std://render'
+          ),
+        ],
+        [
+          'devtoolsTimeline',
+          moduleFunctionWithScheme(
+            'devtoolsTimeline',
+            [],
+            'any',
+            schemeFromVars(devtoolsTimelineType, []),
+            [],
+            'std://render'
+          ),
+        ],
+        [
+          'devtoolsClearTimeline',
+          moduleFunctionWithScheme(
+            'devtoolsClearTimeline',
+            [],
+            'void',
+            schemeFromVars(devtoolsClearTimelineType, []),
             [],
             'std://render'
           ),

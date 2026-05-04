@@ -85,8 +85,30 @@ interface DomTemplateLike extends DomElementLike {
   };
 }
 
+export type DomHydrationMismatchKind =
+  | 'tag'
+  | 'text'
+  | 'missing_keyed_child'
+  | 'extra_node';
+
+export interface DomHydrationMismatch {
+  kind: DomHydrationMismatchKind;
+  path: string;
+  expected?: string;
+  actual?: string;
+  key?: string | number;
+}
+
 export interface DomRendererOptions {
   document?: DomDocumentLike;
+  onHydrationMismatch?: (diagnostic: DomHydrationMismatch) => void;
+  strictHydration?: boolean;
+}
+
+interface HydrationContext {
+  path: string;
+  onMismatch?: (diagnostic: DomHydrationMismatch) => void;
+  strict: boolean;
 }
 
 type DomEventMap = Record<string, (event: unknown) => void>;
@@ -619,6 +641,46 @@ const hasKeyedChildren = (children: VNode[]): boolean =>
 
 const getDomHydrationKey = (node: DomNodeLike): string | null =>
   getDomAttribute(node as DomElementLike, LUMINA_HYDRATION_KEY_ATTR);
+
+const getDomHydrationLabel = (node: DomNodeLike): string => {
+  const element = node as DomElementLike;
+  if (typeof element.tagName === 'string' && element.tagName.length > 0) {
+    return element.tagName.toLowerCase();
+  }
+  const candidate = node as DomNodeLike & { nodeName?: string; nodeType?: number };
+  if (candidate.nodeType === 3 || candidate.nodeName === '#text') {
+    return '#text';
+  }
+  return 'node';
+};
+
+const childHydrationContext = (
+  hydration: HydrationContext | undefined,
+  segment: string | number
+): HydrationContext | undefined =>
+  hydration
+    ? {
+        ...hydration,
+        path: `${hydration.path}.${String(segment)}`,
+      }
+    : undefined;
+
+const reportHydrationMismatch = (
+  hydration: HydrationContext | undefined,
+  mismatch: Omit<DomHydrationMismatch, 'path'>
+): void => {
+  if (!hydration) return;
+  const diagnostic = { ...mismatch, path: hydration.path };
+  hydration.onMismatch?.(diagnostic);
+  if (hydration.strict) {
+    const details = [diagnostic.expected && `expected ${diagnostic.expected}`, diagnostic.actual && `actual ${diagnostic.actual}`]
+      .filter(Boolean)
+      .join(', ');
+    throw new Error(
+      `Hydration mismatch at ${diagnostic.path}: ${diagnostic.kind}${details ? ` (${details})` : ''}`
+    );
+  }
+};
 
 const isIgnorableHydrationNode = (node: DomNodeLike): boolean => {
   const candidate = node as DomNodeLike & { nodeName?: string; nodeType?: number };
@@ -1436,7 +1498,8 @@ const bindForListHost = (
   portalStore: DomPortalStore,
   liveTextStore: DomLiveTextStore,
   equalsValue: (left: unknown, right: unknown) => boolean,
-  hydrateExisting = false
+  hydrateExisting = false,
+  hydration?: HydrationContext
 ): void => {
   const source = node.itemsSignal;
   const keyOf = node.listKey;
@@ -1484,7 +1547,8 @@ const bindForListHost = (
           eventStore,
           portalStore,
           liveTextStore,
-          equalsValue
+          equalsValue,
+          childHydrationContext(hydration, `key:${String(key)}`)
         )
       : createDomNode(vnode, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
     return {
@@ -1504,17 +1568,13 @@ const bindForListHost = (
   ): ForListEntry[] => {
     const seen = new Set<string | number>();
     const keyedExisting = new Map<string, DomNodeLike>();
-    const unkeyedExisting: DomNodeLike[] = [];
     for (const child of existingChildren) {
       const key = getDomHydrationKey(child);
-      if (key === null) {
-        unkeyedExisting.push(child);
-      } else if (!keyedExisting.has(key)) {
+      if (key !== null && !keyedExisting.has(key)) {
         keyedExisting.set(key, child);
       }
     }
 
-    let unkeyedIndex = 0;
     return items.map((value, index) => {
       const key = coerceListKey(keyOf(value, index), index);
       if (seen.has(key)) {
@@ -1522,11 +1582,14 @@ const bindForListHost = (
       }
       seen.add(key);
       const keyedDom = keyedExisting.get(String(key));
-      const fallbackDom = hydrateExisting ? unkeyedExisting[unkeyedIndex] : undefined;
-      if (!keyedDom && fallbackDom) {
-        unkeyedIndex += 1;
+      if (!keyedDom && hydrateExisting) {
+        reportHydrationMismatch(childHydrationContext(hydration, index), {
+          kind: 'missing_keyed_child',
+          expected: String(key),
+          key,
+        });
       }
-      return createEntry(value, index, keyedDom ?? fallbackDom, key);
+      return createEntry(value, index, keyedDom, key);
     });
   };
 
@@ -1547,7 +1610,13 @@ const bindForListHost = (
     reorderChildren(
       host,
       entries.map((entry) => entry.domNode),
-      (child) => disposeDomNode(child as DomNodeLike, eventStore, portalStore, liveTextStore),
+      (child) => {
+        reportHydrationMismatch(hydration, {
+          kind: 'extra_node',
+          actual: getDomHydrationLabel(child as DomNodeLike),
+        });
+        disposeDomNode(child as DomNodeLike, eventStore, portalStore, liveTextStore);
+      },
       {
         currentChildren: existingChildren,
         structureChanged: true,
@@ -2888,11 +2957,17 @@ const hydrateDomNode = (
   eventStore: DomEventStore,
   portalStore: DomPortalStore,
   liveTextStore: DomLiveTextStore,
-  equalsValue: (left: unknown, right: unknown) => boolean
+  equalsValue: (left: unknown, right: unknown) => boolean,
+  hydration?: HydrationContext
 ): DomNodeLike => {
   if (node.kind === 'text') {
     const nextText = node.text ?? '';
     if (domNode.textContent !== nextText) {
+      reportHydrationMismatch(hydration, {
+        kind: 'text',
+        expected: nextText,
+        actual: domNode.textContent ?? '',
+      });
       domNode.textContent = nextText;
     }
     return domNode;
@@ -2940,7 +3015,8 @@ const hydrateDomNode = (
       portalStore,
       liveTextStore,
       equalsValue,
-      true
+      true,
+      childHydrationContext(hydration, 'forList')
     );
     return domNode;
   }
@@ -2961,6 +3037,16 @@ const hydrateDomNode = (
 
   const element = domNode as DomElementLike;
   if (node.kind === 'element') {
+    const expectedTag = (node.tag ?? 'div').toLowerCase();
+    const actualTag = getDomHydrationLabel(domNode);
+    if (actualTag !== expectedTag) {
+      reportHydrationMismatch(hydration, {
+        kind: 'tag',
+        expected: expectedTag,
+        actual: actualTag,
+      });
+      return createDomNode(node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    }
     updateDomProperties(element, undefined, node.props, eventStore);
   }
 
@@ -3007,11 +3093,20 @@ const hydrateDomNode = (
       currentChild = keyedExisting.get(String(nextChild.key));
       if (currentChild) {
         usedExisting.add(currentChild);
+      } else {
+        reportHydrationMismatch(childHydrationContext(hydration, index), {
+          kind: 'missing_keyed_child',
+          expected: String(nextChild.key),
+          key: nextChild.key,
+        });
       }
     }
-    currentChild ??= keyedHydration
-      ? takeUnkeyedExisting()
-      : (existingChildren[index] as DomNodeLike | undefined);
+    currentChild ??=
+      keyedHydration && hasVNodeKey(nextChild)
+        ? undefined
+        : keyedHydration
+          ? takeUnkeyedExisting()
+          : (existingChildren[index] as DomNodeLike | undefined);
     if (currentChild) {
       usedExisting.add(currentChild);
     }
@@ -3024,7 +3119,8 @@ const hydrateDomNode = (
             eventStore,
             portalStore,
             liveTextStore,
-            equalsValue
+            equalsValue,
+            childHydrationContext(hydration, index)
           )
         : createDomNode(
             nextChild,
@@ -3039,6 +3135,12 @@ const hydrateDomNode = (
 
   for (const existingChild of allExistingChildren) {
     if (!usedExisting.has(existingChild)) {
+      if (!isIgnorableHydrationNode(existingChild)) {
+        reportHydrationMismatch(hydration, {
+          kind: 'extra_node',
+          actual: getDomHydrationLabel(existingChild),
+        });
+      }
       disposeDomNode(existingChild, eventStore, portalStore, liveTextStore);
     }
   }
@@ -3121,6 +3223,11 @@ export const createDomRenderer = (
     },
     hydrate(node: VNode, container: unknown): void {
       const domContainer = container as DomNodeLike;
+      const hydrationContext: HydrationContext = {
+        path: 'root',
+        onMismatch: options?.onHydrationMismatch,
+        strict: options?.strictHydration === true,
+      };
       const existingChildren = readChildNodes(domContainer) as DomNodeLike[];
       const existing = findHydrationRootNode(existingChildren, node);
       if (!existing) {
@@ -3144,7 +3251,8 @@ export const createDomRenderer = (
         eventStore,
         portalStore,
         liveTextStore,
-        equalsValue
+        equalsValue,
+        hydrationContext
       );
       for (const child of existingChildren) {
         if (child === existing || !isIgnorableHydrationNode(child)) continue;

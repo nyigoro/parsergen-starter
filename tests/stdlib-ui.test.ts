@@ -23,5 +23,9 @@ describe('@std/ui', () => {
     expect(js).toContain('transitionPresence');
     expect(js).toContain('tabsList');
     expect(js).toContain('dialogContent');
+    expect(js).toContain('props_attr("type", "button")');
+    expect(js).toContain('buttonVariant');
+    expect(js).toContain('themeRoot');
+    expect(js).toContain('appShell');
   });
 });

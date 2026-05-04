@@ -74,7 +74,11 @@ describe('app-layer examples', () => {
     expect(formsStoreResourceSource).toContain('component ProfileWorkspace');
     expect(formsStoreResourceSource).toContain('render.suspense');
     expect(formsStoreResourceSource).toContain('render.errorBoundary');
+    expect(formsStoreResourceSource).toContain('refresh(profile)');
+    expect(formsStoreResourceSource).toContain('mutate(profile');
+    expect(formsStoreResourceSource).toContain('invalidate(profile)');
     expect(formsStoreResourceSource).toContain('for (item, index in queue key item)');
+    expect(formsStoreResourceSource).toContain('key("summary")');
     expect(formsStoreResourceSource).toContain('aria-live');
     expect(formsStoreResourceSource).toContain('mount_reactive');
   });

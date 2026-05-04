@@ -125,13 +125,71 @@ fn main() -> int {
   let rows = render.signal(["draft", "review", "ship"]);
 
   let view = render.element("ol", render.props_class("task-list"), [
-    for (row, index in rows key row) => render.element("li", props { key: row, class: "task-row" }, [
+    for (row, index in rows key row) => render.element("li", props { class: "task-row" }, [
       render.text(row),
       render.text(":"),
       render.text(index)
     ])
   ]);
 
+  io.println(render.render_to_string(view));
+  return 0
+}`,
+  },
+  {
+    id: 'generic-keyed-ui',
+    source: `import { io, render } from "@std";
+
+fn main() -> int {
+  let active = render.signal("profile");
+  let first = render.get(active);
+  let second = "settings";
+
+  let view = render.element("section", props { class: "panels" }, [
+    key(first) => render.element("article", props { class: "panel" }, [
+      render.text("Profile")
+    ]),
+    key(second) => render.element("article", props { class: "panel" }, [
+      render.text("Settings")
+    ])
+  ]);
+
+  io.println(render.render_to_string(view));
+  return 0
+}`,
+  },
+  {
+    id: 'starter-app',
+    source: `import { io, render } from "@std";
+import {
+  createRouter,
+  linkWithProps,
+  prefetchRoute,
+  routeLoader,
+  routeResourceKey,
+  routeStatus
+} from "@std/router";
+
+async fn loadDashboard() -> string {
+  "ready"
+}
+
+fn main() -> int {
+  let appRouter = createRouter("/");
+  let dashboard = routeLoader<string>(appRouter, "dashboard", || loadDashboard());
+  let _settingsPrefetch = prefetchRoute<string>(appRouter, "/settings", "dashboard", || loadDashboard());
+  let view = render.element("main", props { class: "app-shell" }, [
+    render.element("nav", props { class: "nav-row" }, [
+      linkWithProps(appRouter, "/", props { class: "nav-link" }, [render.text("Home")]),
+      linkWithProps(appRouter, "/settings", props { class: "nav-link" }, [render.text("Settings")])
+    ]),
+    render.element("p", props { class: "status" }, [
+      render.text("Loader: "),
+      render.text(routeStatus(dashboard))
+    ])
+  ]);
+
+  io.println(routeResourceKey(appRouter, "dashboard"));
   io.println(render.render_to_string(view));
   return 0
 }`,

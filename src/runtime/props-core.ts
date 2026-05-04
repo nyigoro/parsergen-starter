@@ -135,7 +135,12 @@ export const propsName = (name: string): Record<string, unknown> => ({ name });
 export const propsPlaceholder = (placeholder: string): Record<string, unknown> => ({ placeholder });
 export const propsHref = (href: string): Record<string, unknown> => ({ href });
 export const propsDisabled = (disabled: boolean): Record<string, unknown> => ({ disabled });
-export const propsKey = (key: unknown): Record<string, unknown> => ({ key });
+export const propsKey = (key: unknown): Record<string, unknown> => {
+  if (typeof key !== 'string' && typeof key !== 'number') {
+    throw new Error('props_key key must be a string or number');
+  }
+  return { key };
+};
 
 export const propsOnClick = (handler: (() => unknown) | null | undefined): Record<string, unknown> => ({
   onClick: (event?: Event) => {

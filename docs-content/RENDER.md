@@ -129,7 +129,7 @@ items, or contain stateful child components:
 ```lumina
 render.element("ol", render.props_class("task-list"), [
   for (row, index in rows key row.id) =>
-    render.element("li", props { key: row.id, class: "task-row" }, [
+    render.element("li", props { class: "task-row" }, [
       render.text(row.label),
       render.text(index)
     ])
@@ -137,15 +137,41 @@ render.element("ol", render.props_class("task-list"), [
 ```
 
 The lower-level API is `render.forList(rows, keyOf, renderRow)`. The key must
-be a string or number and must be unique among siblings. `props_key(value)` is
-the helper form for explicit VNode construction.
+be a string or number and must be unique among siblings. Do not also put a
+different `props { key: ... }` inside the row; Lumina treats that as a
+conflicting identity.
+
+Inline mapped signal children with row keys lower to `forList`. Already-built
+child arrays stay on the generic keyed fallback path.
+
+### Generic Keyed Children
+
+Use `key(value) => child` or `render.keyed(value, child)` when identity is not a
+data-list row: manual panels, keyed branches, slots, or hand-built child arrays.
+
+```lumina
+render.element("section", props { class: "panels" }, [
+  key("profile") =>
+    render.element("article", props { class: "panel" }, [render.text("Profile")]),
+  key("settings") =>
+    render.element("article", props { class: "panel" }, [render.text("Settings")])
+])
+```
+
+For browser hydration, put the key on an element or component whose root is an
+element so SSR can emit `data-lumina-key`. Keyed text/fragments work for client
+patching, but they have no element attribute to hydrate by.
+
+`props_key(value)` remains the helper form for explicit VNode construction.
 
 Server rendering emits `data-lumina-key` for keyed elements so hydration can
 adopt existing DOM by identity before applying updates. This follows the web
 platform behavior that moving an existing node with `insertBefore` preserves the
 node object, and keeps focus order meaningful for keyboard users. References:
-WHATWG DOM insertion/move algorithms, MDN `Node.insertBefore`, W3C WCAG Focus
-Order, and TC39 keyed collection insertion-order semantics.
+[WHATWG DOM insertion/move algorithms](https://dom.spec.whatwg.org/),
+[MDN `Node.insertBefore`](https://developer.mozilla.org/en-US/docs/Web/API/Node/insertBefore),
+[W3C WCAG Focus Order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html),
+and [TC39 keyed collection semantics](https://tc39.es/ecma262/multipage/keyed-collections.html).
 
 ## Additional Targets (Phase 3)
 
@@ -154,9 +180,23 @@ Order, and TC39 keyed collection insertion-order semantics.
 - `render.create_ssr_renderer()`
 - `render.render_to_string(node)`
 - Supports escaped HTML output for fast server responses.
+- Normalizes common DOM prop names such as `className -> class` and `htmlFor -> for`.
 - Hydration path:
   - server: serialize VNode to HTML
   - client: `render.hydrate(...)` or `render.hydrate_reactive(...)`
+
+Hydration can be configured with `create_dom_renderer({
+onHydrationMismatch, strictHydration })`. The callback receives diagnostics for
+text, tag, missing keyed child, and extra DOM node mismatches. Default hydration
+recovers in place; `strictHydration: true` turns the first mismatch into a
+hydrate error.
+
+Keyed hydration does not let a missing keyed client child steal an unkeyed SSR
+node. This follows the DOM model where element identity is the actual node
+object, and aligns with HTML `data-*` attributes for framework-owned hydration
+metadata. References: [WHATWG DOM node trees](https://dom.spec.whatwg.org/),
+[WHATWG HTML `data-*`](https://html.spec.whatwg.org/multipage/dom.html#embedding-custom-non-visible-data-with-the-data-*-attributes),
+and [W3C APG keyboard/focus guidance](https://www.w3.org/WAI/ARIA/apg/).
 
 ### Canvas Renderer
 

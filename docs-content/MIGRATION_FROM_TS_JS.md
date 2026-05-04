@@ -129,7 +129,7 @@ Lumina:
 ```lumina
 render.element("ul", render.props_empty(), [
   for (item, index in items key item.id) =>
-    render.element("li", props { key: item.id }, [
+    render.element("li", 0, [
       render.text(item.label),
       render.text(index)
     ])
@@ -138,6 +138,9 @@ render.element("ul", render.props_empty(), [
 
 The key must be stable and unique among siblings. Lumina uses it for DOM moves,
 component-frame reuse, and SSR hydration.
+
+For keyed branches that are not data-list rows, use `key("panel") => ...` or
+`render.keyed("panel", child)`.
 
 ## Error propagation
 

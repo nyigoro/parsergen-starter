@@ -21,10 +21,19 @@ export interface DevtoolsFrameSnapshot {
   children: DevtoolsFrameSnapshot[];
 }
 
+export interface DevtoolsTimelineEvent {
+  id: number;
+  type: string;
+  label: string;
+  timestamp: number;
+  detail: unknown;
+}
+
 export interface DevtoolsSnapshot<TCurrent = unknown> {
   roots: Array<{ id: number; current: TCurrent | null; frames: DevtoolsFrameSnapshot[] }>;
   resources: DevtoolsResourceSnapshot[];
   signals: DevtoolsSignalSnapshot[];
+  timeline: DevtoolsTimelineEvent[];
 }
 
 export type DevtoolsListener<TCurrent = unknown> = (snapshot: DevtoolsSnapshot<TCurrent>) => void;
@@ -55,11 +64,13 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
 ) => {
   let nextSignalId = 1;
   let nextRootId = 1;
+  let nextEventId = 1;
   let notifyPending = false;
   const signalEntries = new Map<number, { kind: 'signal' | 'memo'; source: DevtoolsSignalLike }>();
   const roots = new Map<number, TRoot>();
   const rootIds = new WeakMap<TRoot, number>();
   const listeners = new Set<DevtoolsListener<TCurrent>>();
+  const timeline: DevtoolsTimelineEvent[] = [];
 
   const snapshot = (): DevtoolsSnapshot<TCurrent> => ({
     roots: Array.from(roots.entries()).map(([id, root]) => deps.snapshotRoot(root, id)),
@@ -69,6 +80,7 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
       kind: entry.kind,
       value: entry.source.peek(),
     })),
+    timeline: timeline.slice(),
   });
 
   const scheduleNotify = (): void => {
@@ -121,6 +133,29 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
         scheduleNotify();
       }
     },
+    recordEvent(type: string, label: string, detail: unknown = null): DevtoolsTimelineEvent {
+      const event = {
+        id: nextEventId++,
+        type,
+        label,
+        timestamp: Date.now(),
+        detail,
+      };
+      timeline.push(event);
+      if (timeline.length > 500) {
+        timeline.splice(0, timeline.length - 500);
+      }
+      scheduleNotify();
+      return event;
+    },
+    timeline(): DevtoolsTimelineEvent[] {
+      return timeline.slice();
+    },
+    clearTimeline(): void {
+      if (timeline.length === 0) return;
+      timeline.splice(0, timeline.length);
+      scheduleNotify();
+    },
     snapshot,
     subscribe,
     install(key: string = '__LUMINA_DEVTOOLS__'): Record<string, unknown> {
@@ -129,6 +164,11 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
         version: 'beta',
         snapshot: () => snapshot(),
         subscribe,
+        timeline: () => timeline.slice(),
+        clearTimeline: () => {
+          timeline.splice(0, timeline.length);
+          scheduleNotify();
+        },
       };
       globalRecord[key] = handle;
       return handle;

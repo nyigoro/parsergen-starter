@@ -77,6 +77,11 @@ test.describe('keyed hydration browser smoke', () => {
         </lumina-for-list>
       </ul>
     </div>
+    <div id="mismatch-root">
+      <section>
+        <input value="typed fallback" />
+      </section>
+    </div>
 </body>
 </html>`);
 
@@ -100,8 +105,8 @@ test.describe('keyed hydration browser smoke', () => {
           render.create_dom_renderer({ document }),
           genericContainer,
           render.element('section', null, [
-            render.element('button', { key: 'b', id: 'b' }, [render.text('B!')]),
-            render.element('button', { key: 'a', id: 'a' }, [render.text('A!')]),
+            render.keyed('b', render.element('button', { id: 'b' }, [render.text('B!')])),
+            render.keyed('a', render.element('button', { id: 'a' }, [render.text('A!')])),
           ])
         );
         if (genericRoot && genericRoot.$tag === 'Err')
@@ -145,13 +150,35 @@ test.describe('keyed hydration browser smoke', () => {
         ]);
         await Promise.resolve();
 
+        step = 'hydrate mismatch diagnostics';
+        const mismatchDiagnostics = [] as Array<{ kind: string }>;
+        const mismatchContainer = document.getElementById('mismatch-root');
+        const mismatchSection = mismatchContainer.firstElementChild;
+        const fallbackInput = mismatchSection.firstElementChild;
+        const mismatchRoot = render.hydrate(
+          render.create_dom_renderer({
+            document,
+            onHydrationMismatch: (diagnostic: { kind: string }) =>
+              mismatchDiagnostics.push(diagnostic),
+          }),
+          mismatchContainer,
+          render.element('section', null, [
+            render.keyed(
+              'missing',
+              render.element('button', { id: 'created' }, [render.text('Created')])
+            ),
+          ])
+        );
+        if (mismatchRoot && mismatchRoot.$tag === 'Err')
+          throw new Error(String(mismatchRoot.$payload));
+
         step = 'duplicate key mount';
         const duplicate = render.mount(
           render.create_dom_renderer({ document }),
           document.createElement('div'),
           render.element('section', null, [
-            render.element('span', { key: 'dup' }, [render.text('one')]),
-            render.element('span', { key: 'dup' }, [render.text('two')]),
+            render.keyed('dup', render.element('span', null, [render.text('one')])),
+            render.keyed('dup', render.element('span', null, [render.text('two')])),
           ])
         );
 
@@ -169,6 +196,10 @@ test.describe('keyed hydration browser smoke', () => {
           listValues: [inputA.value, inputB.value],
           listFocusPreserved: document.activeElement === inputA,
           rowBText: rowB.textContent,
+          mismatchKinds: mismatchDiagnostics.map((diagnostic) => diagnostic.kind),
+          mismatchDidNotSteal:
+            mismatchSection.children[0] !== fallbackInput &&
+            mismatchSection.children[0].id === 'created',
           duplicateError: duplicate && duplicate.$tag === 'Err' ? String(duplicate.$payload) : null,
         };
       } catch (error) {
@@ -191,6 +222,10 @@ test.describe('keyed hydration browser smoke', () => {
     expect(result.listValues).toEqual(['typed A', 'typed B']);
     expect(result.listFocusPreserved).toBe(true);
     expect(result.rowBText).toContain('Beta!');
+    expect(result.mismatchKinds).toEqual(
+      expect.arrayContaining(['missing_keyed_child', 'extra_node'])
+    );
+    expect(result.mismatchDidNotSteal).toBe(true);
     expect(result.duplicateError).toContain("Duplicate keyed child 'dup'");
   });
 });

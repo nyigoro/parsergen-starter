@@ -378,6 +378,13 @@
     }, () => loc);
     return createRenderCallNode("forList", [source, keyLambda, renderLambda], loc);
   }
+
+  function buildKeyedAuthoringExpr(keyExpr, body, loc) {
+    return createRenderCallNode("keyed", [
+      keyExpr,
+      body && body.type === "Block" ? createZeroArgLambda(body, loc) : body
+    ], loc);
+  }
 }
 Start
   = _ statements:TopStatementList _ { return createNode("Program", { body: statements }, location); }
@@ -1145,6 +1152,7 @@ PrimaryAtom
   / TransitionExpr
   / IndexAuthoringExpr
   / ForAuthoringExpr
+  / KeyedAuthoringExpr
   / SelectExpr
   / MatchExpr
   / MacroInvokeExpr
@@ -1389,6 +1397,11 @@ IndexAuthoringExpr
 ForAuthoringExpr
   = "for" _ "(" _ item:IdName indexInfo:(_ "," _ idx:IdName { return idx.name; })? __ "in" __ source:Expr __ "key" __ keyExpr:Expr _ ")" _ "=>" _ body:(Block / Expr) {
       return buildForAuthoringExpr(item.name, indexInfo || null, source, keyExpr, body, item.location);
+    }
+
+KeyedAuthoringExpr
+  = "key" _ "(" _ keyExpr:Expr _ ")" _ "=>" _ body:(Block / Expr) {
+      return buildKeyedAuthoringExpr(keyExpr, body, location());
     }
 
 Keyword

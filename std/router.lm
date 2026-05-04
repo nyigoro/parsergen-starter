@@ -5,6 +5,10 @@ pub struct Router {
   base: string
 }
 
+pub struct RouteResource<T> {
+  raw: any
+}
+
 fn starts_with(value: string, prefix: string) -> bool {
   if (str.length(prefix) > str.length(value)) {
     return false
@@ -147,6 +151,50 @@ pub fn currentPath(routerValue: Router) -> Signal<string> {
 
 pub fn currentParams(_routerValue: Router) -> any {
   return router.parseSearchParams(router.getCurrentSearch())
+}
+
+pub fn routeResourceKey(routerValue: Router, name: string) -> string {
+  return str.concat(str.concat("route:", reactive.get(routerValue.path)), str.concat(":", name))
+}
+
+pub fn routeLoader<T>(routerValue: Router, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+}
+
+pub fn routeLoaderWithOptions<T>(routerValue: Router, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, options) }
+}
+
+pub fn prefetchRoute<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(str.concat(str.concat("route:", normalize_path(path)), str.concat(":", name)), fn() -> Promise<any> { loader() }, render.props_empty()) }
+}
+
+pub fn routeStatus<T>(resource: RouteResource<T>) -> string {
+  render.resourceStatus(resource.raw)
+}
+
+pub fn routeData<T>(resource: RouteResource<T>) -> any {
+  render.resourceData(resource.raw)
+}
+
+pub fn routeError<T>(resource: RouteResource<T>) -> any {
+  render.resourceError(resource.raw)
+}
+
+pub fn routeRead<T>(resource: RouteResource<T>) -> T {
+  render.resourceRead(resource.raw)
+}
+
+pub fn refreshRoute<T>(resource: RouteResource<T>) -> Promise<T> {
+  render.resourceRefresh(resource.raw)
+}
+
+pub fn invalidateRoute<T>(resource: RouteResource<T>) -> void {
+  render.resourceInvalidate(resource.raw)
+}
+
+pub fn optimisticRouteMutate<T>(resource: RouteResource<T>, value: T) -> T {
+  render.resourceMutate(resource.raw, value)
 }
 
 pub fn matchRoute(pattern: string, path: string) -> bool {

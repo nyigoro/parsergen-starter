@@ -3231,7 +3231,7 @@ lumina <command> [file] [options]
   run-wasm <file>  Execute a .wasm file and print return value
   repl             Interactive compile-and-run Lumina REPL
   grammar          Parser generator tools (was parsergen)
-  init             Initialize a parser project template
+  init             Initialize a Lumina browser app starter
   add <pkg...>     Add package(s) from Lumina registry
   install          Install packages from lumina.lock
   publish          Publish current package to registry

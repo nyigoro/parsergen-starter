@@ -21,6 +21,7 @@ describe('runtime devtools controller', () => {
     const signalId = controller.registerSignal('signal', signal);
     const root = { current: 'node', frames: [] };
     controller.registerRoot(root);
+    const event = controller.recordEvent('hydration', 'text mismatch', { path: 'root.0' });
     controller.scheduleNotify();
 
     while (microtasks.length > 0) {
@@ -30,10 +31,15 @@ describe('runtime devtools controller', () => {
     expect(seen.at(-1)?.signals).toEqual([{ id: signalId, kind: 'signal', value: 'alpha' }]);
     expect(seen.at(-1)?.roots).toEqual([{ id: 1, current: 'node', frames: [] }]);
     expect(seen.at(-1)?.resources[0]?.key).toBe('resource:alpha');
+    expect(seen.at(-1)?.timeline).toEqual([event]);
+    expect(controller.timeline()).toEqual([event]);
 
     const installed = controller.install('__LUMINA_DEVTOOLS_TEST__');
     expect((globalThis as Record<string, unknown>).__LUMINA_DEVTOOLS_TEST__).toBe(installed);
     expect(typeof (installed as { snapshot?: unknown }).snapshot).toBe('function');
+    expect(typeof (installed as { timeline?: unknown }).timeline).toBe('function');
+    controller.clearTimeline();
+    expect(controller.timeline()).toEqual([]);
 
     controller.unregisterRoot(root);
     controller.unregisterSignal(signalId);

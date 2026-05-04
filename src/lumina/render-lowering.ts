@@ -18,6 +18,7 @@ const DIRECT_RENDER_IMPORTS = new Map<string, string>([
   ['liveText', 'liveText'],
   ['indexList', 'indexList'],
   ['forList', 'forList'],
+  ['keyed', 'keyed'],
   ['props_empty', 'props_empty'],
   ['props_class', 'props_class'],
   ['props_on_input', 'props_on_input'],
@@ -60,6 +61,8 @@ const RENDER_NAMESPACE_CALLS = new Map<string, string>([
   ['indexList', 'indexList'],
   ['for_list', 'forList'],
   ['forList', 'forList'],
+  ['keyed', 'keyed'],
+  ['key', 'keyed'],
   ['props_empty', 'props_empty'],
   ['props_class', 'props_class'],
   ['props_on_input', 'props_on_input'],
@@ -387,7 +390,12 @@ const extractPropsKeyExpr = (propsExpr: LuminaExpr): LuminaExpr | null => {
 };
 
 const extractVNodeKeyExpr = (expr: LuminaExpr): LuminaExpr | null => {
-  if (expr.type !== 'Call' || getNormalizedRenderCalleeName(expr) !== 'vnode') return null;
+  if (expr.type !== 'Call') return null;
+  const callee = getNormalizedRenderCalleeName(expr);
+  if (callee === 'keyed' && expr.args.length >= 2) {
+    return expr.args[0]?.value ?? null;
+  }
+  if (callee !== 'vnode') return null;
   const propsExpr = expr.args[1]?.value;
   return propsExpr ? extractPropsKeyExpr(propsExpr) : null;
 };
@@ -448,6 +456,128 @@ const createUndefinedExpr = (): LuminaExpr => ({
   type: 'Identifier',
   name: 'undefined',
 });
+
+const createMappedSignalListCall = (child: LuminaExpr): LuminaExpr => {
+  const mapInfo = getSignalMapCallInfo(child);
+  if (!mapInfo) return child;
+
+  const { mapLambda, sourceSignal } = mapInfo;
+  if (
+    mapLambda.type !== 'Lambda' ||
+    mapLambda.params.length === 0 ||
+    mapLambda.params.length > 2
+  ) {
+    return child;
+  }
+
+  const bodyExpr = getBlockResultExpr(mapLambda);
+  if (!bodyExpr) return child;
+  const keyExpr = extractVNodeKeyExpr(bodyExpr);
+  const valueParam = mapLambda.params[0]?.name ?? 'item';
+  const indexParam = mapLambda.params[1]?.name ?? 'index';
+  const originalLambda = cloneNode(mapLambda);
+  const itemSignalName = '__lumina_item';
+  const indexSignalName = '__lumina_index';
+
+  const renderWrapper = (): LuminaLambda => ({
+    type: 'Lambda',
+    async: false,
+    params: [
+      {
+        name: itemSignalName,
+        typeName: 'Signal<any>',
+        ref: false,
+        refMut: false,
+        defaultValue: null,
+      },
+      {
+        name: indexSignalName,
+        typeName: keyExpr ? 'Signal<int>' : 'int',
+        ref: false,
+        refMut: false,
+        defaultValue: null,
+      },
+    ],
+    returnType: 'VNode',
+    body: {
+      type: 'Block',
+      body: [
+        {
+          type: 'ExprStmt',
+          expr: createCall(cloneNode(originalLambda) as LuminaExpr & { name?: string }, [
+            createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [
+              createIdentifier(itemSignalName),
+            ]),
+            keyExpr
+              ? createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [
+                  createIdentifier(indexSignalName),
+                ])
+              : createIdentifier(indexSignalName),
+          ]),
+        },
+      ],
+    },
+    typeParams: [],
+  });
+
+  if (!keyExpr) {
+    return createCall(
+      createIdentifier('indexList') as LuminaExpr & { name?: string },
+      [sourceSignal, renderWrapper()],
+      { enumName: 'render' }
+    );
+  }
+
+  if (keyExpr.type === 'Identifier' && keyExpr.name === indexParam) {
+    return createCall(
+      createIdentifier('indexList') as LuminaExpr & { name?: string },
+      [sourceSignal, renderWrapper()],
+      { enumName: 'render' }
+    );
+  }
+
+  if (exprReferencesIdentifier(keyExpr, indexParam)) {
+    return child;
+  }
+
+  const keyWrapper: LuminaLambda = {
+    type: 'Lambda',
+    async: false,
+    params: [
+      {
+        name: valueParam,
+        typeName: mapLambda.params[0]?.typeName ?? 'any',
+        ref: false,
+        refMut: false,
+        defaultValue: null,
+      },
+      {
+        name: indexParam,
+        typeName: mapLambda.params[1]?.typeName ?? 'int',
+        ref: false,
+        refMut: false,
+        defaultValue: null,
+      },
+    ],
+    returnType: null,
+    body: {
+      type: 'Block',
+      body: [
+        {
+          type: 'ExprStmt',
+          expr: cloneNode(keyExpr),
+        },
+      ],
+    },
+    typeParams: [],
+  };
+
+  return createCall(
+    createIdentifier('forList') as LuminaExpr & { name?: string },
+    [sourceSignal, keyWrapper, renderWrapper()],
+    { enumName: 'render' }
+  );
+};
 
 const collectLocalFunctions = (program: LuminaProgram): Map<string, LuminaFnDecl> => {
   const functions = new Map<string, LuminaFnDecl>();
@@ -530,127 +660,9 @@ const promoteMappedSignalChildren = (node: unknown): void => {
       const childArgIndex = lowered === 'vnode' ? 2 : 0;
       const childArg = call.args[childArgIndex]?.value;
       if (childArg?.type === 'ArrayLiteral') {
-        childArg.elements = childArg.elements.map((child) => {
-          const mapInfo = getSignalMapCallInfo(child);
-          if (!mapInfo) return child;
-
-          const { mapLambda, sourceSignal } = mapInfo;
-          if (
-            mapLambda.type !== 'Lambda' ||
-            mapLambda.params.length === 0 ||
-            mapLambda.params.length > 2
-          ) {
-            return child;
-          }
-
-          const bodyExpr = getBlockResultExpr(mapLambda);
-          if (!bodyExpr) return child;
-          const keyExpr = extractVNodeKeyExpr(bodyExpr);
-          const valueParam = mapLambda.params[0]?.name ?? 'item';
-          const indexParam = mapLambda.params[1]?.name ?? 'index';
-          const originalLambda = cloneNode(mapLambda);
-          const itemSignalName = '__lumina_item';
-          const indexSignalName = '__lumina_index';
-
-          const renderWrapper = (): LuminaLambda => ({
-            type: 'Lambda',
-            async: false,
-            params: [
-              {
-                name: itemSignalName,
-                typeName: 'Signal<any>',
-                ref: false,
-                refMut: false,
-                defaultValue: null,
-              },
-              {
-                name: indexSignalName,
-                typeName: keyExpr ? 'Signal<int>' : 'int',
-                ref: false,
-                refMut: false,
-                defaultValue: null,
-              },
-            ],
-            returnType: 'VNode',
-            body: {
-              type: 'Block',
-              body: [
-                {
-                  type: 'ExprStmt',
-                  expr: createCall(cloneNode(originalLambda) as LuminaExpr & { name?: string }, [
-                    createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [
-                      createIdentifier(itemSignalName),
-                    ]),
-                    keyExpr
-                      ? createCall(createIdentifier('get') as LuminaExpr & { name?: string }, [
-                          createIdentifier(indexSignalName),
-                        ])
-                      : createIdentifier(indexSignalName),
-                  ]),
-                },
-              ],
-            },
-            typeParams: [],
-          });
-
-          if (!keyExpr) {
-            return createCall(
-              createIdentifier('indexList') as LuminaExpr & { name?: string },
-              [sourceSignal, renderWrapper()],
-              { enumName: 'render' }
-            );
-          }
-
-          if (keyExpr.type === 'Identifier' && keyExpr.name === indexParam) {
-            return createCall(
-              createIdentifier('indexList') as LuminaExpr & { name?: string },
-              [sourceSignal, renderWrapper()],
-              { enumName: 'render' }
-            );
-          }
-
-          if (exprReferencesIdentifier(keyExpr, indexParam)) {
-            return child;
-          }
-
-          const keyWrapper: LuminaLambda = {
-            type: 'Lambda',
-            async: false,
-            params: [
-              {
-                name: valueParam,
-                typeName: mapLambda.params[0]?.typeName ?? 'any',
-                ref: false,
-                refMut: false,
-                defaultValue: null,
-              },
-              {
-                name: indexParam,
-                typeName: mapLambda.params[1]?.typeName ?? 'int',
-                ref: false,
-                refMut: false,
-                defaultValue: null,
-              },
-            ],
-            returnType: null,
-            body: {
-              type: 'Block',
-              body: [
-                {
-                  type: 'ExprStmt',
-                  expr: cloneNode(keyExpr),
-                },
-              ],
-            },
-            typeParams: [],
-          };
-
-          return createCall(
-            createIdentifier('forList') as LuminaExpr & { name?: string },
-            [sourceSignal, keyWrapper, renderWrapper()],
-            { enumName: 'render' }
-          );
-        });
+        childArg.elements = childArg.elements.map(createMappedSignalListCall);
+      } else if (childArg && call.args[childArgIndex]) {
+        call.args[childArgIndex].value = createMappedSignalListCall(childArg);
       }
     }
   }

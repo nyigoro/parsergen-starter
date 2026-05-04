@@ -14,6 +14,10 @@ describe('render prop helpers', () => {
     expect(render.props_href('/home')).toEqual({ href: '/home' });
     expect(render.props_disabled(true)).toEqual({ disabled: true });
     expect(render.props_key('item-1')).toEqual({ key: 'item-1' });
+    expect(render.keyed('panel', render.text('Profile')).key).toBe('panel');
+    expect(() => render.props_key({ id: 'bad' })).toThrow(
+      'props_key key must be a string or number'
+    );
   });
 
   test('input and change handlers extract string values', () => {
@@ -116,6 +120,7 @@ describe('render prop helpers', () => {
         children,
         composeHandlers,
         createContext,
+        keyed,
         props_checked,
         props_name,
         props_on_checked_change,
@@ -131,6 +136,7 @@ describe('render prop helpers', () => {
         let theme = createContext("light");
         let _click = composeHandlers(0, 0);
         let _items = children(text("item"));
+        let _keyed = keyed("stable", text("panel"));
         let _checked = props_checked(true);
         let _type = props_type("checkbox");
         let _name = props_name("contact");
@@ -153,6 +159,7 @@ describe('render prop helpers', () => {
     expect(js).toContain('createContext("light")');
     expect(js).toContain('withContext(theme, "dark"');
     expect(js).toContain('useContext(theme)');
+    expect(js).toContain('keyed("stable"');
     expect(js).toContain('props_checked(true)');
     expect(js).toContain('props_type("checkbox")');
     expect(js).toContain('props_name("contact")');

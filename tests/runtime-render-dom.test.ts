@@ -1322,6 +1322,35 @@ describe('render DOM renderer', () => {
     render.dispose_reactive(mounted);
   });
 
+  test('render.keyed reorders manual sibling panels while preserving DOM identity', async () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const active = render.signal<'profile' | 'settings'>('profile');
+
+    const mounted = render.mount_reactive(renderer, container, () => {
+      const first = render.get(active);
+      const second = first === 'profile' ? 'settings' : 'profile';
+      return render.element('section', null, [
+        render.keyed(first, render.element('article', { id: first }, [render.text(first)])),
+        render.keyed(second, render.element('article', { id: second }, [render.text(second)])),
+      ]);
+    });
+
+    const host = container.childNodes[0] as FakeElement;
+    const profile = host.childNodes[0] as FakeElement;
+    const settings = host.childNodes[1] as FakeElement;
+
+    render.set(active, 'settings');
+    await Promise.resolve();
+
+    expect(host.childNodes[0]).toBe(settings);
+    expect(host.childNodes[1]).toBe(profile);
+    expect((host.childNodes[0] as FakeElement).attributes.get('id')).toBe('settings');
+
+    render.dispose_reactive(mounted);
+  });
+
   test('reorders keyed children with a long stable tail using one DOM move', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -2211,6 +2240,127 @@ describe('render DOM renderer', () => {
     render.unmount(root);
   });
 
+  test('reports hydration text and tag mismatches without making recovery strict by default', () => {
+    const fakeDocument = new FakeDocument();
+    const diagnostics: Array<{ kind: string; path: string; expected?: string; actual?: string }> =
+      [];
+    const renderer = render.create_dom_renderer({
+      document: fakeDocument as never,
+      onHydrationMismatch: (diagnostic: unknown) => {
+        diagnostics.push(diagnostic as never);
+      },
+    } as never);
+    const container = fakeDocument.createElement('div');
+    const section = fakeDocument.createElement('section');
+    const heading = fakeDocument.createElement('h1');
+    heading.appendChild(fakeDocument.createTextNode('Old'));
+    section.appendChild(heading);
+    container.appendChild(section);
+
+    const root = render.hydrate(
+      renderer,
+      container,
+      render.element('section', null, [
+        render.element('h2', null, [render.text('New')]),
+      ])
+    );
+
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'tag',
+          path: 'root.0',
+          expected: 'h2',
+          actual: 'h1',
+        }),
+      ])
+    );
+    expect((section.childNodes[0] as FakeElement).tagName).toBe('h2');
+    expect(section.childNodes[0].childNodes[0].textContent).toBe('New');
+    render.unmount(root);
+
+    const textContainer = fakeDocument.createElement('div');
+    const textSection = fakeDocument.createElement('section');
+    textSection.appendChild(fakeDocument.createTextNode('Old text'));
+    textContainer.appendChild(textSection);
+    const textRoot = render.hydrate(
+      renderer,
+      textContainer,
+      render.element('section', null, [render.text('New text')])
+    );
+
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'text',
+          path: 'root.0',
+          expected: 'New text',
+          actual: 'Old text',
+        }),
+      ])
+    );
+    expect(textSection.childNodes[0].textContent).toBe('New text');
+    render.unmount(textRoot);
+  });
+
+  test('strict hydration converts mismatches into hydrate errors', () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({
+      document: fakeDocument as never,
+      strictHydration: true,
+    } as never);
+    const container = fakeDocument.createElement('div');
+    const section = fakeDocument.createElement('section');
+    section.appendChild(fakeDocument.createTextNode('Old'));
+    container.appendChild(section);
+
+    expect(
+      render.hydrate(
+        renderer,
+        container,
+        render.element('section', null, [render.text('New')])
+      )
+    ).toMatchObject({
+      $tag: 'Err',
+      $payload: expect.stringContaining('Hydration mismatch at root.0'),
+    });
+  });
+
+  test('missing keyed hydration children are created instead of stealing unkeyed DOM', () => {
+    const fakeDocument = new FakeDocument();
+    const diagnostics: Array<{ kind: string; path: string; key?: string | number }> = [];
+    const renderer = render.create_dom_renderer({
+      document: fakeDocument as never,
+      onHydrationMismatch: (diagnostic: unknown) => {
+        diagnostics.push(diagnostic as never);
+      },
+    } as never);
+    const container = fakeDocument.createElement('div');
+    const section = fakeDocument.createElement('section');
+    const unkeyedInput = fakeDocument.createElement('input');
+    unkeyedInput.value = 'typed fallback';
+    section.appendChild(unkeyedInput);
+    container.appendChild(section);
+
+    const root = render.hydrate(
+      renderer,
+      container,
+      render.element('section', null, [
+        render.element('button', { key: 'new' }, [render.text('New')]),
+      ])
+    );
+
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'missing_keyed_child', path: 'root.0', key: 'new' }),
+        expect.objectContaining({ kind: 'extra_node', path: 'root' }),
+      ])
+    );
+    expect(section.childNodes[0]).not.toBe(unkeyedInput);
+    expect((section.childNodes[0] as FakeElement).tagName).toBe('button');
+    render.unmount(root);
+  });
+
   test('hydrates forList rows from SSR keys without remounting retained input state', async () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -2270,6 +2420,54 @@ describe('render DOM renderer', () => {
 
     expect(host.childNodes[0]).toBe(rowB);
     expect(rowB.childNodes[1].textContent).toBe('Beta!');
+    render.unmount(root);
+  });
+
+  test('hydrates missing forList keys by mounting fresh rows instead of adopting unkeyed fallbacks', () => {
+    const fakeDocument = new FakeDocument();
+    const diagnostics: Array<{ kind: string; key?: string | number }> = [];
+    const renderer = render.create_dom_renderer({
+      document: fakeDocument as never,
+      onHydrationMismatch: (diagnostic: unknown) => {
+        diagnostics.push(diagnostic as never);
+      },
+    } as never);
+    const container = fakeDocument.createElement('div');
+    const ul = fakeDocument.createElement('ul');
+    const host = fakeDocument.createElement('lumina-for-list');
+    const unkeyedRow = fakeDocument.createElement('li');
+    const input = fakeDocument.createElement('input');
+    input.value = 'typed fallback';
+    unkeyedRow.appendChild(input);
+    host.appendChild(unkeyedRow);
+    ul.appendChild(host);
+    container.appendChild(ul);
+    const rows = render.signal([{ id: 'b', label: 'Beta' }]);
+
+    const root = render.hydrate(
+      renderer,
+      container,
+      render.element('ul', null, [
+        render.forList(
+          rows,
+          (row: { id: string }) => row.id,
+          (row) =>
+            render.element('li', null, [
+              render.element('input', null, []),
+              render.liveText(render.memo(() => render.get(row).label)),
+            ])
+        ),
+      ])
+    );
+
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'missing_keyed_child', key: 'b' }),
+        expect.objectContaining({ kind: 'extra_node' }),
+      ])
+    );
+    expect(host.childNodes[0]).not.toBe(unkeyedRow);
+    expect(((host.childNodes[0] as FakeElement).childNodes[0] as FakeElement).value).toBe('');
     render.unmount(root);
   });
 

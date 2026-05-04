@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __defNormalProp = (obj, key2, value) => key2 in obj ? __defProp(obj, key2, { enumerable: true, configurable: true, writable: true, value }) : obj[key2] = value;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+var __publicField = (obj, key2, value) => __defNormalProp(obj, typeof key2 !== "symbol" ? key2 + "" : key2, value);
 
 // src/frame-manager.ts
 var nextContextId = 1;
@@ -49,8 +49,8 @@ var _FrameManager = class _FrameManager {
       this.currentContextScope = previousContextScope;
     }
   }
-  executeComponent(parentFrame, componentFn, key, props) {
-    const frame = this.resolveFrame(parentFrame, componentFn, key);
+  executeComponent(parentFrame, componentFn, key2, props) {
+    const frame = this.resolveFrame(parentFrame, componentFn, key2);
     frame.contextScope = this.currentContextScope;
     frame.seenEpoch = this.renderEpoch;
     const result = this.renderFrame(frame, () => componentFn(props));
@@ -119,8 +119,8 @@ var _FrameManager = class _FrameManager {
         staleKeyed.push(entry);
       }
     }
-    for (const [key, child] of staleKeyed) {
-      frame.keyedChildren.delete(key);
+    for (const [key2, child] of staleKeyed) {
+      frame.keyedChildren.delete(key2);
       this.disposeFrame(child, false);
     }
     const staleUnkeyed = frame.unkeyedChildren.slice(frame.unkeyedChildCursor);
@@ -163,17 +163,17 @@ var _FrameManager = class _FrameManager {
       frame.parent.unkeyedChildren.splice(index, 1);
     }
   }
-  resolveFrame(parentFrame, componentFn, key) {
-    if (key !== null && key !== void 0) {
-      const existing2 = parentFrame.keyedChildren.get(key);
+  resolveFrame(parentFrame, componentFn, key2) {
+    if (key2 !== null && key2 !== void 0) {
+      const existing2 = parentFrame.keyedChildren.get(key2);
       if (existing2 && existing2.componentFn === componentFn && !existing2.disposed) {
         return existing2;
       }
       if (existing2) {
         this.disposeFrame(existing2, false);
       }
-      const frame2 = this.createFrame(parentFrame, componentFn, key);
-      parentFrame.keyedChildren.set(key, frame2);
+      const frame2 = this.createFrame(parentFrame, componentFn, key2);
+      parentFrame.keyedChildren.set(key2, frame2);
       return frame2;
     }
     const childIndex = parentFrame.unkeyedChildCursor;
@@ -197,12 +197,12 @@ var _FrameManager = class _FrameManager {
     }
     this.sweepChildren(frame);
   }
-  createFrame(parent, componentFn, key) {
+  createFrame(parent, componentFn, key2) {
     return {
       id: this.nextFrameId++,
       componentFn,
       parent,
-      key,
+      key: key2,
       slotCursor: 0,
       unkeyedChildCursor: 0,
       expectedSlotCount: null,
@@ -687,12 +687,12 @@ var dispatchTestingCheckedChange = /* @__PURE__ */ __name((node, checked) => {
     target: element
   });
 }, "dispatchTestingCheckedChange");
-var dispatchTestingKeydown = /* @__PURE__ */ __name((node, key, shiftKey = false) => {
+var dispatchTestingKeydown = /* @__PURE__ */ __name((node, key2, shiftKey = false) => {
   const element = asTestingElement(node);
   if (!element) return;
   element.listeners.get("keydown")?.({
     ...createEventBase(element),
-    key,
+    key: key2,
     shiftKey
   });
 }, "dispatchTestingKeydown");
@@ -721,7 +721,7 @@ var createTestingFacade = /* @__PURE__ */ __name((deps) => ({
   testing_click: /* @__PURE__ */ __name((node) => dispatchTestingClick(node), "testing_click"),
   testing_input: /* @__PURE__ */ __name((node, value) => dispatchTestingInput(node, value), "testing_input"),
   testing_change_checked: /* @__PURE__ */ __name((node, checked) => dispatchTestingCheckedChange(node, checked), "testing_change_checked"),
-  testing_keydown: /* @__PURE__ */ __name((node, key, shiftKey) => dispatchTestingKeydown(node, key, shiftKey ?? false), "testing_keydown"),
+  testing_keydown: /* @__PURE__ */ __name((node, key2, shiftKey) => dispatchTestingKeydown(node, key2, shiftKey ?? false), "testing_keydown"),
   testing_submit: /* @__PURE__ */ __name((node) => dispatchTestingSubmit(node), "testing_submit")
 }), "createTestingFacade");
 
@@ -863,14 +863,14 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
     },
     snapshot,
     subscribe,
-    install(key = "__LUMINA_DEVTOOLS__") {
+    install(key2 = "__LUMINA_DEVTOOLS__") {
       const globalRecord = globalThis;
       const handle = {
         version: "beta",
         snapshot: /* @__PURE__ */ __name(() => snapshot(), "snapshot"),
         subscribe
       };
-      globalRecord[key] = handle;
+      globalRecord[key2] = handle;
       return handle;
     },
     scheduleNotify
@@ -939,44 +939,44 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
   const routerPopStateHandlers = /* @__PURE__ */ new Map();
   const browserLocalStorage = /* @__PURE__ */ __name(() => asStorageLike(globalThis.localStorage), "browserLocalStorage");
   const browserSessionStorage = /* @__PURE__ */ __name(() => asStorageLike(globalThis.sessionStorage), "browserSessionStorage");
-  const webStorageGet = /* @__PURE__ */ __name((scope, key) => {
+  const webStorageGet = /* @__PURE__ */ __name((scope, key2) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
-        const value = storage.getItem(String(key));
+        const value = storage.getItem(String(key2));
         return value == null ? deps.optionNone : deps.optionSome(value);
       } catch {
         return deps.optionNone;
       }
     }
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
-    return fallback.has(String(key)) ? deps.optionSome(fallback.get(String(key)) ?? "") : deps.optionNone;
+    return fallback.has(String(key2)) ? deps.optionSome(fallback.get(String(key2)) ?? "") : deps.optionNone;
   }, "webStorageGet");
-  const webStorageSet = /* @__PURE__ */ __name((scope, key, value) => {
+  const webStorageSet = /* @__PURE__ */ __name((scope, key2, value) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
-        storage.setItem(String(key), String(value));
+        storage.setItem(String(key2), String(value));
         return deps.resultOk(void 0);
       } catch (error) {
         return deps.resultErr(error instanceof Error ? error.message : String(error));
       }
     }
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
-    fallback.set(String(key), String(value));
+    fallback.set(String(key2), String(value));
     return deps.resultOk(void 0);
   }, "webStorageSet");
-  const webStorageRemove = /* @__PURE__ */ __name((scope, key) => {
+  const webStorageRemove = /* @__PURE__ */ __name((scope, key2) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
-        storage.removeItem(String(key));
+        storage.removeItem(String(key2));
         return;
       } catch {
       }
     }
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
-    fallback.delete(String(key));
+    fallback.delete(String(key2));
   }, "webStorageRemove");
   const webStorageClear = /* @__PURE__ */ __name((scope) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
@@ -1076,8 +1076,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
   const splitRouterSegments = /* @__PURE__ */ __name((value) => normalizeRouterPath(value).split("/").filter((segment) => segment.length > 0), "splitRouterSegments");
   const createRouterParamMap = /* @__PURE__ */ __name((entries) => {
     const out = deps.createHashMap();
-    for (const [key, value] of entries) {
-      if (key.length > 0) out.insert(key, value);
+    for (const [key2, value] of entries) {
+      if (key2.length > 0) out.insert(key2, value);
     }
     return out;
   }, "createRouterParamMap");
@@ -1243,40 +1243,40 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       next.search = !text2 ? "" : text2.startsWith("?") ? text2 : `?${text2}`;
       return toUrlRecord(next);
     }, "set_search"),
-    append_param: /* @__PURE__ */ __name((value, key, paramValue) => {
+    append_param: /* @__PURE__ */ __name((value, key2, paramValue) => {
       const next = coerceToUrl(value);
       if (!next) return emptyUrlRecord();
-      next.searchParams.append(String(key), String(paramValue));
+      next.searchParams.append(String(key2), String(paramValue));
       return toUrlRecord(next);
     }, "append_param")
   };
   const web_storage2 = {
     is_available: /* @__PURE__ */ __name(() => browserLocalStorage() !== null && browserSessionStorage() !== null, "is_available"),
-    local_get: /* @__PURE__ */ __name((key) => webStorageGet("local", key), "local_get"),
-    local_set: /* @__PURE__ */ __name((key, value) => webStorageSet("local", key, value), "local_set"),
-    local_remove: /* @__PURE__ */ __name((key) => webStorageRemove("local", key), "local_remove"),
+    local_get: /* @__PURE__ */ __name((key2) => webStorageGet("local", key2), "local_get"),
+    local_set: /* @__PURE__ */ __name((key2, value) => webStorageSet("local", key2, value), "local_set"),
+    local_remove: /* @__PURE__ */ __name((key2) => webStorageRemove("local", key2), "local_remove"),
     local_clear: /* @__PURE__ */ __name(() => webStorageClear("local"), "local_clear"),
     local_length: /* @__PURE__ */ __name(() => webStorageLength("local"), "local_length"),
-    session_get: /* @__PURE__ */ __name((key) => webStorageGet("session", key), "session_get"),
-    session_set: /* @__PURE__ */ __name((key, value) => webStorageSet("session", key, value), "session_set"),
-    session_remove: /* @__PURE__ */ __name((key) => webStorageRemove("session", key), "session_remove"),
+    session_get: /* @__PURE__ */ __name((key2) => webStorageGet("session", key2), "session_get"),
+    session_set: /* @__PURE__ */ __name((key2, value) => webStorageSet("session", key2, value), "session_set"),
+    session_remove: /* @__PURE__ */ __name((key2) => webStorageRemove("session", key2), "session_remove"),
     session_clear: /* @__PURE__ */ __name(() => webStorageClear("session"), "session_clear"),
     session_length: /* @__PURE__ */ __name(() => webStorageLength("session"), "session_length")
   };
   const dom2 = {
     is_available: /* @__PURE__ */ __name(() => getDocumentHandle() !== null, "is_available"),
     call_global_1: /* @__PURE__ */ __name((name, arg) => {
-      const key = String(name);
-      const fn = globalThis[key];
+      const key2 = String(name);
+      const fn = globalThis[key2];
       if (typeof fn !== "function") {
         return {
           ok: false,
           js: "",
-          output: `// Missing global function: ${key}`,
+          output: `// Missing global function: ${key2}`,
           diagnostics: [
             {
               severity: "error",
-              message: `Missing global function: ${key}`
+              message: `Missing global function: ${key2}`
             }
           ]
         };
@@ -1404,10 +1404,10 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     get_style: /* @__PURE__ */ __name((elementHandle, prop) => {
       const element = fromDomHandle(elementHandle);
       if (!element) return "";
-      const key = String(prop);
+      const key2 = String(prop);
       const styleObj = element.style;
       if (!styleObj) return "";
-      const value = styleObj[key];
+      const value = styleObj[key2];
       return typeof value === "string" ? value : "";
     }, "get_style"),
     set_style: /* @__PURE__ */ __name((elementHandle, prop, value) => {
@@ -2080,7 +2080,7 @@ ${closing}]`;
     const entries = Object.entries(obj);
     if (entries.length === 0) return "{}";
     if (depth >= config.maxDepth) return "{...}";
-    const rendered = entries.map(([key, val]) => `${key}: ${format(val, depth + 1)}`);
+    const rendered = entries.map(([key2, val]) => `${key2}: ${format(val, depth + 1)}`);
     const multiline = rendered.some((item) => item.includes("\n")) || rendered.join(", ").length > 60;
     if (!multiline) return `{ ${rendered.join(", ")} }`;
     const indent = " ".repeat(config.indent * (depth + 1));
@@ -2152,8 +2152,8 @@ var normalizeRuntimeValue = /* @__PURE__ */ __name((value) => {
     const keys = Object.keys(obj).sort();
     const out = {};
     if (typeTag) out.__lumina_type = typeTag;
-    for (const key of keys) {
-      out[key] = normalizeRuntimeValue(obj[key]);
+    for (const key2 of keys) {
+      out[key2] = normalizeRuntimeValue(obj[key2]);
     }
     return out;
   }
@@ -2191,8 +2191,8 @@ var deepRuntimeEqual = /* @__PURE__ */ __name((a, b) => {
   for (let i = 0; i < aKeys.length; i += 1) {
     if (aKeys[i] !== bKeys[i]) return false;
   }
-  for (const key of aKeys) {
-    if (!deepRuntimeEqual(aObj[key], bObj[key])) return false;
+  for (const key2 of aKeys) {
+    if (!deepRuntimeEqual(aObj[key2], bObj[key2])) return false;
   }
   return true;
 }, "deepRuntimeEqual");
@@ -2258,12 +2258,12 @@ var cloneFast = /* @__PURE__ */ __name((value, seen = /* @__PURE__ */ new WeakMa
   if (cached) return cached;
   const out = {};
   seen.set(value, out);
-  for (const [key, entry] of Object.entries(value)) {
+  for (const [key2, entry] of Object.entries(value)) {
     const cloned = cloneFast(entry, seen);
     if (cloned === FAST_CLONE_UNSUPPORTED) {
       return FAST_CLONE_UNSUPPORTED;
     }
-    out[key] = cloned;
+    out[key2] = cloned;
   }
   const typeTag = getRuntimeTypeTag(value);
   if (typeTag) {
@@ -2289,8 +2289,8 @@ var cloneFallback = /* @__PURE__ */ __name((value) => {
   if (typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((entry) => cloneFallback(entry));
   const out = {};
-  for (const [key, entry] of Object.entries(value)) {
-    out[key] = cloneFallback(entry);
+  for (const [key2, entry] of Object.entries(value)) {
+    out[key2] = cloneFallback(entry);
   }
   const typeTag = getRuntimeTypeTag(value);
   if (typeTag) {
@@ -2706,12 +2706,12 @@ var iter = {
   }, "unique_vec"),
   reverse_vec: /* @__PURE__ */ __name((values) => Vec.from(Array.from(values).reverse()), "reverse_vec"),
   sort_vec: /* @__PURE__ */ __name((values, cmp) => Vec.from(Array.from(values).sort((left, right) => cmp(left, right))), "sort_vec"),
-  sort_by_vec: /* @__PURE__ */ __name((values, key) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key(left), key(right)))), "sort_by_vec"),
-  sort_by_desc_vec: /* @__PURE__ */ __name((values, key) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key(right), key(left)))), "sort_by_desc_vec"),
-  group_by_vec: /* @__PURE__ */ __name((values, key) => {
+  sort_by_vec: /* @__PURE__ */ __name((values, key2) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key2(left), key2(right)))), "sort_by_vec"),
+  sort_by_desc_vec: /* @__PURE__ */ __name((values, key2) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key2(right), key2(left)))), "sort_by_desc_vec"),
+  group_by_vec: /* @__PURE__ */ __name((values, key2) => {
     const out = HashMap.new();
     for (const value of values) {
-      const groupKey = key(value);
+      const groupKey = key2(value);
       const existing = out.get(groupKey);
       if (existing === Option().None) {
         const bucket2 = Vec.new();
@@ -2785,11 +2785,11 @@ var where_q = /* @__PURE__ */ __name((q, pred) => ({
 var select_q = /* @__PURE__ */ __name((q, mapper) => ({
   items: iter.map_vec(q.items, mapper)
 }), "select_q");
-var order_by_q = /* @__PURE__ */ __name((q, key) => ({
-  items: iter.sort_by_vec(q.items, key)
+var order_by_q = /* @__PURE__ */ __name((q, key2) => ({
+  items: iter.sort_by_vec(q.items, key2)
 }), "order_by_q");
-var order_by_desc_q = /* @__PURE__ */ __name((q, key) => ({
-  items: iter.sort_by_desc_vec(q.items, key)
+var order_by_desc_q = /* @__PURE__ */ __name((q, key2) => ({
+  items: iter.sort_by_desc_vec(q.items, key2)
 }), "order_by_desc_q");
 var limit_q = /* @__PURE__ */ __name((q, n) => ({
   items: iter.take_vec(q.items, n)
@@ -2797,7 +2797,7 @@ var limit_q = /* @__PURE__ */ __name((q, n) => ({
 var offset_q = /* @__PURE__ */ __name((q, n) => ({
   items: iter.skip_vec(q.items, n)
 }), "offset_q");
-var group_by_q = /* @__PURE__ */ __name((q, key) => iter.group_by_vec(q.items, key), "group_by_q");
+var group_by_q = /* @__PURE__ */ __name((q, key2) => iter.group_by_vec(q.items, key2), "group_by_q");
 var count_q = /* @__PURE__ */ __name((q) => iter.count_vec(q.items), "count_q");
 var first_q = /* @__PURE__ */ __name((q) => vec.get(q.items, 0), "first_q");
 var to_vec_q = /* @__PURE__ */ __name((q) => q.items, "to_vec_q");
@@ -2814,51 +2814,51 @@ var _HashMap = class _HashMap {
   static new() {
     return new _HashMap();
   }
-  getBucket(key) {
-    const hash = runtimeHashValue(key);
+  getBucket(key2) {
+    const hash = runtimeHashValue(key2);
     const existing = this.buckets.get(hash);
     if (existing) return existing;
     const next = [];
     this.buckets.set(hash, next);
     return next;
   }
-  lookupBucket(key) {
-    const hash = runtimeHashValue(key);
+  lookupBucket(key2) {
+    const hash = runtimeHashValue(key2);
     return this.buckets.get(hash) ?? null;
   }
-  insert(key, value) {
-    const bucket = this.getBucket(key);
+  insert(key2, value) {
+    const bucket = this.getBucket(key2);
     for (let i = 0; i < bucket.length; i += 1) {
       const current = bucket[i];
-      if (runtimeEquals(current.key, key)) {
+      if (runtimeEquals(current.key, key2)) {
         const old = current.value;
         current.value = value;
         return Option().Some(old);
       }
     }
     bucket.push({
-      key,
+      key: key2,
       value
     });
     this.sizeValue += 1;
     return Option().None;
   }
-  get(key) {
-    const bucket = this.lookupBucket(key);
+  get(key2) {
+    const bucket = this.lookupBucket(key2);
     if (!bucket) return Option().None;
     for (const entry of bucket) {
-      if (runtimeEquals(entry.key, key)) {
+      if (runtimeEquals(entry.key, key2)) {
         return Option().Some(entry.value);
       }
     }
     return Option().None;
   }
-  remove(key) {
-    const hash = runtimeHashValue(key);
+  remove(key2) {
+    const hash = runtimeHashValue(key2);
     const bucket = this.buckets.get(hash);
     if (!bucket || bucket.length === 0) return Option().None;
     for (let i = 0; i < bucket.length; i += 1) {
-      if (runtimeEquals(bucket[i].key, key)) {
+      if (runtimeEquals(bucket[i].key, key2)) {
         const [removed] = bucket.splice(i, 1);
         if (bucket.length === 0) this.buckets.delete(hash);
         this.sizeValue -= 1;
@@ -2867,11 +2867,11 @@ var _HashMap = class _HashMap {
     }
     return Option().None;
   }
-  contains_key(key) {
-    const bucket = this.lookupBucket(key);
+  contains_key(key2) {
+    const bucket = this.lookupBucket(key2);
     if (!bucket) return false;
     for (const entry of bucket) {
-      if (runtimeEquals(entry.key, key)) return true;
+      if (runtimeEquals(entry.key, key2)) return true;
     }
     return false;
   }
@@ -3004,47 +3004,47 @@ var _BTreeMap = class _BTreeMap {
   static new() {
     return new _BTreeMap();
   }
-  lowerBound(key) {
+  lowerBound(key2) {
     let lo = 0;
     let hi = this.records.length;
     while (lo < hi) {
       const mid = lo + hi >> 1;
-      if (compareRuntimeValues(this.records[mid].key, key) < 0) lo = mid + 1;
+      if (compareRuntimeValues(this.records[mid].key, key2) < 0) lo = mid + 1;
       else hi = mid;
     }
     return lo;
   }
-  insert(key, value) {
-    const idx = this.lowerBound(key);
-    if (idx < this.records.length && compareRuntimeValues(this.records[idx].key, key) === 0) {
+  insert(key2, value) {
+    const idx = this.lowerBound(key2);
+    if (idx < this.records.length && compareRuntimeValues(this.records[idx].key, key2) === 0) {
       const previous = this.records[idx].value;
       this.records[idx].value = value;
       return Option().Some(previous);
     }
     this.records.splice(idx, 0, {
-      key,
+      key: key2,
       value
     });
     return Option().None;
   }
-  get(key) {
-    const idx = this.lowerBound(key);
-    if (idx < this.records.length && compareRuntimeValues(this.records[idx].key, key) === 0) {
+  get(key2) {
+    const idx = this.lowerBound(key2);
+    if (idx < this.records.length && compareRuntimeValues(this.records[idx].key, key2) === 0) {
       return Option().Some(this.records[idx].value);
     }
     return Option().None;
   }
-  remove(key) {
-    const idx = this.lowerBound(key);
-    if (idx < this.records.length && compareRuntimeValues(this.records[idx].key, key) === 0) {
+  remove(key2) {
+    const idx = this.lowerBound(key2);
+    if (idx < this.records.length && compareRuntimeValues(this.records[idx].key, key2) === 0) {
       const [removed] = this.records.splice(idx, 1);
       return Option().Some(removed.value);
     }
     return Option().None;
   }
-  contains_key(key) {
-    const idx = this.lowerBound(key);
-    return idx < this.records.length && compareRuntimeValues(this.records[idx].key, key) === 0;
+  contains_key(key2) {
+    const idx = this.lowerBound(key2);
+    return idx < this.records.length && compareRuntimeValues(this.records[idx].key, key2) === 0;
   }
   len() {
     return this.records.length;
@@ -3190,37 +3190,37 @@ var priority_queue = {
 // src/runtime/algebra-runtime.ts
 var mapHashMapValues = /* @__PURE__ */ __name((map, mapper) => {
   const out = HashMap.new();
-  for (const key of map.keys()) {
-    const current = map.get(key);
+  for (const key2 of map.keys()) {
+    const current = map.get(key2);
     if (current && typeof current === "object" && current.$tag === "Some") {
-      out.insert(key, mapper(current.$payload));
+      out.insert(key2, mapper(current.$payload));
     }
   }
   return out;
 }, "mapHashMapValues");
-var pureHashMap = /* @__PURE__ */ __name((key, value) => {
+var pureHashMap = /* @__PURE__ */ __name((key2, value) => {
   const out = HashMap.new();
-  out.insert(key, value);
+  out.insert(key2, value);
   return out;
 }, "pureHashMap");
 var apHashMapValues = /* @__PURE__ */ __name((fns, values) => {
   const out = HashMap.new();
-  for (const key of fns.keys()) {
-    const fnEntry = fns.get(key);
-    const valueEntry = values.get(key);
+  for (const key2 of fns.keys()) {
+    const fnEntry = fns.get(key2);
+    const valueEntry = values.get(key2);
     if (!fnEntry || typeof fnEntry !== "object" || fnEntry.$tag !== "Some" || !valueEntry || typeof valueEntry !== "object" || valueEntry.$tag !== "Some") {
       continue;
     }
     const fn = fnEntry.$payload;
     if (typeof fn !== "function") continue;
-    out.insert(key, fn(valueEntry.$payload));
+    out.insert(key2, fn(valueEntry.$payload));
   }
   return out;
 }, "apHashMapValues");
 var flatMapHashMapValues = /* @__PURE__ */ __name((values, mapper) => {
   const out = HashMap.new();
-  for (const key of values.keys()) {
-    const current = values.get(key);
+  for (const key2 of values.keys()) {
+    const current = values.get(key2);
     if (!current || typeof current !== "object" || current.$tag !== "Some") continue;
     const mapped = mapper(current.$payload);
     if (!(mapped instanceof HashMap)) continue;
@@ -3246,7 +3246,7 @@ var createAlgebraRuntime = /* @__PURE__ */ __name(({ Option: Option3, Result: Re
     pure_vec: /* @__PURE__ */ __name((value) => Vec.from([
       value
     ]), "pure_vec"),
-    pure_hashmap: /* @__PURE__ */ __name((key, value) => pureHashMap(key, value), "pure_hashmap"),
+    pure_hashmap: /* @__PURE__ */ __name((key2, value) => pureHashMap(key2, value), "pure_hashmap"),
     ap_option: /* @__PURE__ */ __name((fns, value) => {
       const fnTag = fns && typeof fns === "object" && isEnumLike2(fns) ? getEnumTag2(fns) : "";
       const valueTag = value && typeof value === "object" && isEnumLike2(value) ? getEnumTag2(value) : "";
@@ -5252,6 +5252,126 @@ var readSignalRaw = /* @__PURE__ */ __name((signal, tracked) => {
   return signal.value;
 }, "readSignalRaw");
 
+// src/runtime/ssr-renderer.ts
+var LUMINA_HYDRATION_KEY_ATTR = "data-lumina-key";
+var htmlEscapeMap = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;"
+};
+var escapeHtml = /* @__PURE__ */ __name((value) => String(value ?? "").replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char), "escapeHtml");
+var kebabCase = /* @__PURE__ */ __name((value) => value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, "-ms-"), "kebabCase");
+var serializeStyleValue = /* @__PURE__ */ __name((value) => Object.entries(value).filter(([, entry]) => entry !== null && entry !== void 0).map(([key2, entry]) => `${kebabCase(key2)}:${String(entry)}`).join(";"), "serializeStyleValue");
+var serializePropsToHtml = /* @__PURE__ */ __name((props, hydrationKey) => {
+  const propSource = props ?? {};
+  const attrs = [];
+  const keyForHydration = typeof hydrationKey === "string" || typeof hydrationKey === "number" ? hydrationKey : typeof propSource.key === "string" || typeof propSource.key === "number" ? propSource.key : void 0;
+  for (const [key2, value] of Object.entries(propSource)) {
+    if (key2 === "key") continue;
+    if (key2.startsWith("on") && typeof value === "function") continue;
+    if (value === false || value === null || value === void 0) continue;
+    if (key2 === "style" && typeof value === "object" && value !== null) {
+      const styleText = serializeStyleValue(value);
+      if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);
+      continue;
+    }
+    if (value === true) {
+      attrs.push(key2);
+      continue;
+    }
+    attrs.push(`${key2}="${escapeHtml(String(value))}"`);
+  }
+  if (keyForHydration !== void 0 && !Object.prototype.hasOwnProperty.call(propSource, LUMINA_HYDRATION_KEY_ATTR)) {
+    attrs.push(`${LUMINA_HYDRATION_KEY_ATTR}="${escapeHtml(String(keyForHydration))}"`);
+  }
+  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+}, "serializePropsToHtml");
+var voidHtmlTags = /* @__PURE__ */ new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr"
+]);
+var setContainerMarkup = /* @__PURE__ */ __name((container, output) => {
+  if (container && typeof container === "object") {
+    const target = container;
+    if (typeof target.write === "function") {
+      target.write(output);
+      return;
+    }
+    if (typeof target.innerHTML === "string" || "innerHTML" in target) {
+      target.innerHTML = output;
+      return;
+    }
+    if (typeof target.html === "string" || "html" in target) {
+      target.html = output;
+      return;
+    }
+    if (typeof target.textContent === "string" || "textContent" in target) {
+      target.textContent = output;
+      return;
+    }
+    target.html = output;
+  }
+}, "setContainerMarkup");
+var createSsrRuntime = /* @__PURE__ */ __name((deps) => {
+  const vnodeToHtml = /* @__PURE__ */ __name((node) => {
+    const normalized = deps.normalizeNodeForHtml(node);
+    const kind = deps.getKind(normalized);
+    if (kind === "text") return escapeHtml(deps.getText(normalized) ?? "");
+    if (kind === "live_text") return escapeHtml(String(deps.getSignalValue(normalized) ?? ""));
+    const children2 = deps.getChildren(normalized).map((child) => vnodeToHtml(child)).join("");
+    if (kind === "fragment") return children2;
+    if (kind === "portal") {
+      const target = deps.getTarget?.(normalized);
+      const targetAttr = target ? ` data-lumina-portal-target="${escapeHtml(target)}"` : "";
+      return `<lumina-portal-anchor hidden data-lumina-portal-anchor="true"${targetAttr}></lumina-portal-anchor>`;
+    }
+    const tag = deps.getTag(normalized) ?? "div";
+    const attrs = serializePropsToHtml(deps.getProps(normalized), deps.getKey?.(normalized));
+    if (voidHtmlTags.has(tag.toLowerCase())) {
+      return `<${tag}${attrs}>`;
+    }
+    return `<${tag}${attrs}>${children2}</${tag}>`;
+  }, "vnodeToHtml");
+  return {
+    renderToString: vnodeToHtml,
+    createRenderer: /* @__PURE__ */ __name(() => {
+      let current = "";
+      return {
+        mount(node, container) {
+          current = vnodeToHtml(node);
+          setContainerMarkup(container, current);
+        },
+        patch(_prev, next, container) {
+          current = vnodeToHtml(next);
+          setContainerMarkup(container, current);
+        },
+        hydrate(node, container) {
+          current = vnodeToHtml(node);
+          setContainerMarkup(container, current);
+        },
+        unmount(container) {
+          current = "";
+          setContainerMarkup(container, "");
+        }
+      };
+    }, "createRenderer")
+  };
+}, "createSsrRuntime");
+
 // src/runtime/vnode-core.ts
 var normalizeVNodeChildren = /* @__PURE__ */ __name((input) => {
   if (Array.isArray(input)) {
@@ -5284,8 +5404,8 @@ var normalizeVNodeChildren = /* @__PURE__ */ __name((input) => {
 var sanitizeProps = /* @__PURE__ */ __name((props) => {
   if (!props) return {};
   const out = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (value !== void 0) out[key] = value;
+  for (const [key2, value] of Object.entries(props)) {
+    if (value !== void 0) out[key2] = value;
   }
   return out;
 }, "sanitizeProps");
@@ -5331,6 +5451,18 @@ var coerceListKey = /* @__PURE__ */ __name((value, index) => {
   }
   throw new Error(`List key at index ${index} must be a string or number`);
 }, "coerceListKey");
+var coerceVNodeKey = /* @__PURE__ */ __name((value, label = "VNode key") => {
+  if (typeof value === "string" || typeof value === "number") {
+    return value;
+  }
+  throw new Error(`${label} must be a string or number`);
+}, "coerceVNodeKey");
+var getPropsKey = /* @__PURE__ */ __name((props) => {
+  if (!props || !Object.prototype.hasOwnProperty.call(props, "key") || props.key === void 0) {
+    return void 0;
+  }
+  return coerceVNodeKey(props.key);
+}, "getPropsKey");
 var vnodeIndexList = /* @__PURE__ */ __name((itemsSignal, renderItem) => ({
   kind: "index_list",
   itemsSignal,
@@ -5345,7 +5477,7 @@ var vnodeForList = /* @__PURE__ */ __name((itemsSignal, keyOf, renderItem) => ({
 var vnodeElement = /* @__PURE__ */ __name((tag, props, children2 = []) => ({
   kind: "element",
   tag,
-  key: typeof props?.key === "string" || typeof props?.key === "number" ? props.key : void 0,
+  key: getPropsKey(props),
   props: sanitizeProps(props),
   children: normalizeVNodeChildren(children2)
 }), "vnodeElement");
@@ -5366,13 +5498,20 @@ var coerceRenderableToVNode = /* @__PURE__ */ __name((input) => {
   }
   return vnodeFragment(children2);
 }, "coerceRenderableToVNode");
-var applyVNodeKey = /* @__PURE__ */ __name((node, key) => {
-  if (typeof key !== "string" && typeof key !== "number" || node.key !== void 0) {
+var applyVNodeKey = /* @__PURE__ */ __name((node, key2) => {
+  if (key2 === void 0 || key2 === null) {
+    return node;
+  }
+  const nextKey = coerceVNodeKey(key2);
+  if (node.key !== void 0) {
+    if (node.key !== nextKey) {
+      throw new Error(`Conflicting keyed child: child already has key '${String(node.key)}' but parent assigned '${String(nextKey)}'`);
+    }
     return node;
   }
   return {
     ...node,
-    key
+    key: nextKey
   };
 }, "applyVNodeKey");
 var materializeIndexListChildren = /* @__PURE__ */ __name((node, tracked) => {
@@ -5392,13 +5531,13 @@ var materializeForListChildren = /* @__PURE__ */ __name((node, tracked) => {
   }
   const seenKeys = /* @__PURE__ */ new Set();
   return readIndexListValues(source, tracked).map((value, index) => {
-    const key = coerceListKey(keyOf(value, index), index);
-    if (seenKeys.has(key)) {
-      throw new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`);
+    const key2 = coerceListKey(keyOf(value, index), index);
+    if (seenKeys.has(key2)) {
+      throw new Error(`Duplicate keyed child '${String(key2)}' in the same parent is not supported`);
     }
-    seenKeys.add(key);
+    seenKeys.add(key2);
     const vnode2 = coerceRenderableToVNode(renderItem(createStaticSignal(value), createStaticSignal(index)));
-    return applyVNodeKey(vnode2, key);
+    return applyVNodeKey(vnode2, key2);
   });
 }, "materializeForListChildren");
 var snapshotVNode = /* @__PURE__ */ __name((node) => {
@@ -5420,6 +5559,7 @@ var snapshotVNode = /* @__PURE__ */ __name((node) => {
   return node;
 }, "snapshotVNode");
 var resolveChildrenInput = /* @__PURE__ */ __name((input) => typeof input === "function" ? input() : input, "resolveChildrenInput");
+var vnodeKeyed = /* @__PURE__ */ __name((key2, input) => applyVNodeKey(coerceRenderableToVNode(resolveChildrenInput(input)), key2), "vnodeKeyed");
 var serializeVNode = /* @__PURE__ */ __name((node) => JSON.stringify(snapshotVNode(node)), "serializeVNode");
 var parseVNode = /* @__PURE__ */ __name((json2) => {
   const parsed = JSON.parse(json2);
@@ -5446,15 +5586,15 @@ var serializeFingerprintProps = /* @__PURE__ */ __name((props) => {
     return "";
   }
   let out = "";
-  for (const key in props) {
-    if (!Object.prototype.hasOwnProperty.call(props, key) || key === "key") {
+  for (const key2 in props) {
+    if (!Object.prototype.hasOwnProperty.call(props, key2) || key2 === "key") {
       continue;
     }
-    const value = props[key];
+    const value = props[key2];
     if (value !== null && value !== void 0 && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
       return null;
     }
-    out += `|${key}:${String(value ?? "")}`;
+    out += `|${key2}:${String(value ?? "")}`;
   }
   return out;
 }, "serializeFingerprintProps");
@@ -5639,20 +5779,20 @@ var setDomStyle = /* @__PURE__ */ __name((element, previous, next) => {
   const nxt = next ?? {};
   const style = element.style;
   if (!style) return;
-  for (const [key, value] of Object.entries(nxt)) {
-    if (prev[key] === value) continue;
+  for (const [key2, value] of Object.entries(nxt)) {
+    if (prev[key2] === value) continue;
     if (style.setProperty) {
-      style.setProperty(key, value == null ? "" : String(value));
+      style.setProperty(key2, value == null ? "" : String(value));
     } else {
-      style[key] = value;
+      style[key2] = value;
     }
   }
-  for (const key of Object.keys(prev)) {
-    if (Object.prototype.hasOwnProperty.call(nxt, key)) continue;
+  for (const key2 of Object.keys(prev)) {
+    if (Object.prototype.hasOwnProperty.call(nxt, key2)) continue;
     if (style.setProperty) {
-      style.setProperty(key, "");
+      style.setProperty(key2, "");
     } else {
-      delete style[key];
+      delete style[key2];
     }
   }
 }, "setDomStyle");
@@ -5709,21 +5849,21 @@ var setDomProperty = /* @__PURE__ */ __name((element, name, value, eventStore) =
 var updateDomProperties = /* @__PURE__ */ __name((element, previous, next, eventStore) => {
   const prev = previous ?? {};
   const nxt = next ?? {};
-  for (const key of Object.keys(prev)) {
-    if (Object.prototype.hasOwnProperty.call(nxt, key)) continue;
-    if (key === "style") {
+  for (const key2 of Object.keys(prev)) {
+    if (Object.prototype.hasOwnProperty.call(nxt, key2)) continue;
+    if (key2 === "style") {
       setDomStyle(element, prev.style, void 0);
       continue;
     }
-    setDomProperty(element, key, void 0, eventStore);
+    setDomProperty(element, key2, void 0, eventStore);
   }
-  for (const [key, value] of Object.entries(nxt)) {
-    if (key === "style") {
+  for (const [key2, value] of Object.entries(nxt)) {
+    if (key2 === "style") {
       setDomStyle(element, prev.style, value);
       continue;
     }
-    if (prev[key] === value) continue;
-    setDomProperty(element, key, value, eventStore);
+    if (prev[key2] === value) continue;
+    setDomProperty(element, key2, value, eventStore);
   }
   if (isModalDialogElement(element)) {
     syncModalDialogInertState(element, !isElementHidden(element));
@@ -5821,7 +5961,32 @@ var replaceChildren = /* @__PURE__ */ __name((container, children2, eventStore, 
 var vnodeKindTag = /* @__PURE__ */ __name((node) => `${node.kind}:${node.tag ?? ""}`, "vnodeKindTag");
 var hasVNodeKey = /* @__PURE__ */ __name((node) => typeof node.key === "string" || typeof node.key === "number", "hasVNodeKey");
 var hasKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasKeyedChildren");
-var duplicateKeyError = /* @__PURE__ */ __name((key) => new Error(`Duplicate keyed child '${String(key)}' in the same parent is not supported`), "duplicateKeyError");
+var getDomHydrationKey = /* @__PURE__ */ __name((node) => getDomAttribute(node, LUMINA_HYDRATION_KEY_ATTR), "getDomHydrationKey");
+var isIgnorableHydrationNode = /* @__PURE__ */ __name((node) => {
+  const candidate = node;
+  if (candidate.nodeType === 8) return true;
+  const isTextNode = candidate.nodeType === 3 || candidate.nodeName === "#text";
+  return isTextNode && (candidate.textContent ?? "").trim() === "";
+}, "isIgnorableHydrationNode");
+var canIgnoreHydrationWhitespace = /* @__PURE__ */ __name((children2) => children2.every((child) => child.kind !== "text" && child.kind !== "live_text"), "canIgnoreHydrationWhitespace");
+var findHydrationRootNode = /* @__PURE__ */ __name((children2, node) => {
+  if (node.kind === "text" || node.kind === "live_text") {
+    return children2[0] ?? null;
+  }
+  return children2.find((child) => !isIgnorableHydrationNode(child)) ?? null;
+}, "findHydrationRootNode");
+var hasHydratableKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasHydratableKeyedChildren");
+var duplicateKeyError = /* @__PURE__ */ __name((key2) => new Error(`Duplicate keyed child '${String(key2)}' in the same parent is not supported`), "duplicateKeyError");
+var assertUniqueVNodeChildKeys = /* @__PURE__ */ __name((children2) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const child of children2) {
+    if (!hasVNodeKey(child)) continue;
+    if (seen.has(child.key)) {
+      throw duplicateKeyError(child.key);
+    }
+    seen.add(child.key);
+  }
+}, "assertUniqueVNodeChildKeys");
 var areAllChildrenKeyed = /* @__PURE__ */ __name((children2) => children2.every((child) => hasVNodeKey(child)), "areAllChildrenKeyed");
 var tryReadTextLeaf = /* @__PURE__ */ __name((node) => {
   if (node.kind === "text") {
@@ -5988,12 +6153,12 @@ var buildKeyedOrder = /* @__PURE__ */ __name((items, keyOf) => {
   const order = [];
   const seen = /* @__PURE__ */ new Set();
   for (let index = 0; index < items.length; index += 1) {
-    const key = coerceListKey(keyOf(items[index], index), index);
-    if (seen.has(key)) {
-      throw duplicateKeyError(key);
+    const key2 = coerceListKey(keyOf(items[index], index), index);
+    if (seen.has(key2)) {
+      throw duplicateKeyError(key2);
     }
-    seen.add(key);
-    order.push(key);
+    seen.add(key2);
+    order.push(key2);
   }
   return order;
 }, "buildKeyedOrder");
@@ -6078,10 +6243,10 @@ var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, 
   let firstMismatch = -1;
   let firstMismatchKey = null;
   for (let index = 0; index < items.length; index += 1) {
-    const key = coerceListKey(keyOf(items[index], index), index);
-    if (previousOrder[index] !== key) {
+    const key2 = coerceListKey(keyOf(items[index], index), index);
+    if (previousOrder[index] !== key2) {
       firstMismatch = index;
-      firstMismatchKey = key;
+      firstMismatchKey = key2;
       break;
     }
   }
@@ -6099,8 +6264,8 @@ var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, 
     if (previousOrder[firstMismatch] === rightKey && previousOrder[swapRight] === firstMismatchKey) {
       let restMatches = true;
       for (let index = swapRight + 1; index < items.length; index += 1) {
-        const key = coerceListKey(keyOf(items[index], index), index);
-        if (previousOrder[index] !== key) {
+        const key2 = coerceListKey(keyOf(items[index], index), index);
+        if (previousOrder[index] !== key2) {
           restMatches = false;
           break;
         }
@@ -6131,15 +6296,15 @@ var hasShallowEqualProps = /* @__PURE__ */ __name((left, right) => {
   if (left === right) return true;
   if (!left || !right) return !left && !right;
   let leftCount = 0;
-  for (const key in left) {
-    if (!Object.prototype.hasOwnProperty.call(left, key)) continue;
+  for (const key2 in left) {
+    if (!Object.prototype.hasOwnProperty.call(left, key2)) continue;
     leftCount += 1;
-    if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
-    if (left[key] !== right[key]) return false;
+    if (!Object.prototype.hasOwnProperty.call(right, key2)) return false;
+    if (left[key2] !== right[key2]) return false;
   }
   let rightCount = 0;
-  for (const key in right) {
-    if (!Object.prototype.hasOwnProperty.call(right, key)) continue;
+  for (const key2 in right) {
+    if (!Object.prototype.hasOwnProperty.call(right, key2)) continue;
     rightCount += 1;
   }
   return leftCount === rightCount;
@@ -6303,6 +6468,7 @@ var patchPortalMount = /* @__PURE__ */ __name((anchor, prevNode, nextNode, docum
   }
   let host = previous.host;
   const targetChanged = previous.target !== nextTarget || !host || host.parentNode !== nextTarget;
+  assertUniqueVNodeChildKeys(nextChildren);
   if (targetChanged) {
     if (host) {
       replaceChildren(host, [], eventStore, portalStore, liveTextStore);
@@ -6372,7 +6538,7 @@ var bindIndexListHost = /* @__PURE__ */ __name((host, node, documentLike, eventS
   host.__luminaIndexListSource = source;
   host.__luminaIndexListRender = renderItem;
 }, "bindIndexListHost");
-var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydrateExisting = false) => {
   const source = node.itemsSignal;
   const keyOf = node.listKey;
   const renderItem = node.listIndexedRender;
@@ -6392,33 +6558,90 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
   const runBatched = /* @__PURE__ */ __name((fn) => {
     batch(fn);
   }, "runBatched");
-  const createEntry = /* @__PURE__ */ __name((value, index) => {
-    const key = coerceListKey(keyOf(value, index), index);
+  const createEntry = /* @__PURE__ */ __name((value, index, existingDomNode, keyOverride) => {
+    const key2 = keyOverride ?? coerceListKey(keyOf(value, index), index);
     const itemSignal = new Signal(value);
     const indexSignal = new Signal(index);
-    const domNode = createDomNode(applyVNodeKey(coerceRenderableToVNode(renderItem(itemSignal, indexSignal)), key), documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    const vnode2 = applyVNodeKey(coerceRenderableToVNode(renderItem(itemSignal, indexSignal)), key2);
+    const domNode = existingDomNode ? hydrateDomNode(existingDomNode, vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue) : createDomNode(vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
     return {
-      key,
+      key: key2,
       currentValue: value,
       currentIndex: index,
       itemSignal,
       indexSignal,
+      vnode: vnode2,
       domNode
     };
   }, "createEntry");
-  const initialEntries = readIndexListValues(source, false).map((value, index) => createEntry(value, index));
+  const createInitialEntries = /* @__PURE__ */ __name((items, existingChildren2 = []) => {
+    const seen = /* @__PURE__ */ new Set();
+    const keyedExisting = /* @__PURE__ */ new Map();
+    const unkeyedExisting = [];
+    for (const child of existingChildren2) {
+      const key2 = getDomHydrationKey(child);
+      if (key2 === null) {
+        unkeyedExisting.push(child);
+      } else if (!keyedExisting.has(key2)) {
+        keyedExisting.set(key2, child);
+      }
+    }
+    let unkeyedIndex = 0;
+    return items.map((value, index) => {
+      const key2 = coerceListKey(keyOf(value, index), index);
+      if (seen.has(key2)) {
+        throw duplicateKeyError(key2);
+      }
+      seen.add(key2);
+      const keyedDom = keyedExisting.get(String(key2));
+      const fallbackDom = hydrateExisting ? unkeyedExisting[unkeyedIndex] : void 0;
+      if (!keyedDom && fallbackDom) {
+        unkeyedIndex += 1;
+      }
+      return createEntry(value, index, keyedDom ?? fallbackDom, key2);
+    });
+  }, "createInitialEntries");
+  const replaceOrHydrateInitialChildren = /* @__PURE__ */ __name((entries, existingChildren2) => {
+    if (!hydrateExisting) {
+      replaceChildren(host, entries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore);
+      return;
+    }
+    reorderChildren(host, entries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
+      currentChildren: existingChildren2,
+      structureChanged: true
+    });
+  }, "replaceOrHydrateInitialChildren");
+  const existingChildren = hydrateExisting ? readChildNodes(host) : [];
+  const initialEntries = createInitialEntries(readIndexListValues(source, false), existingChildren);
   let state2 = createForListState(initialEntries);
-  replaceChildren(host, state2.entries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore);
+  const dirtyEntries = /* @__PURE__ */ new Set();
+  replaceOrHydrateInitialChildren(state2.entries, existingChildren);
+  const renderEntryVNode = /* @__PURE__ */ __name((entry) => applyVNodeKey(coerceRenderableToVNode(renderItem(entry.itemSignal, entry.indexSignal)), entry.key), "renderEntryVNode");
+  const markEntryDirty = /* @__PURE__ */ __name((entry) => {
+    dirtyEntries.add(entry);
+  }, "markEntryDirty");
+  const flushDirtyEntries = /* @__PURE__ */ __name(() => {
+    for (const entry of dirtyEntries) {
+      const nextVNode = renderEntryVNode(entry);
+      if (!canSkipDomPatch(entry.vnode, nextVNode, equalsValue)) {
+        entry.domNode = patchDomNode(entry.domNode, entry.vnode, nextVNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      }
+      entry.vnode = nextVNode;
+    }
+    dirtyEntries.clear();
+  }, "flushDirtyEntries");
   const syncEntryValue = /* @__PURE__ */ __name((entry, value) => {
     if (entry.currentValue !== value && !equalsValue(entry.currentValue, value)) {
       entry.itemSignal.set(value);
       entry.currentValue = value;
+      markEntryDirty(entry);
     }
   }, "syncEntryValue");
   const syncEntryIndex = /* @__PURE__ */ __name((entry, index) => {
     if (entry.currentIndex !== index) {
       entry.indexSignal.set(index);
       entry.currentIndex = index;
+      markEntryDirty(entry);
     }
   }, "syncEntryIndex");
   const syncValuesForOrder = /* @__PURE__ */ __name((items, order) => {
@@ -6507,11 +6730,11 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     const windowEntries = /* @__PURE__ */ new Map();
     for (let index = window2.currentStart; index <= window2.currentEnd; index += 1) {
       const entry = currentEntries[index];
-      const key = previousOrder[index];
-      if (!entry || key == null) {
+      const key2 = previousOrder[index];
+      if (!entry || key2 == null) {
         return null;
       }
-      windowEntries.set(key, entry);
+      windowEntries.set(key2, entry);
     }
     for (let index = window2.nextStart; index <= window2.nextEnd; index += 1) {
       const entry = windowEntries.get(nextOrder[index]);
@@ -6527,22 +6750,22 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     const nextEntries = [];
     let structureChanged = items.length !== state2.entries.length;
     for (let index = 0; index < items.length; index += 1) {
-      const key = order[index];
+      const key2 = order[index];
       const value = items[index];
-      let entry = state2.entriesByKey.get(key);
+      let entry = state2.entriesByKey.get(key2);
       if (!entry) {
         entry = createEntry(value, index);
-        state2.entriesByKey.set(key, entry);
+        state2.entriesByKey.set(key2, entry);
         structureChanged = true;
       } else {
         syncEntryValue(entry, value);
       }
-      retained.add(key);
+      retained.add(key2);
       nextEntries.push(entry);
     }
-    for (const key of Array.from(state2.entriesByKey.keys())) {
-      if (retained.has(key)) continue;
-      state2.entriesByKey.delete(key);
+    for (const key2 of Array.from(state2.entriesByKey.keys())) {
+      if (retained.has(key2)) continue;
+      state2.entriesByKey.delete(key2);
       structureChanged = true;
     }
     return {
@@ -6562,6 +6785,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
           if (!entry) continue;
           syncEntryValue(entry, nextItems[index]);
         }
+        flushDirtyEntries();
       });
       return;
     }
@@ -6578,6 +6802,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
           syncValuesForOrder(nextItems, nextOrder);
         }
         syncIndicesForRange(nextEntries2, transition, state2.order, nextOrder ?? state2.order);
+        flushDirtyEntries();
       });
       state2.entries = nextEntries2;
       state2.order = nextOrder ?? (transition.kind === "adjacent_swap" ? swapItems(state2.order, transition.left, transition.right) : moveItems(state2.order, transition.from, transition.to));
@@ -6601,6 +6826,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
           syncValuesForEntries(nextItems, reorderedEntries);
         }
         syncIndicesForRange(reorderedEntries, transition, state2.order, resolvedNextOrder);
+        flushDirtyEntries();
       });
       state2.entries = reorderedEntries;
       state2.order = resolvedNextOrder;
@@ -6619,6 +6845,7 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       nextEntries = built.nextEntries;
       structureChanged = built.structureChanged;
       syncIndicesForRange(nextEntries, transition, state2.order, resolvedNextOrder);
+      flushDirtyEntries();
     });
     state2.entries = nextEntries;
     state2.order = resolvedNextOrder;
@@ -6660,7 +6887,9 @@ var createDomNode = /* @__PURE__ */ __name((node, documentLike, eventStore, port
   }
   if (node.kind === "fragment") {
     const wrapper = documentLike.createElement("lumina-fragment");
-    const children3 = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+    const vnodeChildren2 = asDomChildren(node);
+    assertUniqueVNodeChildKeys(vnodeChildren2);
+    const children3 = vnodeChildren2.map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
     setChildren2(wrapper, children3);
     return wrapper;
   }
@@ -6682,7 +6911,9 @@ var createDomNode = /* @__PURE__ */ __name((node, documentLike, eventStore, port
   }
   const element = documentLike.createElement(node.tag ?? "div");
   updateDomProperties(element, {}, node.props, eventStore);
-  const children2 = asDomChildren(node).map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+  const vnodeChildren = asDomChildren(node);
+  assertUniqueVNodeChildKeys(vnodeChildren);
+  const children2 = vnodeChildren.map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
   setChildren2(element, children2);
   if (node.props?.autoFocus && isModalDialogElement(element) && !isElementHidden(element)) {
     focusInitialDialogTarget(element);
@@ -7142,7 +7373,7 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
   }
   if (node.kind === "for_list") {
     updateDomProperties(domNode, void 0, forListHostProps, eventStore);
-    bindForListHost(domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    bindForListHost(domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, true);
     return domNode;
   }
   if (node.kind === "portal") {
@@ -7153,19 +7384,60 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
   if (node.kind === "element") {
     updateDomProperties(element, void 0, node.props, eventStore);
   }
-  const existingChildren = readChildNodes(element);
   const nextChildren = asDomChildren(node);
+  const allExistingChildren = readChildNodes(element);
+  const existingChildren = canIgnoreHydrationWhitespace(nextChildren) ? allExistingChildren.filter((child) => !isIgnorableHydrationNode(child)) : allExistingChildren;
   const nextDomChildren = [];
+  const keyedHydration = hasHydratableKeyedChildren(nextChildren);
+  const usedExisting = /* @__PURE__ */ new Set();
+  const keyedExisting = /* @__PURE__ */ new Map();
+  if (keyedHydration) {
+    for (const child of existingChildren) {
+      const key2 = getDomHydrationKey(child);
+      if (key2 !== null && !keyedExisting.has(key2)) {
+        keyedExisting.set(key2, child);
+      }
+    }
+  }
+  let unkeyedCursor = 0;
+  const takeUnkeyedExisting = /* @__PURE__ */ __name(() => {
+    while (unkeyedCursor < existingChildren.length) {
+      const candidate = existingChildren[unkeyedCursor];
+      unkeyedCursor += 1;
+      if (usedExisting.has(candidate)) continue;
+      if (keyedHydration && getDomHydrationKey(candidate) !== null) continue;
+      usedExisting.add(candidate);
+      return candidate;
+    }
+    return void 0;
+  }, "takeUnkeyedExisting");
+  const seenHydrationKeys = /* @__PURE__ */ new Set();
   for (let index = 0; index < nextChildren.length; index += 1) {
     const nextChild = nextChildren[index];
-    const currentChild = existingChildren[index];
+    let currentChild;
+    if (keyedHydration && hasVNodeKey(nextChild)) {
+      if (seenHydrationKeys.has(nextChild.key)) {
+        throw duplicateKeyError(nextChild.key);
+      }
+      seenHydrationKeys.add(nextChild.key);
+      currentChild = keyedExisting.get(String(nextChild.key));
+      if (currentChild) {
+        usedExisting.add(currentChild);
+      }
+    }
+    currentChild ?? (currentChild = keyedHydration ? takeUnkeyedExisting() : existingChildren[index]);
+    if (currentChild) {
+      usedExisting.add(currentChild);
+    }
     nextDomChildren.push(currentChild ? hydrateDomNode(currentChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue) : createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
   }
-  for (let index = nextChildren.length; index < existingChildren.length; index += 1) {
-    disposeDomNode(existingChildren[index], eventStore, portalStore, liveTextStore);
+  for (const existingChild of allExistingChildren) {
+    if (!usedExisting.has(existingChild)) {
+      disposeDomNode(existingChild, eventStore, portalStore, liveTextStore);
+    }
   }
   reorderChildren(element, nextDomChildren, (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-    currentChildren: existingChildren
+    currentChildren: allExistingChildren
   });
   return element;
 }, "hydrateDomNode");
@@ -7212,7 +7484,8 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
     },
     hydrate(node, container) {
       const domContainer = container;
-      const existing = readChildNodes(domContainer)[0] ?? null;
+      const existingChildren = readChildNodes(domContainer);
+      const existing = findHydrationRootNode(existingChildren, node);
       if (!existing) {
         const domNode = createDomNode(node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
         replaceChildren(domContainer, [
@@ -7223,6 +7496,11 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
         return;
       }
       const hydratedDom = hydrateDomNode(existing, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      for (const child of existingChildren) {
+        if (child === existing || !isIgnorableHydrationNode(child)) continue;
+        disposeDomNode(child, eventStore, portalStore, liveTextStore);
+        domContainer.removeChild(child);
+      }
       if (hydratedDom !== existing) {
         reorderChildren(domContainer, [
           hydratedDom
@@ -7356,10 +7634,10 @@ var createFrameRuntime = /* @__PURE__ */ __name((options) => {
   return {
     runWithFrameManager: runWithFrameManager3,
     requireActiveFrameManager,
-    component: /* @__PURE__ */ __name((componentFn, props, key) => {
+    component: /* @__PURE__ */ __name((componentFn, props, key2) => {
       const frameManager = requireActiveFrameManager("render.component");
       const parentFrame = frameManager.currentFrame ?? frameManager.rootFrame;
-      const { result } = frameManager.executeComponent(parentFrame, componentFn, key ?? null, props);
+      const { result } = frameManager.executeComponent(parentFrame, componentFn, key2 ?? null, props);
       return options.coerceRenderable(result);
     }, "component"),
     createContext: /* @__PURE__ */ __name((defaultValue) => createContextToken(defaultValue), "createContext"),
@@ -7448,13 +7726,13 @@ var mergeProps = /* @__PURE__ */ __name((left, right) => {
   const lhs = left && typeof left === "object" ? left : {};
   const rhs = right && typeof right === "object" ? right : {};
   const merged = {};
-  for (const key of /* @__PURE__ */ new Set([
+  for (const key2 of /* @__PURE__ */ new Set([
     ...Object.keys(lhs),
     ...Object.keys(rhs)
   ])) {
-    const value = mergePropValue(key, lhs[key], rhs[key]);
+    const value = mergePropValue(key2, lhs[key2], rhs[key2]);
     if (value !== void 0) {
-      merged[key] = value;
+      merged[key2] = value;
     }
   }
   return merged;
@@ -7507,9 +7785,14 @@ var propsHref = /* @__PURE__ */ __name((href) => ({
 var propsDisabled = /* @__PURE__ */ __name((disabled) => ({
   disabled
 }), "propsDisabled");
-var propsKey = /* @__PURE__ */ __name((key) => ({
-  key
-}), "propsKey");
+var propsKey = /* @__PURE__ */ __name((key2) => {
+  if (typeof key2 !== "string" && typeof key2 !== "number") {
+    throw new Error("props_key key must be a string or number");
+  }
+  return {
+    key: key2
+  };
+}, "propsKey");
 var propsOnClick = /* @__PURE__ */ __name((handler) => ({
   onClick: /* @__PURE__ */ __name((event) => {
     if (typeof handler !== "function") return void 0;
@@ -8003,9 +8286,9 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           }
         }, "onClick"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
+          const key2 = String(event?.key ?? "");
           const target = getFocusTargetFromEvent(event);
-          if (key !== "Enter" && key !== " " && key !== "ArrowDown" && key !== "ArrowUp") {
+          if (key2 !== "Enter" && key2 !== " " && key2 !== "ArrowDown" && key2 !== "ArrowUp") {
             return void 0;
           }
           event?.preventDefault?.();
@@ -8013,7 +8296,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             setMenuRestoreTarget(ctx, target);
             setMenuAnchorTarget(ctx, target);
           }
-          setMenuActiveValue(ctx, key === "ArrowUp" ? ctx.order[ctx.order.length - 1] ?? "" : "");
+          setMenuActiveValue(ctx, key2 === "ArrowUp" ? ctx.order[ctx.order.length - 1] ?? "" : "");
           ctx.open.set(true);
           return false;
         }, "onKeyDown")
@@ -8036,30 +8319,30 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
         "data-side": pickPopoverSide(props),
         style: getPopoverContentStyle(getMenuAnchorRect(ctx), props),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
+          const key2 = String(event?.key ?? "");
+          if (key2 === "Escape") {
             event?.preventDefault?.();
             closeMenu(ctx);
             return false;
           }
-          if (key === "Tab") {
+          if (key2 === "Tab") {
             setMenuActiveValue(ctx, "");
             ctx.open.set(false);
             return void 0;
           }
-          if (key === "ArrowDown" || key === "Home") {
+          if (key2 === "ArrowDown" || key2 === "Home") {
             event?.preventDefault?.();
             setMenuActiveValue(ctx, ctx.order[0] ?? "");
             focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.order[0] ?? "");
             return false;
           }
-          if (key === "ArrowUp" || key === "End") {
+          if (key2 === "ArrowUp" || key2 === "End") {
             event?.preventDefault?.();
             setMenuActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? "");
             focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.order[ctx.order.length - 1] ?? "");
             return false;
           }
-          const typeaheadTarget = getMenuTypeaheadTarget(ctx, getMenuActiveValue(ctx), key);
+          const typeaheadTarget = getMenuTypeaheadTarget(ctx, getMenuActiveValue(ctx), key2);
           if (!typeaheadTarget) {
             return void 0;
           }
@@ -8096,18 +8379,18 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           setMenuActiveValue(ctx, value);
         }, "onFocus"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
+          const key2 = String(event?.key ?? "");
+          if (key2 === "Escape") {
             event?.preventDefault?.();
             closeMenu(ctx);
             return false;
           }
-          if (key === "Tab") {
+          if (key2 === "Tab") {
             setMenuActiveValue(ctx, "");
             ctx.open.set(false);
             return void 0;
           }
-          if (key === "Enter" || key === " ") {
+          if (key2 === "Enter" || key2 === " ") {
             event?.preventDefault?.();
             const click = props?.onClick;
             if (typeof click === "function") {
@@ -8116,14 +8399,14 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             closeMenu(ctx);
             return false;
           }
-          const nextValue = getMenuNavigationTarget(ctx, value, key);
+          const nextValue = getMenuNavigationTarget(ctx, value, key2);
           if (nextValue) {
             event?.preventDefault?.();
             setMenuActiveValue(ctx, nextValue);
             focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue);
             return false;
           }
-          const typeaheadTarget = getMenuTypeaheadTarget(ctx, value, key);
+          const typeaheadTarget = getMenuTypeaheadTarget(ctx, value, key2);
           if (!typeaheadTarget) return void 0;
           event?.preventDefault?.();
           setMenuActiveValue(ctx, typeaheadTarget);
@@ -8196,35 +8479,35 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           }
         }, "onClick"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
+          const key2 = String(event?.key ?? "");
           const openNow = ctx.open.get();
           const currentValue = ctx.value.get();
           const currentActive = getSelectActiveValue(ctx);
-          if (key === "Escape" && openNow) {
+          if (key2 === "Escape" && openNow) {
             event?.preventDefault?.();
             closeSelect(ctx);
             return false;
           }
           if (!openNow) {
-            if (key === "ArrowDown" || key === "Enter" || key === " ") {
+            if (key2 === "ArrowDown" || key2 === "Enter" || key2 === " ") {
               event?.preventDefault?.();
               setSelectActiveValue(ctx, currentValue);
               ctx.open.set(true);
               return false;
             }
-            if (key === "ArrowUp" || key === "Home") {
+            if (key2 === "ArrowUp" || key2 === "Home") {
               event?.preventDefault?.();
               setSelectActiveValue(ctx, ctx.order[0] ?? currentValue);
               ctx.open.set(true);
               return false;
             }
-            if (key === "End") {
+            if (key2 === "End") {
               event?.preventDefault?.();
               setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentValue);
               ctx.open.set(true);
               return false;
             }
-            const typeaheadTarget2 = getSelectTypeaheadTarget(ctx, currentValue, key);
+            const typeaheadTarget2 = getSelectTypeaheadTarget(ctx, currentValue, key2);
             if (!typeaheadTarget2) {
               return void 0;
             }
@@ -8233,32 +8516,32 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             ctx.open.set(true);
             return false;
           }
-          if (key === "Enter" || key === " " || key === "Tab") {
-            if (key !== "Tab") {
+          if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
+            if (key2 !== "Tab") {
               event?.preventDefault?.();
             }
             acceptSelectActiveValue(ctx);
             setSelectActiveValue(ctx, ctx.value.get());
             ctx.open.set(false);
-            return key === "Tab" ? void 0 : false;
+            return key2 === "Tab" ? void 0 : false;
           }
-          if (key === "Home") {
+          if (key2 === "Home") {
             event?.preventDefault?.();
             setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
             return false;
           }
-          if (key === "End") {
+          if (key2 === "End") {
             event?.preventDefault?.();
             setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
             return false;
           }
-          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key);
+          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key2);
           if (typeaheadTarget) {
             event?.preventDefault?.();
             setSelectActiveValue(ctx, typeaheadTarget);
             return false;
           }
-          const nextValue = getSelectNavigationTarget(ctx, currentActive, key);
+          const nextValue = getSelectNavigationTarget(ctx, currentActive, key2);
           if (!nextValue) return void 0;
           event?.preventDefault?.();
           setSelectActiveValue(ctx, nextValue);
@@ -8281,43 +8564,43 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
         "data-side": pickPopoverSide(props),
         style: getPopoverContentStyle(getSelectAnchorRect(ctx), props),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
+          const key2 = String(event?.key ?? "");
           const currentActive = getSelectActiveValue(ctx);
-          if (key === "Escape") {
+          if (key2 === "Escape") {
             event?.preventDefault?.();
             closeSelect(ctx);
             return false;
           }
-          if (key === "ArrowDown" || key === "ArrowRight") {
+          if (key2 === "ArrowDown" || key2 === "ArrowRight") {
             event?.preventDefault?.();
-            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key));
+            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key2));
             return false;
           }
-          if (key === "ArrowUp" || key === "ArrowLeft") {
+          if (key2 === "ArrowUp" || key2 === "ArrowLeft") {
             event?.preventDefault?.();
-            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key));
+            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key2));
             return false;
           }
-          if (key === "Home") {
+          if (key2 === "Home") {
             event?.preventDefault?.();
             setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
             return false;
           }
-          if (key === "End") {
+          if (key2 === "End") {
             event?.preventDefault?.();
             setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
             return false;
           }
-          if (key === "Enter" || key === " " || key === "Tab") {
-            if (key !== "Tab") {
+          if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
+            if (key2 !== "Tab") {
               event?.preventDefault?.();
             }
             acceptSelectActiveValue(ctx);
             setSelectActiveValue(ctx, ctx.value.get());
             ctx.open.set(false);
-            return key === "Tab" ? void 0 : false;
+            return key2 === "Tab" ? void 0 : false;
           }
-          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key);
+          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key2);
           if (typeaheadTarget) {
             event?.preventDefault?.();
             setSelectActiveValue(ctx, typeaheadTarget);
@@ -8362,23 +8645,23 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             setSelectActiveValue(ctx, value);
           }, "onMouseEnter"),
           onKeyDown: /* @__PURE__ */ __name((event) => {
-            const key = String(event?.key ?? "");
-            if (key === "Escape") {
+            const key2 = String(event?.key ?? "");
+            if (key2 === "Escape") {
               event?.preventDefault?.();
               closeSelect(ctx);
               return false;
             }
-            if (key === "Enter" || key === " " || key === "Tab") {
-              if (key !== "Tab") {
+            if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
+              if (key2 !== "Tab") {
                 event?.preventDefault?.();
               }
               setSelectActiveValue(ctx, value);
               acceptSelectActiveValue(ctx);
               setSelectActiveValue(ctx, ctx.value.get());
               ctx.open.set(false);
-              return key === "Tab" ? void 0 : false;
+              return key2 === "Tab" ? void 0 : false;
             }
-            const nextValue = getSelectNavigationTarget(ctx, value, key);
+            const nextValue = getSelectNavigationTarget(ctx, value, key2);
             if (!nextValue) return void 0;
             event?.preventDefault?.();
             setSelectActiveValue(ctx, nextValue);
@@ -8479,23 +8762,23 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           return void 0;
         }, "onClick"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
+          const key2 = String(event?.key ?? "");
+          if (key2 === "Escape") {
             event?.preventDefault?.();
             closeCombobox(ctx);
             return false;
           }
-          if (key === "Enter") {
+          if (key2 === "Enter") {
             event?.preventDefault?.();
             acceptComboboxActiveValue(ctx);
             closeCombobox(ctx);
             return false;
           }
-          if (key === "ArrowDown" || key === "ArrowUp") {
+          if (key2 === "ArrowDown" || key2 === "ArrowUp") {
             event?.preventDefault?.();
             ctx.open.set(true);
             const currentValue = getComboboxActiveValue(ctx);
-            const nextValue = key === "ArrowDown" ? getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowDown" : "Home") : getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowUp" : "End");
+            const nextValue = key2 === "ArrowDown" ? getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowDown" : "Home") : getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowUp" : "End");
             if (nextValue) {
               setComboboxActiveValue(ctx, nextValue);
             }
@@ -8521,22 +8804,22 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
         "data-side": pickPopoverSide(props),
         style: getPopoverContentStyle(getComboboxAnchorRect(ctx), props),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
+          const key2 = String(event?.key ?? "");
+          if (key2 === "Escape") {
             event?.preventDefault?.();
             closeCombobox(ctx);
             return false;
           }
-          if (key === "Enter") {
+          if (key2 === "Enter") {
             event?.preventDefault?.();
             acceptComboboxActiveValue(ctx);
             closeCombobox(ctx);
             return false;
           }
-          if (key === "ArrowDown" || key === "ArrowUp" || key === "Home" || key === "End") {
+          if (key2 === "ArrowDown" || key2 === "ArrowUp" || key2 === "Home" || key2 === "End") {
             event?.preventDefault?.();
             const currentValue = getComboboxActiveValue(ctx);
-            const nextValue = getComboboxNavigationTarget(ctx, currentValue, key === "ArrowDown" || key === "ArrowUp" ? key : key);
+            const nextValue = getComboboxNavigationTarget(ctx, currentValue, key2 === "ArrowDown" || key2 === "ArrowUp" ? key2 : key2);
             if (nextValue) {
               setComboboxActiveValue(ctx, nextValue);
             }
@@ -8591,13 +8874,13 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           closeCombobox(ctx);
         }, "onClick"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
+          const key2 = String(event?.key ?? "");
+          if (key2 === "Escape") {
             event?.preventDefault?.();
             closeCombobox(ctx);
             return false;
           }
-          if (key === "Enter" || key === " ") {
+          if (key2 === "Enter" || key2 === " ") {
             event?.preventDefault?.();
             ctx.value.set(value);
             ctx.query.set(value);
@@ -8605,7 +8888,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             closeCombobox(ctx);
             return false;
           }
-          const nextValue = getComboboxNavigationTarget(ctx, value, key);
+          const nextValue = getComboboxNavigationTarget(ctx, value, key2);
           if (!nextValue) return void 0;
           event?.preventDefault?.();
           setComboboxActiveValue(ctx, nextValue);
@@ -8685,7 +8968,7 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           }
         }, "onClick"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
+          const key2 = String(event?.key ?? "");
           const target = getFocusTargetFromEvent(event);
           const openWithValue = /* @__PURE__ */ __name((nextValue) => {
             event?.preventDefault?.();
@@ -8698,16 +8981,16 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             return false;
           }, "openWithValue");
           const initialValue = resolveMultiselectOpenActiveValue(ctx);
-          if (key === "Enter" || key === " " || key === "ArrowDown") {
+          if (key2 === "Enter" || key2 === " " || key2 === "ArrowDown") {
             return openWithValue(initialValue);
           }
-          if (key === "ArrowUp" || key === "End") {
+          if (key2 === "ArrowUp" || key2 === "End") {
             return openWithValue(ctx.order[ctx.order.length - 1] ?? initialValue);
           }
-          if (key === "Home") {
+          if (key2 === "Home") {
             return openWithValue(ctx.order[0] ?? initialValue);
           }
-          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, initialValue, key);
+          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, initialValue, key2);
           if (!typeaheadTarget) {
             return void 0;
           }
@@ -8733,18 +9016,18 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
         "data-side": pickPopoverSide(props),
         style: getPopoverContentStyle(getMultiselectAnchorRect(ctx), props),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Escape") {
+          const key2 = String(event?.key ?? "");
+          if (key2 === "Escape") {
             event?.preventDefault?.();
             closeMultiselect(ctx);
             return false;
           }
-          if (key === "Tab") {
+          if (key2 === "Tab") {
             ctx.open.set(false);
             return void 0;
           }
           const activeValue = getMultiselectActiveValue(ctx);
-          if (key === "Enter" || key === " ") {
+          if (key2 === "Enter" || key2 === " ") {
             if (!activeValue) {
               return void 0;
             }
@@ -8754,21 +9037,21 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, activeValue, getFocusTargetFromEvent(event));
             return false;
           }
-          if (key === "ArrowDown" || key === "Home") {
+          if (key2 === "ArrowDown" || key2 === "Home") {
             event?.preventDefault?.();
-            const targetValue = key === "Home" ? ctx.order[0] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key) ?? activeValue;
+            const targetValue = key2 === "Home" ? ctx.order[0] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key2) ?? activeValue;
             setMultiselectActiveValue(ctx, targetValue);
             focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, targetValue, getFocusTargetFromEvent(event));
             return false;
           }
-          if (key === "ArrowUp" || key === "End") {
+          if (key2 === "ArrowUp" || key2 === "End") {
             event?.preventDefault?.();
-            const targetValue = key === "End" ? ctx.order[ctx.order.length - 1] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key) ?? activeValue;
+            const targetValue = key2 === "End" ? ctx.order[ctx.order.length - 1] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key2) ?? activeValue;
             setMultiselectActiveValue(ctx, targetValue);
             focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, targetValue, getFocusTargetFromEvent(event));
             return false;
           }
-          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, activeValue, key);
+          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, activeValue, key2);
           if (!typeaheadTarget) {
             return void 0;
           }
@@ -8817,44 +9100,44 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             setMultiselectActiveValue(ctx, value);
           }, "onFocus"),
           onKeyDown: /* @__PURE__ */ __name((event) => {
-            const key = String(event?.key ?? "");
-            if (key === "Escape") {
+            const key2 = String(event?.key ?? "");
+            if (key2 === "Escape") {
               event?.preventDefault?.();
               closeMultiselect(ctx);
               return false;
             }
-            if (key === "Tab") {
+            if (key2 === "Tab") {
               ctx.open.set(false);
               return void 0;
             }
-            if (key === "Enter" || key === " ") {
+            if (key2 === "Enter" || key2 === " ") {
               event?.preventDefault?.();
               setMultiselectActiveValue(ctx, value);
               toggleMultiselectValue(ctx, value);
               return false;
             }
-            if (key === "Home") {
+            if (key2 === "Home") {
               event?.preventDefault?.();
               const firstValue = ctx.order[0] ?? value;
               setMultiselectActiveValue(ctx, firstValue);
               focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, firstValue, getFocusTargetFromEvent(event));
               return false;
             }
-            if (key === "End") {
+            if (key2 === "End") {
               event?.preventDefault?.();
               const lastValue = ctx.order[ctx.order.length - 1] ?? value;
               setMultiselectActiveValue(ctx, lastValue);
               focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, lastValue, getFocusTargetFromEvent(event));
               return false;
             }
-            const nextValue = getMultiselectNavigationTarget(ctx, value, key);
+            const nextValue = getMultiselectNavigationTarget(ctx, value, key2);
             if (nextValue) {
               event?.preventDefault?.();
               setMultiselectActiveValue(ctx, nextValue);
               focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue, getFocusTargetFromEvent(event));
               return false;
             }
-            const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, value, key);
+            const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, value, key2);
             if (!typeaheadTarget) return void 0;
             event?.preventDefault?.();
             setMultiselectActiveValue(ctx, typeaheadTarget);
@@ -8897,8 +9180,8 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
             ctx.checked.set(!ctx.checked.get());
           }, "onClick"),
           onKeyDown: /* @__PURE__ */ __name((event) => {
-            const key = String(event?.key ?? "");
-            if (key !== "Enter" && key !== " ") return void 0;
+            const key2 = String(event?.key ?? "");
+            if (key2 !== "Enter" && key2 !== " ") return void 0;
             event?.preventDefault?.();
             ctx.checked.set(!ctx.checked.get());
             return false;
@@ -8952,13 +9235,13 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
           ctx.value.set(value);
         }, "onClick"),
         onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key = String(event?.key ?? "");
-          if (key === "Enter" || key === " ") {
+          const key2 = String(event?.key ?? "");
+          if (key2 === "Enter" || key2 === " ") {
             event?.preventDefault?.();
             ctx.value.set(value);
             return false;
           }
-          const nextValue = getRadioNavigationTarget(ctx, value, key);
+          const nextValue = getRadioNavigationTarget(ctx, value, key2);
           if (!nextValue) return void 0;
           event?.preventDefault?.();
           ctx.value.set(nextValue);
@@ -9107,8 +9390,8 @@ var getWebCrypto = /* @__PURE__ */ __name(async () => {
 }, "getWebCrypto");
 var utf8Encode = /* @__PURE__ */ __name((value) => new TextEncoder().encode(value), "utf8Encode");
 var utf8Decode = /* @__PURE__ */ __name((value) => new TextDecoder().decode(value), "utf8Decode");
-var deriveAesKey = /* @__PURE__ */ __name(async (web, key, usage) => {
-  const digest = await web.subtle.digest("SHA-256", utf8Encode(key));
+var deriveAesKey = /* @__PURE__ */ __name(async (web, key2, usage) => {
+  const digest = await web.subtle.digest("SHA-256", utf8Encode(key2));
   return await web.subtle.importKey("raw", digest, {
     name: "AES-GCM"
   }, false, [
@@ -9147,8 +9430,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
           $payload: toJsonValue(payload, seen)
         };
       }
-      const entries = Object.entries(value).map(([key, val]) => [
-        key,
+      const entries = Object.entries(value).map(([key2, val]) => [
+        key2,
         toJsonValue(val, seen)
       ]);
       return Object.fromEntries(entries);
@@ -9908,11 +10191,11 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
         return resultErr(String(error));
       }
     }, "sha256"),
-    hmacSha256: /* @__PURE__ */ __name(async (key, value) => {
+    hmacSha256: /* @__PURE__ */ __name(async (key2, value) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
-        const cryptoKey = await web.subtle.importKey("raw", utf8Encode(key), {
+        const cryptoKey = await web.subtle.importKey("raw", utf8Encode(key2), {
           name: "HMAC",
           hash: "SHA-256"
         }, false, [
@@ -9954,11 +10237,11 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       const value = new DataView(packed.buffer).getUint32(0, false);
       return resultOk(lower + value % span);
     }, "randomInt"),
-    aesGcmEncrypt: /* @__PURE__ */ __name(async (key, plaintext) => {
+    aesGcmEncrypt: /* @__PURE__ */ __name(async (key2, plaintext) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
-        const aesKey = await deriveAesKey(web, key, "encrypt");
+        const aesKey = await deriveAesKey(web, key2, "encrypt");
         const iv = new Uint8Array(12);
         web.getRandomValues(iv);
         const encrypted = await web.subtle.encrypt({
@@ -9974,7 +10257,7 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
         return resultErr(String(error));
       }
     }, "aesGcmEncrypt"),
-    aesGcmDecrypt: /* @__PURE__ */ __name(async (key, payloadBase64) => {
+    aesGcmDecrypt: /* @__PURE__ */ __name(async (key2, payloadBase64) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
@@ -9982,7 +10265,7 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
         if (packed.length < 13) return resultErr("Invalid AES payload");
         const iv = packed.slice(0, 12);
         const cipher = packed.slice(12);
-        const aesKey = await deriveAesKey(web, key, "decrypt");
+        const aesKey = await deriveAesKey(web, key2, "decrypt");
         const plain = await web.subtle.decrypt({
           name: "AES-GCM",
           iv
@@ -10016,11 +10299,11 @@ var createSignalBaseIdResolver = /* @__PURE__ */ __name((prefix) => {
   const ids = /* @__PURE__ */ new WeakMap();
   let nextId = 1;
   return (signal) => {
-    const key = signal;
-    const existing = ids.get(key);
+    const key2 = signal;
+    const existing = ids.get(key2);
     if (existing) return existing;
     const next = `${prefix}-${nextId++}`;
-    ids.set(key, next);
+    ids.set(key2, next);
     return next;
   };
 }, "createSignalBaseIdResolver");
@@ -10041,54 +10324,54 @@ var registerTypeaheadLabel = /* @__PURE__ */ __name((labelsMap, keyObject, value
   if (!normalized) return;
   getTypeaheadLabels(labelsMap, keyObject).set(value, normalized);
 }, "registerTypeaheadLabel");
-var getWrappedNavigationTarget = /* @__PURE__ */ __name((order, current, key, forwardKeys, backwardKeys) => {
+var getWrappedNavigationTarget = /* @__PURE__ */ __name((order, current, key2, forwardKeys, backwardKeys) => {
   if (order.length === 0) return null;
   const currentIndex = Math.max(0, order.indexOf(current));
-  if (key === "Home") {
+  if (key2 === "Home") {
     return order[0] ?? null;
   }
-  if (key === "End") {
+  if (key2 === "End") {
     return order[order.length - 1] ?? null;
   }
-  if (forwardKeys.includes(key)) {
+  if (forwardKeys.includes(key2)) {
     return order[(currentIndex + 1) % order.length] ?? null;
   }
-  if (backwardKeys.includes(key)) {
+  if (backwardKeys.includes(key2)) {
     return order[(currentIndex - 1 + order.length) % order.length] ?? null;
   }
   return null;
 }, "getWrappedNavigationTarget");
-var getClampedNavigationTarget = /* @__PURE__ */ __name((order, current, key, forwardKeys, backwardKeys) => {
+var getClampedNavigationTarget = /* @__PURE__ */ __name((order, current, key2, forwardKeys, backwardKeys) => {
   if (order.length === 0) return null;
   const currentIndex = Math.max(0, order.indexOf(current));
-  if (key === "Home") {
+  if (key2 === "Home") {
     return order[0] ?? null;
   }
-  if (key === "End") {
+  if (key2 === "End") {
     return order[order.length - 1] ?? null;
   }
-  if (forwardKeys.includes(key)) {
+  if (forwardKeys.includes(key2)) {
     return order[Math.min(currentIndex + 1, order.length - 1)] ?? null;
   }
-  if (backwardKeys.includes(key)) {
+  if (backwardKeys.includes(key2)) {
     return order[Math.max(currentIndex - 1, 0)] ?? null;
   }
   return null;
 }, "getClampedNavigationTarget");
 var restoreFocusFromMap = /* @__PURE__ */ __name((ctx, targets) => {
-  const key = ctx.open;
-  const target = targets.get(key);
+  const key2 = ctx.open;
+  const target = targets.get(key2);
   if (!target || typeof target.focus !== "function") return;
-  targets.delete(key);
+  targets.delete(key2);
   target.focus();
 }, "restoreFocusFromMap");
 var setMapTarget = /* @__PURE__ */ __name((ctx, map, value) => {
-  const key = ctx.open;
+  const key2 = ctx.open;
   if (value == null) {
-    map.delete(key);
+    map.delete(key2);
     return;
   }
-  map.set(key, value);
+  map.set(key2, value);
 }, "setMapTarget");
 var focusElementById = /* @__PURE__ */ __name((documentLike, targetId, fallbackRoot) => {
   const target = (documentLike && typeof documentLike.getElementById === "function" ? documentLike.getElementById(targetId) : null) ?? findDomElementById(fallbackRoot, targetId);
@@ -10125,9 +10408,9 @@ var clearTimerHandle = /* @__PURE__ */ __name((handle) => {
   }
 }, "clearTimerHandle");
 var TYPEAHEAD_RESET_MS = 700;
-var isPrintableTypeaheadKey = /* @__PURE__ */ __name((key) => key.length === 1 && key.trim().length > 0, "isPrintableTypeaheadKey");
-var updateTypeaheadBuffer = /* @__PURE__ */ __name((state2, key) => {
-  const normalizedKey = key.toLowerCase();
+var isPrintableTypeaheadKey = /* @__PURE__ */ __name((key2) => key2.length === 1 && key2.trim().length > 0, "isPrintableTypeaheadKey");
+var updateTypeaheadBuffer = /* @__PURE__ */ __name((state2, key2) => {
+  const normalizedKey = key2.toLowerCase();
   const previous = state2?.buffer ?? "";
   const nextRaw = `${previous}${normalizedKey}`;
   const repeated = new Set(nextRaw).size === 1 ? normalizedKey : nextRaw;
@@ -10142,9 +10425,9 @@ var updateTypeaheadBuffer = /* @__PURE__ */ __name((state2, key) => {
   }, TYPEAHEAD_RESET_MS) : void 0;
   return nextState;
 }, "updateTypeaheadBuffer");
-var getTypeaheadTarget = /* @__PURE__ */ __name((stateMap, keyObject, order, labels, current, key) => {
-  if (!isPrintableTypeaheadKey(key) || order.length === 0) return null;
-  const nextState = updateTypeaheadBuffer(stateMap.get(keyObject), key);
+var getTypeaheadTarget = /* @__PURE__ */ __name((stateMap, keyObject, order, labels, current, key2) => {
+  if (!isPrintableTypeaheadKey(key2) || order.length === 0) return null;
+  const nextState = updateTypeaheadBuffer(stateMap.get(keyObject), key2);
   stateMap.set(keyObject, nextState);
   const needle = nextState.buffer;
   const currentIndex = order.indexOf(current);
@@ -10223,7 +10506,7 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
   const registerTabsValue = /* @__PURE__ */ __name((ctx, value) => {
     registerOrderedValue(ctx.order, value);
   }, "registerTabsValue");
-  const getTabsNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
+  const getTabsNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
     "ArrowRight",
     "ArrowDown"
   ], [
@@ -10294,9 +10577,9 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     restoreFocusFromMap(ctx, popoverRestoreTargets);
   }, "restorePopoverFocus");
   const clearToastTimer = /* @__PURE__ */ __name((signal) => {
-    const key = signal;
-    clearTimerHandle(toastTimers.get(key));
-    toastTimers.delete(key);
+    const key2 = signal;
+    clearTimerHandle(toastTimers.get(key2));
+    toastTimers.delete(key2);
   }, "clearToastTimer");
   const scheduleToastTimer = /* @__PURE__ */ __name((ctx, duration) => {
     if (!Number.isFinite(duration) || duration <= 0) {
@@ -10304,14 +10587,14 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
       return;
     }
     if (typeof globalThis.setTimeout !== "function") return;
-    const key = ctx.open;
-    const existing = toastTimers.get(key);
+    const key2 = ctx.open;
+    const existing = toastTimers.get(key2);
     if (existing !== void 0) return;
     const handle = globalThis.setTimeout(() => {
-      toastTimers.delete(key);
+      toastTimers.delete(key2);
       ctx.open.set(false);
     }, duration);
-    toastTimers.set(key, handle);
+    toastTimers.set(key2, handle);
   }, "scheduleToastTimer");
   const setMenuAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
     setMapTarget(ctx, menuAnchorTargets, target);
@@ -10357,11 +10640,11 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     registerTypeaheadLabel(menuTypeaheadLabels, ctx.open, value, label);
   }, "registerMenuValue");
   const getMenuActiveSignal = /* @__PURE__ */ __name((ctx) => {
-    const key = ctx.open;
-    const existing = menuActiveValues.get(key);
+    const key2 = ctx.open;
+    const existing = menuActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
-    menuActiveValues.set(key, created);
+    menuActiveValues.set(key2, created);
     return created;
   }, "getMenuActiveSignal");
   const setMenuActiveValue = /* @__PURE__ */ __name((ctx, value) => {
@@ -10382,11 +10665,11 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     registerTypeaheadLabel(selectTypeaheadLabels, ctx.value, value, label);
   }, "registerSelectValue");
   const getSelectActiveSignal = /* @__PURE__ */ __name((ctx) => {
-    const key = ctx.value;
-    const existing = selectActiveValues.get(key);
+    const key2 = ctx.value;
+    const existing = selectActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
-    selectActiveValues.set(key, created);
+    selectActiveValues.set(key2, created);
     return created;
   }, "getSelectActiveSignal");
   const setSelectActiveValue = /* @__PURE__ */ __name((ctx, value) => {
@@ -10419,11 +10702,11 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     registerOrderedValue(ctx.order, value);
   }, "registerComboboxValue");
   const getComboboxActiveSignal = /* @__PURE__ */ __name((ctx) => {
-    const key = ctx.value;
-    const existing = comboboxActiveValues.get(key);
+    const key2 = ctx.value;
+    const existing = comboboxActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
-    comboboxActiveValues.set(key, created);
+    comboboxActiveValues.set(key2, created);
     return created;
   }, "getComboboxActiveSignal");
   const setComboboxActiveValue = /* @__PURE__ */ __name((ctx, value) => {
@@ -10458,11 +10741,11 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     registerTypeaheadLabel(multiselectTypeaheadLabels, ctx.open, value, label);
   }, "registerMultiselectValue");
   const getMultiselectActiveSignal = /* @__PURE__ */ __name((ctx) => {
-    const key = ctx.values;
-    const existing = multiselectActiveValues.get(key);
+    const key2 = ctx.values;
+    const existing = multiselectActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
-    multiselectActiveValues.set(key, created);
+    multiselectActiveValues.set(key2, created);
     return created;
   }, "getMultiselectActiveSignal");
   const setMultiselectActiveValue = /* @__PURE__ */ __name((ctx, value) => {
@@ -10476,38 +10759,38 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     const selected = readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry));
     return selected ?? ctx.order[0] ?? "";
   }, "getMultiselectActiveValue");
-  const getMenuNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
+  const getMenuNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
     "ArrowDown"
   ], [
     "ArrowUp"
   ]), "getMenuNavigationTarget");
-  const getMenuTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key) => getTypeaheadTarget(menuTypeaheadStates, ctx.open, ctx.order, menuTypeaheadLabels.get(ctx.open), current, key), "getMenuTypeaheadTarget");
-  const getRadioNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
+  const getMenuTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key2) => getTypeaheadTarget(menuTypeaheadStates, ctx.open, ctx.order, menuTypeaheadLabels.get(ctx.open), current, key2), "getMenuTypeaheadTarget");
+  const getRadioNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
     "ArrowRight",
     "ArrowDown"
   ], [
     "ArrowLeft",
     "ArrowUp"
   ]), "getRadioNavigationTarget");
-  const getSelectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getClampedNavigationTarget(ctx.order, current, key, [
+  const getSelectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getClampedNavigationTarget(ctx.order, current, key2, [
     "ArrowDown"
   ], [
     "ArrowUp"
   ]), "getSelectNavigationTarget");
-  const getSelectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key) => getTypeaheadTarget(selectTypeaheadStates, ctx.value, ctx.order, selectTypeaheadLabels.get(ctx.value), current, key), "getSelectTypeaheadTarget");
-  const getComboboxNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getWrappedNavigationTarget(ctx.order, current, key, [
+  const getSelectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key2) => getTypeaheadTarget(selectTypeaheadStates, ctx.value, ctx.order, selectTypeaheadLabels.get(ctx.value), current, key2), "getSelectTypeaheadTarget");
+  const getComboboxNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
     "ArrowDown",
     "ArrowRight"
   ], [
     "ArrowUp",
     "ArrowLeft"
   ]), "getComboboxNavigationTarget");
-  const getMultiselectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key) => getClampedNavigationTarget(ctx.order, current, key, [
+  const getMultiselectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getClampedNavigationTarget(ctx.order, current, key2, [
     "ArrowDown"
   ], [
     "ArrowUp"
   ]), "getMultiselectNavigationTarget");
-  const getMultiselectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key) => getTypeaheadTarget(multiselectTypeaheadStates, ctx.open, ctx.order, multiselectTypeaheadLabels.get(ctx.open), current, key), "getMultiselectTypeaheadTarget");
+  const getMultiselectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key2) => getTypeaheadTarget(multiselectTypeaheadStates, ctx.open, ctx.order, multiselectTypeaheadLabels.get(ctx.open), current, key2), "getMultiselectTypeaheadTarget");
   const focusMenuItem = /* @__PURE__ */ __name((documentLike, ctx, value) => focusElementById(documentLike, getMenuItemId(ctx, value)), "focusMenuItem");
   const focusRadioItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getRadioItemId(ctx, value), fallbackRoot), "focusRadioItem");
   const focusSelectItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getSelectItemId(ctx, value), fallbackRoot), "focusSelectItem");
@@ -10767,23 +11050,23 @@ var _ResourceHandle = class _ResourceHandle {
 __name(_ResourceHandle, "ResourceHandle");
 var ResourceHandle = _ResourceHandle;
 var resourceCache = /* @__PURE__ */ new Map();
-var normalizeResourceKey = /* @__PURE__ */ __name((key) => {
-  if (typeof key === "string") return key;
-  if (typeof key === "number" || typeof key === "boolean" || typeof key === "bigint") {
-    return String(key);
+var normalizeResourceKey = /* @__PURE__ */ __name((key2) => {
+  if (typeof key2 === "string") return key2;
+  if (typeof key2 === "number" || typeof key2 === "boolean" || typeof key2 === "bigint") {
+    return String(key2);
   }
-  if (key === null) return "null";
-  if (key === void 0) return "undefined";
+  if (key2 === null) return "null";
+  if (key2 === void 0) return "undefined";
   if (resourceHooks.serializeKey) {
     try {
-      return resourceHooks.serializeKey(key);
+      return resourceHooks.serializeKey(key2);
     } catch {
     }
   }
   try {
-    return JSON.stringify(key);
+    return JSON.stringify(key2);
   } catch {
-    return String(key);
+    return String(key2);
   }
 }, "normalizeResourceKey");
 var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
@@ -10797,8 +11080,8 @@ var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
   };
 }, "normalizeResourceOptions");
 var resourceHasData = /* @__PURE__ */ __name((record) => !!record.hasData.peek(), "resourceHasData");
-var createResourceRecord = /* @__PURE__ */ __name((key, loader, options) => ({
-  key,
+var createResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => ({
+  key: key2,
   loader,
   ttlMs: options.ttlMs,
   enabled: options.enabled,
@@ -10857,8 +11140,8 @@ var ensureResourceCurrent = /* @__PURE__ */ __name((record) => {
     startResourceLoad(record);
   }
 }, "ensureResourceCurrent");
-var resolveResourceRecord = /* @__PURE__ */ __name((key, loader, options) => {
-  const normalizedKey = normalizeResourceKey(key);
+var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
+  const normalizedKey = normalizeResourceKey(key2);
   const normalizedOptions = normalizeResourceOptions(options);
   const existing = resourceCache.get(normalizedKey);
   if (existing) {
@@ -10948,8 +11231,8 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     }, "dispose_effect"),
     batch: /* @__PURE__ */ __name((fn) => batch(fn), "batch"),
     untrack: /* @__PURE__ */ __name((fn) => untrack(fn), "untrack"),
-    component: /* @__PURE__ */ __name((componentFn, props, key) => applyVNodeKey(deps.frameRuntime.component(componentFn, props, key), key), "component"),
-    component_keyed: /* @__PURE__ */ __name((componentFn, props, key) => render2.component(componentFn, props, key), "component_keyed"),
+    component: /* @__PURE__ */ __name((componentFn, props, key2) => applyVNodeKey(deps.frameRuntime.component(componentFn, props, key2), key2), "component"),
+    component_keyed: /* @__PURE__ */ __name((componentFn, props, key2) => render2.component(componentFn, props, key2), "component_keyed"),
     render_app: /* @__PURE__ */ __name((componentFn, props) => deps.appRuntime.renderAppVNode(componentFn, props), "render_app"),
     render_to_string_app: /* @__PURE__ */ __name((componentFn, props) => deps.renderToString(deps.appRuntime.renderAppVNode(componentFn, props)), "render_to_string_app"),
     create_context: deps.frameRuntime.createContext,
@@ -10959,7 +11242,7 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     state: /* @__PURE__ */ __name((initial) => deps.frameRuntime.state(initial), "state"),
     remember: /* @__PURE__ */ __name((compute) => deps.frameRuntime.remember(compute), "remember"),
     transition_presence: /* @__PURE__ */ __name((open, props, durationMs, renderChildren) => deps.transitionRuntime.transitionPresence(open, props, durationMs, renderChildren), "transition_presence"),
-    resource_create: /* @__PURE__ */ __name((key, loader, options) => new ResourceHandle(resolveResourceRecord(key, loader, options)), "resource_create"),
+    resource_create: /* @__PURE__ */ __name((key2, loader, options) => new ResourceHandle(resolveResourceRecord(key2, loader, options)), "resource_create"),
     resource_status: /* @__PURE__ */ __name((resource) => {
       const handle = asResourceHandle(resource, "render.resource_status");
       ensureResourceCurrent(handle.record);
@@ -11039,7 +11322,7 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       const resolved = condition instanceof Signal ? condition.get() : condition;
       return resolved ? coerceRenderableToVNode(renderChildren()) : coerceRenderableToVNode(typeof fallback === "function" ? fallback() : fallback);
     }, "show"),
-    createResource: /* @__PURE__ */ __name((key, loader, options) => render2.resource_create(key, loader, options), "createResource"),
+    createResource: /* @__PURE__ */ __name((key2, loader, options) => render2.resource_create(key2, loader, options), "createResource"),
     renderApp: /* @__PURE__ */ __name((componentFn, props) => render2.render_app(componentFn, props), "renderApp"),
     renderToStringApp: /* @__PURE__ */ __name((componentFn, props) => render2.render_to_string_app(componentFn, props), "renderToStringApp"),
     transitionPresence: /* @__PURE__ */ __name((open, props, durationMs, renderChildren) => render2.transition_presence(open, props, durationMs, renderChildren), "transitionPresence"),
@@ -11069,16 +11352,16 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     testingClick: /* @__PURE__ */ __name((node) => render2.testing_click(node), "testingClick"),
     testingInput: /* @__PURE__ */ __name((node, value) => render2.testing_input(node, value), "testingInput"),
     testingChangeChecked: /* @__PURE__ */ __name((node, checked) => render2.testing_change_checked(node, checked), "testingChangeChecked"),
-    testingKeydown: /* @__PURE__ */ __name((node, key, shiftKey) => render2.testing_keydown(node, key, shiftKey), "testingKeydown"),
+    testingKeydown: /* @__PURE__ */ __name((node, key2, shiftKey) => render2.testing_keydown(node, key2, shiftKey), "testingKeydown"),
     testingSubmit: /* @__PURE__ */ __name((node) => render2.testing_submit(node), "testingSubmit"),
     devtoolsSnapshot: /* @__PURE__ */ __name(() => render2.devtools_snapshot(), "devtoolsSnapshot"),
-    installDevtools: /* @__PURE__ */ __name((key) => render2.install_devtools(key), "installDevtools"),
+    installDevtools: /* @__PURE__ */ __name((key2) => render2.install_devtools(key2), "installDevtools"),
     ssgPage: /* @__PURE__ */ __name((body, options) => render2.ssg_page(body, options), "ssgPage"),
     ssgRenderApp: /* @__PURE__ */ __name((componentFn, props, options) => render2.ssg_render_app(componentFn, props, options), "ssgRenderApp"),
     ssgWritePage: /* @__PURE__ */ __name((filePath, body, options) => render2.ssg_write_page(filePath, body, options), "ssgWritePage"),
     ssgWriteApp: /* @__PURE__ */ __name((filePath, componentFn, props, options) => render2.ssg_write_app(filePath, componentFn, props, options), "ssgWriteApp"),
     devtools_snapshot: /* @__PURE__ */ __name(() => deps.snapshotDevtools(), "devtools_snapshot"),
-    install_devtools: /* @__PURE__ */ __name((key) => deps.installLuminaDevtools(key), "install_devtools"),
+    install_devtools: /* @__PURE__ */ __name((key2) => deps.installLuminaDevtools(key2), "install_devtools"),
     ssg_page: /* @__PURE__ */ __name((body, options) => deps.appRuntime.ssgApi.renderPage(body, options), "ssg_page"),
     ssg_render_app: /* @__PURE__ */ __name((componentFn, props, options) => deps.appRuntime.ssgApi.renderAppPage(componentFn, props, options), "ssg_render_app"),
     ssg_write_page: /* @__PURE__ */ __name((filePath, body, options) => deps.appRuntime.ssgApi.writePage(filePath, body, options), "ssg_write_page"),
@@ -11156,6 +11439,8 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     indexList: /* @__PURE__ */ __name((itemsSignal, renderItem) => vnodeIndexList(itemsSignal, renderItem), "indexList"),
     for_list: /* @__PURE__ */ __name((itemsSignal, keyOf, renderItem) => vnodeForList(itemsSignal, keyOf, renderItem), "for_list"),
     forList: /* @__PURE__ */ __name((itemsSignal, keyOf, renderItem) => vnodeForList(itemsSignal, keyOf, renderItem), "forList"),
+    keyed: /* @__PURE__ */ __name((key2, child) => vnodeKeyed(key2, child), "keyed"),
+    key: /* @__PURE__ */ __name((key2, child) => render2.keyed(key2, child), "key"),
     element: /* @__PURE__ */ __name((tag, props, children2 = []) => vnodeElement(tag, props, children2), "element"),
     props_empty: propsEmpty,
     props_class: propsClass,
@@ -11233,7 +11518,7 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     testing_click: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_click(node), "testing_click"),
     testing_input: /* @__PURE__ */ __name((node, value) => deps.appRuntime.testingFacade.testing_input(node, value), "testing_input"),
     testing_change_checked: /* @__PURE__ */ __name((node, checked) => deps.appRuntime.testingFacade.testing_change_checked(node, checked), "testing_change_checked"),
-    testing_keydown: /* @__PURE__ */ __name((node, key, shiftKey) => deps.appRuntime.testingFacade.testing_keydown(node, key, shiftKey), "testing_keydown"),
+    testing_keydown: /* @__PURE__ */ __name((node, key2, shiftKey) => deps.appRuntime.testingFacade.testing_keydown(node, key2, shiftKey), "testing_keydown"),
     testing_submit: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_submit(node), "testing_submit"),
     mount_custom_element: /* @__PURE__ */ __name((host, componentFn, options) => deps.appRuntime.mountCustomElementInternal(host, componentFn, options), "mount_custom_element"),
     define_custom_element: /* @__PURE__ */ __name((tagName, componentFn, options) => deps.appRuntime.defineCustomElementInternal(tagName, componentFn, options), "define_custom_element"),
@@ -12190,116 +12475,6 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
   };
 }, "createRenderTargetsRuntime");
 
-// src/runtime/ssr-renderer.ts
-var htmlEscapeMap = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;"
-};
-var escapeHtml = /* @__PURE__ */ __name((value) => String(value ?? "").replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char), "escapeHtml");
-var kebabCase = /* @__PURE__ */ __name((value) => value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, "-ms-"), "kebabCase");
-var serializeStyleValue = /* @__PURE__ */ __name((value) => Object.entries(value).filter(([, entry]) => entry !== null && entry !== void 0).map(([key, entry]) => `${kebabCase(key)}:${String(entry)}`).join(";"), "serializeStyleValue");
-var serializePropsToHtml = /* @__PURE__ */ __name((props) => {
-  if (!props) return "";
-  const attrs = [];
-  for (const [key, value] of Object.entries(props)) {
-    if (key === "key") continue;
-    if (key.startsWith("on") && typeof value === "function") continue;
-    if (value === false || value === null || value === void 0) continue;
-    if (key === "style" && typeof value === "object" && value !== null) {
-      const styleText = serializeStyleValue(value);
-      if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);
-      continue;
-    }
-    if (value === true) {
-      attrs.push(key);
-      continue;
-    }
-    attrs.push(`${key}="${escapeHtml(String(value))}"`);
-  }
-  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
-}, "serializePropsToHtml");
-var voidHtmlTags = /* @__PURE__ */ new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr"
-]);
-var setContainerMarkup = /* @__PURE__ */ __name((container, output) => {
-  if (container && typeof container === "object") {
-    const target = container;
-    if (typeof target.write === "function") {
-      target.write(output);
-      return;
-    }
-    if (typeof target.innerHTML === "string" || "innerHTML" in target) {
-      target.innerHTML = output;
-      return;
-    }
-    if (typeof target.html === "string" || "html" in target) {
-      target.html = output;
-      return;
-    }
-    if (typeof target.textContent === "string" || "textContent" in target) {
-      target.textContent = output;
-      return;
-    }
-    target.html = output;
-  }
-}, "setContainerMarkup");
-var createSsrRuntime = /* @__PURE__ */ __name((deps) => {
-  const vnodeToHtml = /* @__PURE__ */ __name((node) => {
-    const normalized = deps.normalizeNodeForHtml(node);
-    const kind = deps.getKind(normalized);
-    if (kind === "text") return escapeHtml(deps.getText(normalized) ?? "");
-    if (kind === "live_text") return escapeHtml(String(deps.getSignalValue(normalized) ?? ""));
-    const children2 = deps.getChildren(normalized).map((child) => vnodeToHtml(child)).join("");
-    if (kind === "fragment" || kind === "portal") return children2;
-    const tag = deps.getTag(normalized) ?? "div";
-    const attrs = serializePropsToHtml(deps.getProps(normalized));
-    if (voidHtmlTags.has(tag.toLowerCase())) {
-      return `<${tag}${attrs}>`;
-    }
-    return `<${tag}${attrs}>${children2}</${tag}>`;
-  }, "vnodeToHtml");
-  return {
-    renderToString: vnodeToHtml,
-    createRenderer: /* @__PURE__ */ __name(() => {
-      let current = "";
-      return {
-        mount(node, container) {
-          current = vnodeToHtml(node);
-          setContainerMarkup(container, current);
-        },
-        patch(_prev, next, container) {
-          current = vnodeToHtml(next);
-          setContainerMarkup(container, current);
-        },
-        hydrate(node, container) {
-          current = vnodeToHtml(node);
-          setContainerMarkup(container, current);
-        },
-        unmount(container) {
-          current = "";
-          setContainerMarkup(container, "");
-        }
-      };
-    }, "createRenderer")
-  };
-}, "createSsrRuntime");
-
 // src/lumina-runtime.ts
 var coreRuntime = createCoreRuntime({
   formatValue,
@@ -12415,11 +12590,11 @@ configureReactiveCore({
   notifyDevtools: scheduleDevtoolsNotify
 });
 configureResourceCore({
-  serializeKey: /* @__PURE__ */ __name((key) => {
+  serializeKey: /* @__PURE__ */ __name((key2) => {
     try {
-      return toJsonString(key, false);
+      return toJsonString(key2, false);
     } catch {
-      return String(key);
+      return String(key2);
     }
   }, "serializeKey"),
   notifyDevtools: scheduleDevtoolsNotify
@@ -12437,10 +12612,12 @@ var ssrRuntime = createSsrRuntime({
   }, "normalizeNodeForHtml"),
   getKind: /* @__PURE__ */ __name((node) => node.kind, "getKind"),
   getTag: /* @__PURE__ */ __name((node) => node.tag, "getTag"),
+  getKey: /* @__PURE__ */ __name((node) => node.key, "getKey"),
   getProps: /* @__PURE__ */ __name((node) => node.props, "getProps"),
   getChildren: /* @__PURE__ */ __name((node) => node.children ?? [], "getChildren"),
   getText: /* @__PURE__ */ __name((node) => node.text, "getText"),
-  getSignalValue: /* @__PURE__ */ __name((node) => node.signal?.get(), "getSignalValue")
+  getSignalValue: /* @__PURE__ */ __name((node) => node.signal?.get(), "getSignalValue"),
+  getTarget: /* @__PURE__ */ __name((node) => node.target, "getTarget")
 });
 var createSsrRenderer = /* @__PURE__ */ __name(() => ssrRuntime.createRenderer(), "createSsrRenderer");
 var renderToString = /* @__PURE__ */ __name((node) => ssrRuntime.renderToString(node), "renderToString");
@@ -12496,7 +12673,7 @@ var unregisterDevtoolsRoot = /* @__PURE__ */ __name((root) => {
   devtools.unregisterRoot(root);
 }, "unregisterDevtoolsRoot");
 var snapshotDevtools = /* @__PURE__ */ __name(() => devtools.snapshot(), "snapshotDevtools");
-var installLuminaDevtools = /* @__PURE__ */ __name((key = "__LUMINA_DEVTOOLS__") => devtools.install(key), "installLuminaDevtools");
+var installLuminaDevtools = /* @__PURE__ */ __name((key2 = "__LUMINA_DEVTOOLS__") => devtools.install(key2), "installLuminaDevtools");
 var toRenderErrorMessage = /* @__PURE__ */ __name((error) => {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("Canvas renderer requires")) {
@@ -12504,9 +12681,6 @@ var toRenderErrorMessage = /* @__PURE__ */ __name((error) => {
   }
   if (message.includes("Terminal renderer")) {
     return "Terminal renderer not available in this environment";
-  }
-  if (message.toLowerCase().includes("not supported")) {
-    return "Canvas renderer not available in this environment";
   }
   return message;
 }, "toRenderErrorMessage");
@@ -12683,6 +12857,8 @@ var renderSurface = {
   liveText: render.liveText,
   indexList: render.indexList,
   forList: render.forList,
+  keyed: render.keyed,
+  key: render.key,
   mount_reactive: render.mount_reactive,
   props_empty: render.props_empty,
   props_class: render.props_class,
@@ -12719,7 +12895,7 @@ var renderSurface = {
   ssgWritePage: render.ssg_write_page,
   ssgWriteApp: render.ssg_write_app
 };
-var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingQueryAllByRole, devtoolsSnapshot, installDevtools, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
+var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingQueryAllByRole, devtoolsSnapshot, installDevtools, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
 var reactive = {
   createSignal,
   get,
@@ -12856,6 +13032,8 @@ export {
   join_q,
   join_vec,
   json,
+  key,
+  keyed,
   limit_q,
   list,
   liveText,
@@ -13010,6 +13188,7 @@ export {
   vnodeForList,
   vnodeFragment,
   vnodeIndexList,
+  vnodeKeyed,
   vnodeLiveText,
   vnodePortal,
   vnodeText,

@@ -245,6 +245,50 @@ describe('Lumina AST JS codegen', () => {
     expect(code).not.toContain('get(rows).map');
   });
 
+  test('promotes direct mapped children into forList during codegen', () => {
+    const program =
+      `
+      import { get } from "@std/reactive";
+      import { map_vec, render } from "@std";
+
+      component Rows(rows: Signal<Vec<any>>) -> VNode {
+        render.element("ul", render.props_empty(),
+          map_vec(get(rows), fn(row: any, index: int) -> VNode {
+            render.element("li", render.props_key(row.id), [render.text(row.label)])
+          })
+        )
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
+    expect(code).toContain('forList(rows');
+    expect(code).not.toContain('map_vec(get(rows)');
+    expect(code).not.toContain('get(rows).map');
+  });
+
+  test('promotes inline keyed mapped rows into forList during codegen', () => {
+    const program =
+      `
+      import { get } from "@std/reactive";
+      import { render } from "@std";
+
+      component Rows(rows: Signal<Vec<any>>) -> VNode {
+        render.element("ul", render.props_empty(), [
+          get(rows).map(fn(row: any, _index: int) -> VNode {
+            key(row.id) => render.element("li", props { class: "row" }, [render.text(row.label)])
+          })
+        ])
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
+    expect(code).toContain('forList(rows');
+    expect(code).not.toContain('indexList(rows');
+    expect(code).not.toContain('get(rows).map');
+  });
+
   test('disables static render hoisting when source maps are enabled', () => {
     const program =
       `
@@ -325,7 +369,7 @@ describe('Lumina AST JS codegen', () => {
 
       fn rows(items: Signal<Vec<any>>) -> VNode {
         render.element("ul", 0, [
-          for (row, idx in items key row.id) => render.element("li", props { key: row.id }, [render.text(row.label), render.text(idx)])
+          for (row, idx in items key row.id) => render.element("li", 0, [render.text(row.label), render.text(idx)])
         ])
       }
     `.trim() + '\n';
@@ -333,6 +377,27 @@ describe('Lumina AST JS codegen', () => {
     const ast = parser.parse(program) as never;
     const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
     expect(code).toContain('forList(items');
-    expect(code).toContain('render.props_key(row.id)');
+    expect(code).toContain('render.element("li", 0');
+  });
+
+  test('lowers generic keyed authoring syntax into render.keyed', () => {
+    const program =
+      `
+      import { render } from "@std";
+
+      fn panels() -> VNode {
+        render.element("section", 0, [
+          key("profile") => render.element("article", props { class: "panel" }, [render.text("Profile")]),
+          key("settings") => {
+            render.element("article", props { class: "panel" }, [render.text("Settings")])
+          }
+        ])
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast, { target: 'esm', includeRuntime: true });
+    expect(code).toContain('render.keyed("profile"');
+    expect(code).toContain('render.keyed("settings"');
   });
 });

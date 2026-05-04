@@ -119,12 +119,16 @@ pub fn app() -> VNode {
   let iteratorsPreset = preset_button("iterators", "Iterators", "Vec map, fold, and match");
   let resultsPreset = preset_button("results", "Results", "Error flow with Result");
   let keyedPreset = preset_button("keyed-ui", "Keyed UI", "Stable list identity and SSR keys");
+  let genericKeyedPreset = preset_button("generic-keyed-ui", "Generic Keys", "Manual panel and branch identity");
+  let starterPreset = preset_button("starter-app", "Starter App", "Router, loader, and SSR-ready shell");
   let presets = div_node("preset-grid", [
     basicsPreset,
     indexingPreset,
     iteratorsPreset,
     resultsPreset,
-    keyedPreset
+    keyedPreset,
+    genericKeyedPreset,
+    starterPreset
   ]);
 
   let sourceTitle = vnode("div", props_class("panel-title"), [text("Source")]);

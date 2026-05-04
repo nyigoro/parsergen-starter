@@ -28,6 +28,19 @@ type RouterApi = {
   replace: (routerValue: unknown, path: string) => void;
   currentPath: (routerValue: unknown) => unknown;
   currentParams: (routerValue: unknown) => unknown;
+  routeResourceKey: (routerValue: unknown, name: string) => string;
+  routeLoader: <T>(routerValue: unknown, name: string, loader: () => Promise<T>) => unknown;
+  prefetchRoute: <T>(
+    routerValue: unknown,
+    path: string,
+    name: string,
+    loader: () => Promise<T>
+  ) => unknown;
+  routeStatus: (resource: unknown) => string;
+  routeRead: <T>(resource: unknown) => T;
+  refreshRoute: <T>(resource: unknown) => Promise<T>;
+  invalidateRoute: (resource: unknown) => void;
+  optimisticRouteMutate: <T>(resource: unknown, value: T) => T;
   matchRoute: (pattern: string, path: string) => boolean;
   isActive: (routerValue: unknown, pattern: string) => boolean;
   extractParams: (pattern: string, path: string) => unknown;
@@ -127,6 +140,35 @@ const runtimeReactive = {
 };
 
 const runtimeRender = {
+  props_empty: (): Record<string, unknown> => ({}),
+  createResource: (
+    key: string,
+    loader: () => Promise<unknown>,
+    options: Record<string, unknown> | null
+  ): Record<string, unknown> => ({
+    key,
+    loader,
+    options,
+    status: 'success',
+    data: `data:${key}`,
+    invalidated: false,
+  }),
+  resourceStatus: (resource: Record<string, unknown>): string => String(resource.status),
+  resourceData: (resource: Record<string, unknown>): unknown => resource.data,
+  resourceError: (resource: Record<string, unknown>): unknown => resource.error ?? null,
+  resourceRead: (resource: Record<string, unknown>): unknown => resource.data,
+  resourceRefresh: async (resource: Record<string, unknown>): Promise<unknown> => {
+    resource.status = 'success';
+    resource.data = await (resource.loader as () => Promise<unknown>)();
+    return resource.data;
+  },
+  resourceInvalidate: (resource: Record<string, unknown>): void => {
+    resource.invalidated = true;
+  },
+  resourceMutate: (resource: Record<string, unknown>, value: unknown): unknown => {
+    resource.data = value;
+    return value;
+  },
   props_merge: (
     ...parts: Array<Record<string, unknown> | null | undefined>
   ): Record<string, unknown> => Object.assign({}, ...parts.filter(Boolean)),
@@ -254,7 +296,7 @@ const compileRouterStdlib = (): RouterApi => {
     'reactive',
     'render',
     'module',
-    `${js}\nreturn { createRouter, navigate, replace, currentPath, currentParams, matchRoute, isActive, extractParams, onRouteChange, link, linkWithProps };`
+    `${js}\nreturn { createRouter, navigate, replace, currentPath, currentParams, routeResourceKey, routeLoader, routeLoaderWithOptions, prefetchRoute, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, optimisticRouteMutate, matchRoute, isActive, extractParams, onRouteChange, link, linkWithProps };`
   ) as (
     routerModule: typeof runtimeRouter,
     strModule: typeof runtimeStr,
@@ -428,6 +470,24 @@ describe('@std/router', () => {
     routerApi.replace(routerValue, '/lumina');
     expect(env.window.history.replacements.at(-1)).toBe('/app/lumina');
     expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/lumina');
+  });
+
+  test('route loaders, prefetch, invalidation, and optimistic mutation compose with router state', async () => {
+    installBrowserEnv('/app/tasks', { baseURI: 'https://lumina.dev/app/' });
+    const routerApi = compileRouterStdlib();
+    const routerValue = routerApi.createRouter('/app');
+
+    expect(routerApi.routeResourceKey(routerValue, 'details')).toBe('route:/tasks:details');
+    const resource = routerApi.routeLoader(routerValue, 'details', async () => 'loaded');
+    expect(routerApi.routeStatus(resource)).toBe('success');
+    expect(routerApi.routeRead(resource)).toBe('data:route:/tasks:details');
+    expect(routerApi.optimisticRouteMutate(resource, 'optimistic')).toBe('optimistic');
+    expect(routerApi.routeRead(resource)).toBe('optimistic');
+    expect(await routerApi.refreshRoute(resource)).toBe('loaded');
+    routerApi.invalidateRoute(resource);
+
+    const prefetch = routerApi.prefetchRoute(routerValue, '/settings/', 'details', async () => 'prefetched');
+    expect(routerApi.routeRead(prefetch)).toBe('data:route:/settings:details');
   });
 
   test('back and forward style popstate dispatch updates the router signal', () => {

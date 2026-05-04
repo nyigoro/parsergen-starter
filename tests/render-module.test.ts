@@ -294,6 +294,7 @@ describe('@std/render module', () => {
             render.text(render.get(index))
           ])
         });
+        let _manual = render.keyed("summary", render.element("section", 0, [render.text("Summary")]));
         let _devtools = render.devtoolsSnapshot();
         let _installed = render.installDevtools();
         render.testingClick(button);

@@ -104,6 +104,20 @@ export const coerceListKey = (value: unknown, index: number): string | number =>
   throw new Error(`List key at index ${index} must be a string or number`);
 };
 
+export const coerceVNodeKey = (value: unknown, label: string = 'VNode key'): string | number => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  throw new Error(`${label} must be a string or number`);
+};
+
+const getPropsKey = (props: Record<string, unknown> | null | undefined): string | number | undefined => {
+  if (!props || !Object.prototype.hasOwnProperty.call(props, 'key') || props.key === undefined) {
+    return undefined;
+  }
+  return coerceVNodeKey(props.key);
+};
+
 export const vnodeIndexList = (
   itemsSignal: Signal<unknown>,
   renderItem: (item: Signal<unknown>, index: number) => VNodeInput
@@ -131,7 +145,7 @@ export const vnodeElement = (
 ): VNode => ({
   kind: 'element',
   tag,
-  key: typeof props?.key === 'string' || typeof props?.key === 'number' ? props.key : undefined,
+  key: getPropsKey(props),
   props: sanitizeProps(props),
   children: normalizeVNodeChildren(children),
 });
@@ -158,10 +172,19 @@ export const coerceRenderableToVNode = (input: VNodeInput): VNode => {
 };
 
 export const applyVNodeKey = (node: VNode, key: unknown): VNode => {
-  if ((typeof key !== 'string' && typeof key !== 'number') || node.key !== undefined) {
+  if (key === undefined || key === null) {
     return node;
   }
-  return { ...node, key };
+  const nextKey = coerceVNodeKey(key);
+  if (node.key !== undefined) {
+    if (node.key !== nextKey) {
+      throw new Error(
+        `Conflicting keyed child: child already has key '${String(node.key)}' but parent assigned '${String(nextKey)}'`
+      );
+    }
+    return node;
+  }
+  return { ...node, key: nextKey };
 };
 
 export const materializeIndexListChildren = (node: VNode, tracked: boolean): VNode[] => {
@@ -215,6 +238,9 @@ export const snapshotVNode = (node: VNode): VNode => {
 
 export const resolveChildrenInput = (input: unknown): VNodeInput =>
   typeof input === 'function' ? (input as () => VNodeInput)() : (input as VNodeInput);
+
+export const vnodeKeyed = (key: unknown, input: unknown): VNode =>
+  applyVNodeKey(coerceRenderableToVNode(resolveChildrenInput(input)), key);
 
 export const serializeVNode = (node: VNode): string => JSON.stringify(snapshotVNode(node));
 

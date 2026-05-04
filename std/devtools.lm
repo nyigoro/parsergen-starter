@@ -7,3 +7,15 @@ pub fn snapshot() -> any {
 pub fn install() -> any {
   render.installDevtools()
 }
+
+pub fn record(eventType: string, label: string, detail: any) -> any {
+  render.devtoolsRecordEvent(eventType, label, detail)
+}
+
+pub fn timeline() -> any {
+  render.devtoolsTimeline()
+}
+
+pub fn clearTimeline() -> void {
+  render.devtoolsClearTimeline()
+}

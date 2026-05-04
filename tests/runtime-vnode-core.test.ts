@@ -14,6 +14,7 @@ import {
   vnodeForList,
   vnodeFragment,
   vnodeIndexList,
+  vnodeKeyed,
   vnodeLiveText,
   vnodePortal,
   vnodeText,
@@ -40,14 +41,26 @@ describe('runtime vnode core', () => {
   test('coerces renderables, applies keys, and serializes snapshots', () => {
     const live = vnodeLiveText(new Signal('Ada'));
     const keyed = applyVNodeKey(vnodeElement('li', null, [live]), 'user-1');
+    const explicit = vnodeKeyed('user-2', () => vnodeElement('li', null, [vnodeText('Grace')]));
     const coerced = coerceRenderableToVNode([keyed, vnodeText('tail')]);
     const json = serializeVNode(coerced);
     const parsed = parseVNode(json);
 
     expect(coerced.kind).toBe('fragment');
+    expect(explicit.key).toBe('user-2');
     expect(parsed.kind).toBe('fragment');
     expect(parsed.children?.[0]?.key).toBe('user-1');
     expect(parsed.children?.[0]?.children?.[0]?.text).toBe('Ada');
+  });
+
+  test('rejects invalid keys and conflicting assigned keys', () => {
+    expect(() => vnodeElement('li', { key: { id: 'bad' } }, [])).toThrow(
+      'VNode key must be a string or number'
+    );
+    expect(() => vnodeKeyed({}, vnodeText('bad'))).toThrow('VNode key must be a string or number');
+    expect(() => applyVNodeKey(vnodeElement('li', { key: 'child' }, []), 'parent')).toThrow(
+      "Conflicting keyed child: child already has key 'child' but parent assigned 'parent'"
+    );
   });
 
   test('materializes index and keyed lists into stable host nodes', () => {

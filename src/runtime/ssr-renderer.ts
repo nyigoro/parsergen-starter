@@ -44,6 +44,12 @@ export const escapeHtml = (value: unknown): string =>
 const kebabCase = (value: string): string =>
   value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, '-ms-');
 
+const normalizeHtmlPropName = (name: string): string => {
+  if (name === 'className') return 'class';
+  if (name === 'htmlFor') return 'for';
+  return name;
+};
+
 export const serializeStyleValue = (value: Record<string, unknown>): string =>
   Object.entries(value)
     .filter(([, entry]) => entry !== null && entry !== undefined)
@@ -66,16 +72,17 @@ export const serializePropsToHtml = (
     if (key === 'key') continue;
     if (key.startsWith('on') && typeof value === 'function') continue;
     if (value === false || value === null || value === undefined) continue;
+    const attrName = normalizeHtmlPropName(key);
     if (key === 'style' && typeof value === 'object' && value !== null) {
       const styleText = serializeStyleValue(value as Record<string, unknown>);
       if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);
       continue;
     }
     if (value === true) {
-      attrs.push(key);
+      attrs.push(attrName);
       continue;
     }
-    attrs.push(`${key}="${escapeHtml(String(value))}"`);
+    attrs.push(`${attrName}="${escapeHtml(String(value))}"`);
   }
   if (
     keyForHydration !== undefined &&

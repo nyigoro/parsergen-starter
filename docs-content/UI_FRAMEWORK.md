@@ -35,9 +35,9 @@ Today the repo includes:
 - `component` declaration syntax as an authoring-friendly alias for component functions
 - suspense and error-boundary render helpers
 - transition-presence helpers for CSS-first mount/unmount animation flows
-- devtools snapshot/install helpers for signal, resource, and frame inspection
+- devtools snapshot/install helpers plus a timeline API for signal, resource, frame, route, and hydration inspection
 - SSG helpers for app/page rendering and file emission
-- a first styled Tailwind-oriented `@std/ui` layer on top of the headless primitives
+- a first styled Tailwind-oriented `@std/ui` layer with button variants, theme roots, and app-shell wrappers on top of the headless primitives
 - headless DOM primitives in `@std/tabs`, `@std/dialog`, `@std/popover`, `@std/tooltip`, `@std/toast`, `@std/menu`, `@std/select`, `@std/combobox`, `@std/multiselect`, `@std/checkbox`, and `@std/radio`
 
 That foundation is now strong enough to support real headless UI authoring, but the broader app/framework layer is still intentionally incomplete.
@@ -146,9 +146,11 @@ That means:
 
 - keyed list items preserve local state when reordered
 - keyed conditional branches preserve the right instance when switched
+- generic `key(value) => child` covers manual panels, slots, and prebuilt child arrays
 - removing a keyed item disposes its frame and cleanup correctly
 - DOM patching stays simple when keys are absent, but respects keyed identity when keys are present
 - SSR emits hydration key markers so keyed client hydration can adopt existing DOM nodes
+- hydration mismatch diagnostics report text/tag drift, missing keyed children, and extra DOM nodes; strict hydration can fail fast for parity tests
 
 That requirement is implemented on the DOM renderer path and is one of the core reasons the current headless primitives feel stable.
 
@@ -210,11 +212,12 @@ The current shipped baseline is:
 - radio group/item/indicator primitives with ARIA wiring, roving focus, and arrow-key navigation
 - forms helpers for controlled values, checked state, submit handling, and lightweight validation
 - store helpers for app-level signals, derived memo slices, and context-backed sharing
+- route loader, prefetch, refresh, invalidation, and optimistic mutation helpers layered on `@std/router`
 - testing helpers for mount, hydrate, events, text queries, and role queries
 - transition presence helpers for CSS-first enter/exit state management
-- devtools helpers for signal/resource/frame snapshots and browser install hooks
+- devtools helpers for signal/resource/frame snapshots, timeline events, and browser install hooks
 - SSG helpers for page wrapping, app rendering, and static file writing
-- a first `@std/ui` styled layer with Tailwind-oriented wrappers over headless primitives
+- a first `@std/ui` styled layer with Tailwind-oriented wrappers, app-shell composition, theme roots, and default button semantics over headless primitives
 
 The next goal is to widen that baseline while staying visually unopinionated.
 
@@ -245,6 +248,11 @@ After stable component frames and keyed identity are in place, Lumina can add:
 - error boundaries
 - retry and refetch control
 - optimistic update patterns
+
+The first route-data layer now exists in `@std/router` as route-keyed resource
+helpers: `routeLoader`, `prefetchRoute`, `refreshRoute`, `invalidateRoute`, and
+`optimisticRouteMutate`. This keeps the API close to the existing resource
+runtime while leaving room for richer route actions and nested boundaries later.
 
 This should come after the component foundation, not before it.
 

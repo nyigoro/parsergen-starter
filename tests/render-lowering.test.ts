@@ -202,6 +202,70 @@ describe('render lowering', () => {
     expect(calls.some((call) => call.renderLowering?.callee === 'forList')).toBe(true);
   });
 
+  test('promotes direct mapped signal children into strong list lowering', () => {
+    const program = parseLuminaProgram(
+      `
+        import { get } from "@std/reactive";
+        import { map_vec, render } from "@std";
+
+        component Rows(rows: Signal<Vec<any>>) -> VNode {
+          render.element("ul", render.props_empty(),
+            map_vec(get(rows), fn(row: any, index: int) -> VNode {
+              render.element("li", render.props_key(row.id), [render.text(row.label)])
+            })
+          )
+        }
+      `.trim() + '\n'
+    );
+
+    const lowered = lowerRenderProgram(program);
+    const calls = collectCalls(lowered);
+    expect(calls.some((call) => call.renderLowering?.callee === 'forList')).toBe(true);
+  });
+
+  test('promotes inline key syntax inside mapped rows into forList lowering', () => {
+    const program = parseLuminaProgram(
+      `
+        import { get } from "@std/reactive";
+        import { render } from "@std";
+
+        component Rows(rows: Signal<Vec<any>>) -> VNode {
+          render.element("ul", render.props_empty(), [
+            get(rows).map(fn(row: any, _index: int) -> VNode {
+              key(row.id) => render.element("li", props { class: "row" }, [render.text(row.label)])
+            })
+          ])
+        }
+      `.trim() + '\n'
+    );
+
+    const lowered = lowerRenderProgram(program);
+    const calls = collectCalls(lowered);
+    expect(calls.some((call) => call.renderLowering?.callee === 'forList')).toBe(true);
+    expect(calls.some((call) => call.renderLowering?.callee === 'indexList')).toBe(false);
+  });
+
+  test('annotates generic keyed authoring and leaves prebuilt keyed arrays on fallback path', () => {
+    const program = parseLuminaProgram(
+      `
+        import { get } from "@std/reactive";
+        import { map_vec, render } from "@std";
+
+        fn shell(rows: Signal<Vec<any>>) -> VNode {
+          let children = map_vec(get(rows), fn(row: any, _index: int) -> VNode {
+            key(row.id) => render.element("li", 0, [render.text(row.label)])
+          });
+          render.element("ul", render.props_empty(), children)
+        }
+      `.trim() + '\n'
+    );
+
+    const lowered = lowerRenderProgram(program);
+    const calls = collectCalls(lowered);
+    expect(calls.some((call) => call.renderLowering?.callee === 'keyed')).toBe(true);
+    expect(calls.some((call) => call.renderLowering?.callee === 'forList')).toBe(false);
+  });
+
   test('normalizes named component args and lowers authoring props/helpers', () => {
     const program = parseLuminaProgram(
       `

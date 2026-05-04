@@ -4,7 +4,6 @@ import {
   createDevtoolsController,
   snapshotComponentFrame,
   type DevtoolsResourceSnapshot,
-  type DevtoolsSnapshot,
 } from './runtime/devtools.js';
 import { createBrowserRuntime } from './runtime/browser-runtime.js';
 import { createChannelRuntime, Receiver, Sender } from './runtime/channel-runtime.js';
@@ -135,6 +134,7 @@ import {
   vnodeForList,
   vnodeFragment,
   vnodeIndexList,
+  vnodeKeyed,
   vnodeLiveText,
   vnodePortal,
   vnodeText,
@@ -252,6 +252,7 @@ export {
   vnodeForList,
   vnodeFragment,
   vnodeIndexList,
+  vnodeKeyed,
   vnodeLiveText,
   vnodePortal,
   vnodeText,
@@ -502,17 +503,8 @@ export class ReactiveRenderRoot extends ReactiveRenderRootBase<
     });
   }
 }
-const registerDevtoolsRoot = (root: ReactiveRenderRoot): void => {
-  devtools.registerRoot(root);
-};
-const unregisterDevtoolsRoot = (root: ReactiveRenderRoot): void => {
-  devtools.unregisterRoot(root);
-};
-
-const snapshotDevtools = (): DevtoolsSnapshot<VNode | null> => devtools.snapshot();
-
-const installLuminaDevtools = (key: string = '__LUMINA_DEVTOOLS__'): Record<string, unknown> =>
-  devtools.install(key);
+const registerDevtoolsRoot = (root: ReactiveRenderRoot): void => void devtools.registerRoot(root);
+const unregisterDevtoolsRoot = (root: ReactiveRenderRoot): void => devtools.unregisterRoot(root);
 
 const toRenderErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);
@@ -623,8 +615,11 @@ export const render = createRenderApi<
   hydrateReactiveView,
   renderError: (message) => Result.Err(message),
   toRenderErrorMessage,
-  snapshotDevtools,
-  installLuminaDevtools,
+  snapshotDevtools: () => devtools.snapshot(),
+  installLuminaDevtools: (key) => devtools.install(key),
+  recordDevtoolsEvent: (type, label, detail) => devtools.recordEvent(type, label, detail),
+  readDevtoolsTimeline: () => devtools.timeline(),
+  clearDevtoolsTimeline: () => devtools.clearTimeline(),
   scheduleDevtoolsNotify,
 });
 
@@ -738,6 +733,8 @@ const renderSurface = {
   liveText: render.liveText,
   indexList: render.indexList,
   forList: render.forList,
+  keyed: render.keyed,
+  key: render.key,
   mount_reactive: render.mount_reactive,
   props_empty: render.props_empty,
   props_class: render.props_class,
@@ -885,6 +882,8 @@ export const {
   liveText,
   indexList,
   forList,
+  keyed,
+  key,
   mount_reactive,
   props_empty,
   props_class,

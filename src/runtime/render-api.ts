@@ -2,7 +2,7 @@ import type { ComponentFunction, ContextToken } from '../frame-manager.js';
 import type { TestingDomHarness } from '../testing-dom.js';
 import type { CustomElementController, CustomElementMountOptions } from './custom-elements.js';
 import type { createHeadlessPrimitivesRuntime } from './headless-primitives-runtime.js';
-import type { DevtoolsSnapshot } from './devtools.js';
+import type { DevtoolsSnapshot, DevtoolsTimelineEvent } from './devtools.js';
 import { type RenderRootRenderer, isDisposableLike, isUnmountableLike } from './render-core.js';
 import {
   batch as batchReactive,
@@ -31,6 +31,7 @@ import {
   vnodeForList,
   vnodeFragment,
   vnodeIndexList,
+  vnodeKeyed,
   vnodeLiveText,
   vnodePortal,
   vnodeText,
@@ -179,6 +180,9 @@ interface RenderApiDeps<TRenderRoot, TReactiveRoot, TRenderError, TDomRendererOp
   toRenderErrorMessage: (error: unknown) => string;
   snapshotDevtools: () => DevtoolsSnapshot<VNode | null>;
   installLuminaDevtools: (key?: string) => Record<string, unknown>;
+  recordDevtoolsEvent: (type: string, label: string, detail?: unknown) => DevtoolsTimelineEvent;
+  readDevtoolsTimeline: () => DevtoolsTimelineEvent[];
+  clearDevtoolsTimeline: () => void;
   scheduleDevtoolsNotify: () => void;
 }
 
@@ -397,6 +401,10 @@ export const createRenderApi = <
     testingSubmit: (node: unknown): void => render.testing_submit(node),
     devtoolsSnapshot: (): DevtoolsSnapshot<VNode | null> => render.devtools_snapshot(),
     installDevtools: (key?: string): Record<string, unknown> => render.install_devtools(key),
+    devtoolsRecordEvent: (type: string, label: string, detail?: unknown): DevtoolsTimelineEvent =>
+      render.devtools_record_event(type, label, detail),
+    devtoolsTimeline: (): DevtoolsTimelineEvent[] => render.devtools_timeline(),
+    devtoolsClearTimeline: (): void => render.devtools_clear_timeline(),
     ssgPage: (body: unknown, options?: unknown): string => render.ssg_page(body, options),
     ssgRenderApp: <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P, options?: unknown): string =>
       render.ssg_render_app(componentFn, props, options),
@@ -410,6 +418,10 @@ export const createRenderApi = <
     ): string => render.ssg_write_app(filePath, componentFn, props, options),
     devtools_snapshot: (): DevtoolsSnapshot<VNode | null> => deps.snapshotDevtools(),
     install_devtools: (key?: string): Record<string, unknown> => deps.installLuminaDevtools(key),
+    devtools_record_event: (type: string, label: string, detail?: unknown): DevtoolsTimelineEvent =>
+      deps.recordDevtoolsEvent(type, label, detail),
+    devtools_timeline: (): DevtoolsTimelineEvent[] => deps.readDevtoolsTimeline(),
+    devtools_clear_timeline: (): void => deps.clearDevtoolsTimeline(),
     ssg_page: (body: unknown, options?: unknown): string => deps.appRuntime.ssgApi.renderPage(body, options),
     ssg_render_app: <P>(
       componentFn: ComponentFunction<P, ComponentRenderable>,
@@ -602,6 +614,8 @@ export const createRenderApi = <
       keyOf: (item: unknown, index: number) => string | number,
       renderItem: (item: Signal<unknown>, index: Signal<number>) => VNodeInput
     ): VNode => vnodeForList(itemsSignal, keyOf, renderItem),
+    keyed: (key: unknown, child: unknown): VNode => vnodeKeyed(key, child),
+    key: (key: unknown, child: unknown): VNode => render.keyed(key, child),
     element: (tag: string, props?: Record<string, unknown> | null, children: VNodeInput = []): VNode =>
       vnodeElement(tag, props, children),
     props_empty: propsEmpty,
