@@ -36,6 +36,14 @@ export const coerceSsgPageOptions = (options: unknown): Required<SsgPageOptions>
     : headValue == null
       ? []
       : [String(headValue)];
+  const lifecycleState =
+    candidate.loaderState == null && candidate.islandState == null && candidate.deferredData == null
+      ? null
+      : {
+          ...(candidate.loaderState == null ? {} : { loaderState: candidate.loaderState }),
+          ...(candidate.islandState == null ? {} : { islandState: candidate.islandState }),
+          ...(candidate.deferredData == null ? {} : { deferredData: candidate.deferredData }),
+        };
   return {
     title: typeof candidate.title === 'string' ? candidate.title : '',
     lang: typeof candidate.lang === 'string' && candidate.lang.length > 0 ? candidate.lang : 'en',
@@ -44,7 +52,7 @@ export const coerceSsgPageOptions = (options: unknown): Required<SsgPageOptions>
     appClassName: typeof candidate.appClassName === 'string' ? candidate.appClassName : '',
     appId: typeof candidate.appId === 'string' && candidate.appId.length > 0 ? candidate.appId : 'app',
     hydrateModule: typeof candidate.hydrateModule === 'string' ? candidate.hydrateModule : '',
-    hydrationState: candidate.hydrationState ?? candidate.state ?? (candidate.deferredData == null ? null : { deferredData: candidate.deferredData }),
+    hydrationState: candidate.hydrationState ?? candidate.state ?? candidate.serializedState ?? lifecycleState,
     hydrationStateId:
       typeof candidate.hydrationStateId === 'string' && candidate.hydrationStateId.length > 0
         ? candidate.hydrationStateId

@@ -171,6 +171,35 @@ describe('runtime render api', () => {
     expect(appRuntime.mountCustomElementInternal).toHaveBeenCalledTimes(1);
   });
 
+  test('exposes request resource invalidation through the render surface', async () => {
+    const { render } = createApi();
+    const resourceA = render.createResource('profile', () => 'a', { requestId: 'req-a', scope: 'route:a' });
+    const resourceB = render.createResource('profile', () => 'b', { requestId: 'req-b', scope: 'route:b' });
+    await Promise.resolve();
+
+    expect(render.resourceInvalidateRequest('req-a')).toBe(1);
+    await Promise.resolve();
+    expect(render.resourceData(resourceA)).toBe('a');
+    expect(render.resourceData(resourceB)).toBe('b');
+  });
+
+  test('optimistic resource mutation aborts stale pending work', () => {
+    const { render } = createApi();
+    const aborts: boolean[] = [];
+    const resource = render.createResource(
+      'slow-profile',
+      (signal?: AbortSignal) =>
+        new Promise<string>(() => {
+          signal?.addEventListener('abort', () => aborts.push(true));
+        })
+    );
+
+    expect(render.resourceStatus(resource)).toBe('loading');
+    expect(render.resourceMutate(resource, 'optimistic')).toBe('optimistic');
+    expect(render.resourceStatus(resource)).toBe('success');
+    expect(aborts).toEqual([true]);
+  });
+
   test('preserves reactive helpers, transition routing, and root creation behavior', () => {
     const { render, transitionRuntime, componentCalls } = createApi();
     const signal = render.signal(1);

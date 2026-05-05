@@ -622,7 +622,7 @@ Returns the current normalized path signal.
 
 Pushes a browser history entry and updates the route signal.
 
-### routeLoader<T>(router: Router, name: String, loader: fn() -> Promise<T>) -> RouteResource<T>
+### routeLoader(router: Router, name: String, loader: fn() -> Promise<any>) -> RouteResource<any>
 
 Creates a cached resource whose key is tied to the current route path and loader
 name. Search strings are included in the key so filtered routes do not reuse
@@ -642,7 +642,7 @@ view guard. Module loaders/actions use route-scoped resource keys and resource
 handles capture the route match at creation time so old handles cannot refresh
 with a newer navigation's params.
 
-### routeNode / routeNodeWithChildren / routeTree / routeNodeLayout
+### routeNode / routeNodeWithChildren / routeTree / routeNodeLayout / routeLayout
 
 Declarative route-tree helpers. A `RouteNode` owns its id, pattern, title,
 module, and child metadata. Use `routeNodeLoader`, `routeNodeAction`,
@@ -659,6 +659,10 @@ can be reused by docs, devtools, and larger app shells. `routeOwnershipProps`
 adds inspectable ownership attributes, while `routeRequestPolicy` gives loaders
 request scope, TTL, stale-while-revalidate, and abort-on-refresh defaults.
 
+`routeLayout`, `routeLayoutView`, `routeLayoutMeta`, and `routeTreeFromLayout`
+lock route-owned shell functions as first-class app architecture instead of
+ad-hoc layout composition.
+
 ### prefetchRouteNode / prefetchRouteNodeWithOptions / cancelRouteNode / revalidateRouteNode
 
 Route-node delivery helpers for lazy route modules, route-owned prefetch,
@@ -669,7 +673,7 @@ fragments so prefetch keys match real navigation keys.
 `prefetchPolicy` and `prefetchPolicyProps` capture intent, TTL, and transition
 metadata for route-level prefetch and delivery conventions.
 
-### navigationIntentProps / viewTransitionProps / navigateWithTransition
+### navigationIntentProps / viewTransitionProps / navigateWithTransition / routeLinkProps
 
 Small platform-aligned props for prefetch/navigation intent metadata and
 same-document view transition naming. `supportsNavigationApi`,
@@ -678,19 +682,23 @@ progressive enhancement checks around Navigation API, View Transition API, and
 URLPattern. They always fall back to Lumina's route matcher and normal history
 navigation.
 
-### routeAction<T>(router: Router, name: String, action: fn() -> Promise<T>) -> RouteAction<T>
+`navigateRouteNode`, `navigateRouteNodeWithTransition`, `routeLinkProps`, and
+`prefetchLinkProps` combine route ownership, cancellation, prefetch metadata,
+and link delivery conventions.
+
+### routeAction(router: Router, name: String, action: fn() -> Promise<any>) -> RouteAction<any>
 
 Creates a disabled resource-backed action. Run it with `submitRouteAction`, then
 read `routeActionStatus`, `routeActionData`, `routeActionError`, and
 `routeActionSubmitting`. Rejections reset `submitting` through the runtime
 submit helper.
 
-### prefetchRoute<T>(router: Router, path: String, name: String, loader: fn() -> Promise<T>) -> RouteResource<T>
+### prefetchRoute(router: Router, path: String, name: String, loader: fn() -> Promise<any>) -> RouteResource<any>
 
 Creates a route resource for a future path. Resource creation starts the load
 under the existing resource runtime.
 
-### routeRead<T>(resource: RouteResource<T>) -> T
+### routeRead(resource: RouteResource<any>) -> any
 
 Reads route data. Use inside `render.suspense` and `render.errorBoundary`.
 
@@ -715,7 +723,7 @@ Public option builders for app data conventions. They map to the runtime cache
 policy, request/route scope, abortable refresh, and stale-while-revalidate
 metadata used by the resource core.
 
-### tag / dependency / routeDataPolicy / requestPolicy / routeRequestPolicy / requestRouteDataPolicy
+### tag / dependency / routeLifecyclePolicy / routeDataPolicy / requestPolicy / routeRequestPolicy / requestRouteDataPolicy
 
 Convenience builders for tag/dependency invalidation and route-owned data
 resources. `requestPolicy`, `routeRequestPolicy`, `prefetchOptions`, and
@@ -723,13 +731,15 @@ resources. `requestPolicy`, `routeRequestPolicy`, `prefetchOptions`, and
 scope, background refresh, and disabled prefetch records. `requestScope` also
 sets `requestId`; `requestRouteDataPolicy` keeps route invalidation scope while
 carrying request identity for SSR.
+`requestScoped` and `requestRouteLifecyclePolicy` make the scope/request split
+explicit for request-aware route loaders.
 
-### createResource / createResourceWithOptions
+### createResource / createResourceWithOptions / createPrefetchResourceWithOptions
 
 Creates a resource handle. Reads throw promises/errors for suspense and error
 boundaries; `data` returns nullable data for non-suspense reads.
 
-### invalidateKey / invalidatePrefix / invalidateTag / invalidateDependency / invalidateScope
+### invalidateKey / invalidatePrefix / invalidateTag / invalidateDependency / invalidateScope / invalidateRequest
 
 Invalidates matching records and restarts enabled resources. Forced reloads can
 abort the previous request when `abortOnRefresh` is enabled.
@@ -746,14 +756,15 @@ field state, async action state, field arrays, and optimistic rollback helpers.
 
 ### textInput / checkbox / radio / fileInput / fileInputNamed / multipartProps / formDataSubmitProps
 
-Build controlled input props and form encoding props.
+Build controlled input props and form encoding props. `uploadFieldProps`
+combines file input name, accepted MIME hints, and multi-file support.
 
-### fieldArrayItemName / schemaAdapter / serverValidation / applyServerValidation
+### fieldArrayItemName / schemaAdapter / schemaFieldProps / serverValidation / applyServerValidation
 
 Helpers for nested fields, schema adapter metadata, server-validation mapping,
 and first-class array-field naming.
 
-### fieldControlProps / fieldErrorProps / validationSummaryProps
+### fieldControlProps / fieldInputProps / fieldErrorProps / validationSummaryProps / validationSummaryFor
 
 Accessibility and server-validation helpers for `aria-invalid`,
 `aria-describedby`, alert regions, and touched-error display.
@@ -762,7 +773,7 @@ Accessibility and server-validation helpers for `aria-invalid`,
 
 Track dirty, touched, and error state per field.
 
-### action / actionWithOptions / submitAction / submitActionOptimistic / submitActionWithRollback / submitActionWithCurrentRollback / rollbackResource
+### action / actionWithOptions / actionFormProps / optimisticActionFormProps / submitAction / submitActionOptimistic / submitActionWithRollback / submitActionWithCurrentRollback / rollbackResource
 
 Create resource-backed form actions and wire optimistic resource updates.
 `submitAction` resets submitting after success or rejection, and
@@ -778,7 +789,7 @@ drive input/click/submit/keyboard events, and provide async flush helpers.
 
 Creates a test DOM harness and mounts or hydrates an app through the runtime.
 
-### flush / waitFor / actAsync / findByText / findByRole / findByLabel / findByPlaceholder / settle / clickAndFlush / inputAndFlush / submitAndFlush
+### flush / waitFor / waitForIdle / waitForText / waitForRoleName / actAsync / findByText / findByRole / findByLabel / findByPlaceholder / settle / clickAndFlush / inputAndFlush / submitAndFlush
 
 Small async workflow helpers for route/action/resource integration tests.
 `flush` drains microtasks through the runtime facade and `waitFor` retries a
@@ -809,11 +820,12 @@ Convenience inspector and timeline helpers for complex app debugging.
 Inspector event helpers for resource, route, frame, signal, and hydration
 mismatch tooling.
 
-`inspectorRecord`, `recordRouteTransition`, `recordResourceTiming`,
+`inspectorRecord`, `inspectorPanel`, `routeInspector`, `resourceInspector`,
+`hydrationInspector`, `recordRouteTransition`, `recordResourceTiming`,
 `recordSignalDependency`, and `recordHydrationRecovery` give inspector UIs
 stable `inspect:*` event kinds before the visual devtools panel exists.
 
-### profileStart / profileEnd / recordRenderCost
+### profileStart / profileEnd / recordProfilerSpan / recordRenderCost
 
 Profiler events for render timeline and cost views.
 
@@ -840,7 +852,7 @@ Renders a styled button with `type="button"` by default.
 Variant-aware control wrappers. `buttonWithState` emits loading/disabled
 semantics, while `variantProps` centralizes size, tone, and density classes.
 
-### themeRoot / themeTokens / tokenContract
+### themeRoot / themeTokens / themeToken / tokenContract / tokenDeclaration / tokenProps
 
 Theme-token roots using CSS custom properties and named token contracts.
 
@@ -856,7 +868,7 @@ Application frame primitives for dashboard and complex app layouts.
 
 Large-app navigation, toolbar, status, form-layout, and empty-state wrappers.
 
-### inputVariant / fieldGroup / fieldControlProps / dataTable / tableRow / tableHeaderCell / tableSortHeader / tableCell
+### inputVariant / fieldGroup / fieldControlProps / dataTable / tableRow / tableHeaderCell / tableSortHeader / tableCaption / tablePaginationProps / tableCell
 
 Form composition and data-entry primitives for larger app surfaces.
 
@@ -864,11 +876,11 @@ Form composition and data-entry primitives for larger app surfaces.
 
 SSG helpers render static pages/apps and provide hydration handoff options.
 
-### hydrationOptions / hydrationBoundaryOptions
+### hydrationOptions / serializedStateOptions / loaderStateOptions / hydrationBoundaryOptions
 
 Build safe JSON hydration state and boundary metadata options for SSG output.
 
-### requestOptions / deferredDataOptions / islandProps / deferredHydrationProps
+### requestOptions / deferredDataOptions / islandStateOptions / islandProps / deferredHydrationProps
 
 Request metadata, deferred-data, and island/deferred hydration prop helpers for
 production SSR conventions.

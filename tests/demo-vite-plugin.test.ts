@@ -15,14 +15,24 @@ describe('demo vite plugin', () => {
     const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-'));
     const entryPath = path.join(workspace, 'main.lm');
     fs.writeFileSync(
+      path.join(workspace, 'helper.lm'),
+      `
+        pub fn localValue() -> string {
+          "local"
+        }
+      `.trim() + '\n',
+      'utf-8'
+    );
+    fs.writeFileSync(
       entryPath,
       `
         import { createDomHarness } from "@std/testing";
         import { text } from "@std/render";
+        import { localValue } from "./helper.lm";
 
         pub fn main() -> VNode {
           let _ = createDomHarness();
-          text("demo")
+          text(localValue())
         }
       `.trim() + '\n',
       'utf-8'
@@ -48,7 +58,10 @@ describe('demo vite plugin', () => {
       expect(typeof code).toBe('string');
       expect(code).toContain('export {');
       expect(code).toContain('createDomHarness');
+      expect(code).toContain('localValue');
+      expect(code).toContain('./helper.lm');
       expect(code).toContain('lumina-runtime.js');
+      expect(code).not.toContain('std/render.lm');
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }

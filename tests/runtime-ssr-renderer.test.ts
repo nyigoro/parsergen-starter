@@ -1,4 +1,10 @@
-import { createSsrRuntime, escapeHtml, serializePropsToHtml } from '../src/runtime/ssr-renderer.js';
+import {
+  createSsrRuntime,
+  createSsrStateScript,
+  escapeHtml,
+  serializePropsToHtml,
+  serializeSsrState,
+} from '../src/runtime/ssr-renderer.js';
 
 type TestNode = {
   kind: string;
@@ -35,6 +41,19 @@ describe('runtime ssr renderer', () => {
         'data-safe': 'ok',
       })
     ).toBe(' data-safe="ok"');
+  });
+
+  test('serializes request loader state safely for hydration handoff', () => {
+    const state = {
+      request: { url: '/tasks?tab=open', requestId: 'req-1' },
+      loaderState: { task: '</script><img src=x onerror=alert(1)>' },
+      deferredData: { chunk: '&ready' },
+    };
+
+    expect(serializeSsrState(state)).toContain('\\u003c/script\\u003e');
+    expect(serializeSsrState(state)).toContain('\\u0026ready');
+    expect(createSsrStateScript(state, 'lumina-state')).toContain('id="lumina-state"');
+    expect(createSsrStateScript(state, 'lumina-state')).toContain('\\u003c/script\\u003e');
   });
 
   test('renders markup and updates containers through the SSR renderer', async () => {

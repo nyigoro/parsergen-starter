@@ -510,7 +510,7 @@ describe('runtime render module', () => {
 
     render.testingClick(button);
     await Promise.resolve();
-    expect(render.testingTextContent(button)).toBe('Clicks:2');
+    expect(render.testingTextContent(button)).toBe('Clicks:3');
 
     render.testingInput(input, 'Ada');
     await Promise.resolve();
@@ -518,7 +518,7 @@ describe('runtime render module', () => {
 
     render.testingSubmit(render.testingGetById(harness, 'form'));
     await Promise.resolve();
-    expect(render.testingTextContent(render.testingGetById(harness, 'counter'))).toBe('Clicks:3');
+    expect(render.testingTextContent(render.testingGetById(harness, 'counter'))).toBe('Clicks:4');
 
     render.dispose_reactive(root);
   });

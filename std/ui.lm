@@ -11,6 +11,7 @@ import {
   dialogContent,
   toastContent
 } from "@std/render";
+import { str } from "@std";
 
 pub struct UiVariant {
   size: string,
@@ -18,8 +19,29 @@ pub struct UiVariant {
   density: string
 }
 
+pub struct UiToken {
+  name: string,
+  value: string
+}
+
 pub fn variant(size: string, tone: string, density: string) -> UiVariant {
   UiVariant { size: size, tone: tone, density: density }
+}
+
+pub fn token(name: string, value: string) -> UiToken {
+  UiToken { name: name, value: value }
+}
+
+pub fn tokenVar(name: string) -> string {
+  str.concat("--lumina-", name)
+}
+
+pub fn tokenDeclaration(tokenValue: UiToken) -> string {
+  str.concat(str.concat(tokenVar(tokenValue.name), ":"), tokenValue.value)
+}
+
+pub fn tokenProps(tokenValue: UiToken, props: any) -> any {
+  props_merge(props_attr("style", tokenDeclaration(tokenValue)), props)
 }
 
 fn control_variant_class(spec: UiVariant) -> string {
@@ -63,7 +85,7 @@ pub fn buttonWithState(loading: bool, disabled: bool, props: any, children: any)
       props,
       props_merge(
         props_attr("aria-busy", loading),
-        props_attr("disabled", disabled)
+        props_attr("disabled", loading || disabled)
       )
     ),
     children
@@ -107,6 +129,10 @@ pub fn themeRoot(props: any, children: any) -> VNode {
 
 pub fn themeTokens(tokens: string, props: any, children: any) -> VNode {
   themeRoot(props_merge(props_attr("style", tokens), props), children)
+}
+
+pub fn themeToken(tokenValue: UiToken, props: any, children: any) -> VNode {
+  themeTokens(tokenDeclaration(tokenValue), props, children)
 }
 
 pub fn tokenContract(name: string, props: any, children: any) -> VNode {
@@ -423,6 +449,23 @@ pub fn tableSortHeader(active: bool, direction: string, props: any, children: an
 
 pub fn tableCell(props: any, children: any) -> VNode {
   vnode("td", props_merge(props_class("px-3 py-2 text-slate-800"), props), children)
+}
+
+pub fn tableCaption(props: any, children: any) -> VNode {
+  vnode("caption", props_merge(props_class("pb-2 text-left text-sm font-medium text-slate-700"), props), children)
+}
+
+pub fn tablePaginationProps(page: int, pageSize: int, total: int, props: any) -> any {
+  props_merge(
+    props,
+    props_merge(
+      props_attr("data-lumina-page", page),
+      props_merge(
+        props_attr("data-lumina-page-size", pageSize),
+        props_attr("data-lumina-total", total)
+      )
+    )
+  )
 }
 
 pub fn tabsListStyled(props: any, renderChildren: fn() -> any) -> VNode {

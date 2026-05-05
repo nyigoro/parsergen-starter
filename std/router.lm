@@ -46,6 +46,14 @@ pub struct RouteBoundary {
   meta: any
 }
 
+pub struct RouteLayout {
+  node: RouteNode,
+  shell: fn(any, any) -> VNode,
+  loading: any,
+  error: any,
+  meta: any
+}
+
 pub struct RouteHref {
   path: string,
   search: string
@@ -430,7 +438,7 @@ pub fn routeBoundaryMeta(boundary: RouteBoundary) -> any {
   boundary.meta
 }
 
-pub fn routeBoundaryView(routerValue: Router, boundary: RouteBoundary, renderChildren: fn(RouteMatch) -> any, fallback: any) -> VNode {
+pub fn routeBoundaryView(routerValue: Router, boundary: RouteBoundary, renderChildren: fn(any) -> any, fallback: any) -> VNode {
   routeErrorBoundary(boundary.error, fn() -> any {
     render.suspense(boundary.loading, fn() -> any {
       routeNodeView(routerValue, boundary.node, renderChildren, fallback)
@@ -442,11 +450,31 @@ pub fn routeTreeFromBoundary(boundary: RouteBoundary) -> RouteTree {
   RouteTree { root: boundary.node, loading: boundary.loading, error: boundary.error, meta: boundary.meta }
 }
 
+pub fn routeLayout(node: RouteNode, shell: fn(any, any) -> VNode, loading: any, error: any, meta: any) -> RouteLayout {
+  RouteLayout { node: node, shell: shell, loading: loading, error: error, meta: routeOwnershipProps(node, meta) }
+}
+
+pub fn routeLayoutMeta(layout: RouteLayout) -> any {
+  layout.meta
+}
+
+pub fn routeLayoutView(routerValue: Router, layout: RouteLayout, child: any, fallback: any) -> VNode {
+  routeErrorBoundary(layout.error, fn() -> any {
+    render.suspense(layout.loading, fn() -> any {
+      routeNodeLayout(routerValue, layout.node, layout.shell, child, fallback)
+    })
+  })
+}
+
+pub fn routeTreeFromLayout(layout: RouteLayout) -> RouteTree {
+  RouteTree { root: layout.node, loading: layout.loading, error: layout.error, meta: layout.meta }
+}
+
 pub fn routeTree(root: RouteNode, loading: any, error: any, meta: any) -> RouteTree {
   RouteTree { root: root, loading: loading, error: error, meta: routeNodeMeta(root, meta) }
 }
 
-pub fn routeTreeView(routerValue: Router, tree: RouteTree, renderChildren: fn(RouteMatch) -> any) -> VNode {
+pub fn routeTreeView(routerValue: Router, tree: RouteTree, renderChildren: fn(any) -> any) -> VNode {
   routeNodeView(routerValue, tree.root, renderChildren, tree.loading)
 }
 
@@ -468,35 +496,40 @@ pub fn revalidateRouteTree(tree: RouteTree) -> int {
   revalidateRouteNode(tree.root)
 }
 
-pub fn routeNodeLoader<T>(routerValue: Router, node: RouteNode, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
-  routeModuleLoader(routerValue, node.module, name, loader)
+pub fn routeNodeLoader(routerValue: Router, node: RouteNode, name: string, loader: any) -> RouteResource<any> {
+  let matchValue = routeNodeMatch(routerValue, node)
+  RouteResource<any> { raw: render.createResource(routeNodeKey(routerValue, node, name), fn() -> Promise<any> { loader(matchValue) }, routeNodeOptions(node, render.props_empty())) }
 }
 
-pub fn routeNodeLoaderWithOptions<T>(routerValue: Router, node: RouteNode, name: string, loader: fn(RouteMatch) -> Promise<T>, options: any) -> RouteResource<T> {
-  routeModuleLoaderWithOptions(routerValue, node.module, name, loader, options)
+pub fn routeNodeLoaderWithOptions(routerValue: Router, node: RouteNode, name: string, loader: any, options: any) -> RouteResource<any> {
+  let matchValue = routeNodeMatch(routerValue, node)
+  RouteResource<any> { raw: render.createResource(routeNodeKey(routerValue, node, name), fn() -> Promise<any> { loader(matchValue) }, routeNodeOptions(node, options)) }
 }
 
-pub fn routeNodeAction<T>(routerValue: Router, node: RouteNode, name: string, action: fn(RouteMatch) -> Promise<T>) -> RouteAction<T> {
-  routeModuleAction(routerValue, node.module, name, action)
+pub fn routeNodeAction(routerValue: Router, node: RouteNode, name: string, action: any) -> RouteAction<any> {
+  let options = routeNodeOptions(node, render.props_attr("enabled", false))
+  let matchValue = routeNodeMatch(routerValue, node)
+  let actionResource = RouteResource<any> { raw: render.createResource(str.concat(routeNodeKey(routerValue, node, name), ":action"), fn() -> Promise<any> { action(matchValue) }, options) }
+  return RouteAction<any> { resource: actionResource, submitting: reactive.createSignal(false) }
 }
 
-pub fn routeNodeView(routerValue: Router, node: RouteNode, renderChildren: fn(RouteMatch) -> any, fallback: any) -> VNode {
+pub fn routeNodeView(routerValue: Router, node: RouteNode, renderChildren: fn(any) -> any, fallback: any) -> VNode {
   routeModuleView(routerValue, node.module, renderChildren, fallback)
 }
 
-pub fn routeNodeLayout(routerValue: Router, node: RouteNode, shell: fn(RouteMatch, any) -> VNode, child: any, fallback: any) -> VNode {
+pub fn routeNodeLayout(routerValue: Router, node: RouteNode, shell: fn(any, any) -> VNode, child: any, fallback: any) -> VNode {
   let matchValue = routeNodeMatch(routerValue, node)
   render.show(matchValue.matched, fn() -> any { shell(matchValue, child) }, fallback)
 }
 
-pub fn prefetchRouteNode<T>(routerValue: Router, node: RouteNode, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+pub fn prefetchRouteNode(routerValue: Router, node: RouteNode, path: string, name: string, loader: any) -> RouteResource<any> {
   let href = normalize_prefetch_href(routerValue.base, path)
-  RouteResource<T> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, render.props_empty())) }
+  RouteResource<any> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, render.props_empty())) }
 }
 
-pub fn prefetchRouteNodeWithOptions<T>(routerValue: Router, node: RouteNode, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
+pub fn prefetchRouteNodeWithOptions(routerValue: Router, node: RouteNode, path: string, name: string, loader: any, options: any) -> RouteResource<any> {
   let href = normalize_prefetch_href(routerValue.base, path)
-  RouteResource<T> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, options)) }
+  RouteResource<any> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, options)) }
 }
 
 pub fn cancelRouteNode(node: RouteNode) -> int {
@@ -542,83 +575,107 @@ pub fn navigateWithTransition(routerValue: Router, path: string) -> void {
   })
 }
 
+pub fn navigateRouteNode(routerValue: Router, node: RouteNode, path: string) -> void {
+  let _ = cancelRouteNode(node)
+  navigate(routerValue, path)
+}
+
+pub fn navigateRouteNodeWithTransition(routerValue: Router, node: RouteNode, path: string) -> void {
+  let _ = cancelRouteNode(node)
+  navigateWithTransition(routerValue, path)
+}
+
+pub fn routeLinkProps(routerValue: Router, node: RouteNode, href: string, props: any) -> any {
+  render.props_merge(
+    routeOwnershipProps(node, props),
+    render.props_merge(
+      render.props_href(resolve_href(routerValue.base, href)),
+      render.props_attr("data-lumina-route-link", node.id)
+    )
+  )
+}
+
+pub fn prefetchLinkProps(routerValue: Router, node: RouteNode, href: string, policy: RoutePrefetchPolicy, props: any) -> any {
+  prefetchPolicyProps(policy, routeLinkProps(routerValue, node, href, props))
+}
+
 pub fn matchUrlPattern(pattern: string, path: string) -> bool {
   router.matchUrlPattern(pattern, path)
 }
 
-pub fn routeModuleLoader<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
+pub fn routeModuleLoader(routerValue: Router, module: RouteModule, name: string, loader: any) -> RouteResource<any> {
   let matchValue = routeModuleMatch(routerValue, module)
-  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, render.props_empty())) }
+  RouteResource<any> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, render.props_empty())) }
 }
 
-pub fn routeModuleLoaderWithOptions<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>, options: any) -> RouteResource<T> {
+pub fn routeModuleLoaderWithOptions(routerValue: Router, module: RouteModule, name: string, loader: any, options: any) -> RouteResource<any> {
   let matchValue = routeModuleMatch(routerValue, module)
-  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, options)) }
+  RouteResource<any> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, options)) }
 }
 
-pub fn routeModuleAction<T>(routerValue: Router, module: RouteModule, name: string, action: fn(RouteMatch) -> Promise<T>) -> RouteAction<T> {
+pub fn routeModuleAction(routerValue: Router, module: RouteModule, name: string, action: any) -> RouteAction<any> {
   let options = routeModuleOptions(module, render.props_attr("enabled", false))
   let matchValue = routeModuleMatch(routerValue, module)
-  let actionResource = RouteResource<T> { raw: render.createResource(str.concat(routeModuleKey(routerValue, module, name), ":action"), fn() -> Promise<any> { action(matchValue) }, options) }
-  return RouteAction<T> { resource: actionResource, submitting: reactive.createSignal(false) }
+  let actionResource = RouteResource<any> { raw: render.createResource(str.concat(routeModuleKey(routerValue, module, name), ":action"), fn() -> Promise<any> { action(matchValue) }, options) }
+  return RouteAction<any> { resource: actionResource, submitting: reactive.createSignal(false) }
 }
 
-pub fn routeModuleView(routerValue: Router, module: RouteModule, renderChildren: fn(RouteMatch) -> any, fallback: any) -> VNode {
+pub fn routeModuleView(routerValue: Router, module: RouteModule, renderChildren: fn(any) -> any, fallback: any) -> VNode {
   let matchValue = routeModuleMatch(routerValue, module)
   render.show(matchValue.matched, fn() -> any { renderChildren(matchValue) }, fallback)
 }
 
-pub fn routeLoader<T>(routerValue: Router, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+pub fn routeLoader(routerValue: Router, name: string, loader: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
 }
 
-pub fn routeLoaderWithOptions<T>(routerValue: Router, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, options) }
+pub fn routeLoaderWithOptions(routerValue: Router, name: string, loader: any, options: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, options) }
 }
 
-pub fn routeLoaderFor<T>(routerValue: Router, routeId: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, render.props_empty())) }
+pub fn routeLoaderFor(routerValue: Router, routeId: string, name: string, loader: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, render.props_empty())) }
 }
 
-pub fn routeLoaderForWithOptions<T>(routerValue: Router, routeId: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, options)) }
+pub fn routeLoaderForWithOptions(routerValue: Router, routeId: string, name: string, loader: any, options: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, options)) }
 }
 
-pub fn prefetchRoute<T>(routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+pub fn prefetchRoute(routerValue: Router, path: string, name: string, loader: any) -> RouteResource<any> {
   let href = normalize_prefetch_href(routerValue.base, path)
-  RouteResource<T> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+  RouteResource<any> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
 }
 
-pub fn prefetchRouteWithOptions<T>(routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
+pub fn prefetchRouteWithOptions(routerValue: Router, path: string, name: string, loader: any, options: any) -> RouteResource<any> {
   let href = normalize_prefetch_href(routerValue.base, path)
-  RouteResource<T> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, options) }
+  RouteResource<any> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, options) }
 }
 
-pub fn routeStatus<T>(resource: RouteResource<T>) -> string {
+pub fn routeStatus(resource: RouteResource<any>) -> string {
   render.resourceStatus(resource.raw)
 }
 
-pub fn routeData<T>(resource: RouteResource<T>) -> any {
+pub fn routeData(resource: RouteResource<any>) -> any {
   render.resourceData(resource.raw)
 }
 
-pub fn routeError<T>(resource: RouteResource<T>) -> any {
+pub fn routeError(resource: RouteResource<any>) -> any {
   render.resourceError(resource.raw)
 }
 
-pub fn routeRead<T>(resource: RouteResource<T>) -> T {
+pub fn routeRead(resource: RouteResource<any>) -> any {
   render.resourceRead(resource.raw)
 }
 
-pub fn refreshRoute<T>(resource: RouteResource<T>) -> Promise<T> {
+pub fn refreshRoute(resource: RouteResource<any>) -> Promise<any> {
   render.resourceRefresh(resource.raw)
 }
 
-pub fn invalidateRoute<T>(resource: RouteResource<T>) -> void {
+pub fn invalidateRoute(resource: RouteResource<any>) -> void {
   render.resourceInvalidate(resource.raw)
 }
 
-pub fn optimisticRouteMutate<T>(resource: RouteResource<T>, value: T) -> T {
+pub fn optimisticRouteMutate(resource: RouteResource<any>, value: any) -> any {
   render.resourceMutate(resource.raw, value)
 }
 
@@ -642,30 +699,30 @@ pub fn invalidateRouteScope(scope: string) -> int {
   render.resourceInvalidateScope(scope)
 }
 
-pub fn routeAction<T>(routerValue: Router, name: string, action: fn() -> Promise<T>) -> RouteAction<T> {
+pub fn routeAction(routerValue: Router, name: string, action: any) -> RouteAction<any> {
   let options = render.props_attr("enabled", false)
-  let actionResource = RouteResource<T> { raw: render.createResource(str.concat(routeResourceKey(routerValue, name), ":action"), fn() -> Promise<any> { action() }, options) }
-  return RouteAction<T> { resource: actionResource, submitting: reactive.createSignal(false) }
+  let actionResource = RouteResource<any> { raw: render.createResource(str.concat(routeResourceKey(routerValue, name), ":action"), fn() -> Promise<any> { action() }, options) }
+  return RouteAction<any> { resource: actionResource, submitting: reactive.createSignal(false) }
 }
 
-pub async fn submitRouteAction<T>(action: RouteAction<T>) -> T {
-  let value = await render.resourceSubmit<T>(action.resource.raw, action.submitting)
+pub async fn submitRouteAction(action: RouteAction<any>) -> any {
+  let value = await render.resourceSubmit(action.resource.raw, action.submitting)
   return value
 }
 
-pub fn routeActionStatus<T>(action: RouteAction<T>) -> string {
+pub fn routeActionStatus(action: RouteAction<any>) -> string {
   render.resourceStatus(action.resource.raw)
 }
 
-pub fn routeActionData<T>(action: RouteAction<T>) -> any {
+pub fn routeActionData(action: RouteAction<any>) -> any {
   render.resourceData(action.resource.raw)
 }
 
-pub fn routeActionError<T>(action: RouteAction<T>) -> any {
+pub fn routeActionError(action: RouteAction<any>) -> any {
   render.resourceError(action.resource.raw)
 }
 
-pub fn routeActionSubmitting<T>(action: RouteAction<T>) -> Signal<bool> {
+pub fn routeActionSubmitting(action: RouteAction<any>) -> Signal<bool> {
   return action.submitting
 }
 

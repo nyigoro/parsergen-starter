@@ -187,6 +187,14 @@ export const propsOnSubmit = (handler: (() => unknown) | null | undefined): Reco
   onSubmit: (event?: Event) => {
     event?.preventDefault?.();
     if (typeof handler !== 'function') return undefined;
-    return handler();
+    const outcome = handler();
+    if (
+      outcome &&
+      (typeof outcome === 'object' || typeof outcome === 'function') &&
+      typeof (outcome as { then?: unknown }).then === 'function'
+    ) {
+      (outcome as PromiseLike<unknown>).then(undefined, () => undefined);
+    }
+    return outcome;
   },
 });

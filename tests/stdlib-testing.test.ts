@@ -39,6 +39,9 @@ describe('@std/testing', () => {
     expect(js).toContain('act');
     expect(js).toContain('actAsync');
     expect(js).toContain('waitFor');
+    expect(js).toContain('waitForIdle');
+    expect(js).toContain('waitForText');
+    expect(js).toContain('waitForRoleName');
     expect(js).toContain('findByText');
     expect(js).toContain('findByRole');
     expect(js).toContain('findByRoleName');

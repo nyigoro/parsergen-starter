@@ -910,6 +910,108 @@ function identifierUsageCount(expr: LuminaExpr, name: string): number {
   return count;
 }
 
+function exprContainsLambda(expr: LuminaExpr): boolean {
+  switch (expr.type) {
+    case 'Lambda':
+      return true;
+    case 'Binary':
+      return exprContainsLambda(expr.left) || exprContainsLambda(expr.right);
+    case 'Call':
+      return (
+        (expr.receiver ? exprContainsLambda(expr.receiver) : false) ||
+        (expr.args ?? []).some((arg) => exprContainsLambda(arg.value))
+      );
+    case 'Member':
+      return exprContainsLambda(expr.object);
+    case 'Index':
+      return exprContainsLambda(expr.object) || exprContainsLambda(expr.index);
+    case 'Range':
+      return (expr.start ? exprContainsLambda(expr.start) : false) || (expr.end ? exprContainsLambda(expr.end) : false);
+    case 'ArrayLiteral':
+    case 'TupleLiteral':
+      return expr.elements.some((item) => exprContainsLambda(item));
+    case 'ArrayRepeatLiteral':
+      return exprContainsLambda(expr.value) || exprContainsLambda(expr.count);
+    case 'ListComprehension':
+      return (
+        exprContainsLambda(expr.body) ||
+        exprContainsLambda(expr.source) ||
+        (expr.source2 ? exprContainsLambda(expr.source2) : false) ||
+        (expr.filter ? exprContainsLambda(expr.filter) : false)
+      );
+    case 'StructLiteral':
+      return expr.fields.some((field) => exprContainsLambda(field.value));
+    case 'MacroInvoke':
+      return expr.args.some((arg) => exprContainsLambda(arg));
+    case 'MatchExpr':
+      return (
+        exprContainsLambda(expr.value) ||
+        expr.arms.some((arm) => (arm.guard ? exprContainsLambda(arm.guard) : false) || exprContainsLambda(arm.body))
+      );
+    case 'SelectExpr':
+      return expr.arms.some((arm) => exprContainsLambda(arm.value) || exprContainsLambda(arm.body));
+    case 'InterpolatedString':
+      return expr.parts.some((part) => typeof part !== 'string' && exprContainsLambda(part));
+    case 'Try':
+    case 'Await':
+      return exprContainsLambda(expr.value);
+    case 'Move':
+      return expr.target.type !== 'Identifier' && exprContainsLambda(expr.target.object);
+    case 'Cast':
+      return exprContainsLambda(expr.expr);
+    case 'IsExpr':
+      return exprContainsLambda(expr.value);
+    default:
+      return false;
+  }
+}
+
+function stmtContainsLambda(stmt: LuminaStatement): boolean {
+  switch (stmt.type) {
+    case 'Let':
+    case 'Return':
+    case 'ExprStmt':
+      return exprContainsLambda(stmt.type === 'ExprStmt' ? stmt.expr : stmt.value);
+    case 'LetTuple':
+      return exprContainsLambda(stmt.value);
+    case 'LetElse':
+      return exprContainsLambda(stmt.value) || blockContainsLambda(stmt.elseBlock);
+    case 'Assign':
+      return (stmt.target.type !== 'Identifier' && exprContainsLambda(stmt.target.object)) || exprContainsLambda(stmt.value);
+    case 'If':
+      return (
+        exprContainsLambda(stmt.condition) ||
+        blockContainsLambda(stmt.thenBlock) ||
+        (stmt.elseBlock ? blockContainsLambda(stmt.elseBlock) : false)
+      );
+    case 'IfLet':
+      return (
+        exprContainsLambda(stmt.value) ||
+        blockContainsLambda(stmt.thenBlock) ||
+        (stmt.elseBlock ? blockContainsLambda(stmt.elseBlock) : false)
+      );
+    case 'While':
+      return exprContainsLambda(stmt.condition) || blockContainsLambda(stmt.body);
+    case 'WhileLet':
+      return exprContainsLambda(stmt.value) || blockContainsLambda(stmt.body);
+    case 'For':
+      return exprContainsLambda(stmt.iterable) || blockContainsLambda(stmt.body);
+    case 'MatchStmt':
+      return (
+        exprContainsLambda(stmt.value) ||
+        stmt.arms.some((arm) => (arm.guard ? exprContainsLambda(arm.guard) : false) || blockContainsLambda(arm.body))
+      );
+    case 'Block':
+      return blockContainsLambda(stmt);
+    default:
+      return false;
+  }
+}
+
+function blockContainsLambda(block: LuminaBlock): boolean {
+  return block.body.some((stmt) => stmtContainsLambda(stmt));
+}
+
 function isPureExpr(expr: LuminaExpr): boolean {
   switch (expr.type) {
     case 'Identifier':
@@ -951,6 +1053,7 @@ function tryInlineCalleeExpression(
   const inlineScope = createAlphaScope(null, globalCounter);
   for (const param of callee.params) bindRenamed(inlineScope, param.name);
   const renamedBody = renameInBody(cloneStmt(callee.body), inlineScope);
+  if (blockContainsLambda(renamedBody)) return null;
 
   const env = new Map<string, LuminaExpr>();
   for (let i = 0; i < callee.params.length; i++) {
@@ -979,6 +1082,7 @@ function tryInlineCalleeExpression(
       continue;
     }
     if (stmt.type === 'Return') {
+      if (exprContainsLambda(stmt.value)) return null;
       return substituteInExpr(stmt.value, env);
     }
     return null;

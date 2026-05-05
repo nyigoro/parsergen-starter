@@ -92,6 +92,23 @@ describe('runtime ssg api', () => {
     expect(html).toContain('"deferredData":{"route":"/docs"}');
   });
 
+  test('normalizes serialized loader and island state helpers into hydration handoff', () => {
+    expect(coerceSsgPageOptions({ serializedState: { boot: true } }).hydrationState).toEqual({
+      boot: true,
+    });
+    expect(
+      coerceSsgPageOptions({
+        loaderState: { route: 'ready' },
+        islandState: { nav: 'deferred' },
+        deferredData: { panel: 'activity' },
+      }).hydrationState
+    ).toEqual({
+      loaderState: { route: 'ready' },
+      islandState: { nav: 'deferred' },
+      deferredData: { panel: 'activity' },
+    });
+  });
+
   test('writes rendered pages to disk', () => {
     const api = createSsgApi<string, (props: { label: string }) => string>({
       isVNode: (value): value is string => typeof value === 'string' && value.startsWith('<'),

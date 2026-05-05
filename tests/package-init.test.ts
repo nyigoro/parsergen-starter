@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { initProject } from '../src/commands/package.js';
-import { checkLuminaTask, setDefaultStdPath } from '../src/bin/lumina-core.js';
+import { checkLuminaTask, compileLuminaTask, setDefaultStdPath } from '../src/bin/lumina-core.js';
 
 const tempDirs: string[] = [];
 const originalCwd = process.cwd();
@@ -110,6 +110,7 @@ describe('lumina init', () => {
     expect(pkg.scripts?.check).toContain('src/ssg.lm');
     expect(pkg.scripts?.build).toContain('--target js --module esm');
     expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
+    expect(pkg.scripts?.ssg).toContain('--hydrate ./main.js');
     expect(ssgSource).toContain('App(createRouter("/")');
     expect(readme).toContain('SSR/SSG-ready');
   });
@@ -129,6 +130,7 @@ describe('lumina init', () => {
 
       expect(pkg.luminaTemplate).toBe(template);
       expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
+      expect(pkg.scripts?.ssg).toContain('--hydrate ./main.js');
       expect(readme).toContain('Commands');
       expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(true);
       if (template === 'auth') expect(fs.existsSync(path.join(dir, 'src', 'session.lm'))).toBe(true);
@@ -167,6 +169,33 @@ describe('lumina init', () => {
       logSpy.mockRestore();
     }
   }, 30000);
+
+  test('generated starter templates compile the browser entry', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      for (const template of ['minimal', 'routed', 'ssr', 'auth', 'testing', 'deploy', 'large-app'] as const) {
+        const dir = createTempDir();
+        process.chdir(dir);
+
+        await initProject({ yes: true, template });
+
+        const result = await compileLuminaTask({
+          sourcePath: path.join(dir, 'src', 'client.lm'),
+          outPath: path.join(dir, 'dist', 'main.js'),
+          target: 'js',
+          grammarPath,
+          useRecovery: false,
+          useAstJs: true,
+        });
+        expect(result.ok).toBe(true);
+        expect(fs.existsSync(path.join(dir, 'dist', 'main.js'))).toBe(true);
+
+        process.chdir(originalCwd);
+      }
+    } finally {
+      logSpy.mockRestore();
+    }
+  }, 60000);
 
   test('@std/router resolves to source-backed high-level helpers in CLI checks', async () => {
     const dir = createTempDir();

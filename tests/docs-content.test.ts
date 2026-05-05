@@ -12,21 +12,31 @@ describe('docs content', () => {
     expect(source).toContain('routeNodeLayout');
     expect(source).toContain('routeTree');
     expect(source).toContain('routeBoundary');
+    expect(source).toContain('routeLayout');
+    expect(source).toContain('routeLinkProps');
     expect(source).toContain('routeRequestPolicy');
     expect(source).toContain('navigateWithTransition');
     expect(source).toContain('invalidateRouteDependency');
     expect(source).toContain('routeDataPolicy');
     expect(source).toContain('createPrefetchResource');
     expect(source).toContain('requestRouteDataPolicy');
+    expect(source).toContain('invalidateRequest');
     expect(source).toContain('renderToReadableStream');
+    expect(source).toContain('loaderStateOptions');
+    expect(source).toContain('uploadFieldProps');
+    expect(source).toContain('schemaFieldProps');
     expect(source).toContain('fieldControlProps');
     expect(source).toContain('waitFor');
+    expect(source).toContain('waitForIdle');
     expect(source).toContain('actAsync');
     expect(source).toContain('settle');
     expect(source).toContain('inspectHydrationMismatch');
     expect(source).toContain('inspect:*');
     expect(source).toContain('recordRouteTransition');
+    expect(source).toContain('routeInspector');
     expect(source).toContain('buttonWithState');
+    expect(source).toContain('tokenDeclaration');
+    expect(source).toContain('tablePaginationProps');
     expect(source).toContain('hydrationBoundaryOptions');
   });
 
@@ -42,15 +52,19 @@ describe('docs content', () => {
       'routeDataPolicy',
       'routeRequestPolicy',
       'requestRouteDataPolicy',
+      'invalidateRequest',
       'submitActionWithRollback',
       'submitActionWithCurrentRollback',
       'fieldControlProps',
       'renderToChunks',
+      'loaderStateOptions',
       'deferredHydrationProps',
       'inspectHydrationMismatch',
+      'routeInspector',
       'testing.settle',
       'testing.actAsync',
       'tokenContract',
+      'tablePaginationProps',
       'tableSortHeader',
       'Folder Convention',
     ]) {
@@ -67,9 +81,11 @@ describe('docs content', () => {
     for (const term of [
       'Phase 1: Route Ownership',
       'routeBoundary',
+      'routeLayout',
       'submitRouteAction',
       'createPrefetchResource',
       'requestRouteDataPolicy',
+      'invalidateRequest',
       'renderToReadableStream',
       'Navigation API',
       'URLPattern',

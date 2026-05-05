@@ -32,6 +32,16 @@ pub fn requestScope(requestId: string, props: any) -> any {
   )
 }
 
+pub fn requestScoped(scope: string, requestId: string, props: any) -> any {
+  render.props_merge(
+    props,
+    render.props_merge(
+      render.props_attr("scope", scope),
+      render.props_attr("requestId", requestId)
+    )
+  )
+}
+
 pub fn scoped(scope: string, props: any) -> any {
   render.props_merge(props, render.props_attr("scope", scope))
 }
@@ -50,6 +60,10 @@ pub fn dependency(name: string, props: any) -> any {
 
 pub fn routeDataPolicy(routeId: string, ttlMs: int, props: any) -> any {
   dependency(routeId, scoped(routeId, backgroundRefresh(ttlMs, abortOnRefresh(props))))
+}
+
+pub fn routeLifecyclePolicy(routeId: string, ttlMs: int, props: any) -> any {
+  tag(routeId, routeDataPolicy(routeId, ttlMs, props))
 }
 
 pub fn requestPolicy(requestId: string, ttlMs: int, props: any) -> any {
@@ -73,6 +87,10 @@ pub fn routeRequestPolicy(routeId: string, requestId: string, ttlMs: int, props:
   requestRouteDataPolicy(requestId, routeId, ttlMs, props)
 }
 
+pub fn requestRouteLifecyclePolicy(requestId: string, routeId: string, ttlMs: int, props: any) -> any {
+  requestRouteDataPolicy(requestId, routeId, ttlMs, props)
+}
+
 pub fn prefetchOptions(ttlMs: int, props: any) -> any {
   render.props_merge(
     backgroundRefresh(ttlMs, props),
@@ -90,6 +108,10 @@ pub fn createResourceWithOptions<T>(key: any, loader: fn() -> Promise<T>, option
 
 pub fn createPrefetchResource<T>(key: any, ttlMs: int, loader: fn() -> Promise<T>) -> Resource<T> {
   createResourceWithOptions(key, loader, prefetchOptions(ttlMs, render.props_empty()))
+}
+
+pub fn createPrefetchResourceWithOptions<T>(key: any, ttlMs: int, loader: fn() -> Promise<T>, props: any) -> Resource<T> {
+  createResourceWithOptions(key, loader, prefetchOptions(ttlMs, props))
 }
 
 pub fn status<T>(resource: Resource<T>) -> string {
@@ -134,6 +156,10 @@ pub fn invalidateDependency(dependency: string) -> int {
 
 pub fn invalidateScope(scope: string) -> int {
   render.resourceInvalidateScope(scope)
+}
+
+pub fn invalidateRequest(requestId: string) -> int {
+  render.resourceInvalidateRequest(requestId)
 }
 
 pub fn revalidateScope(scope: string) -> int {

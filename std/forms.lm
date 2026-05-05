@@ -52,6 +52,16 @@ pub fn formDataSubmitProps(handler: fn() -> any, props: any) -> any {
   submitProps(handler, multipartProps(props))
 }
 
+pub fn uploadFieldProps(name: string, accept: string, multiple: bool, props: any) -> any {
+  render.props_merge(
+    fileInputNamed(name, props),
+    render.props_merge(
+      render.props_attr("accept", accept),
+      render.props_attr("multiple", multiple)
+    )
+  )
+}
+
 pub fn textArea(value: Signal<string>, props: any) -> any {
   bindValue(value, props)
 }
@@ -131,6 +141,10 @@ pub fn serverValidationProps(field: string, props: any) -> any {
   render.props_merge(props, render.props_attr("data-lumina-server-field", field))
 }
 
+pub fn schemaFieldProps(schemaName: string, fieldName: string, props: any) -> any {
+  schemaAdapter(schemaName, serverValidationProps(fieldName, props))
+}
+
 pub fn fieldErrorId(fieldName: string) -> string {
   str.concat(fieldName, "-error")
 }
@@ -190,6 +204,10 @@ pub fn fieldControlProps(fieldName: string, field: FieldState, props: any) -> an
   )
 }
 
+pub fn fieldInputProps(fieldName: string, field: FieldState, props: any) -> any {
+  fieldControlProps(fieldName, field, serverValidationProps(fieldName, props))
+}
+
 pub fn fieldTouchedError(field: FieldState) -> string {
   if (reactive.get(field.touched) == true) {
     return reactive.get(field.error)
@@ -201,6 +219,13 @@ pub fn validationSummaryProps(props: any) -> any {
   render.props_merge(
     props,
     render.props_attr("role", "alert")
+  )
+}
+
+pub fn validationSummaryFor(formId: string, props: any) -> any {
+  render.props_merge(
+    validationSummaryProps(props),
+    render.props_attr("data-lumina-form", formId)
   )
 }
 
@@ -244,6 +269,18 @@ pub fn rollbackResource<T>(resource: any, previous: T) -> T {
   return render.resourceMutate(resource, previous)
 }
 
+pub fn actionFormProps<T>(formAction: FormAction<T>, props: any) -> any {
+  submitProps(fn() -> any {
+    submitAction(formAction)
+  }, render.props_merge(props, render.props_attr("aria-busy", reactive.get(formAction.submitting))))
+}
+
+pub fn optimisticActionFormProps<T>(formAction: FormAction<T>, resource: any, optimistic: T, props: any) -> any {
+  submitProps(fn() -> any {
+    submitActionWithCurrentRollback(formAction, resource, optimistic)
+  }, render.props_merge(props, render.props_attr("aria-busy", reactive.get(formAction.submitting))))
+}
+
 pub fn actionStatus<T>(formAction: FormAction<T>) -> string {
   render.resourceStatus(formAction.resource)
 }
@@ -262,7 +299,7 @@ pub fn actionSubmitting<T>(formAction: FormAction<T>) -> Signal<bool> {
 
 pub fn actionSubmitProps<T>(formAction: FormAction<T>, props: any) -> any {
   submitProps(fn() -> any {
-    let _ = submitAction(formAction)
+    submitAction(formAction)
   }, props)
 }
 

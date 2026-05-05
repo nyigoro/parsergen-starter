@@ -14,6 +14,8 @@ Status: implemented and covered.
   loading, and error boundaries close to the route that owns them.
 - `routeBoundary`, `routeBoundaryView`, and `routeOwnershipProps` lock reusable
   route-owned layout/loading/error/meta units.
+- `routeLayout`, `routeLayoutView`, and `routeTreeFromLayout` make route-owned
+  shell/layout contracts first-class.
 - `routeNodeMeta` and `routeTreeMeta` carry route id, pattern, title, and app
   metadata for document head, analytics, and devtools.
 - `lazyRouteModule`, `navigationIntentProps`, and `prefetchRouteNode` provide
@@ -31,6 +33,8 @@ Status: implemented and covered.
   request scope, stale-while-revalidate, and disabled prefetch records explicit.
 - `requestRouteDataPolicy` carries SSR request identity without weakening route
   invalidation scope.
+- `requestScoped`, `requestRouteLifecyclePolicy`, and `invalidateRequest`
+  separate app scope from request identity.
 - `abortOnRefresh` and background refresh map to abortable loaders and
   stale-while-revalidate behavior.
 - Prefetch helpers now preserve `?search` in route resource keys.
@@ -41,7 +45,8 @@ Status: implemented foundation, streaming/deferred depth remains evolving.
 
 - `renderToChunks` and `renderToReadableStream` expose chunked SSR output.
 - `hydrationOptions`, `requestOptions`, `deferredDataOptions`, `islandProps`,
-  and `deferredHydrationProps` document the server/client handoff contract.
+  `serializedStateOptions`, `loaderStateOptions`, `islandStateOptions`, and
+  `deferredHydrationProps` document the server/client handoff contract.
 - Route and resource state should be serialized only after app render has run.
 
 ## Phase 4: Mutations And Forms
@@ -55,7 +60,8 @@ Status: implemented and covered.
 - `submitActionWithCurrentRollback` uses the current resource value as the
   rollback baseline.
 - `fileInputNamed`, `multipartProps`, `schemaAdapter`, `fieldArrayItemName`,
-  and `applyServerValidation` are the first-class form workflow surface.
+  `uploadFieldProps`, `schemaFieldProps`, `fieldArrayItemName`, and
+  `applyServerValidation` are the first-class form workflow surface.
 - `fieldControlProps`, `fieldErrorProps`, and `validationSummaryProps` carry
   accessible error wiring for server/client validation.
 
@@ -82,8 +88,8 @@ Status: implemented foundation, inspector UI remains a future product layer.
   interaction helpers for route/action/resource workflows.
 - `waitFor` is promise-aware for async browser/e2e-style checks.
 - `@std/ui` owns theme tokens, app shells, navigation, tables, fields, badges,
-  variants, loading controls, sortable headers, and large-app composition
-  conventions.
+  variants, loading controls, sortable headers, pagination metadata, and
+  large-app composition conventions.
 
 ## Standards Floor
 

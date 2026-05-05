@@ -27,6 +27,13 @@ export interface SsrRenderOptions {
   boundary?: string;
 }
 
+export interface SsrSerializedState {
+  request?: SsrRequestContext;
+  loaderState?: unknown;
+  deferredData?: unknown;
+  islandState?: unknown;
+}
+
 export interface SsrRuntimeDeps<TNode extends SsrNodeLike> {
   normalizeNodeForHtml: (node: TNode) => TNode;
   getKind: (node: TNode) => string;
@@ -51,6 +58,22 @@ const htmlEscapeMap: Record<string, string> = {
 
 export const escapeHtml = (value: unknown): string =>
   String(value ?? '').replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char);
+
+const jsonScriptEscapeMap: Record<string, string> = {
+  '<': '\\u003c',
+  '>': '\\u003e',
+  '&': '\\u0026',
+  '\u2028': '\\u2028',
+  '\u2029': '\\u2029',
+};
+
+export const serializeSsrState = (state: SsrSerializedState): string =>
+  JSON.stringify(state ?? {}).replace(/[<>&\u2028\u2029]/g, (char) => jsonScriptEscapeMap[char] ?? char);
+
+export const createSsrStateScript = (
+  state: SsrSerializedState,
+  id: string = 'lumina-ssr-state'
+): string => `<script type="application/json" id="${escapeHtml(id)}">${serializeSsrState(state)}</script>`;
 
 const kebabCase = (value: string): string =>
   value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, '-ms-');

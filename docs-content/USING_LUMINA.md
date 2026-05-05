@@ -47,7 +47,7 @@ lumina compile src/client.lm --target js --module esm --out dist/main.js
 Render a static HTML shell with hydration state:
 
 ```bash
-lumina ssg src/ssg.lm --out dist/index.html --hydrate /dist/main.js --props '{"user":"Ada"}'
+lumina ssg src/ssg.lm --out dist/index.html --hydrate ./main.js --props '{"user":"Ada"}'
 ```
 
 Compile to CommonJS:

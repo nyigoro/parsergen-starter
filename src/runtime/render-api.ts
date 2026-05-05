@@ -22,6 +22,7 @@ import {
   invalidateResourceKey,
   invalidateResourcePrefix,
   invalidateResourceRecord,
+  invalidateResourceRequest,
   invalidateResourceScope,
   invalidateResourceTag,
   ResourceHandle,
@@ -355,6 +356,11 @@ export const createRenderApi = <
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
     },
+    resource_invalidate_request: (requestId: string): number => {
+      const count = invalidateResourceRequest(requestId);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    },
     resource_clear_cache: (): void => {
       clearResourceRecords();
       deps.scheduleDevtoolsNotify();
@@ -372,6 +378,8 @@ export const createRenderApi = <
     resource_mutate: <T>(resource: unknown, value: T): T => {
       const handle = asResourceHandle<T>(resource, 'render.resource_mutate');
       handle.record.version += 1;
+      handle.record.abortController?.abort();
+      handle.record.abortController = null;
       handle.record.promise = null;
       handle.record.data.set(value as unknown);
       handle.record.hasData.set(true);
@@ -445,6 +453,7 @@ export const createRenderApi = <
     resourceInvalidateTag: (tag: string): number => render.resource_invalidate_tag(tag),
     resourceInvalidateDependency: (dependency: string): number => render.resource_invalidate_dependency(dependency),
     resourceInvalidateScope: (scope: string): number => render.resource_invalidate_scope(scope),
+    resourceInvalidateRequest: (requestId: string): number => render.resource_invalidate_request(requestId),
     resourceClearCache: (): void => render.resource_clear_cache(),
     resourceClearScope: (scope: string): number => render.resource_clear_scope(scope),
     resourceClearRequest: (requestId: string): number => render.resource_clear_request(requestId),

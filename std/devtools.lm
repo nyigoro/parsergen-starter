@@ -13,6 +13,12 @@ pub struct InspectorRecord {
   detail: any
 }
 
+pub struct InspectorPanel {
+  kind: string,
+  title: string,
+  records: any
+}
+
 pub fn snapshot() -> any {
   render.devtoolsSnapshot()
 }
@@ -61,6 +67,22 @@ pub fn inspectorRecord(kind: string, label: string, detail: any) -> InspectorRec
   InspectorRecord { kind: str.concat("inspect:", kind), label: label, detail: detail }
 }
 
+pub fn inspectorPanel(kind: string, title: string, records: any) -> InspectorPanel {
+  InspectorPanel { kind: str.concat("inspect:", kind), title: title, records: records }
+}
+
+pub fn routeInspector(title: string, records: any) -> InspectorPanel {
+  inspectorPanel("route", title, records)
+}
+
+pub fn resourceInspector(title: string, records: any) -> InspectorPanel {
+  inspectorPanel("resource", title, records)
+}
+
+pub fn hydrationInspector(title: string, records: any) -> InspectorPanel {
+  inspectorPanel("hydration-mismatch", title, records)
+}
+
 pub fn inspectSignal(label: string, detail: any) -> any {
   inspect("signal", label, detail)
 }
@@ -107,6 +129,10 @@ pub fn profileEnd(label: string, detail: any) -> any {
 
 pub fn recordRenderCost(label: string, detail: any) -> any {
   record("render-cost", label, detail)
+}
+
+pub fn recordProfilerSpan(label: string, durationMs: int, detail: any) -> any {
+  record("profile:span", label, render.props_merge(detail, render.props_attr("durationMs", durationMs)))
 }
 
 pub fn timeline() -> any {

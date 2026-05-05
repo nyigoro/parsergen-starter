@@ -176,8 +176,8 @@ async fn loadDashboard() -> string {
 
 fn main() -> int {
   let appRouter = createRouter("/");
-  let dashboard = routeLoader<string>(appRouter, "dashboard", || loadDashboard());
-  let _settingsPrefetch = prefetchRoute<string>(appRouter, "/settings", "dashboard", || loadDashboard());
+  let dashboard = routeLoader(appRouter, "dashboard", || loadDashboard());
+  let _settingsPrefetch = prefetchRoute(appRouter, "/settings", "dashboard", || loadDashboard());
   let view = render.element("main", props { class: "app-shell" }, [
     render.element("nav", props { class: "nav-row" }, [
       linkWithProps(appRouter, "/", props { class: "nav-link" }, [render.text("Home")]),

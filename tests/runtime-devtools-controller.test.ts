@@ -21,7 +21,10 @@ describe('runtime devtools controller', () => {
     const signalId = controller.registerSignal('signal', signal);
     const root = { current: 'node', frames: [] };
     controller.registerRoot(root);
-    const event = controller.recordEvent('hydration', 'text mismatch', { path: 'root.0' });
+    const detail = { path: 'root.0' };
+    const event = controller.recordEvent('hydration', 'text mismatch', detail);
+    detail.path = 'mutated';
+    (event.detail as { path?: string }).path = 'returned-mutated';
     controller.scheduleNotify();
 
     while (microtasks.length > 0) {
@@ -31,8 +34,12 @@ describe('runtime devtools controller', () => {
     expect(seen.at(-1)?.signals).toEqual([{ id: signalId, kind: 'signal', value: 'alpha' }]);
     expect(seen.at(-1)?.roots).toEqual([{ id: 1, current: 'node', frames: [] }]);
     expect(seen.at(-1)?.resources[0]?.key).toBe('resource:alpha');
-    expect(seen.at(-1)?.timeline).toEqual([event]);
-    expect(controller.timeline()).toEqual([event]);
+    expect(seen.at(-1)?.timeline).toHaveLength(1);
+    expect(controller.timeline()).toHaveLength(1);
+    expect((controller.timeline()[0]?.detail as { path?: string }).path).toBe('root.0');
+    const returned = controller.timeline()[0] as { detail: { path: string } };
+    returned.detail.path = 'consumer-mutated';
+    expect((controller.timeline()[0]?.detail as { path?: string }).path).toBe('root.0');
 
     const installed = controller.install('__LUMINA_DEVTOOLS_TEST__');
     expect((globalThis as Record<string, unknown>).__LUMINA_DEVTOOLS_TEST__).toBe(installed);

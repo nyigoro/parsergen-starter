@@ -112,4 +112,34 @@ describe('lumina ssg', () => {
     expect(html).toContain('"name":"Ada"');
     expect(html).toContain('/main.js');
   });
+
+  test('captures resources created during render in the hydration payload', () => {
+    const root = createWorkspace('.tmp-lumina-ssg-resource-');
+    const entry = path.join(root, 'main.lm');
+    const outPath = path.join(root, 'dist', 'index.html');
+
+    writeFile(
+      entry,
+      `
+        import { render } from "@std";
+
+        async fn load() -> string {
+          "loaded"
+        }
+
+        pub fn main() -> VNode {
+          let resource = render.createResource("ssg:resource", || load(), render.props_attr("scope", "route:ssg"));
+          render.text(render.resourceData(resource))
+        }
+      `.trim() + '\n'
+    );
+
+    const result = runCommand(['ssg', entry, '--out', outPath, '--hydrate', '/main.js']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.errors).toHaveLength(0);
+    const html = fs.readFileSync(outPath, 'utf-8');
+    expect(html).toContain('"key":"ssg:resource"');
+    expect(html).toContain('"scope":"route:ssg"');
+  });
 });

@@ -24,7 +24,12 @@ describe('@std/devtools', () => {
     expect(js).toContain('installDevtools');
     expect(js).toContain('devtoolsRecordEvent');
     expect(js).toContain('InspectorRecord');
+    expect(js).toContain('InspectorPanel');
     expect(js).toContain('inspectorRecord');
+    expect(js).toContain('inspectorPanel');
+    expect(js).toContain('routeInspector');
+    expect(js).toContain('resourceInspector');
+    expect(js).toContain('hydrationInspector');
     expect(js).toContain('resources');
     expect(js).toContain('signals');
     expect(js).toContain('roots');
@@ -39,6 +44,7 @@ describe('@std/devtools', () => {
     expect(js).toContain('recordHydrationRecovery');
     expect(js).toContain('profileStart');
     expect(js).toContain('profileEnd');
+    expect(js).toContain('recordProfilerSpan');
     expect(js).toContain('recordRenderCost');
     expect(js).toContain('devtoolsTimeline');
     expect(js).toContain('devtoolsClearTimeline');

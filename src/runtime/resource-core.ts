@@ -95,8 +95,8 @@ const normalizeResourceOptions = (options: unknown): ResourceOptions => {
   return { ttlMs, enabled, staleWhileRevalidate, abortOnRefresh, scope, requestId, tags, dependencies };
 };
 
-const resourceCacheIdentity = (key: string, requestId: string): string =>
-  requestId ? JSON.stringify([requestId, key]) : key;
+const resourceCacheIdentity = (key: string, scope: string, requestId: string): string =>
+  JSON.stringify([scope, requestId, key]);
 
 const resourceHasData = (record: ResourceRecord<unknown>): boolean => !!record.hasData.peek();
 
@@ -224,7 +224,11 @@ export const resolveResourceRecord = <T>(
 ): ResourceRecord<T> => {
   const normalizedKey = normalizeResourceKey(key);
   const normalizedOptions = normalizeResourceOptions(options);
-  const cacheIdentity = resourceCacheIdentity(normalizedKey, normalizedOptions.requestId);
+  const cacheIdentity = resourceCacheIdentity(
+    normalizedKey,
+    normalizedOptions.scope,
+    normalizedOptions.requestId
+  );
   const existing = resourceCache.get(cacheIdentity) as ResourceRecord<T> | undefined;
   if (existing) {
     existing.loader = loader;
@@ -310,6 +314,19 @@ export const invalidateResourceScope = (scope: string): number => {
   let count = 0;
   for (const record of resourceCache.values()) {
     if (record.scope !== normalizedScope) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+};
+
+export const invalidateResourceRequest = (requestId: string): number => {
+  const normalizedRequestId = String(requestId).trim();
+  if (!normalizedRequestId) return 0;
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (record.requestId !== normalizedRequestId) continue;
     invalidateResourceRecord(record);
     count += 1;
   }

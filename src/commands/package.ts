@@ -201,7 +201,7 @@ export async function initProject(options: { yes?: boolean; template?: string } 
       ? {
           check: 'lumina check src/client.lm && lumina check src/ssg.lm',
           build: 'lumina compile src/client.lm --target js --module esm --out dist/main.js',
-          ssg: 'lumina ssg src/ssg.lm --out dist/index.html --hydrate /dist/main.js --title "Lumina App"',
+          ssg: 'lumina ssg src/ssg.lm --out dist/index.html --hydrate ./main.js --title "Lumina App"',
           dev: 'npm run build && vite --host 127.0.0.1',
         }
       : {
@@ -336,9 +336,9 @@ async fn saveDashboard() -> string {
 }
 
 pub component App(appRouter: Router) -> VNode {
-  let dashboard = routeLoader<string>(appRouter, "dashboard", || loadDashboard());
-  let _settingsPrefetch = prefetchRoute<string>(appRouter, "/settings", "dashboard", || loadDashboard());
-  let saveAction = routeAction<string>(appRouter, "save-dashboard", || saveDashboard());
+  let dashboard = routeLoader(appRouter, "dashboard", || loadDashboard());
+  let _settingsPrefetch = prefetchRoute(appRouter, "/settings", "dashboard", || loadDashboard());
+  let saveAction = routeAction(appRouter, "save-dashboard", || saveDashboard());
 
   render.element("main", render.props_class("app-shell"), [
     render.element("section", render.props_class("app-panel"), [

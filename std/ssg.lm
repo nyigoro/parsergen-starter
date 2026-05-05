@@ -8,6 +8,14 @@ pub fn hydrationOptions(state: any, hydrateModule: string) -> any {
   render.props_merge(render.props_attr("hydrationState", state), render.props_attr("hydrateModule", hydrateModule))
 }
 
+pub fn serializedStateOptions(state: any, options: any) -> any {
+  render.props_merge(options, render.props_attr("serializedState", state))
+}
+
+pub fn loaderStateOptions(state: any, options: any) -> any {
+  render.props_merge(options, render.props_attr("loaderState", state))
+}
+
 pub fn hydrationBoundaryOptions(state: any, hydrateModule: string, boundary: string) -> any {
   render.props_merge(hydrationOptions(state, hydrateModule), render.props_attr("hydrationBoundary", boundary))
 }
@@ -18,6 +26,10 @@ pub fn requestOptions(requestId: string, options: any) -> any {
 
 pub fn deferredDataOptions(state: any, options: any) -> any {
   render.props_merge(options, render.props_attr("deferredData", state))
+}
+
+pub fn islandStateOptions(state: any, options: any) -> any {
+  render.props_merge(options, render.props_attr("islandState", state))
 }
 
 pub fn islandProps(id: string, props: any) -> any {

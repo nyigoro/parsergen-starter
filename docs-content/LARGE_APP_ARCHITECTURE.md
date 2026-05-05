@@ -10,6 +10,8 @@ tokens close to the code that owns them.
 - Wrap the root ownership contract in `routeTree`.
 - Use `routeBoundary` when a route owns layout, loading, error, and meta as a
   reusable unit.
+- Use `routeLayout` when a route owns a shell function plus loading/error/meta
+  as a first-class module boundary.
 - Keep layout ownership in `routeNodeLayout`.
 - Keep route loaders/actions on the same node with `routeNodeLoader` and
   `routeNodeAction`.
@@ -32,6 +34,8 @@ tokens close to the code that owns them.
   cancellation, stale-while-revalidate, and invalidation.
 - Cancel rapid navigation with `cancelRouteNode` and revalidate with
   `revalidateRouteNode`.
+- Revalidate request-owned loaders with `invalidateRequest`, and clear request
+  records with `clearRequestScope` after SSR/request teardown.
 
 ## Mutations And Forms
 
@@ -54,11 +58,15 @@ tokens close to the code that owns them.
   streamed HTML output.
 - Mark islands with `islandProps` and deferred islands with
   `deferredHydrationProps`.
+- Keep loader state in `loaderStateOptions` and serialized boot payloads in
+  `serializedStateOptions`.
 - Keep server-only request data separate from public hydration payloads.
 
 ## Devtools And Testing
 
 - Record route/resource/render events with `@std/devtools`.
+- Group inspector views with `routeInspector`, `resourceInspector`, and
+  `hydrationInspector`.
 - Use `inspectHydrationMismatch` for hydration recovery diagnostics.
 - Use `testing.flush`, promise-aware `testing.waitFor`, `testing.actAsync`,
   `testing.settle`, and
@@ -75,6 +83,9 @@ tokens close to the code that owns them.
 - Use `variantProps`, `buttonWithState`, `fieldControlProps`, and
   `tableSortHeader` for loading controls, accessible fields, and sortable data
   tables.
+- Use `tokenDeclaration`, `themeToken`, `tableCaption`, and
+  `tablePaginationProps` when a team needs shared token and data-grid
+  contracts.
 
 ## Folder Convention
 

@@ -18,7 +18,9 @@ type ResourceRecord = {
 };
 
 type ResourceApi = {
+  requestScoped: (scope: string, requestId: string, props: Record<string, unknown>) => Record<string, unknown>;
   requestPolicy: (requestId: string, ttlMs: number, props: Record<string, unknown>) => Record<string, unknown>;
+  routeLifecyclePolicy: (routeId: string, ttlMs: number, props: Record<string, unknown>) => Record<string, unknown>;
   routeRequestPolicy: (
     routeId: string,
     requestId: string,
@@ -33,9 +35,16 @@ type ResourceApi = {
   ) => Record<string, unknown>;
   prefetchOptions: (ttlMs: number, props: Record<string, unknown>) => Record<string, unknown>;
   createPrefetchResource: <T>(key: unknown, ttlMs: number, loader: () => Promise<T>) => { raw: ResourceRecord };
+  createPrefetchResourceWithOptions: <T>(
+    key: unknown,
+    ttlMs: number,
+    loader: () => Promise<T>,
+    props: Record<string, unknown>
+  ) => { raw: ResourceRecord };
   status: (resource: { raw: ResourceRecord }) => string;
   data: (resource: { raw: ResourceRecord }) => unknown;
   refresh: <T>(resource: { raw: ResourceRecord }) => Promise<T>;
+  invalidateRequest: (requestId: string) => number;
   clearRequestScope: (requestId: string) => number;
 };
 
@@ -46,7 +55,7 @@ const compileResourceStdlib = (): ResourceApi => {
   const factory = new Function(
     '__runtimeRender',
     'module',
-    `${js}\nreturn { requestPolicy, routeRequestPolicy, requestRouteDataPolicy, prefetchOptions, createPrefetchResource, status, data, refresh, clearRequestScope };`
+    `${js}\nreturn { requestScoped, requestPolicy, routeLifecyclePolicy, routeRequestPolicy, requestRouteDataPolicy, requestRouteLifecyclePolicy, prefetchOptions, createPrefetchResource, createPrefetchResourceWithOptions, status, data, refresh, invalidateRequest, clearRequestScope };`
   ) as (render: Record<string, unknown>, moduleHandle: { exports: Record<string, unknown> }) => ResourceApi;
 
   const runtimeRender = {
@@ -74,6 +83,7 @@ const compileResourceStdlib = (): ResourceApi => {
       record.status = 'success';
       return record.data;
     },
+    resourceInvalidateRequest: (requestId: string) => requestId.length + 1,
     resourceClearRequest: (requestId: string) => requestId.length,
   };
 
@@ -95,15 +105,19 @@ describe('@std/resource', () => {
     expect(js).toContain('cachePolicy');
     expect(js).toContain('backgroundRefresh');
     expect(js).toContain('requestScope');
+    expect(js).toContain('requestScoped');
     expect(js).toContain('requestPolicy');
+    expect(js).toContain('routeLifecyclePolicy');
     expect(js).toContain('routeRequestPolicy');
     expect(js).toContain('requestRouteDataPolicy');
+    expect(js).toContain('requestRouteLifecyclePolicy');
     expect(js).toContain('abortOnRefresh');
     expect(js).toContain('routeDataPolicy');
     expect(js).toContain('prefetchOptions');
     expect(js).toContain('createResource');
     expect(js).toContain('resourceStatus');
     expect(js).toContain('createPrefetchResource');
+    expect(js).toContain('createPrefetchResourceWithOptions');
     expect(js).toContain('resourceData');
     expect(js).toContain('resourceError');
     expect(js).toContain('resourceRead');
@@ -114,6 +128,8 @@ describe('@std/resource', () => {
     expect(js).toContain('resourceInvalidateTag');
     expect(js).toContain('resourceInvalidateDependency');
     expect(js).toContain('resourceInvalidateScope');
+    expect(js).toContain('resourceInvalidateRequest');
+    expect(js).toContain('invalidateRequest');
     expect(js).toContain('revalidateScope');
     expect(js).toContain('resourceClearCache');
     expect(js).toContain('resourceClearScope');
@@ -125,6 +141,11 @@ describe('@std/resource', () => {
   test('request and prefetch policies execute with app lifecycle semantics', async () => {
     const api = compileResourceStdlib();
 
+    expect(api.requestScoped('route:home', 'req-0', { cache: true })).toMatchObject({
+      cache: true,
+      scope: 'route:home',
+      requestId: 'req-0',
+    });
     expect(api.requestPolicy('req-1', 5000, { auth: true })).toMatchObject({
       auth: true,
       scope: 'req-1',
@@ -142,10 +163,18 @@ describe('@std/resource', () => {
       tags: 'route:projects',
       dependencies: 'route:projects',
     });
+    expect(api.routeLifecyclePolicy('route:projects', 6000, { owner: 'projects' })).toMatchObject({
+      owner: 'projects',
+      scope: 'route:projects',
+      ttlMs: 6000,
+      tags: 'route:projects',
+      dependencies: 'route:projects',
+    });
     expect(api.requestRouteDataPolicy('req-3', 'route:tasks', 9000, {})).toMatchObject({
       scope: 'route:tasks',
       requestId: 'req-3',
     });
+    expect(api.invalidateRequest('req-3')).toBe(6);
     expect(api.clearRequestScope('req-3')).toBe(5);
     expect(api.prefetchOptions(3000, { tag: 'docs' })).toMatchObject({
       tag: 'docs',
@@ -160,5 +189,15 @@ describe('@std/resource', () => {
     await expect(api.refresh<string>(resource)).resolves.toBe('loaded');
     expect(resource.raw.calls).toBe(1);
     expect(api.data(resource)).toBe('loaded');
+
+    const taggedPrefetch = api.createPrefetchResourceWithOptions('prefetch:team', 1500, async () => 'team', {
+      tags: 'team',
+    });
+    expect(taggedPrefetch.raw.options).toMatchObject({
+      tags: 'team',
+      ttlMs: 1500,
+      staleWhileRevalidate: true,
+      enabled: false,
+    });
   });
 });

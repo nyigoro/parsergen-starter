@@ -402,12 +402,14 @@ export const getTestingTextContent = (node: unknown): string => {
 export const dispatchTestingClick = (node: unknown): void => {
   const element = asTestingElement(node);
   if (!element) return;
+  if (element.disabled || element.getAttribute('disabled') !== null) return;
   element.focus();
   const event = createEventBase(element);
   element.listeners.get('click')?.(event);
   if (event.defaultPrevented) return;
   const type = element.getAttribute('type') ?? element.type;
   const submits = (element.tagName === 'button' && type === 'submit') ||
+    (element.tagName === 'button' && (type === null || type === undefined || type === '')) ||
     (element.tagName === 'input' && type === 'submit');
   if (!submits) return;
   let parent = element.parentNode;

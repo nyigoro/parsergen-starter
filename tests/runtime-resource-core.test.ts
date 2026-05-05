@@ -6,6 +6,7 @@ import {
   configureResourceCore,
   ensureResourceCurrent,
   invalidateResourceKey,
+  invalidateResourceRequest,
   listResourceRecords,
   ResourceHandle,
   resolveResourceRecord,
@@ -108,6 +109,24 @@ describe('runtime resource core', () => {
     expect(reqB.data.peek()).toBe('req-b:2');
   });
 
+  test('partitions same-key resources by scope and clears one scope', async () => {
+    configureResourceCore({
+      serializeKey: (key) => String(key),
+      notifyDevtools: () => undefined,
+    });
+
+    const dashboard = resolveResourceRecord('settings', () => 'dashboard', { scope: 'route:dashboard' });
+    const account = resolveResourceRecord('settings', () => 'account', { scope: 'route:account' });
+
+    expect(dashboard).not.toBe(account);
+    await Promise.resolve();
+    expect(dashboard.data.peek()).toBe('dashboard');
+    expect(account.data.peek()).toBe('account');
+    expect(clearResourceScope('route:dashboard')).toBe(1);
+    expect(listResourceRecords()).toHaveLength(1);
+    expect(listResourceRecords()[0]?.scope).toBe('route:account');
+  });
+
   test('clears request-scoped route resources by request id', () => {
     configureResourceCore({
       serializeKey: (key) => String(key),
@@ -120,6 +139,31 @@ describe('runtime resource core', () => {
     expect(clearResourceRequest('req-1')).toBe(1);
     expect(listResourceRecords()).toHaveLength(1);
     expect(listResourceRecords()[0]?.requestId).toBe('req-2');
+  });
+
+  test('invalidates request-scoped records by request id without clearing them', async () => {
+    configureResourceCore({
+      serializeKey: (key) => String(key),
+      notifyDevtools: () => undefined,
+    });
+
+    let callsA = 0;
+    let callsB = 0;
+    const reqA = resolveResourceRecord('session', () => {
+      callsA += 1;
+      return `a:${callsA}`;
+    }, { requestId: 'req-a', scope: 'route:dashboard' });
+    const reqB = resolveResourceRecord('session', () => {
+      callsB += 1;
+      return `b:${callsB}`;
+    }, { requestId: 'req-b', scope: 'route:dashboard' });
+
+    await Promise.resolve();
+    expect(invalidateResourceRequest('req-a')).toBe(1);
+    await Promise.resolve();
+    expect(reqA.data.peek()).toBe('a:2');
+    expect(reqB.data.peek()).toBe('b:1');
+    expect(listResourceRecords()).toHaveLength(2);
   });
 
   test('ensures stale resources reload and disabled records require force', async () => {

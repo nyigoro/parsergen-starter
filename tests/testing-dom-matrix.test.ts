@@ -309,6 +309,35 @@ describe('testing DOM matrix', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  test('dispatchTestingClick submits implicit submit buttons inside forms', () => {
+    const document = new TestingDocument();
+    const form = document.createElement('form');
+    const button = document.createElement('button');
+    const calls: string[] = [];
+    form.addEventListener('submit', () => calls.push('submit'));
+    form.appendChild(button);
+
+    dispatchTestingClick(button);
+
+    expect(calls).toEqual(['submit']);
+  });
+
+  test('dispatchTestingClick does not activate disabled form controls', () => {
+    const document = new TestingDocument();
+    const form = document.createElement('form');
+    const button = document.createElement('button');
+    const calls: string[] = [];
+    button.disabled = true;
+    button.addEventListener('click', () => calls.push('click'));
+    form.addEventListener('submit', () => calls.push('submit'));
+    form.appendChild(button);
+
+    dispatchTestingClick(button);
+
+    expect(calls).toEqual([]);
+    expect(document.activeElement).toBeNull();
+  });
+
   test('dispatchTestingClick is a no-op for non-elements', () => {
     expect(() => dispatchTestingClick({})).not.toThrow();
   });

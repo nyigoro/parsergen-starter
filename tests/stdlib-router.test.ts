@@ -55,6 +55,16 @@ type RouterApi = {
     fallback: VNode
   ) => VNode;
   routeTreeFromBoundary: (boundary: unknown) => unknown;
+  routeLayout: (
+    node: unknown,
+    shell: (match: unknown, child: unknown) => VNode,
+    loading: VNode,
+    error: VNode,
+    meta: Record<string, unknown>
+  ) => unknown;
+  routeLayoutMeta: (layout: unknown) => Record<string, unknown>;
+  routeLayoutView: (routerValue: unknown, layout: unknown, child: unknown, fallback: VNode) => VNode;
+  routeTreeFromLayout: (layout: unknown) => unknown;
   routeTree: (root: unknown, loading: VNode, error: VNode, meta: Record<string, unknown>) => unknown;
   routeTreeView: (
     routerValue: unknown,
@@ -123,6 +133,16 @@ type RouterApi = {
   navigationIntentProps: (intent: string, props: Record<string, unknown>) => Record<string, unknown>;
   viewTransitionProps: (name: string, props: Record<string, unknown>) => Record<string, unknown>;
   navigateWithTransition: (routerValue: unknown, path: string) => void;
+  navigateRouteNode: (routerValue: unknown, node: unknown, path: string) => void;
+  navigateRouteNodeWithTransition: (routerValue: unknown, node: unknown, path: string) => void;
+  routeLinkProps: (routerValue: unknown, node: unknown, href: string, props: Record<string, unknown>) => Record<string, unknown>;
+  prefetchLinkProps: (
+    routerValue: unknown,
+    node: unknown,
+    href: string,
+    policy: unknown,
+    props: Record<string, unknown>
+  ) => Record<string, unknown>;
   matchUrlPattern: (pattern: string, path: string) => boolean;
   routeModuleMatch: (routerValue: unknown, module: unknown) => { matched: boolean; params: unknown; search: unknown };
   routeModuleKey: (routerValue: unknown, module: unknown, name: string) => string;
@@ -577,7 +597,7 @@ const compileRouterStdlib = (): RouterApi => {
     'reactive',
     'render',
     'module',
-    `${js}\nreturn { createRouter, navigate, replace, getScrollRestoration, setScrollRestoration, scrollToTop, supportsNavigationApi, supportsViewTransition, supportsUrlPattern, startViewTransition, currentPath, currentParams, currentSearchParams, routeResourceKey, routeScopedKey, routeModule, routeNode, routeNodeWithChildren, routeNodeModule, routeNodeChildren, routeNodeMeta, routeOwnershipProps, routeRequestPolicy, routeBoundary, routeBoundaryMeta, routeBoundaryView, routeTreeFromBoundary, routeTree, routeTreeView, routeTreeBoundary, routeTreeMeta, cancelRouteTree, revalidateRouteTree, routeNodeMatch, routeNodeKey, routeNodeOptions, routeNodeLoader, routeNodeLoaderWithOptions, routeNodeAction, routeNodeView, routeNodeLayout, prefetchRouteNode, prefetchRouteNodeWithOptions, cancelRouteNode, revalidateRouteNode, prefetchPolicy, prefetchPolicyProps, lazyRouteModule, navigationIntentProps, viewTransitionProps, navigateWithTransition, matchUrlPattern, routeModuleMatch, routeModuleKey, routeModuleLoader, routeModuleLoaderWithOptions, routeModuleAction, routeModuleView, routeLoader, routeLoaderWithOptions, routeLoaderFor, routeLoaderForWithOptions, prefetchRoute, prefetchRouteWithOptions, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, invalidateRouteKey, invalidateRoutePrefix, invalidateRouteTag, invalidateRouteDependency, invalidateRouteScope, optimisticRouteMutate, routeAction, submitRouteAction, routeActionStatus, routeActionData, routeActionError, routeActionSubmitting, matchRoute, isActive, routeMatch, routeParams, routeView, outlet, layout, routeLoading, routeErrorBoundary, extractParams, onRouteChange, link, linkWithProps };`
+    `${js}\nreturn { createRouter, navigate, replace, getScrollRestoration, setScrollRestoration, scrollToTop, supportsNavigationApi, supportsViewTransition, supportsUrlPattern, startViewTransition, currentPath, currentParams, currentSearchParams, routeResourceKey, routeScopedKey, routeModule, routeNode, routeNodeWithChildren, routeNodeModule, routeNodeChildren, routeNodeMeta, routeOwnershipProps, routeRequestPolicy, routeBoundary, routeBoundaryMeta, routeBoundaryView, routeTreeFromBoundary, routeLayout, routeLayoutMeta, routeLayoutView, routeTreeFromLayout, routeTree, routeTreeView, routeTreeBoundary, routeTreeMeta, cancelRouteTree, revalidateRouteTree, routeNodeMatch, routeNodeKey, routeNodeOptions, routeNodeLoader, routeNodeLoaderWithOptions, routeNodeAction, routeNodeView, routeNodeLayout, prefetchRouteNode, prefetchRouteNodeWithOptions, cancelRouteNode, revalidateRouteNode, prefetchPolicy, prefetchPolicyProps, lazyRouteModule, navigationIntentProps, viewTransitionProps, navigateWithTransition, navigateRouteNode, navigateRouteNodeWithTransition, routeLinkProps, prefetchLinkProps, matchUrlPattern, routeModuleMatch, routeModuleKey, routeModuleLoader, routeModuleLoaderWithOptions, routeModuleAction, routeModuleView, routeLoader, routeLoaderWithOptions, routeLoaderFor, routeLoaderForWithOptions, prefetchRoute, prefetchRouteWithOptions, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, invalidateRouteKey, invalidateRoutePrefix, invalidateRouteTag, invalidateRouteDependency, invalidateRouteScope, optimisticRouteMutate, routeAction, submitRouteAction, routeActionStatus, routeActionData, routeActionError, routeActionSubmitting, matchRoute, isActive, routeMatch, routeParams, routeView, outlet, layout, routeLoading, routeErrorBoundary, extractParams, onRouteChange, link, linkWithProps };`
   ) as (
     routerModule: typeof runtimeRouter,
     strModule: typeof runtimeStr,
@@ -943,6 +963,22 @@ describe('@std/router', () => {
       { kind: 'text', text: 'fallback' }
     );
     expect(view.text).toBe('layout');
+    const ownedLayout = routerApi.routeLayout(
+      node,
+      (_match, child) => ({ kind: 'text', text: String((child as { label?: string }).label) }),
+      { kind: 'text', text: 'loading' },
+      { kind: 'text', text: 'error' },
+      { section: 'detail' }
+    );
+    expect(routerApi.routeLayoutMeta(ownedLayout)).toMatchObject({
+      section: 'detail',
+      routeId: 'project-detail',
+      'data-lumina-route-owner': 'project-detail',
+    });
+    expect(routerApi.routeLayoutView(routerValue, ownedLayout, { label: 'owned-layout' }, { kind: 'text', text: 'fallback' }).text).toBe('owned-layout');
+    expect(routerApi.routeTreeMeta(routerApi.routeTreeFromLayout(ownedLayout))).toMatchObject({
+      routeId: 'project-detail',
+    });
     expect(routerApi.navigationIntentProps('prefetch', {})['data-lumina-navigation-intent']).toBe('prefetch');
     expect(routerApi.viewTransitionProps('route-main', {}).style).toBe('view-transition-name:route-main');
     expect(routerApi.supportsNavigationApi()).toBe(false);
@@ -951,6 +987,25 @@ describe('@std/router', () => {
     expect(routerApi.matchUrlPattern('/projects/:id', '/projects/7')).toBe(true);
     routerApi.navigateWithTransition(routerValue, '/projects/9');
     expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/projects/9');
+    const policy = routerApi.prefetchPolicy('viewport', 5000, true);
+    const linkProps = routerApi.routeLinkProps(routerValue, node, '/projects/10', { className: 'link' });
+    expect(linkProps).toMatchObject({
+      href: '/app/projects/10',
+      className: 'link',
+      'data-lumina-route-link': 'project-detail',
+      'data-lumina-route-owner': 'project-detail',
+    });
+    const prefetchLink = routerApi.prefetchLinkProps(routerValue, node, '/projects/11', policy, {});
+    expect(prefetchLink).toMatchObject({
+      href: '/app/projects/11',
+      'data-lumina-prefetch': 'viewport',
+      'data-lumina-route-link': 'project-detail',
+    });
+    const navNode = routerApi.routeNode('nav-project', '/projects/:id', 'Project Nav');
+    routerApi.navigateRouteNode(routerValue, navNode, '/projects/12');
+    expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/projects/12');
+    routerApi.navigateRouteNodeWithTransition(routerValue, navNode, '/projects/13');
+    expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/projects/13');
 
     const tree = routerApi.routeTree(
       node,
@@ -974,7 +1029,6 @@ describe('@std/router', () => {
     expect(routerApi.revalidateRouteTree(tree)).toBe(2);
     expect(routerApi.cancelRouteTree(tree)).toBe(2);
 
-    const policy = routerApi.prefetchPolicy('viewport', 5000, true);
     expect(routerApi.prefetchPolicyProps(policy, {})).toMatchObject({
       'data-lumina-prefetch': 'viewport',
       ttlMs: 5000,

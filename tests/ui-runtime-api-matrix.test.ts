@@ -86,6 +86,7 @@ const renderFunctionNames = [
   'resourceInvalidateTag',
   'resourceInvalidateDependency',
   'resourceInvalidateScope',
+  'resourceInvalidateRequest',
   'resourceClearCache',
   'resourceClearScope',
   'resourceClearRequest',

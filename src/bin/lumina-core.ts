@@ -1804,11 +1804,11 @@ async function runSsgCommand(options: {
         throw new Error(${JSON.stringify(`SSG export '${options.exportName}' was not found in ${options.sourcePath}`)});
       }
       const props = ${JSON.stringify(props ?? null)};
-      const hydrationState = {
+      const createHydrationState = () => ({
         props,
         route: runtime.router?.getCurrentPath?.() ?? '/',
         resources: runtime.devtoolsSnapshot?.().resources ?? [],
-      };
+      });
       const serializeHydrationState = (value) => JSON.stringify(value ?? null)
         .replace(/</g, '\\\\u003c')
         .replace(/\\u2028/g, '\\\\u2028')
@@ -1819,6 +1819,7 @@ async function runSsgCommand(options: {
         return html.includes('</body>') ? html.replace('</body>', script + '</body>') : html + script;
       };
       const result = await exported(props === null ? undefined : props);
+      const hydrationState = createHydrationState();
       const html = typeof result === 'string' && result.trimStart().toLowerCase().startsWith('<!doctype')
         ? result
         : runtime.ssgPage(result, {
@@ -2356,6 +2357,7 @@ async function compileLumina(
         out = appendSourceMapComment(out, mapFileName);
       }
     }
+    await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, out, 'utf-8');
     if (sourceMap && result.map && !inlineSourceMap) {
       const mapPath = outPath + '.map';
@@ -2403,6 +2405,7 @@ async function compileLumina(
           out = appendSourceMapComment(out, mapFileName);
         }
       }
+      await fs.mkdir(path.dirname(outPath), { recursive: true });
       await fs.writeFile(outPath, out, 'utf-8');
       if (sourceMap && result.map && !inlineSourceMap) {
         const mapPath = outPath + '.map';
@@ -2431,6 +2434,7 @@ async function compileLumina(
         out = appendSourceMapComment(out, mapFileName);
       }
     }
+    await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, out, 'utf-8');
     if (sourceMap && result.map && !inlineSourceMap) {
       const mapPath = outPath + '.map';
@@ -2478,6 +2482,7 @@ async function compileLumina(
           out = appendSourceMapComment(out, mapFileName);
         }
       }
+      await fs.mkdir(path.dirname(outPath), { recursive: true });
       await fs.writeFile(outPath, out, 'utf-8');
       if (sourceMap && result.map && !inlineSourceMap) {
         const mapPath = outPath + '.map';
@@ -2506,6 +2511,7 @@ async function compileLumina(
         out = appendSourceMapComment(out, mapFileName);
       }
     }
+    await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, out, 'utf-8');
     if (sourceMap && result.map && !inlineSourceMap) {
       const mapPath = outPath + '.map';

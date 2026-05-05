@@ -90,6 +90,21 @@ pub async fn waitFor(check: fn() -> any, attempts: int) -> any {
   render.testingWaitFor(check, attempts)
 }
 
+pub async fn waitForIdle(attempts: int) -> void {
+  let _ = await waitFor(fn() -> any { false }, attempts)
+  await flush()
+}
+
+pub async fn waitForText(scope: any, value: string, attempts: int) -> any {
+  let _ = await waitFor(fn() -> any { getByText(scope, value) }, attempts)
+  return getByText(scope, value)
+}
+
+pub async fn waitForRoleName(scope: any, role: string, name: string, attempts: int) -> any {
+  let _ = await waitFor(fn() -> any { getByRoleName(scope, role, name) }, attempts)
+  return getByRoleName(scope, role, name)
+}
+
 pub async fn findByText(scope: any, value: string) -> any {
   let _ = await waitFor(fn() -> any { getByText(scope, value) }, 5)
   return getByText(scope, value)
@@ -116,8 +131,7 @@ pub async fn findByPlaceholder(scope: any, placeholder: string) -> any {
 }
 
 pub async fn settle(attempts: int) -> void {
-  let _ = await waitFor(fn() -> any { false }, attempts)
-  await flush()
+  await waitForIdle(attempts)
 }
 
 pub async fn clickAndFlush(node: any) -> void {

@@ -114,6 +114,25 @@ describe('runtime props core', () => {
     expect(submitted).toBe(1);
   });
 
+  test('submit props attach rejection handling to async submit work', async () => {
+    const error = new Error('submit failed');
+    const submit = Promise.reject(error);
+    const props = propsOnSubmit(() => submit);
+
+    const result = props.onSubmit?.({ preventDefault() {} } as unknown as Event);
+
+    expect(result).toBe(submit);
+    await expect(result as Promise<unknown>).rejects.toBe(error);
+
+    const then = jest.fn((_resolve: unknown, reject: (error: unknown) => void) => reject(error));
+    propsOnSubmit(() => ({ then })).onSubmit?.({ preventDefault() {} } as unknown as Event);
+    expect(then).toHaveBeenCalledWith(undefined, expect.any(Function));
+
+    expect(() =>
+      propsOnSubmit(() => ({ catch() {} })).onSubmit?.({ preventDefault() {} } as unknown as Event)
+    ).not.toThrow();
+  });
+
   test('simple prop builders remain plain records', () => {
     expect(propsClass('hero')).toEqual({ className: 'hero' });
     expect(propsId('root')).toEqual({ id: 'root' });

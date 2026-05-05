@@ -120,6 +120,10 @@ pub fn resourceInvalidateScope(scope: string) -> int {
   render.resourceInvalidateScope(scope)
 }
 
+pub fn resourceInvalidateRequest(requestId: string) -> int {
+  render.resourceInvalidateRequest(requestId)
+}
+
 pub fn resourceClearCache() -> void {
   render.resourceClearCache()
 }

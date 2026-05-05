@@ -62,6 +62,28 @@ export const snapshotComponentFrame = (frame: ComponentFrame): DevtoolsFrameSnap
   ],
 });
 
+const cloneDevtoolsValue = <T>(value: T): T => {
+  if (value === null || value === undefined) return value;
+  if (typeof globalThis.structuredClone === 'function') {
+    try {
+      return globalThis.structuredClone(value);
+    } catch {
+      // Fall back to JSON for plain inspector payloads.
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch {
+    return value;
+  }
+};
+
+const cloneTimelineEvent = (event: DevtoolsTimelineEvent): DevtoolsTimelineEvent =>
+  Object.freeze({
+    ...event,
+    detail: cloneDevtoolsValue(event.detail),
+  });
+
 export const createDevtoolsController = <TRoot extends object, TCurrent>(
   deps: DevtoolsControllerDeps<TRoot, TCurrent>
 ) => {
@@ -81,14 +103,14 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
       type,
       label,
       timestamp: Date.now(),
-      detail,
+      detail: cloneDevtoolsValue(detail),
     };
     timeline.push(event);
     if (timeline.length > 500) {
       timeline.splice(0, timeline.length - 500);
     }
     scheduleNotify();
-    return event;
+    return cloneTimelineEvent(event);
   };
 
   const snapshot = (): DevtoolsSnapshot<TCurrent> => ({
@@ -99,7 +121,7 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
       kind: entry.kind,
       value: entry.source.peek(),
     })),
-    timeline: timeline.slice(),
+    timeline: timeline.map(cloneTimelineEvent),
   });
 
   const scheduleNotify = (): void => {
@@ -155,7 +177,7 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
     },
     recordEvent,
     timeline(): DevtoolsTimelineEvent[] {
-      return timeline.slice();
+      return timeline.map(cloneTimelineEvent);
     },
     clearTimeline(): void {
       if (timeline.length === 0) return;
@@ -170,7 +192,7 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
         version: 'beta',
         snapshot: () => snapshot(),
         subscribe,
-        timeline: () => timeline.slice(),
+        timeline: () => timeline.map(cloneTimelineEvent),
         recordEvent,
         clearTimeline: () => {
           timeline.splice(0, timeline.length);

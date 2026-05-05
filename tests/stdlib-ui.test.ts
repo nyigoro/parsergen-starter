@@ -24,6 +24,9 @@ describe('@std/ui', () => {
     expect(js).toContain('tabsList');
     expect(js).toContain('dialogContent');
     expect(js).toContain('UiVariant');
+    expect(js).toContain('UiToken');
+    expect(js).toContain('tokenDeclaration');
+    expect(js).toContain('tokenProps');
     expect(js).toContain('variantProps');
     expect(js).toContain('props_attr("type", "button")');
     expect(js).toContain('buttonBase');
@@ -31,6 +34,7 @@ describe('@std/ui', () => {
     expect(js).toContain('buttonVariant');
     expect(js).toContain('themeRoot');
     expect(js).toContain('themeTokens');
+    expect(js).toContain('themeToken');
     expect(js).toContain('tokenContract');
     expect(js).toContain('surface');
     expect(js).toContain('appShell');
@@ -54,6 +58,8 @@ describe('@std/ui', () => {
     expect(js).toContain('emptyState');
     expect(js).toContain('dataTable');
     expect(js).toContain('tableSortHeader');
+    expect(js).toContain('tableCaption');
+    expect(js).toContain('tablePaginationProps');
     expect(js).toContain('tableHeaderCell');
     expect(js).toContain('tableCell');
   });

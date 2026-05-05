@@ -115,6 +115,39 @@ const collectExistingNamedExports = (code: string): Set<string> => {
   return names;
 };
 
+const collectRuntimeImportNames = (code: string): Set<string> => {
+  const names = new Set<string>();
+  const runtimeImportRegex = /\bimport\s*\{([^}]*)\}\s*from\s+["'][^"']*lumina-runtime\.js["']/gm;
+  for (const match of code.matchAll(runtimeImportRegex)) {
+    const specifiers = match[1]?.split(',') ?? [];
+    for (const specifier of specifiers) {
+      const trimmed = specifier.trim();
+      if (!trimmed) continue;
+      const [, localName = trimmed] = trimmed.split(/\s+as\s+/);
+      const normalized = localName.trim();
+      if (normalized) names.add(normalized);
+    }
+  }
+  return names;
+};
+
+const filterImportStatementNames = (statement: string, excludedNames: Set<string>): string | null => {
+  if (excludedNames.size === 0) return statement;
+  const match = statement.match(/^(\s*import\s*\{)([^}]*)(\}\s*from\s+["'][^"']+["'];?\s*)$/s);
+  if (!match) return statement;
+  const kept = match[2]
+    .split(',')
+    .map((specifier) => specifier.trim())
+    .filter((specifier) => {
+      if (!specifier) return false;
+      const [, localName] = specifier.split(/\s+as\s+/);
+      const normalized = (localName ?? specifier).trim();
+      return !excludedNames.has(normalized);
+    });
+  if (kept.length === 0) return null;
+  return `${match[1]} ${kept.join(', ')} ${match[3]}`.trim();
+};
+
 const resolveLuminaImportSpecifier = (fromFile: string, spec: string): string | null => {
   if (spec.startsWith('./') || spec.startsWith('../')) {
     return spec;
@@ -129,14 +162,22 @@ const resolveLuminaImportSpecifier = (fromFile: string, spec: string): string | 
   return null;
 };
 
-const collectResolvedImportStatements = (source: string, fromFile: string): string[] => {
+const collectResolvedImportStatements = (
+  source: string,
+  fromFile: string,
+  excludedNames: Set<string> = new Set()
+): string[] => {
   const statements: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = importStatementRegex.exec(source)) !== null) {
     const spec = match[1];
     const resolved = resolveLuminaImportSpecifier(fromFile, spec);
     if (resolved) {
-      statements.push(match[0].replace(spec, resolved).trim());
+      const statement = filterImportStatementNames(
+        match[0].replace(spec, resolved).trim(),
+        spec.startsWith('@std/') ? excludedNames : new Set()
+      );
+      if (statement) statements.push(statement);
     }
   }
   return statements;
@@ -215,7 +256,8 @@ export function luminaPlugin(): Plugin {
         /from\s+["']\.\/lumina-runtime\.js["']/g,
         `from ${JSON.stringify(runtimeSpecifier)}`
       );
-      const resolvedImports = collectResolvedImportStatements(source, id);
+      const runtimeImportNames = collectRuntimeImportNames(rewritten);
+      const resolvedImports = collectResolvedImportStatements(source, id, runtimeImportNames);
       const withResolvedImports =
         resolvedImports.length > 0 ? `${resolvedImports.join('\n')}\n${rewritten}` : rewritten;
       const publicExports = collectPublicExports(source);

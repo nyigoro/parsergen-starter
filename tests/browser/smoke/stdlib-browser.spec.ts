@@ -7,10 +7,19 @@ test.describe('Browser stdlib smoke', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
 
   test('covers crypto/time/fetch primitives in browser context', async ({ page }) => {
-    const server = await startSmokeServer();
-    try {
-      const source = Buffer.from('fn main() -> i32 { 0 }', 'utf-8').toString('base64');
-      await page.goto(`${server.baseUrl}/harness/js?source=${encodeURIComponent(source)}`);
+      const server = await startSmokeServer();
+      try {
+        const source = Buffer.from('fn main() -> i32 { 0 }', 'utf-8').toString('base64');
+      const response = await page.goto(`${server.baseUrl}/harness/js?source=${encodeURIComponent(source)}`);
+      if (!response) throw new Error('No response when loading JS harness');
+      if (response.status() >= 400) {
+        const body = await response.text();
+        throw new Error(`JS harness load failed (${response.status()}): ${body}`);
+      }
+      await page.waitForFunction(() => Boolean((window as { __luminaSmokeResult?: unknown }).__luminaSmokeResult));
+      const smoke = await page.evaluate(() => (window as { __luminaSmokeResult?: { ret?: number | null; error?: string | null } }).__luminaSmokeResult);
+      expect(smoke?.error ?? null).toBeNull();
+      expect(smoke?.ret).toBe(0);
 
       const result = await page.evaluate(async () => {
         const nowA = Date.now();
