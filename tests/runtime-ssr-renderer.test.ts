@@ -37,7 +37,7 @@ describe('runtime ssr renderer', () => {
     ).toBe(' data-safe="ok"');
   });
 
-  test('renders markup and updates containers through the SSR renderer', () => {
+  test('renders markup and updates containers through the SSR renderer', async () => {
     const runtime = createSsrRuntime<TestNode>({
       normalizeNodeForHtml: (node) => node,
       getKind: (node) => node.kind,
@@ -72,7 +72,32 @@ describe('runtime ssr renderer', () => {
     expect(runtime.renderToString(node, { request: { url: '/docs?a=1', requestId: 'req-1' } })).toContain(
       'Hello Lumina'
     );
-    expect(runtime.renderToReadableStream(node)).toBeInstanceOf(ReadableStream);
+    const stream = runtime.renderToReadableStream(node);
+    expect(stream).toBeInstanceOf(ReadableStream);
+    const reader = stream!.getReader();
+    const chunks: string[] = [];
+    for (;;) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(result.value);
+    }
+    expect(chunks.join('')).toBe(Array.from(runtime.renderToChunks(node)).join(''));
+
+    const originalReadableStream = globalThis.ReadableStream;
+    try {
+      Object.defineProperty(globalThis, 'ReadableStream', {
+        configurable: true,
+        writable: true,
+        value: undefined,
+      });
+      expect(runtime.renderToReadableStream(node)).toBeNull();
+    } finally {
+      Object.defineProperty(globalThis, 'ReadableStream', {
+        configurable: true,
+        writable: true,
+        value: originalReadableStream,
+      });
+    }
 
     const container: { html?: string } = {};
     const renderer = runtime.createRenderer();

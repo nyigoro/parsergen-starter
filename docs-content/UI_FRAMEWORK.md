@@ -210,14 +210,14 @@ The current shipped baseline is:
 - select with anchored listbox positioning, option selection, indicator composition, and keyboard navigation
 - checkbox with signal-backed checked state, ARIA wiring, keyboard toggle, and indicator composition
 - radio group/item/indicator primitives with ARIA wiring, roving focus, and arrow-key navigation
-- forms helpers for controlled values, checked state, field dirty/touched/error state, submit handling, async action state, and lightweight validation
+- forms helpers for controlled values, checked state, field dirty/touched/error state, accessible error wiring, submit handling, async action state, and lightweight validation
 - store helpers for app-level signals, derived memo slices, and context-backed sharing
-- route match/view/outlet helpers plus declarative route nodes, layout ownership, loader, prefetch, refresh, key/prefix/tag/scope invalidation, action lifecycle, cancellation, and optimistic mutation helpers layered on `@std/router`
-- testing helpers for mount, hydrate, events, text queries, role queries, flush, and waitFor
+- route match/view/outlet helpers plus declarative route nodes, route boundaries, layout ownership, loader, prefetch, refresh, request policy, key/prefix/tag/scope invalidation, action lifecycle, cancellation, and optimistic mutation helpers layered on `@std/router`
+- testing helpers for mount, hydrate, events, text queries, role queries, promise-aware flush/waitFor, and settle helpers
 - transition presence helpers for CSS-first enter/exit state management
 - devtools helpers for signal/resource/frame snapshots, timeline events, inspector events, profiler events, and browser install hooks
 - SSG helpers for page wrapping, app rendering, static file writing, and safe JSON hydration state handoff
-- a `@std/ui` styled layer with Tailwind-oriented wrappers, app-shell composition, field composition, token contracts, navigation, data-entry, and default button semantics over headless primitives
+- a `@std/ui` styled layer with Tailwind-oriented wrappers, app-shell composition, field composition, token contracts, navigation, variants, loading controls, sortable data-entry, and default button semantics over headless primitives
 
 The next goal is to widen that baseline while staying visually unopinionated.
 

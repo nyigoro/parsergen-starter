@@ -12,11 +12,42 @@ import {
   toastContent
 } from "@std/render";
 
-pub fn button(props: any, children: any) -> VNode {
+pub struct UiVariant {
+  size: string,
+  tone: string,
+  density: string
+}
+
+pub fn variant(size: string, tone: string, density: string) -> UiVariant {
+  UiVariant { size: size, tone: tone, density: density }
+}
+
+fn control_variant_class(spec: UiVariant) -> string {
+  if (spec.tone == "danger") {
+    return "border border-rose-600 bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+  }
+  if (spec.size == "sm") {
+    return "border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-50"
+  }
+  if (spec.density == "compact") {
+    return "border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
+  }
+  return "border border-slate-950 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+}
+
+pub fn variantProps(spec: UiVariant, props: any) -> any {
+  props_merge(props_class(control_variant_class(spec)), props)
+}
+
+fn button_base_class() -> string {
+  "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-sky-400"
+}
+
+pub fn buttonBase(props: any, children: any) -> VNode {
   vnode(
     "button",
     props_merge(
-      props_class("inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400"),
+      props_class(button_base_class()),
       props_merge(
         props_attr("type", "button"),
         props
@@ -24,6 +55,23 @@ pub fn button(props: any, children: any) -> VNode {
     ),
     children
   )
+}
+
+pub fn buttonWithState(loading: bool, disabled: bool, props: any, children: any) -> VNode {
+  button(
+    props_merge(
+      props,
+      props_merge(
+        props_attr("aria-busy", loading),
+        props_attr("disabled", disabled)
+      )
+    ),
+    children
+  )
+}
+
+pub fn button(props: any, children: any) -> VNode {
+  buttonVariant("primary", props, children)
 }
 
 fn button_variant_class(variant: string) -> string {
@@ -37,7 +85,7 @@ fn button_variant_class(variant: string) -> string {
 }
 
 pub fn buttonVariant(variant: string, props: any, children: any) -> VNode {
-  button(
+  buttonBase(
     props_merge(
       props_class(button_variant_class(variant)),
       props
@@ -224,6 +272,16 @@ pub fn errorText(props: any, children: any) -> VNode {
   )
 }
 
+pub fn fieldControlProps(invalid: bool, describedBy: string, props: any) -> any {
+  props_merge(
+    props,
+    props_merge(
+      props_attr("aria-invalid", invalid),
+      props_attr("aria-describedby", describedBy)
+    )
+  )
+}
+
 pub fn navList(props: any, children: any) -> VNode {
   vnode(
     "nav",
@@ -354,6 +412,13 @@ pub fn tableRow(props: any, children: any) -> VNode {
 
 pub fn tableHeaderCell(props: any, children: any) -> VNode {
   vnode("th", props_merge(props_class("px-3 py-2 text-xs font-semibold uppercase text-slate-500"), props), children)
+}
+
+pub fn tableSortHeader(active: bool, direction: string, props: any, children: any) -> VNode {
+  if (active) {
+    return tableHeaderCell(props_merge(props_attr("aria-sort", direction), props), children)
+  }
+  return tableHeaderCell(props, children)
 }
 
 pub fn tableCell(props: any, children: any) -> VNode {

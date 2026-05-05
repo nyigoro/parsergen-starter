@@ -81,6 +81,11 @@ pub async fn act(action: fn() -> void) -> void {
   await flush()
 }
 
+pub async fn actAsync(action: fn() -> Promise<any>) -> void {
+  let _ = await action()
+  await flush()
+}
+
 pub async fn waitFor(check: fn() -> any, attempts: int) -> any {
   render.testingWaitFor(check, attempts)
 }
@@ -98,6 +103,21 @@ pub async fn findByRole(scope: any, role: string) -> any {
 pub async fn findByRoleName(scope: any, role: string, name: string) -> any {
   let _ = await waitFor(fn() -> any { getByRoleName(scope, role, name) }, 5)
   return getByRoleName(scope, role, name)
+}
+
+pub async fn findByLabel(scope: any, label: string) -> any {
+  let _ = await waitFor(fn() -> any { getByLabel(scope, label) }, 5)
+  return getByLabel(scope, label)
+}
+
+pub async fn findByPlaceholder(scope: any, placeholder: string) -> any {
+  let _ = await waitFor(fn() -> any { getByPlaceholder(scope, placeholder) }, 5)
+  return getByPlaceholder(scope, placeholder)
+}
+
+pub async fn settle(attempts: int) -> void {
+  let _ = await waitFor(fn() -> any { false }, attempts)
+  await flush()
 }
 
 pub async fn clickAndFlush(node: any) -> void {

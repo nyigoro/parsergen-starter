@@ -28,6 +28,22 @@ export interface TestingFacadeDeps<TComponentFn, TRoot> {
   ) => TRoot;
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const settleTestingAttempt = async (
+  check: () => unknown,
+  timeoutMs: number
+): Promise<{ settled: boolean; value?: unknown }> => {
+  const pending = Promise.resolve().then(check);
+  pending.catch(() => undefined);
+  const timeout = sleep(timeoutMs).then(() => ({ __timeout: true }));
+  const value = await Promise.race([pending, timeout]);
+  if (value && typeof value === 'object' && (value as { __timeout?: boolean }).__timeout === true) {
+    return { settled: false };
+  }
+  return { settled: true, value };
+};
+
 export const createTestingFacade = <TComponentFn, TRoot>(
   deps: TestingFacadeDeps<TComponentFn, TRoot>
 ) => ({
@@ -69,16 +85,18 @@ export const createTestingFacade = <TComponentFn, TRoot>(
     let lastError: unknown = null;
     for (let i = 0; i < limit; i += 1) {
       try {
-        const value = check();
-        if (value) return value;
+        const attempt = await settleTestingAttempt(check, 10);
+        if (attempt.settled && attempt.value) return attempt.value;
         lastError = null;
+        if (attempt.settled) {
+          await sleep(10);
+        }
       } catch (error) {
         lastError = error;
+        await sleep(10);
       }
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      await Promise.resolve();
     }
     if (lastError) throw lastError;
-    return check();
+    return null;
   },
 });

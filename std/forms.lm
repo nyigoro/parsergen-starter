@@ -131,6 +131,24 @@ pub fn serverValidationProps(field: string, props: any) -> any {
   render.props_merge(props, render.props_attr("data-lumina-server-field", field))
 }
 
+pub fn fieldErrorId(fieldName: string) -> string {
+  str.concat(fieldName, "-error")
+}
+
+pub fn fieldHelpId(fieldName: string) -> string {
+  str.concat(fieldName, "-help")
+}
+
+pub fn fieldErrorProps(fieldName: string, props: any) -> any {
+  render.props_merge(
+    props,
+    render.props_merge(
+      render.props_attr("id", fieldErrorId(fieldName)),
+      render.props_attr("role", "alert")
+    )
+  )
+}
+
 pub fn createFieldState() -> FieldState {
   FieldState {
     dirty: reactive.createSignal(false),
@@ -153,6 +171,37 @@ pub fn setFieldError(field: FieldState, message: string) -> void {
 
 pub fn fieldIsValid(field: FieldState) -> bool {
   return reactive.get(field.error) == ""
+}
+
+pub fn fieldControlProps(fieldName: string, field: FieldState, props: any) -> any {
+  if (fieldIsValid(field)) {
+    return props
+  }
+  let errorId = fieldErrorId(fieldName)
+  render.props_merge(
+    props,
+    render.props_merge(
+      render.props_attr("aria-invalid", true),
+      render.props_merge(
+        render.props_attr("aria-describedby", errorId),
+        render.props_attr("aria-errormessage", errorId)
+      )
+    )
+  )
+}
+
+pub fn fieldTouchedError(field: FieldState) -> string {
+  if (reactive.get(field.touched) == true) {
+    return reactive.get(field.error)
+  }
+  return ""
+}
+
+pub fn validationSummaryProps(props: any) -> any {
+  render.props_merge(
+    props,
+    render.props_attr("role", "alert")
+  )
 }
 
 pub fn action<T>(key: any, submit: fn() -> Promise<T>) -> FormAction<T> {
@@ -181,6 +230,12 @@ pub async fn submitActionOptimistic<T>(formAction: FormAction<T>, resource: any,
 }
 
 pub async fn submitActionWithRollback<T>(formAction: FormAction<T>, resource: any, optimistic: T, previous: T) -> T {
+  let value = await render.resourceSubmitOptimistic<T>(formAction.resource, formAction.submitting, resource, optimistic, previous)
+  return value
+}
+
+pub async fn submitActionWithCurrentRollback<T>(formAction: FormAction<T>, resource: any, optimistic: T) -> T {
+  let previous = render.resourceData(resource)
   let value = await render.resourceSubmitOptimistic<T>(formAction.resource, formAction.submitting, resource, optimistic, previous)
   return value
 }

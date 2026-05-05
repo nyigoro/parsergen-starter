@@ -133,6 +133,7 @@ describe('@std/render module', () => {
         let _by_dep = render.resourceInvalidateDependency("contacts");
         let _by_scope = render.resourceInvalidateScope("route:contacts");
         let _clear_scope = render.resourceClearScope("route:contacts");
+        let _clear_request = render.resourceClearRequest("req:contacts");
         let _value = render.resourceMutate(resource, "sms");
         let asyncUi = render.suspense(render.text("Loading"), || [
           render.errorBoundary(render.text("Error"), || [

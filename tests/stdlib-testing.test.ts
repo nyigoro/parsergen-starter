@@ -37,10 +37,14 @@ describe('@std/testing', () => {
     expect(js).toContain('testingWaitFor');
     expect(js).toContain('flush');
     expect(js).toContain('act');
+    expect(js).toContain('actAsync');
     expect(js).toContain('waitFor');
     expect(js).toContain('findByText');
     expect(js).toContain('findByRole');
     expect(js).toContain('findByRoleName');
+    expect(js).toContain('findByLabel');
+    expect(js).toContain('findByPlaceholder');
+    expect(js).toContain('settle');
     expect(js).toContain('clickAndFlush');
   });
 });

@@ -38,6 +38,11 @@ describe('runtime devtools controller', () => {
     expect((globalThis as Record<string, unknown>).__LUMINA_DEVTOOLS_TEST__).toBe(installed);
     expect(typeof (installed as { snapshot?: unknown }).snapshot).toBe('function');
     expect(typeof (installed as { timeline?: unknown }).timeline).toBe('function');
+    const installedEvent = (installed as {
+      recordEvent?: (type: string, label: string, detail: unknown) => unknown;
+    }).recordEvent?.('route-transition', 'tasks', { to: '/tasks' });
+    expect(installedEvent).toMatchObject({ type: 'route-transition', label: 'tasks' });
+    expect(controller.timeline().at(-1)).toMatchObject({ type: 'route-transition', label: 'tasks' });
     controller.clearTimeline();
     expect(controller.timeline()).toEqual([]);
 

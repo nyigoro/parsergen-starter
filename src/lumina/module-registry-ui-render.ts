@@ -941,6 +941,7 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
         ['resourceInvalidateScope', moduleFunctionWithScheme('resourceInvalidateScope', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['scope'], 'std://render')],
         ['resourceClearCache', moduleFunctionWithScheme('resourceClearCache', [], 'void', schemeFromVars(resourceClearCacheType, []), [], 'std://render')],
         ['resourceClearScope', moduleFunctionWithScheme('resourceClearScope', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['scope'], 'std://render')],
+        ['resourceClearRequest', moduleFunctionWithScheme('resourceClearRequest', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['requestId'], 'std://render')],
         ['resourceMutate', moduleFunctionWithScheme('resourceMutate', ['any', 'any'], 'any', schemeFromVars(fnType([resourceHandleType, primitive('any')], primitive('any')), []), ['resource', 'value'], 'std://render')],
         [
           'suspense',

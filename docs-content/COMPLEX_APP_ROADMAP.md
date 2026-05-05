@@ -12,6 +12,8 @@ Status: implemented and covered.
 - `routeNode`, `routeNodeWithChildren`, and `routeTree` define route ownership.
 - `routeNodeLayout`, `routeTreeView`, and `routeTreeBoundary` keep layout,
   loading, and error boundaries close to the route that owns them.
+- `routeBoundary`, `routeBoundaryView`, and `routeOwnershipProps` lock reusable
+  route-owned layout/loading/error/meta units.
 - `routeNodeMeta` and `routeTreeMeta` carry route id, pattern, title, and app
   metadata for document head, analytics, and devtools.
 - `lazyRouteModule`, `navigationIntentProps`, and `prefetchRouteNode` provide
@@ -25,6 +27,10 @@ Status: implemented and covered.
   stale data.
 - `requestScope`, `scoped`, `routeDataPolicy`, `tag`, and `dependency` define
   public cache ownership.
+- `requestPolicy`, `routeRequestPolicy`, and `createPrefetchResource` make
+  request scope, stale-while-revalidate, and disabled prefetch records explicit.
+- `requestRouteDataPolicy` carries SSR request identity without weakening route
+  invalidation scope.
 - `abortOnRefresh` and background refresh map to abortable loaders and
   stale-while-revalidate behavior.
 - Prefetch helpers now preserve `?search` in route resource keys.
@@ -46,8 +52,12 @@ Status: implemented and covered.
   `submitting` resets after success or rejection.
 - `submitActionWithRollback` rolls optimistic resource state back when the
   action rejects.
+- `submitActionWithCurrentRollback` uses the current resource value as the
+  rollback baseline.
 - `fileInputNamed`, `multipartProps`, `schemaAdapter`, `fieldArrayItemName`,
   and `applyServerValidation` are the first-class form workflow surface.
+- `fieldControlProps`, `fieldErrorProps`, and `validationSummaryProps` carry
+  accessible error wiring for server/client validation.
 
 ## Phase 5: Navigation And Delivery
 
@@ -68,10 +78,12 @@ Status: implemented foundation, inspector UI remains a future product layer.
 
 - Devtools expose snapshots, timelines, inspector event records, hydration
   mismatch records, and profiler-style timing records.
-- Testing exposes `flush`, `waitFor`, find/query helpers, and interaction
-  helpers for route/action/resource workflows.
+- Testing exposes `flush`, `waitFor`, `settle`, find/query helpers, and
+  interaction helpers for route/action/resource workflows.
+- `waitFor` is promise-aware for async browser/e2e-style checks.
 - `@std/ui` owns theme tokens, app shells, navigation, tables, fields, badges,
-  and large-app composition conventions.
+  variants, loading controls, sortable headers, and large-app composition
+  conventions.
 
 ## Standards Floor
 

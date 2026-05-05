@@ -11,6 +11,8 @@ export interface DevtoolsResourceSnapshot {
   status: string;
   hasData: boolean;
   error: unknown;
+  scope?: string;
+  requestId?: string;
   tags?: string[];
 }
 
@@ -72,6 +74,22 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
   const rootIds = new WeakMap<TRoot, number>();
   const listeners = new Set<DevtoolsListener<TCurrent>>();
   const timeline: DevtoolsTimelineEvent[] = [];
+
+  const recordEvent = (type: string, label: string, detail: unknown = null): DevtoolsTimelineEvent => {
+    const event = {
+      id: nextEventId++,
+      type,
+      label,
+      timestamp: Date.now(),
+      detail,
+    };
+    timeline.push(event);
+    if (timeline.length > 500) {
+      timeline.splice(0, timeline.length - 500);
+    }
+    scheduleNotify();
+    return event;
+  };
 
   const snapshot = (): DevtoolsSnapshot<TCurrent> => ({
     roots: Array.from(roots.entries()).map(([id, root]) => deps.snapshotRoot(root, id)),
@@ -135,21 +153,7 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
         scheduleNotify();
       }
     },
-    recordEvent(type: string, label: string, detail: unknown = null): DevtoolsTimelineEvent {
-      const event = {
-        id: nextEventId++,
-        type,
-        label,
-        timestamp: Date.now(),
-        detail,
-      };
-      timeline.push(event);
-      if (timeline.length > 500) {
-        timeline.splice(0, timeline.length - 500);
-      }
-      scheduleNotify();
-      return event;
-    },
+    recordEvent,
     timeline(): DevtoolsTimelineEvent[] {
       return timeline.slice();
     },
@@ -167,6 +171,7 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
         snapshot: () => snapshot(),
         subscribe,
         timeline: () => timeline.slice(),
+        recordEvent,
         clearTimeline: () => {
           timeline.splice(0, timeline.length);
           scheduleNotify();

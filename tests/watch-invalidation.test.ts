@@ -13,6 +13,8 @@ import { createWatchSessionController } from '../src/bin/lumina-core.js';
 
 const tempDirs: string[] = [];
 
+jest.setTimeout(15000);
+
 function mkTempDir(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(dir);

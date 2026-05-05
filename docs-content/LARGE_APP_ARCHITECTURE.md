@@ -8,17 +8,24 @@ tokens close to the code that owns them.
 
 - Declare route modules with `routeNode` or `routeNodeWithChildren`.
 - Wrap the root ownership contract in `routeTree`.
+- Use `routeBoundary` when a route owns layout, loading, error, and meta as a
+  reusable unit.
 - Keep layout ownership in `routeNodeLayout`.
 - Keep route loaders/actions on the same node with `routeNodeLoader` and
   `routeNodeAction`.
-- Use `routeNodeMeta` and `routeTreeMeta` for head/meta/devtools ownership.
+- Use `routeOwnershipProps`, `routeNodeMeta`, and `routeTreeMeta` for
+  head/meta/devtools ownership.
 - Use `lazyRouteModule` metadata for route-module code splitting.
 - Use `navigateWithTransition` only as progressive enhancement; normal
   navigation remains the fallback.
 
 ## Data Lifecycle
 
-- Use `resource.routeDataPolicy(routeId, ttlMs, props)` for route-owned data.
+- Use `resource.routeDataPolicy(routeId, ttlMs, props)` for route-owned data,
+  and `routeRequestPolicy` / `resource.routeRequestPolicy` when a loader needs
+  request scope plus background refresh defaults.
+- Use `requestRouteDataPolicy` when SSR needs request identity without losing
+  route invalidation scope.
 - Use `requestScope` for request-aware SSR and `scoped` for app/domain
   ownership.
 - Use `abortOnRefresh`, `backgroundRefresh`, tags, and dependencies for
@@ -31,7 +38,11 @@ tokens close to the code that owns them.
 - Use `formDataSubmitProps` and `fileInputNamed` for file/form submissions.
 - Use `fieldArrayItemName` for nested array fields.
 - Map server errors with `serverValidation` and `applyServerValidation`.
+- Wire errors with `fieldControlProps`, `fieldErrorProps`, and
+  `validationSummaryProps` so accessible names and alerts stay predictable.
 - Use `submitActionWithRollback` when optimistic UI needs a rollback policy.
+- Use `submitActionWithCurrentRollback` when the current resource value is the
+  rollback baseline.
 - Keep `submitting` state in `submitAction` or `submitRouteAction`; both reset
   after success or rejection.
 
@@ -49,8 +60,10 @@ tokens close to the code that owns them.
 
 - Record route/resource/render events with `@std/devtools`.
 - Use `inspectHydrationMismatch` for hydration recovery diagnostics.
-- Use `testing.flush`, `testing.waitFor`, and `findByText`/`findByRole` for
-  async UI and route/action workflows.
+- Use `testing.flush`, promise-aware `testing.waitFor`, `testing.actAsync`,
+  `testing.settle`, and
+  `findByText`/`findByRole`/`findByLabel` for async UI and route/action
+  workflows.
 
 ## UI System
 
@@ -59,6 +72,9 @@ tokens close to the code that owns them.
   shells.
 - Use `sidebarNav`, `navItem`, `toolbar`, `badge`, `formGrid`, and
   `emptyState` before inventing local layout wrappers.
+- Use `variantProps`, `buttonWithState`, `fieldControlProps`, and
+  `tableSortHeader` for loading controls, accessible fields, and sortable data
+  tables.
 
 ## Folder Convention
 

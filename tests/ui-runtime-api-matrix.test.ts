@@ -88,6 +88,7 @@ const renderFunctionNames = [
   'resourceInvalidateScope',
   'resourceClearCache',
   'resourceClearScope',
+  'resourceClearRequest',
   'resourceSubmit',
   'resourceSubmitOptimistic',
   'ssgPage',

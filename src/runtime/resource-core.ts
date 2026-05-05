@@ -8,6 +8,7 @@ export interface ResourceOptions {
   staleWhileRevalidate: boolean;
   abortOnRefresh: boolean;
   scope: string;
+  requestId: string;
   tags: string[];
   dependencies: string[];
 }
@@ -20,6 +21,7 @@ export interface ResourceRecord<T = unknown> {
   staleWhileRevalidate: boolean;
   abortOnRefresh: boolean;
   scope: string;
+  requestId: string;
   tags: Set<string>;
   dependencies: Set<string>;
   data: Signal<unknown>;
@@ -85,10 +87,16 @@ const normalizeResourceOptions = (options: unknown): ResourceOptions => {
   const staleWhileRevalidate = candidate.staleWhileRevalidate === true || candidate.swr === true;
   const abortOnRefresh = candidate.abortOnRefresh === true || candidate.abort === true;
   const scope = typeof candidate.scope === 'string' && candidate.scope.trim() ? candidate.scope.trim() : 'global';
+  const requestId = typeof candidate.requestId === 'string' && candidate.requestId.trim()
+    ? candidate.requestId.trim()
+    : '';
   const tags = normalizeResourceTags(candidate.tags ?? candidate.tag);
   const dependencies = normalizeResourceTags(candidate.dependencies ?? candidate.dependency ?? candidate.dependsOn);
-  return { ttlMs, enabled, staleWhileRevalidate, abortOnRefresh, scope, tags, dependencies };
+  return { ttlMs, enabled, staleWhileRevalidate, abortOnRefresh, scope, requestId, tags, dependencies };
 };
+
+const resourceCacheIdentity = (key: string, requestId: string): string =>
+  requestId ? JSON.stringify([requestId, key]) : key;
 
 const resourceHasData = (record: ResourceRecord<unknown>): boolean => !!record.hasData.peek();
 
@@ -104,6 +112,7 @@ const createResourceRecord = <T>(
   staleWhileRevalidate: options.staleWhileRevalidate,
   abortOnRefresh: options.abortOnRefresh,
   scope: options.scope,
+  requestId: options.requestId,
   tags: new Set(options.tags),
   dependencies: new Set(options.dependencies),
   data: new Signal<unknown>(null),
@@ -188,12 +197,18 @@ export const ensureResourceCurrent = <T>(record: ResourceRecord<T>): void => {
   }
 };
 
-const invalidateResourceRecord = (record: ResourceRecord<unknown>): void => {
-  record.expiresAt = 0;
+const discardResourcePending = (record: ResourceRecord<unknown>, abort: boolean): void => {
   record.version += 1;
-  record.abortController?.abort();
+  if (abort) {
+    record.abortController?.abort();
+  }
   record.abortController = null;
   record.promise = null;
+};
+
+export const invalidateResourceRecord = (record: ResourceRecord<unknown>): void => {
+  record.expiresAt = 0;
+  discardResourcePending(record, record.abortOnRefresh);
   if (!record.hasData.peek() || !record.staleWhileRevalidate) {
     record.status.set('idle');
   }
@@ -209,7 +224,8 @@ export const resolveResourceRecord = <T>(
 ): ResourceRecord<T> => {
   const normalizedKey = normalizeResourceKey(key);
   const normalizedOptions = normalizeResourceOptions(options);
-  const existing = resourceCache.get(normalizedKey) as ResourceRecord<T> | undefined;
+  const cacheIdentity = resourceCacheIdentity(normalizedKey, normalizedOptions.requestId);
+  const existing = resourceCache.get(cacheIdentity) as ResourceRecord<T> | undefined;
   if (existing) {
     existing.loader = loader;
     existing.ttlMs = normalizedOptions.ttlMs;
@@ -217,6 +233,7 @@ export const resolveResourceRecord = <T>(
     existing.staleWhileRevalidate = normalizedOptions.staleWhileRevalidate;
     existing.abortOnRefresh = normalizedOptions.abortOnRefresh;
     existing.scope = normalizedOptions.scope;
+    existing.requestId = normalizedOptions.requestId;
     existing.tags = new Set(normalizedOptions.tags);
     existing.dependencies = new Set(normalizedOptions.dependencies);
     ensureResourceCurrent(existing);
@@ -224,7 +241,7 @@ export const resolveResourceRecord = <T>(
   }
 
   const record = createResourceRecord(normalizedKey, loader, normalizedOptions);
-  resourceCache.set(normalizedKey, record as ResourceRecord<unknown>);
+  resourceCache.set(cacheIdentity, record as ResourceRecord<unknown>);
   ensureResourceCurrent(record);
   return record;
 };
@@ -240,11 +257,14 @@ export const listResourceRecords = (): ResourceRecord<unknown>[] => Array.from(r
 
 export const invalidateResourceKey = (key: unknown): boolean => {
   const normalizedKey = normalizeResourceKey(key);
-  const record = resourceCache.get(normalizedKey);
-  if (!record) return false;
-  invalidateResourceRecord(record);
-  resourceHooks.notifyDevtools?.();
-  return true;
+  let changed = false;
+  for (const record of resourceCache.values()) {
+    if (record.key !== normalizedKey) continue;
+    invalidateResourceRecord(record);
+    changed = true;
+  }
+  if (changed) resourceHooks.notifyDevtools?.();
+  return changed;
 };
 
 export const invalidateResourcePrefix = (prefix: string): number => {
@@ -299,6 +319,9 @@ export const invalidateResourceScope = (scope: string): number => {
 
 export const clearResourceRecords = (): void => {
   if (resourceCache.size === 0) return;
+  for (const record of resourceCache.values()) {
+    discardResourcePending(record, true);
+  }
   resourceCache.clear();
   resourceHooks.notifyDevtools?.();
 };
@@ -308,7 +331,21 @@ export const clearResourceScope = (scope: string): number => {
   let count = 0;
   for (const [key, record] of resourceCache) {
     if (record.scope !== normalizedScope) continue;
-    record.abortController?.abort();
+    discardResourcePending(record, true);
+    resourceCache.delete(key);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+};
+
+export const clearResourceRequest = (requestId: string): number => {
+  const normalizedRequestId = String(requestId).trim();
+  if (!normalizedRequestId) return 0;
+  let count = 0;
+  for (const [key, record] of resourceCache) {
+    if (record.requestId !== normalizedRequestId) continue;
+    discardResourcePending(record, true);
     resourceCache.delete(key);
     count += 1;
   }

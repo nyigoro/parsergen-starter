@@ -23,7 +23,11 @@ describe('@std/ui', () => {
     expect(js).toContain('transitionPresence');
     expect(js).toContain('tabsList');
     expect(js).toContain('dialogContent');
+    expect(js).toContain('UiVariant');
+    expect(js).toContain('variantProps');
     expect(js).toContain('props_attr("type", "button")');
+    expect(js).toContain('buttonBase');
+    expect(js).toContain('buttonWithState');
     expect(js).toContain('buttonVariant');
     expect(js).toContain('themeRoot');
     expect(js).toContain('themeTokens');
@@ -40,6 +44,7 @@ describe('@std/ui', () => {
     expect(js).toContain('label');
     expect(js).toContain('helpText');
     expect(js).toContain('errorText');
+    expect(js).toContain('fieldControlProps');
     expect(js).toContain('navList');
     expect(js).toContain('sidebarNav');
     expect(js).toContain('navItem');
@@ -48,6 +53,7 @@ describe('@std/ui', () => {
     expect(js).toContain('formGrid');
     expect(js).toContain('emptyState');
     expect(js).toContain('dataTable');
+    expect(js).toContain('tableSortHeader');
     expect(js).toContain('tableHeaderCell');
     expect(js).toContain('tableCell');
   });

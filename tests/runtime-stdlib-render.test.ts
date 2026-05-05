@@ -402,6 +402,33 @@ describe('runtime render module', () => {
     render.resourceClearCache();
   });
 
+  test('direct resource invalidation discards stale pending work', async () => {
+    const key = `resource:${Date.now()}:direct-invalidate`;
+    const resolvers: Array<(value: string) => void> = [];
+    let aborted = false;
+    const resource = render.createResource(
+      key,
+      (signal?: AbortSignal) => {
+        signal?.addEventListener('abort', () => {
+          aborted = true;
+        });
+        return new Promise<string>((resolve) => {
+          resolvers.push(resolve);
+        });
+      },
+      { abortOnRefresh: false }
+    );
+
+    render.resourceInvalidate(resource);
+    expect(aborted).toBe(false);
+    resolvers[0]?.('stale');
+    resolvers[1]?.('fresh');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(render.resourceData(resource)).toBe('fresh');
+    render.resourceClearCache();
+  });
+
   test('suspense and error boundary helpers catch the right thrown values', () => {
     const suspenseFallback = render.suspense(render.text('Loading'), () => {
       throw Promise.resolve('pending');

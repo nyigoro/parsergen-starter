@@ -128,6 +128,10 @@ pub fn resourceClearScope(scope: string) -> int {
   render.resourceClearScope(scope)
 }
 
+pub fn resourceClearRequest(requestId: string) -> int {
+  render.resourceClearRequest(requestId)
+}
+
 pub fn resourceMutate<T>(resource: any, value: T) -> T {
   render.resourceMutate(resource, value)
 }

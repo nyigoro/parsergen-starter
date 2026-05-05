@@ -95,5 +95,21 @@ describe('runtime testing facade', () => {
       }, 3)
     ).resolves.toBe('ready');
     expect(attempts).toBe(2);
+
+    let asyncAttempts = 0;
+    await expect(
+      facade.testing_wait_for(async () => {
+        asyncAttempts += 1;
+        return asyncAttempts === 2 ? 'async-ready' : null;
+      }, 3)
+    ).resolves.toBe('async-ready');
+    expect(asyncAttempts).toBe(2);
+
+    await expect(
+      Promise.race([
+        facade.testing_wait_for(() => new Promise(() => undefined), 2),
+        new Promise((resolve) => setTimeout(() => resolve('timeout'), 100)),
+      ])
+    ).resolves.toBeNull();
   });
 });

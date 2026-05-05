@@ -14,12 +14,14 @@ import {
 } from './reactive-core.js';
 import {
   asResourceHandle,
+  clearResourceRequest,
   clearResourceScope,
   clearResourceRecords,
   ensureResourceCurrent,
   invalidateResourceDependency,
   invalidateResourceKey,
   invalidateResourcePrefix,
+  invalidateResourceRecord,
   invalidateResourceScope,
   invalidateResourceTag,
   ResourceHandle,
@@ -325,9 +327,7 @@ export const createRenderApi = <
     },
     resource_invalidate: (resource: unknown): void => {
       const handle = asResourceHandle(resource, 'render.resource_invalidate');
-      handle.record.expiresAt = 0;
-      if (!handle.record.hasData.peek() || !handle.record.staleWhileRevalidate) handle.record.status.set('idle');
-      ensureResourceCurrent(handle.record);
+      invalidateResourceRecord(handle.record);
       deps.scheduleDevtoolsNotify();
     },
     resource_invalidate_key: (key: unknown): boolean => {
@@ -361,6 +361,11 @@ export const createRenderApi = <
     },
     resource_clear_scope: (scope: string): number => {
       const count = clearResourceScope(scope);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    },
+    resource_clear_request: (requestId: string): number => {
+      const count = clearResourceRequest(requestId);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
     },
@@ -442,6 +447,7 @@ export const createRenderApi = <
     resourceInvalidateScope: (scope: string): number => render.resource_invalidate_scope(scope),
     resourceClearCache: (): void => render.resource_clear_cache(),
     resourceClearScope: (scope: string): number => render.resource_clear_scope(scope),
+    resourceClearRequest: (requestId: string): number => render.resource_clear_request(requestId),
     resourceMutate: <T>(resource: unknown, value: T): T => render.resource_mutate(resource, value),
     errorBoundary: (fallback: unknown, renderChildren: () => ComponentRenderable): VNode =>
       render.error_boundary(fallback, renderChildren),

@@ -11,12 +11,22 @@ describe('docs content', () => {
     expect(source).toContain('routeModuleLoader');
     expect(source).toContain('routeNodeLayout');
     expect(source).toContain('routeTree');
+    expect(source).toContain('routeBoundary');
+    expect(source).toContain('routeRequestPolicy');
     expect(source).toContain('navigateWithTransition');
     expect(source).toContain('invalidateRouteDependency');
     expect(source).toContain('routeDataPolicy');
+    expect(source).toContain('createPrefetchResource');
+    expect(source).toContain('requestRouteDataPolicy');
     expect(source).toContain('renderToReadableStream');
+    expect(source).toContain('fieldControlProps');
     expect(source).toContain('waitFor');
+    expect(source).toContain('actAsync');
+    expect(source).toContain('settle');
     expect(source).toContain('inspectHydrationMismatch');
+    expect(source).toContain('inspect:*');
+    expect(source).toContain('recordRouteTransition');
+    expect(source).toContain('buttonWithState');
     expect(source).toContain('hydrationBoundaryOptions');
   });
 
@@ -30,12 +40,18 @@ describe('docs content', () => {
       'routeNode',
       'routeTree',
       'routeDataPolicy',
+      'routeRequestPolicy',
+      'requestRouteDataPolicy',
       'submitActionWithRollback',
+      'submitActionWithCurrentRollback',
+      'fieldControlProps',
       'renderToChunks',
       'deferredHydrationProps',
       'inspectHydrationMismatch',
-      'testing.waitFor',
+      'testing.settle',
+      'testing.actAsync',
       'tokenContract',
+      'tableSortHeader',
       'Folder Convention',
     ]) {
       expect(source).toContain(term);
@@ -50,7 +66,10 @@ describe('docs content', () => {
 
     for (const term of [
       'Phase 1: Route Ownership',
+      'routeBoundary',
       'submitRouteAction',
+      'createPrefetchResource',
+      'requestRouteDataPolicy',
       'renderToReadableStream',
       'Navigation API',
       'URLPattern',

@@ -23,7 +23,13 @@ pub fn backgroundRefresh(ttlMs: int, props: any) -> any {
 }
 
 pub fn requestScope(requestId: string, props: any) -> any {
-  render.props_merge(props, render.props_attr("scope", requestId))
+  render.props_merge(
+    props,
+    render.props_merge(
+      render.props_attr("scope", requestId),
+      render.props_attr("requestId", requestId)
+    )
+  )
 }
 
 pub fn scoped(scope: string, props: any) -> any {
@@ -46,12 +52,44 @@ pub fn routeDataPolicy(routeId: string, ttlMs: int, props: any) -> any {
   dependency(routeId, scoped(routeId, backgroundRefresh(ttlMs, abortOnRefresh(props))))
 }
 
+pub fn requestPolicy(requestId: string, ttlMs: int, props: any) -> any {
+  requestScope(requestId, backgroundRefresh(ttlMs, abortOnRefresh(props)))
+}
+
+pub fn requestRouteDataPolicy(requestId: string, routeId: string, ttlMs: int, props: any) -> any {
+  dependency(
+    routeId,
+    tag(
+      routeId,
+      render.props_merge(
+        routeDataPolicy(routeId, ttlMs, props),
+        render.props_attr("requestId", requestId)
+      )
+    )
+  )
+}
+
+pub fn routeRequestPolicy(routeId: string, requestId: string, ttlMs: int, props: any) -> any {
+  requestRouteDataPolicy(requestId, routeId, ttlMs, props)
+}
+
+pub fn prefetchOptions(ttlMs: int, props: any) -> any {
+  render.props_merge(
+    backgroundRefresh(ttlMs, props),
+    render.props_attr("enabled", false)
+  )
+}
+
 pub fn createResource<T>(key: any, loader: fn() -> Promise<T>) -> Resource<T> {
   Resource<T> { raw: render.createResource(key, fn() -> Promise<any> { loader() }, render.props_empty()) }
 }
 
 pub fn createResourceWithOptions<T>(key: any, loader: fn() -> Promise<T>, options: any) -> Resource<T> {
   Resource<T> { raw: render.createResource(key, fn() -> Promise<any> { loader() }, options) }
+}
+
+pub fn createPrefetchResource<T>(key: any, ttlMs: int, loader: fn() -> Promise<T>) -> Resource<T> {
+  createResourceWithOptions(key, loader, prefetchOptions(ttlMs, render.props_empty()))
 }
 
 pub fn status<T>(resource: Resource<T>) -> string {
@@ -98,12 +136,20 @@ pub fn invalidateScope(scope: string) -> int {
   render.resourceInvalidateScope(scope)
 }
 
+pub fn revalidateScope(scope: string) -> int {
+  invalidateScope(scope)
+}
+
 pub fn clearCache() -> void {
   render.resourceClearCache()
 }
 
 pub fn clearScope(scope: string) -> int {
   render.resourceClearScope(scope)
+}
+
+pub fn clearRequestScope(requestId: string) -> int {
+  render.resourceClearRequest(requestId)
 }
 
 pub fn mutate<T>(resource: Resource<T>, value: T) -> T {

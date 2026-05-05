@@ -638,7 +638,9 @@ small route-tree/layout convention without hiding the underlying signal model.
 
 Route modules co-locate a route id, pattern, title, loader/action scope, and
 view guard. Module loaders/actions use route-scoped resource keys and resource
-`scope` metadata so large apps can invalidate by route module.
+`scope` metadata so large apps can invalidate by route module. Loader/action
+handles capture the route match at creation time so old handles cannot refresh
+with a newer navigation's params.
 
 ### routeNode / routeNodeWithChildren / routeTree / routeNodeLayout
 
@@ -651,11 +653,21 @@ and route-level loading/error boundaries together.
 `routeTreeMeta` are the large-app ownership contract: every route tree carries
 its root route metadata, loading fallback, and error fallback explicitly.
 
-### prefetchRouteNode / cancelRouteNode / revalidateRouteNode
+`routeBoundary`, `routeBoundaryView`, `routeBoundaryMeta`, and
+`routeTreeFromBoundary` lock a route-owned layout/loading/error/meta unit that
+can be reused by docs, devtools, and larger app shells. `routeOwnershipProps`
+adds inspectable ownership attributes, while `routeRequestPolicy` gives loaders
+request scope, TTL, stale-while-revalidate, and abort-on-refresh defaults.
+
+### prefetchRouteNode / prefetchRouteNodeWithOptions / cancelRouteNode / revalidateRouteNode
 
 Route-node delivery helpers for lazy route modules, route-owned prefetch,
 rapid-navigation cancellation by resource scope, and scope-level background
-revalidation.
+revalidation. Prefetch hrefs normalize app base paths and ignore hash
+fragments so prefetch keys match real navigation keys.
+
+`prefetchPolicy` and `prefetchPolicyProps` capture intent, TTL, and transition
+metadata for route-level prefetch and delivery conventions.
 
 ### navigationIntentProps / viewTransitionProps / navigateWithTransition
 
@@ -703,10 +715,14 @@ Public option builders for app data conventions. They map to the runtime cache
 policy, request/route scope, abortable refresh, and stale-while-revalidate
 metadata used by the resource core.
 
-### tag / dependency / routeDataPolicy
+### tag / dependency / routeDataPolicy / requestPolicy / routeRequestPolicy / requestRouteDataPolicy
 
 Convenience builders for tag/dependency invalidation and route-owned data
-resources.
+resources. `requestPolicy`, `routeRequestPolicy`, `prefetchOptions`, and
+`createPrefetchResource` are the public app-data lifecycle layer for request
+scope, background refresh, and disabled prefetch records. `requestScope` also
+sets `requestId`; `requestRouteDataPolicy` keeps route invalidation scope while
+carrying request identity for SSR.
 
 ### createResource / createResourceWithOptions
 
@@ -718,9 +734,10 @@ boundaries; `data` returns nullable data for non-suspense reads.
 Invalidates matching records and restarts enabled resources. Forced reloads can
 abort the previous request when `abortOnRefresh` is enabled.
 
-### clearCache / clearScope / mutate
+### clearCache / clearScope / clearRequestScope / revalidateScope / mutate
 
-Clears all records, clears one scope, or writes optimistic data into a resource.
+Clears all records, clears one scope, clears all records carrying a request id,
+or writes optimistic data into a resource.
 
 ## @std/forms
 
@@ -736,11 +753,16 @@ Build controlled input props and form encoding props.
 Helpers for nested fields, schema adapter metadata, server-validation mapping,
 and first-class array-field naming.
 
+### fieldControlProps / fieldErrorProps / validationSummaryProps
+
+Accessibility and server-validation helpers for `aria-invalid`,
+`aria-describedby`, alert regions, and touched-error display.
+
 ### createFieldState / markDirty / markTouched / setFieldError
 
 Track dirty, touched, and error state per field.
 
-### action / actionWithOptions / submitAction / submitActionOptimistic / submitActionWithRollback / rollbackResource
+### action / actionWithOptions / submitAction / submitActionOptimistic / submitActionWithRollback / submitActionWithCurrentRollback / rollbackResource
 
 Create resource-backed form actions and wire optimistic resource updates.
 `submitAction` resets submitting after success or rejection, and
@@ -756,11 +778,11 @@ drive input/click/submit/keyboard events, and provide async flush helpers.
 
 Creates a test DOM harness and mounts or hydrates an app through the runtime.
 
-### flush / waitFor / findByText / findByRole / clickAndFlush / inputAndFlush / submitAndFlush
+### flush / waitFor / actAsync / findByText / findByRole / findByLabel / findByPlaceholder / settle / clickAndFlush / inputAndFlush / submitAndFlush
 
 Small async workflow helpers for route/action/resource integration tests.
 `flush` drains microtasks through the runtime facade and `waitFor` retries a
-query/check before returning.
+query/check before returning. `waitFor` also awaits promise-returning checks.
 
 ## @std/devtools
 
@@ -787,6 +809,10 @@ Convenience inspector and timeline helpers for complex app debugging.
 Inspector event helpers for resource, route, frame, signal, and hydration
 mismatch tooling.
 
+`inspectorRecord`, `recordRouteTransition`, `recordResourceTiming`,
+`recordSignalDependency`, and `recordHydrationRecovery` give inspector UIs
+stable `inspect:*` event kinds before the visual devtools panel exists.
+
 ### profileStart / profileEnd / recordRenderCost
 
 Profiler events for render timeline and cost views.
@@ -809,10 +835,10 @@ stays in `@std/render` primitives.
 
 Renders a styled button with `type="button"` by default.
 
-### buttonVariant(variant: String, props: Any, children: Any) -> VNode
+### variant / variantProps / buttonBase / buttonVariant / buttonWithState
 
-Variant-aware button wrapper. Current variants: `primary`, `danger`, and the
-default secondary style.
+Variant-aware control wrappers. `buttonWithState` emits loading/disabled
+semantics, while `variantProps` centralizes size, tone, and density classes.
 
 ### themeRoot / themeTokens / tokenContract
 
@@ -830,7 +856,7 @@ Application frame primitives for dashboard and complex app layouts.
 
 Large-app navigation, toolbar, status, form-layout, and empty-state wrappers.
 
-### inputVariant / fieldGroup / dataTable / tableRow / tableHeaderCell / tableCell
+### inputVariant / fieldGroup / fieldControlProps / dataTable / tableRow / tableHeaderCell / tableSortHeader / tableCell
 
 Form composition and data-entry primitives for larger app surfaces.
 

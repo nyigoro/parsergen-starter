@@ -22,6 +22,9 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint:check
+      - run: npm run build
+      - run: npm run build:verify
+      - run: npm run pack:check
       - run: npm test
 
   release:
@@ -101,15 +104,6 @@ jobs:
       - name: Skip lumina-lang publish (already exists)
         if: steps.lumina_lang_exists.outputs.exists == '1'
         run: echo "lumina-lang@${{ steps.version.outputs.VERSION }} already published; skipping."
-
-      - name: Build lumina-lang
-        if: steps.lumina_lang_exists.outputs.exists != '1'
-        run: npm run build
-
-      - name: Verify dist
-        if: steps.lumina_lang_exists.outputs.exists != '1'
-        run: npm run build:verify
-
 
       - name: Publish lumina-lang
         if: steps.lumina_lang_exists.outputs.exists != '1'

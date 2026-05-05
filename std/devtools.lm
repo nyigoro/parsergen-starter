@@ -1,10 +1,16 @@
-import { render } from "@std";
+import { render, str } from "@std";
 
 pub struct DevtoolsSnapshot {
   roots: any,
   resources: any,
   signals: any,
   timeline: any
+}
+
+pub struct InspectorRecord {
+  kind: string,
+  label: string,
+  detail: any
 }
 
 pub fn snapshot() -> any {
@@ -48,7 +54,11 @@ pub fn recordHydration(label: string, detail: any) -> any {
 }
 
 pub fn inspect(kind: string, label: string, detail: any) -> any {
-  record(kind, label, detail)
+  record(str.concat("inspect:", kind), label, detail)
+}
+
+pub fn inspectorRecord(kind: string, label: string, detail: any) -> InspectorRecord {
+  InspectorRecord { kind: str.concat("inspect:", kind), label: label, detail: detail }
 }
 
 pub fn inspectSignal(label: string, detail: any) -> any {
@@ -69,6 +79,22 @@ pub fn inspectRoute(label: string, detail: any) -> any {
 
 pub fn inspectHydrationMismatch(label: string, detail: any) -> any {
   inspect("hydration-mismatch", label, detail)
+}
+
+pub fn recordRouteTransition(label: string, detail: any) -> any {
+  inspect("route-transition", label, detail)
+}
+
+pub fn recordResourceTiming(label: string, detail: any) -> any {
+  inspect("resource-timing", label, detail)
+}
+
+pub fn recordSignalDependency(label: string, detail: any) -> any {
+  inspect("signal-dependency", label, detail)
+}
+
+pub fn recordHydrationRecovery(label: string, detail: any) -> any {
+  inspect("hydration-recovery", label, detail)
 }
 
 pub fn profileStart(label: string, detail: any) -> any {

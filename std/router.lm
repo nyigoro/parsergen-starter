@@ -39,9 +39,22 @@ pub struct RouteTree {
   meta: any
 }
 
+pub struct RouteBoundary {
+  node: RouteNode,
+  loading: any,
+  error: any,
+  meta: any
+}
+
 pub struct RouteHref {
   path: string,
   search: string
+}
+
+pub struct RoutePrefetchPolicy {
+  intent: string,
+  ttlMs: int,
+  transition: bool
 }
 
 pub struct RouteAction<T> {
@@ -76,6 +89,21 @@ fn find_char(value: string, needle: string, index: int) -> int {
   return find_char(value, needle, index + 1)
 }
 
+fn strip_hash_fragment(value: string) -> string {
+  let hash_index = find_char(value, "#", 0)
+  if (hash_index < 0) {
+    return value
+  }
+  return str.substring(value, 0, hash_index)
+}
+
+fn bool_string(value: bool) -> string {
+  if (value) {
+    return "true"
+  }
+  return "false"
+}
+
 fn ensure_leading_slash(value: string) -> string {
   if (str.length(value) == 0) {
     return "/"
@@ -101,13 +129,14 @@ fn normalize_path(value: string) -> string {
 }
 
 fn split_href(value: string) -> RouteHref {
-  let query_index = find_char(value, "?", 0)
+  let clean = strip_hash_fragment(value)
+  let query_index = find_char(clean, "?", 0)
   if (query_index < 0) {
-    return RouteHref { path: normalize_path(value), search: "" }
+    return RouteHref { path: normalize_path(clean), search: "" }
   }
   return RouteHref {
-    path: normalize_path(str.substring(value, 0, query_index)),
-    search: str.substring(value, query_index, str.length(value))
+    path: normalize_path(str.substring(clean, 0, query_index)),
+    search: str.substring(clean, query_index, str.length(clean))
   }
 }
 
@@ -177,6 +206,11 @@ fn resolve_href(base: string, path: string) -> string {
     return normalized_base
   }
   return str.concat(normalized_base, normalized_path)
+}
+
+fn normalize_prefetch_href(base: string, path: string) -> RouteHref {
+  let href = split_href(path)
+  return RouteHref { path: strip_base_path(href.path, base), search: href.search }
 }
 
 fn initial_router_path(normalized_base: string) -> string {
@@ -300,6 +334,16 @@ pub fn routeModuleOptions(module: RouteModule, options: any) -> any {
   )
 }
 
+pub fn routeIdOptions(routeId: string, options: any) -> any {
+  render.props_merge(
+    options,
+    render.props_merge(
+      render.props_attr("scope", routeId),
+      render.props_attr("routeId", routeId)
+    )
+  )
+}
+
 pub fn routeNode(id: string, pattern: string, title: string) -> RouteNode {
   let module = routeModule(id, pattern, title)
   RouteNode { id: id, pattern: pattern, title: title, module: module, children: render.props_empty() }
@@ -343,6 +387,61 @@ pub fn routeNodeMeta(node: RouteNode, meta: any) -> any {
   )
 }
 
+pub fn routeOwnershipProps(node: RouteNode, props: any) -> any {
+  render.props_merge(
+    routeNodeMeta(node, props),
+    render.props_attr("data-lumina-route-owner", node.id)
+  )
+}
+
+pub fn routeRequestPolicy(node: RouteNode, requestId: string, ttlMs: int, props: any) -> any {
+  routeNodeMeta(
+    node,
+    render.props_merge(
+      props,
+      render.props_merge(
+        render.props_attr("scope", node.id),
+        render.props_merge(
+          render.props_attr("requestId", requestId),
+          render.props_merge(
+            render.props_attr("ttlMs", ttlMs),
+            render.props_merge(
+              render.props_attr("staleWhileRevalidate", true),
+              render.props_merge(
+                render.props_attr("abortOnRefresh", true),
+                render.props_merge(
+                  render.props_attr("tags", node.id),
+                  render.props_attr("dependencies", node.id)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+pub fn routeBoundary(node: RouteNode, loading: any, error: any, meta: any) -> RouteBoundary {
+  RouteBoundary { node: node, loading: loading, error: error, meta: routeOwnershipProps(node, meta) }
+}
+
+pub fn routeBoundaryMeta(boundary: RouteBoundary) -> any {
+  boundary.meta
+}
+
+pub fn routeBoundaryView(routerValue: Router, boundary: RouteBoundary, renderChildren: fn(RouteMatch) -> any, fallback: any) -> VNode {
+  routeErrorBoundary(boundary.error, fn() -> any {
+    render.suspense(boundary.loading, fn() -> any {
+      routeNodeView(routerValue, boundary.node, renderChildren, fallback)
+    })
+  })
+}
+
+pub fn routeTreeFromBoundary(boundary: RouteBoundary) -> RouteTree {
+  RouteTree { root: boundary.node, loading: boundary.loading, error: boundary.error, meta: boundary.meta }
+}
+
 pub fn routeTree(root: RouteNode, loading: any, error: any, meta: any) -> RouteTree {
   RouteTree { root: root, loading: loading, error: error, meta: routeNodeMeta(root, meta) }
 }
@@ -359,6 +458,14 @@ pub fn routeTreeBoundary(tree: RouteTree, renderChildren: fn() -> any) -> VNode 
 
 pub fn routeTreeMeta(tree: RouteTree) -> any {
   tree.meta
+}
+
+pub fn cancelRouteTree(tree: RouteTree) -> int {
+  cancelRouteNode(tree.root)
+}
+
+pub fn revalidateRouteTree(tree: RouteTree) -> int {
+  revalidateRouteNode(tree.root)
 }
 
 pub fn routeNodeLoader<T>(routerValue: Router, node: RouteNode, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
@@ -382,9 +489,14 @@ pub fn routeNodeLayout(routerValue: Router, node: RouteNode, shell: fn(RouteMatc
   render.show(matchValue.matched, fn() -> any { shell(matchValue, child) }, fallback)
 }
 
-pub fn prefetchRouteNode<T>(_routerValue: Router, node: RouteNode, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  let href = split_href(path)
+pub fn prefetchRouteNode<T>(routerValue: Router, node: RouteNode, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+  let href = normalize_prefetch_href(routerValue.base, path)
   RouteResource<T> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, render.props_empty())) }
+}
+
+pub fn prefetchRouteNodeWithOptions<T>(routerValue: Router, node: RouteNode, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
+  let href = normalize_prefetch_href(routerValue.base, path)
+  RouteResource<T> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, options)) }
 }
 
 pub fn cancelRouteNode(node: RouteNode) -> int {
@@ -393,6 +505,23 @@ pub fn cancelRouteNode(node: RouteNode) -> int {
 
 pub fn revalidateRouteNode(node: RouteNode) -> int {
   render.resourceInvalidateScope(node.id)
+}
+
+pub fn prefetchPolicy(intent: string, ttlMs: int, transition: bool) -> RoutePrefetchPolicy {
+  RoutePrefetchPolicy { intent: intent, ttlMs: ttlMs, transition: transition }
+}
+
+pub fn prefetchPolicyProps(policy: RoutePrefetchPolicy, props: any) -> any {
+  render.props_merge(
+    props,
+    render.props_merge(
+        render.props_attr("data-lumina-prefetch", policy.intent),
+        render.props_merge(
+          render.props_attr("ttlMs", policy.ttlMs),
+        render.props_attr("data-lumina-transition", bool_string(policy.transition))
+      )
+    )
+  )
 }
 
 pub fn lazyRouteModule(id: string, pattern: string, title: string, modulePath: string) -> RouteNode {
@@ -418,16 +547,19 @@ pub fn matchUrlPattern(pattern: string, path: string) -> bool {
 }
 
 pub fn routeModuleLoader<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(routeModuleMatch(routerValue, module)) }, routeModuleOptions(module, render.props_empty())) }
+  let matchValue = routeModuleMatch(routerValue, module)
+  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, render.props_empty())) }
 }
 
 pub fn routeModuleLoaderWithOptions<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>, options: any) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(routeModuleMatch(routerValue, module)) }, routeModuleOptions(module, options)) }
+  let matchValue = routeModuleMatch(routerValue, module)
+  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, options)) }
 }
 
 pub fn routeModuleAction<T>(routerValue: Router, module: RouteModule, name: string, action: fn(RouteMatch) -> Promise<T>) -> RouteAction<T> {
   let options = routeModuleOptions(module, render.props_attr("enabled", false))
-  let actionResource = RouteResource<T> { raw: render.createResource(str.concat(routeModuleKey(routerValue, module, name), ":action"), fn() -> Promise<any> { action(routeModuleMatch(routerValue, module)) }, options) }
+  let matchValue = routeModuleMatch(routerValue, module)
+  let actionResource = RouteResource<T> { raw: render.createResource(str.concat(routeModuleKey(routerValue, module, name), ":action"), fn() -> Promise<any> { action(matchValue) }, options) }
   return RouteAction<T> { resource: actionResource, submitting: reactive.createSignal(false) }
 }
 
@@ -445,20 +577,20 @@ pub fn routeLoaderWithOptions<T>(routerValue: Router, name: string, loader: fn()
 }
 
 pub fn routeLoaderFor<T>(routerValue: Router, routeId: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, render.props_empty())) }
 }
 
 pub fn routeLoaderForWithOptions<T>(routerValue: Router, routeId: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, options) }
+  RouteResource<T> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, options)) }
 }
 
-pub fn prefetchRoute<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  let href = split_href(path)
+pub fn prefetchRoute<T>(routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+  let href = normalize_prefetch_href(routerValue.base, path)
   RouteResource<T> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
 }
 
-pub fn prefetchRouteWithOptions<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
-  let href = split_href(path)
+pub fn prefetchRouteWithOptions<T>(routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
+  let href = normalize_prefetch_href(routerValue.base, path)
   RouteResource<T> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, options) }
 }
 
