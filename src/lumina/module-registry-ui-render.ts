@@ -104,7 +104,7 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
     ], resourceHandleType);
     const resourceStatusType: Type = fnType([resourceHandleType], primitive('string'));
     const resourceValueType: Type = fnType([resourceHandleType], primitive('any'));
-    const resourceRefreshType: Type = fnType([resourceHandleType], promiseType(primitive('any')));
+    const resourceRefreshType: Type = fnType([resourceHandleType], promiseType(primitive('any'))); const resourceSubmitType: Type = fnType([resourceHandleType, adt('Signal', [primitive('bool')])], promiseType(primitive('any'))); const resourceSubmitOptimisticType: Type = fnType([resourceHandleType, adt('Signal', [primitive('bool')]), resourceHandleType, primitive('any'), primitive('any')], promiseType(primitive('any')));
     const resourceInvalidateType: Type = fnType([resourceHandleType], primitive('void'));
     const resourceInvalidateKeyType: Type = fnType([primitive('any')], primitive('bool'));
     const resourceInvalidatePrefixType: Type = fnType([primitive('string')], primitive('int'));
@@ -221,6 +221,7 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
     const createCanvasRendererType: Type = fnType([], rendererT);
     const createTerminalRendererType: Type = fnType([], rendererT);
     const renderToStringType: Type = fnType([vnodeT], primitive('string'));
+    const renderToChunksType: Type = fnType([vnodeT], primitive('any')); const renderToReadableStreamType: Type = fnType([vnodeT], primitive('any'));
     const renderToTerminalType: Type = fnType([vnodeT], primitive('string'));
     const createRootType: Type = fnType([rendererT, containerT], renderRootT);
     const hydrateType: Type = fnType([rendererT, containerT, vnodeT], renderRootT);
@@ -236,6 +237,7 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
     const testingGetByIdType: Type = fnType([primitive('any'), primitive('string')], primitive('any'));
     const testingGetByTextType: Type = fnType([primitive('any'), primitive('string')], primitive('any'));
     const testingGetByRoleType: Type = fnType([primitive('any'), primitive('string')], primitive('any'));
+    const testingGetByRoleNameType: Type = fnType([primitive('any'), primitive('string'), primitive('string')], primitive('any')); const testingGetByLabelType: Type = testingGetByTextType; const testingGetByPlaceholderType: Type = testingGetByTextType;
     const testingQueryAllByRoleType: Type = fnType([primitive('any'), primitive('string')], primitive('any'));
     const testingTextContentType: Type = fnType([primitive('any')], primitive('string'));
     const testingClickType: Type = fnType([primitive('any')], primitive('void'));
@@ -928,28 +930,10 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
             'std://render'
           ),
         ],
-        [
-          'resourceRefresh',
-          moduleFunctionWithScheme(
-            'resourceRefresh',
-            ['any'],
-            'Promise<any>',
-            schemeFromVars(resourceRefreshType, []),
-            ['resource'],
-            'std://render'
-          ),
-        ],
-        [
-          'resourceInvalidate',
-          moduleFunctionWithScheme(
-            'resourceInvalidate',
-            ['any'],
-            'void',
-            schemeFromVars(resourceInvalidateType, []),
-            ['resource'],
-            'std://render'
-          ),
-        ],
+        ['resourceRefresh', moduleFunctionWithScheme('resourceRefresh', ['any'], 'Promise<any>', schemeFromVars(resourceRefreshType, []), ['resource'], 'std://render')],
+        ['resourceSubmit', moduleFunctionWithScheme('resourceSubmit', ['any', 'Signal<bool>'], 'Promise<any>', schemeFromVars(resourceSubmitType, []), ['resource', 'submitting'], 'std://render')],
+        ['resourceSubmitOptimistic', moduleFunctionWithScheme('resourceSubmitOptimistic', ['any', 'Signal<bool>', 'any', 'any', 'any'], 'Promise<any>', schemeFromVars(resourceSubmitOptimisticType, []), ['resource', 'submitting', 'target', 'optimistic', 'previous'], 'std://render')],
+        ['resourceInvalidate', moduleFunctionWithScheme('resourceInvalidate', ['any'], 'void', schemeFromVars(resourceInvalidateType, []), ['resource'], 'std://render')],
         ['resourceInvalidateKey', moduleFunctionWithScheme('resourceInvalidateKey', ['any'], 'bool', schemeFromVars(resourceInvalidateKeyType, []), ['key'], 'std://render')],
         ['resourceInvalidatePrefix', moduleFunctionWithScheme('resourceInvalidatePrefix', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['prefix'], 'std://render')],
         ['resourceInvalidateTag', moduleFunctionWithScheme('resourceInvalidateTag', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['tag'], 'std://render')],
@@ -957,17 +941,7 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
         ['resourceInvalidateScope', moduleFunctionWithScheme('resourceInvalidateScope', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['scope'], 'std://render')],
         ['resourceClearCache', moduleFunctionWithScheme('resourceClearCache', [], 'void', schemeFromVars(resourceClearCacheType, []), [], 'std://render')],
         ['resourceClearScope', moduleFunctionWithScheme('resourceClearScope', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['scope'], 'std://render')],
-        [
-          'resourceMutate',
-          moduleFunctionWithScheme(
-            'resourceMutate',
-            ['any', 'any'],
-            'any',
-            schemeFromVars(fnType([resourceHandleType, primitive('any')], primitive('any')), []),
-            ['resource', 'value'],
-            'std://render'
-          ),
-        ],
+        ['resourceMutate', moduleFunctionWithScheme('resourceMutate', ['any', 'any'], 'any', schemeFromVars(fnType([resourceHandleType, primitive('any')], primitive('any')), []), ['resource', 'value'], 'std://render')],
         [
           'suspense',
           moduleFunctionWithScheme(
@@ -1782,6 +1756,8 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
             'std://render'
           ),
         ],
+        ['renderToChunks', moduleFunctionWithScheme('renderToChunks', ['VNode'], 'any', schemeFromVars(renderToChunksType, []), ['node'], 'std://render')],
+        ['renderToReadableStream', moduleFunctionWithScheme('renderToReadableStream', ['VNode'], 'any', schemeFromVars(renderToReadableStreamType, []), ['node'], 'std://render')],
         [
           'render_to_terminal',
           moduleFunctionWithScheme(
@@ -1947,6 +1923,9 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
             'std://render'
           ),
         ],
+        ['testingGetByRoleName', moduleFunctionWithScheme('testingGetByRoleName', ['any', 'string', 'string'], 'any', schemeFromVars(testingGetByRoleNameType, []), ['scope', 'role', 'name'], 'std://render')],
+        ['testingGetByLabel', moduleFunctionWithScheme('testingGetByLabel', ['any', 'string'], 'any', schemeFromVars(testingGetByLabelType, []), ['scope', 'label'], 'std://render')],
+        ['testingGetByPlaceholder', moduleFunctionWithScheme('testingGetByPlaceholder', ['any', 'string'], 'any', schemeFromVars(testingGetByPlaceholderType, []), ['scope', 'placeholder'], 'std://render')],
         [
           'testingQueryAllByRole',
           moduleFunctionWithScheme(

@@ -159,6 +159,8 @@ describe('runtime render module', () => {
     expect(render.render_to_string(node)).toBe(
       '<section class="panel" data-lumina-key="settings-panel">Settings</section>'
     );
+    expect(render.renderToChunks(node).join('')).toBe(render.render_to_string(node));
+    expect(render.renderToReadableStream(node)).toBeInstanceOf(ReadableStream);
   });
 
   test('renderer root lifecycle delegates to renderer hooks', () => {
@@ -375,6 +377,29 @@ describe('runtime render module', () => {
     expect(render.resourceInvalidateKey(`${key}:other`)).toBe(true);
     render.resourceClearCache();
     expect(other).toBeTruthy();
+  });
+
+  test('resource submit resets submitting and rolls back optimistic failures', async () => {
+    const action = render.createResource(
+      `resource:${Date.now()}:action`,
+      async () => {
+        throw new Error('save failed');
+      },
+      { enabled: false }
+    );
+    const target = render.createResource(`resource:${Date.now()}:target`, async () => 'server', { enabled: false });
+    render.resourceMutate(target, 'previous');
+    const submitting = render.signal(false);
+
+    await expect(render.resourceSubmitOptimistic(action, submitting, target, 'optimistic', 'previous')).rejects.toThrow(
+      'save failed'
+    );
+
+    expect(render.get(submitting)).toBe(false);
+    expect(render.resourceStatus(action)).toBe('error');
+    expect((render.resourceError(action) as Error).message).toBe('save failed');
+    expect(render.resourceData(target)).toBe('previous');
+    render.resourceClearCache();
   });
 
   test('suspense and error boundary helpers catch the right thrown values', () => {

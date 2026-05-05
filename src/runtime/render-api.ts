@@ -110,7 +110,10 @@ interface TestingFacadeLike<TReactiveRoot> {
   testing_body: (harness: unknown) => unknown;
   testing_get_by_id: (harness: unknown, id: string) => unknown;
   testing_get_by_text: (scope: unknown, value: string) => unknown;
+  testing_get_by_role_name: (scope: unknown, role: string, name: string) => unknown;
   testing_query_all_by_role: (scope: unknown, role: string) => unknown;
+  testing_get_by_label: (scope: unknown, label: string) => unknown;
+  testing_get_by_placeholder: (scope: unknown, placeholder: string) => unknown;
   testing_text_content: (node: unknown) => string;
   testing_click: (node: unknown) => void;
   testing_input: (node: unknown, value: string) => void;
@@ -176,6 +179,8 @@ interface RenderApiDeps<TRenderRoot, TReactiveRoot, TRenderError, TDomRendererOp
   appRuntime: AppRuntimeLike<TReactiveRoot>;
   headlessPrimitiveRender: HeadlessPrimitiveRender;
   renderToString: (node: VNode) => string;
+  renderToChunks: (node: VNode) => string[];
+  renderToReadableStream: (node: VNode) => ReadableStream<string> | null;
   renderToTerminal: (node: VNode) => string;
   createDomRenderer: (options?: TDomRendererOptions) => RenderRootRenderer<VNode>;
   createSsrRenderer: () => RenderRootRenderer<VNode>;
@@ -295,6 +300,29 @@ export const createRenderApi = <
       handle.record.expiresAt = 0;
       return startResourceLoad(handle.record, true);
     },
+    resource_submit: async <T>(resource: unknown, submitting: unknown): Promise<T> => {
+      if (submitting instanceof Signal) submitting.set(true);
+      try {
+        return await render.resource_refresh<T>(resource);
+      } finally {
+        if (submitting instanceof Signal) submitting.set(false);
+      }
+    },
+    resource_submit_optimistic: async <T>(
+      resource: unknown,
+      submitting: unknown,
+      target: unknown,
+      optimistic: T,
+      previous: T
+    ): Promise<T> => {
+      render.resource_mutate(target, optimistic);
+      try {
+        return await render.resource_submit<T>(resource, submitting);
+      } catch (error) {
+        render.resource_mutate(target, previous);
+        throw error;
+      }
+    },
     resource_invalidate: (resource: unknown): void => {
       const handle = asResourceHandle(resource, 'render.resource_invalidate');
       handle.record.expiresAt = 0;
@@ -390,6 +418,8 @@ export const createRenderApi = <
       render.render_app(componentFn, props),
     renderToStringApp: <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P): string =>
       render.render_to_string_app(componentFn, props),
+    renderToChunks: (node: VNode): string[] => render.render_to_chunks(node),
+    renderToReadableStream: (node: VNode): ReadableStream<string> | null => render.render_to_readable_stream(node),
     transitionPresence: (
       open: Signal<boolean>,
       props: Record<string, unknown> | null | undefined,
@@ -401,6 +431,9 @@ export const createRenderApi = <
     resourceError: (resource: unknown): unknown => render.resource_error(resource),
     resourceRead: <T>(resource: unknown): T => render.resource_read<T>(resource),
     resourceRefresh: <T>(resource: unknown): Promise<T> => render.resource_refresh<T>(resource),
+    resourceSubmit: <T>(resource: unknown, submitting: unknown): Promise<T> => render.resource_submit<T>(resource, submitting),
+    resourceSubmitOptimistic: <T>(resource: unknown, submitting: unknown, target: unknown, optimistic: T, previous: T): Promise<T> =>
+      render.resource_submit_optimistic<T>(resource, submitting, target, optimistic, previous),
     resourceInvalidate: (resource: unknown): void => render.resource_invalidate(resource),
     resourceInvalidateKey: (key: unknown): boolean => render.resource_invalidate_key(key),
     resourceInvalidatePrefix: (prefix: string): number => render.resource_invalidate_prefix(prefix),
@@ -443,7 +476,12 @@ export const createRenderApi = <
       const matches = render.testing_query_all_by_role(scope, role) as unknown[];
       return matches[0] ?? null;
     },
+    testingGetByRoleName: (scope: unknown, role: string, name: string): unknown =>
+      render.testing_get_by_role_name(scope, role, name),
     testingQueryAllByRole: (scope: unknown, role: string): unknown => render.testing_query_all_by_role(scope, role),
+    testingGetByLabel: (scope: unknown, label: string): unknown => render.testing_get_by_label(scope, label),
+    testingGetByPlaceholder: (scope: unknown, placeholder: string): unknown =>
+      render.testing_get_by_placeholder(scope, placeholder),
     testingTextContent: (node: unknown): string => render.testing_text_content(node),
     testingClick: (node: unknown): void => render.testing_click(node),
     testingInput: (node: unknown, value: string): void => render.testing_input(node, value),
@@ -710,6 +748,8 @@ export const createRenderApi = <
     create_canvas_renderer: (options?: TCanvasRendererOptions): RenderRootRenderer<VNode> => deps.createCanvasRenderer(options),
     create_terminal_renderer: (): RenderRootRenderer<VNode> => deps.createTerminalRenderer(),
     render_to_string: (node: VNode): string => deps.renderToString(node),
+    render_to_chunks: (node: VNode): string[] => deps.renderToChunks(node),
+    render_to_readable_stream: (node: VNode): ReadableStream<string> | null => deps.renderToReadableStream(node),
     render_to_terminal: (node: VNode): string => deps.renderToTerminal(node),
     create_root: (renderer: unknown, container: unknown): TRenderRoot =>
       new deps.RenderRoot(deps.coerceRenderer(renderer), container),
@@ -776,8 +816,14 @@ export const createRenderApi = <
       deps.appRuntime.testingFacade.testing_get_by_id(harness, id),
     testing_get_by_text: (scope: unknown, value: string): unknown =>
       deps.appRuntime.testingFacade.testing_get_by_text(scope, value),
+    testing_get_by_role_name: (scope: unknown, role: string, name: string): unknown =>
+      deps.appRuntime.testingFacade.testing_get_by_role_name(scope, role, name),
     testing_query_all_by_role: (scope: unknown, role: string): unknown =>
       deps.appRuntime.testingFacade.testing_query_all_by_role(scope, role),
+    testing_get_by_label: (scope: unknown, label: string): unknown =>
+      deps.appRuntime.testingFacade.testing_get_by_label(scope, label),
+    testing_get_by_placeholder: (scope: unknown, placeholder: string): unknown =>
+      deps.appRuntime.testingFacade.testing_get_by_placeholder(scope, placeholder),
     testing_text_content: (node: unknown): string => deps.appRuntime.testingFacade.testing_text_content(node),
     testing_click: (node: unknown): void => deps.appRuntime.testingFacade.testing_click(node),
     testing_input: (node: unknown, value: string): void => deps.appRuntime.testingFacade.testing_input(node, value),

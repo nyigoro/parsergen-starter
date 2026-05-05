@@ -44,6 +44,8 @@ describe('@std/forms', () => {
     expect(js).toContain('submitAction');
     expect(js).toContain('submitActionOptimistic');
     expect(js).toContain('submitActionWithRollback');
+    expect(js).toContain('resourceSubmit');
+    expect(js).toContain('resourceSubmitOptimistic');
     expect(js).toContain('rollbackResource');
     expect(js).toContain('actionStatus');
     expect(js).toContain('actionSubmitProps');

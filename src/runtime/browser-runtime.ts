@@ -63,6 +63,7 @@ type RouterWindowLike = {
 
 type RouterDocumentLike = {
   baseURI?: string;
+  startViewTransition?: (update: () => unknown) => unknown;
 };
 
 type RouterPopStateHandler = (path: string) => unknown;
@@ -462,6 +463,42 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
     return baseURI;
   };
 
+  const supportsRouterNavigationApi = (): boolean => {
+    const windowHandle = getRouterWindowHandle() as RouterWindowLike & { navigation?: unknown } | null;
+    return typeof (windowHandle?.navigation ?? (globalThis as { navigation?: unknown }).navigation) === 'object';
+  };
+
+  const supportsRouterViewTransition = (): boolean => {
+    const documentHandle = (globalThis as { document?: RouterDocumentLike }).document;
+    return typeof documentHandle?.startViewTransition === 'function';
+  };
+
+  const supportsRouterUrlPattern = (): boolean =>
+    typeof (globalThis as { URLPattern?: unknown }).URLPattern === 'function';
+
+  const matchRouterUrlPattern = (pattern: string, path: string): boolean => {
+    const URLPatternCtor = (globalThis as {
+      URLPattern?: new (input: unknown, baseURL?: string) => { test: (input: unknown) => boolean };
+    }).URLPattern;
+    if (typeof URLPatternCtor !== 'function') return matchRouterPattern(pattern, path);
+    try {
+      return new URLPatternCtor({ pathname: pattern }).test({ pathname: normalizeRouterPath(path) });
+    } catch {
+      return matchRouterPattern(pattern, path);
+    }
+  };
+
+  const startRouterViewTransition = (update: unknown): boolean => {
+    if (typeof update !== 'function') return false;
+    const documentHandle = (globalThis as { document?: RouterDocumentLike }).document;
+    if (typeof documentHandle?.startViewTransition === 'function') {
+      documentHandle.startViewTransition(() => (update as () => unknown)());
+      return true;
+    }
+    (update as () => unknown)();
+    return false;
+  };
+
   const url = {
     is_available: (): boolean => typeof URL === 'function',
     parse: (raw: string) => {
@@ -685,7 +722,11 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
     getCurrentPath: (): string => readRouterPathname(),
     getCurrentHash: (): string => readRouterHash(),
     getCurrentSearch: (): string => readRouterSearch(),
+    supportsNavigationApi: (): boolean => supportsRouterNavigationApi(),
+    supportsViewTransition: (): boolean => supportsRouterViewTransition(),
+    supportsUrlPattern: (): boolean => supportsRouterUrlPattern(),
     matchRoute: (pattern: string, path: string): boolean => matchRouterPattern(pattern, path),
+    matchUrlPattern: (pattern: string, path: string): boolean => matchRouterUrlPattern(pattern, path),
     extractParams: (pattern: string, path: string): HashMapLike<string, string> =>
       extractRouterParams(pattern, path),
     parseSearchParams: (search: string): HashMapLike<string, string> => parseRouterSearchParams(search),
@@ -768,6 +809,7 @@ export const createBrowserRuntime = (deps: BrowserRuntimeDeps) => {
         // Ignore scroll failures from test stubs.
       }
     },
+    startViewTransition: (update: unknown): boolean => startRouterViewTransition(update),
   };
 
   return {

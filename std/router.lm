@@ -32,6 +32,18 @@ pub struct RouteNode {
   children: any
 }
 
+pub struct RouteTree {
+  root: RouteNode,
+  loading: any,
+  error: any,
+  meta: any
+}
+
+pub struct RouteHref {
+  path: string,
+  search: string
+}
+
 pub struct RouteAction<T> {
   resource: RouteResource<T>,
   submitting: Signal<bool>
@@ -52,6 +64,16 @@ fn char_at_or_empty(value: string, index: int) -> string {
     return ""
   }
   return str.substring(value, index, index + 1)
+}
+
+fn find_char(value: string, needle: string, index: int) -> int {
+  if (index >= str.length(value)) {
+    return 0 - 1
+  }
+  if (char_at_or_empty(value, index) == needle) {
+    return index
+  }
+  return find_char(value, needle, index + 1)
 }
 
 fn ensure_leading_slash(value: string) -> string {
@@ -76,6 +98,17 @@ fn trim_trailing_slash(value: string) -> string {
 
 fn normalize_path(value: string) -> string {
   return trim_trailing_slash(ensure_leading_slash(value))
+}
+
+fn split_href(value: string) -> RouteHref {
+  let query_index = find_char(value, "?", 0)
+  if (query_index < 0) {
+    return RouteHref { path: normalize_path(value), search: "" }
+  }
+  return RouteHref {
+    path: normalize_path(str.substring(value, 0, query_index)),
+    search: str.substring(value, query_index, str.length(value))
+  }
 }
 
 fn normalize_base(base: string) -> string {
@@ -187,6 +220,22 @@ pub fn scrollToTop() -> void {
   router.scrollToTop()
 }
 
+pub fn supportsNavigationApi() -> bool {
+  router.supportsNavigationApi()
+}
+
+pub fn supportsViewTransition() -> bool {
+  router.supportsViewTransition()
+}
+
+pub fn supportsUrlPattern() -> bool {
+  router.supportsUrlPattern()
+}
+
+pub fn startViewTransition(update: fn() -> void) -> bool {
+  router.startViewTransition(update)
+}
+
 pub fn currentPath(routerValue: Router) -> Signal<string> {
   return routerValue.path
 }
@@ -281,6 +330,37 @@ pub fn routeNodeOptions(node: RouteNode, options: any) -> any {
   routeModuleOptions(node.module, options)
 }
 
+pub fn routeNodeMeta(node: RouteNode, meta: any) -> any {
+  render.props_merge(
+    meta,
+    render.props_merge(
+      render.props_attr("routeId", node.id),
+      render.props_merge(
+        render.props_attr("routePattern", node.pattern),
+        render.props_attr("routeTitle", node.title)
+      )
+    )
+  )
+}
+
+pub fn routeTree(root: RouteNode, loading: any, error: any, meta: any) -> RouteTree {
+  RouteTree { root: root, loading: loading, error: error, meta: routeNodeMeta(root, meta) }
+}
+
+pub fn routeTreeView(routerValue: Router, tree: RouteTree, renderChildren: fn(RouteMatch) -> any) -> VNode {
+  routeNodeView(routerValue, tree.root, renderChildren, tree.loading)
+}
+
+pub fn routeTreeBoundary(tree: RouteTree, renderChildren: fn() -> any) -> VNode {
+  routeErrorBoundary(tree.error, fn() -> any {
+    render.suspense(tree.loading, renderChildren)
+  })
+}
+
+pub fn routeTreeMeta(tree: RouteTree) -> any {
+  tree.meta
+}
+
 pub fn routeNodeLoader<T>(routerValue: Router, node: RouteNode, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
   routeModuleLoader(routerValue, node.module, name, loader)
 }
@@ -303,7 +383,8 @@ pub fn routeNodeLayout(routerValue: Router, node: RouteNode, shell: fn(RouteMatc
 }
 
 pub fn prefetchRouteNode<T>(_routerValue: Router, node: RouteNode, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(route_scoped_key(node.id, normalize_path(path), "", name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, render.props_empty())) }
+  let href = split_href(path)
+  RouteResource<T> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, render.props_empty())) }
 }
 
 pub fn cancelRouteNode(node: RouteNode) -> int {
@@ -324,6 +405,16 @@ pub fn navigationIntentProps(intent: string, props: any) -> any {
 
 pub fn viewTransitionProps(name: string, props: any) -> any {
   render.props_merge(props, render.props_attr("style", str.concat("view-transition-name:", name)))
+}
+
+pub fn navigateWithTransition(routerValue: Router, path: string) -> void {
+  let _ = startViewTransition(fn() -> void {
+    navigate(routerValue, path)
+  })
+}
+
+pub fn matchUrlPattern(pattern: string, path: string) -> bool {
+  router.matchUrlPattern(pattern, path)
 }
 
 pub fn routeModuleLoader<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
@@ -362,11 +453,13 @@ pub fn routeLoaderForWithOptions<T>(routerValue: Router, routeId: string, name: 
 }
 
 pub fn prefetchRoute<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(route_key(normalize_path(path), "", name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+  let href = split_href(path)
+  RouteResource<T> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
 }
 
 pub fn prefetchRouteWithOptions<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(route_key(normalize_path(path), "", name), fn() -> Promise<any> { loader() }, options) }
+  let href = split_href(path)
+  RouteResource<T> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, options) }
 }
 
 pub fn routeStatus<T>(resource: RouteResource<T>) -> string {
@@ -424,9 +517,7 @@ pub fn routeAction<T>(routerValue: Router, name: string, action: fn() -> Promise
 }
 
 pub async fn submitRouteAction<T>(action: RouteAction<T>) -> T {
-  let _start = reactive.set(action.submitting, true)
-  let value = await render.resourceRefresh<T>(action.resource.raw)
-  let _done = reactive.set(action.submitting, false)
+  let value = await render.resourceSubmit<T>(action.resource.raw, action.submitting)
   return value
 }
 

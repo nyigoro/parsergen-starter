@@ -7,10 +7,14 @@ tokens close to the code that owns them.
 ## Route Ownership
 
 - Declare route modules with `routeNode` or `routeNodeWithChildren`.
+- Wrap the root ownership contract in `routeTree`.
 - Keep layout ownership in `routeNodeLayout`.
 - Keep route loaders/actions on the same node with `routeNodeLoader` and
   `routeNodeAction`.
+- Use `routeNodeMeta` and `routeTreeMeta` for head/meta/devtools ownership.
 - Use `lazyRouteModule` metadata for route-module code splitting.
+- Use `navigateWithTransition` only as progressive enhancement; normal
+  navigation remains the fallback.
 
 ## Data Lifecycle
 
@@ -28,11 +32,15 @@ tokens close to the code that owns them.
 - Use `fieldArrayItemName` for nested array fields.
 - Map server errors with `serverValidation` and `applyServerValidation`.
 - Use `submitActionWithRollback` when optimistic UI needs a rollback policy.
+- Keep `submitting` state in `submitAction` or `submitRouteAction`; both reset
+  after success or rejection.
 
 ## SSR And Hydration
 
 - Put request metadata into `ssg.requestOptions`.
 - Put serialized route/resource state into `hydrationOptions`.
+- Use `renderToChunks` or `renderToReadableStream` when server delivery needs
+  streamed HTML output.
 - Mark islands with `islandProps` and deferred islands with
   `deferredHydrationProps`.
 - Keep server-only request data separate from public hydration payloads.

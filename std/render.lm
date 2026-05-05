@@ -547,3 +547,11 @@ pub fn ssgWriteApp<P>(filePath: string, renderFn: fn(P) -> VNode, props: P, opti
 pub fn render_to_string(node: VNode) -> string {
   render.render_to_string(node)
 }
+
+pub fn renderToChunks(node: VNode) -> any {
+  render.renderToChunks(node)
+}
+
+pub fn renderToReadableStream(node: VNode) -> any {
+  render.renderToReadableStream(node)
+}

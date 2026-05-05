@@ -26,6 +26,9 @@ describe('@std/testing', () => {
     expect(js).toContain('testingGetById');
     expect(js).toContain('testingGetByText');
     expect(js).toContain('testingGetByRole');
+    expect(js).toContain('testingGetByRoleName');
+    expect(js).toContain('testingGetByLabel');
+    expect(js).toContain('testingGetByPlaceholder');
     expect(js).toContain('testingQueryAllByRole');
     expect(js).toContain('testingTextContent');
     expect(js).toContain('testingInput');
@@ -37,6 +40,7 @@ describe('@std/testing', () => {
     expect(js).toContain('waitFor');
     expect(js).toContain('findByText');
     expect(js).toContain('findByRole');
+    expect(js).toContain('findByRoleName');
     expect(js).toContain('clickAndFlush');
   });
 });

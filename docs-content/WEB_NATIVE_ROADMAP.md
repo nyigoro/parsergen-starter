@@ -44,6 +44,10 @@ This roadmap sets Lumina's execution priority as a web-native systems language w
 ### P3: Browser-Native App Ergonomics
 
 - Deeper UI app/data ergonomics on top of the current reactive/render/headless foundation
+- Route-tree ownership, route-scoped data, safe action submit state, and
+  streamed SSR helpers stay aligned with [COMPLEX_APP_ROADMAP.md](COMPLEX_APP_ROADMAP.md)
+- Navigation API, URLPattern, and View Transition API are progressive
+  enhancement layers, not required runtime assumptions
 - Better package and distribution workflows for browser/WASM consumption
 - Broader docs/examples that teach target boundaries clearly
 

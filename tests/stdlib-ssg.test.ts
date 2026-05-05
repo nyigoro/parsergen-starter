@@ -29,5 +29,7 @@ describe('@std/ssg', () => {
     expect(js).toContain('ssgPage');
     expect(js).toContain('ssgRenderApp');
     expect(js).toContain('ssgWriteApp');
+    expect(js).toContain('renderChunks');
+    expect(js).toContain('renderReadableStream');
   });
 });

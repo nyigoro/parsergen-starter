@@ -32,6 +32,18 @@ pub fn getByRole(scope: any, role: string) -> any {
   render.testingGetByRole(scope, role)
 }
 
+pub fn getByRoleName(scope: any, role: string, name: string) -> any {
+  render.testingGetByRoleName(scope, role, name)
+}
+
+pub fn getByLabel(scope: any, label: string) -> any {
+  render.testingGetByLabel(scope, label)
+}
+
+pub fn getByPlaceholder(scope: any, placeholder: string) -> any {
+  render.testingGetByPlaceholder(scope, placeholder)
+}
+
 pub fn queryAllByRole(scope: any, role: string) -> any {
   render.testingQueryAllByRole(scope, role)
 }
@@ -81,6 +93,11 @@ pub async fn findByText(scope: any, value: string) -> any {
 pub async fn findByRole(scope: any, role: string) -> any {
   let _ = await waitFor(fn() -> any { getByRole(scope, role) }, 5)
   return getByRole(scope, role)
+}
+
+pub async fn findByRoleName(scope: any, role: string, name: string) -> any {
+  let _ = await waitFor(fn() -> any { getByRoleName(scope, role, name) }, 5)
+  return getByRoleName(scope, role, name)
 }
 
 pub async fn clickAndFlush(node: any) -> void {

@@ -40,7 +40,7 @@ describe('tabs example', () => {
 
       expect(result.ok).toBe(true);
       const generated = fs.readFileSync(outPath, 'utf-8');
-      expect(generated).toContain('function __lumina_bundle_0_list');
+      expect(generated).toMatch(/function __lumina_bundle_\d+_list/);
       expect(generated).not.toContain('function list(');
     } finally {
       fs.rmSync(outPath, { force: true });

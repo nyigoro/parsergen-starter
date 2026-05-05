@@ -2,9 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { initProject } from '../src/commands/package.js';
+import { checkLuminaTask, setDefaultStdPath } from '../src/bin/lumina-core.js';
 
 const tempDirs: string[] = [];
 const originalCwd = process.cwd();
+const repoRoot = path.resolve(__dirname, '..');
+const grammarPath = path.join(repoRoot, 'src', 'grammar', 'lumina.peg');
 
 const createTempDir = (): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumina-init-'));
@@ -20,6 +23,10 @@ afterEach(() => {
 });
 
 describe('lumina init', () => {
+  beforeAll(() => {
+    setDefaultStdPath(path.join(repoRoot, 'std'));
+  });
+
   test('creates a browser app starter with compile, check, and dev scripts', async () => {
     const dir = createTempDir();
     process.chdir(dir);
@@ -130,6 +137,59 @@ describe('lumina init', () => {
       if (template === 'large-app') expect(fs.existsSync(path.join(dir, 'src', 'routes.lm'))).toBe(true);
       process.chdir(originalCwd);
     }
+  });
+
+  test('generated starter templates pass lumina check', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      for (const template of ['minimal', 'routed', 'ssr', 'auth', 'testing', 'deploy', 'large-app'] as const) {
+        const dir = createTempDir();
+        process.chdir(dir);
+
+        await initProject({ yes: true, template });
+
+        const client = await checkLuminaTask({
+          sourcePath: path.join(dir, 'src', 'client.lm'),
+          grammarPath,
+          useRecovery: false,
+        });
+        expect(client.ok).toBe(true);
+
+        const ssgPath = path.join(dir, 'src', 'ssg.lm');
+        if (fs.existsSync(ssgPath)) {
+          const ssg = await checkLuminaTask({ sourcePath: ssgPath, grammarPath, useRecovery: false });
+          expect(ssg.ok).toBe(true);
+        }
+
+        process.chdir(originalCwd);
+      }
+    } finally {
+      logSpy.mockRestore();
+    }
+  }, 30000);
+
+  test('@std/router resolves to source-backed high-level helpers in CLI checks', async () => {
+    const dir = createTempDir();
+    process.chdir(dir);
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    const sourcePath = path.join(dir, 'src', 'main.lm');
+    fs.writeFileSync(
+      sourcePath,
+      `import { createRouter, routeNode, routeTreeMeta, routeTree } from "@std/router";
+import { render } from "@std";
+
+pub fn main() -> any {
+  let _router = createRouter("/");
+  let root = routeNode("root", "/", "Home");
+  let tree = routeTree(root, render.text("Loading"), render.text("Error"), render.props_empty());
+  routeTreeMeta(tree)
+}
+`,
+      'utf-8'
+    );
+
+    const result = await checkLuminaTask({ sourcePath, grammarPath, useRecovery: false });
+    expect(result.ok).toBe(true);
   });
 
   test('rejects unknown starter templates before writing files', async () => {

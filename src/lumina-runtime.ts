@@ -449,6 +449,9 @@ const ssrRuntime = createSsrRuntime<VNode>({
 export const createSsrRenderer = (): Renderer => ssrRuntime.createRenderer();
 
 export const renderToString = (node: VNode): string => ssrRuntime.renderToString(node);
+export const renderToChunks = (node: VNode): string[] => Array.from(ssrRuntime.renderToChunks(node));
+export const renderToReadableStream = (node: VNode): ReadableStream<string> | null =>
+  ssrRuntime.renderToReadableStream(node);
 
 const renderTargetsRuntime = createRenderTargetsRuntime<VNode>({
   getKind: (node) => node.kind,
@@ -605,6 +608,8 @@ export const render = createRenderApi<
   appRuntime,
   headlessPrimitiveRender,
   renderToString,
+  renderToChunks,
+  renderToReadableStream,
   renderToTerminal,
   createDomRenderer,
   createSsrRenderer,
@@ -642,7 +647,7 @@ const renderSurface = {
   useContext: render.use_context,
   state: render.state,
   remember: render.remember,
-  createResource: render.resource_create, resourceStatus: render.resource_status, resourceData: render.resource_data, resourceError: render.resource_error, resourceRead: render.resource_read, resourceRefresh: render.resource_refresh, resourceInvalidate: render.resource_invalidate, resourceInvalidateKey: render.resource_invalidate_key, resourceInvalidatePrefix: render.resource_invalidate_prefix, resourceInvalidateTag: render.resource_invalidate_tag, resourceInvalidateDependency: render.resource_invalidate_dependency, resourceInvalidateScope: render.resource_invalidate_scope, resourceClearCache: render.resource_clear_cache, resourceClearScope: render.resource_clear_scope, resourceMutate: render.resource_mutate,
+  createResource: render.resource_create, resourceStatus: render.resource_status, resourceData: render.resource_data, resourceError: render.resource_error, resourceRead: render.resource_read, resourceRefresh: render.resource_refresh, resourceSubmit: render.resource_submit, resourceSubmitOptimistic: render.resource_submit_optimistic, resourceInvalidate: render.resource_invalidate, resourceInvalidateKey: render.resource_invalidate_key, resourceInvalidatePrefix: render.resource_invalidate_prefix, resourceInvalidateTag: render.resource_invalidate_tag, resourceInvalidateDependency: render.resource_invalidate_dependency, resourceInvalidateScope: render.resource_invalidate_scope, resourceClearCache: render.resource_clear_cache, resourceClearScope: render.resource_clear_scope, resourceMutate: render.resource_mutate,
   suspense: render.suspense,
   errorBoundary: render.error_boundary,
   show: render.show,
@@ -759,6 +764,7 @@ const renderSurface = {
   transitionPresence: render.transition_presence,
   testingGetByText: render.testing_get_by_text,
   testingGetByRole: render.testingGetByRole,
+  testingGetByRoleName: render.testingGetByRoleName, testingGetByLabel: render.testingGetByLabel, testingGetByPlaceholder: render.testingGetByPlaceholder,
   testingQueryAllByRole: render.testing_query_all_by_role,
   devtoolsSnapshot: render.devtools_snapshot, installDevtools: render.install_devtools, devtoolsRecordEvent: render.devtools_record_event, devtoolsTimeline: render.devtools_timeline, devtoolsClearTimeline: render.devtools_clear_timeline,
   ssgPage: render.ssg_page,
@@ -785,7 +791,7 @@ export const {
   useContext,
   state,
   remember,
-  createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceInvalidateDependency, resourceInvalidateScope, resourceClearCache, resourceClearScope, resourceMutate,
+  createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceSubmit, resourceSubmitOptimistic, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceInvalidateDependency, resourceInvalidateScope, resourceClearCache, resourceClearScope, resourceMutate,
   suspense,
   errorBoundary,
   show,
@@ -902,6 +908,7 @@ export const {
   transitionPresence,
   testingGetByText,
   testingGetByRole,
+  testingGetByRoleName, testingGetByLabel, testingGetByPlaceholder,
   testingQueryAllByRole,
   devtoolsSnapshot, installDevtools, devtoolsRecordEvent, devtoolsTimeline, devtoolsClearTimeline,
   ssgPage,

@@ -37,6 +37,14 @@ pub fn deferredHydrationProps(id: string, props: any) -> any {
   )
 }
 
+pub fn renderChunks(node: VNode) -> any {
+  render.renderToChunks(node)
+}
+
+pub fn renderReadableStream(node: VNode) -> any {
+  render.renderToReadableStream(node)
+}
+
 pub fn renderApp<P>(renderFn: fn(P) -> VNode, props: P, options: any) -> string {
   render.ssgRenderApp(renderFn, props, options)
 }

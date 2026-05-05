@@ -68,7 +68,10 @@ const createApi = () => {
       testing_body: jest.fn(() => 'body'),
       testing_get_by_id: jest.fn(() => 'id-hit'),
       testing_get_by_text: jest.fn(() => 'text-hit'),
+      testing_get_by_role_name: jest.fn(() => 'named-role-hit'),
       testing_query_all_by_role: jest.fn(() => ['role-hit']),
+      testing_get_by_label: jest.fn(() => 'label-hit'),
+      testing_get_by_placeholder: jest.fn(() => 'placeholder-hit'),
       testing_text_content: jest.fn(() => 'text'),
       testing_click: jest.fn(),
       testing_input: jest.fn(),
@@ -110,6 +113,8 @@ const createApi = () => {
     appRuntime,
     headlessPrimitiveRender: createHeadlessRuntime(),
     renderToString: jest.fn(() => '<div/>'),
+    renderToChunks: jest.fn(() => ['<div/>']),
+    renderToReadableStream: jest.fn(() => new ReadableStream<string>()),
     renderToTerminal: jest.fn(() => 'terminal'),
     createDomRenderer: jest.fn(() => ({ mount: jest.fn() })),
     createSsrRenderer: jest.fn(() => ({ mount: jest.fn() })),
@@ -123,6 +128,9 @@ const createApi = () => {
     toRenderErrorMessage: (error: unknown) => String(error),
     snapshotDevtools: jest.fn(() => ({ roots: [], resources: [], signals: [] }) as never),
     installLuminaDevtools: jest.fn(() => ({ installed: true })),
+    recordDevtoolsEvent: jest.fn((type: string, label: string, detail?: unknown) => ({ id: 1, at: 1, type, label, detail })),
+    readDevtoolsTimeline: jest.fn(() => []),
+    clearDevtoolsTimeline: jest.fn(),
     scheduleDevtoolsNotify: jest.fn(),
   });
 
@@ -146,6 +154,9 @@ describe('runtime render api', () => {
       $payload: 'testing-mount',
     });
     expect(render.testingGetByRole({}, 'tab')).toBe('role-hit');
+    expect(render.testingGetByRoleName({}, 'button', 'Save')).toBe('named-role-hit');
+    expect(render.testingGetByLabel({}, 'Name')).toBe('label-hit');
+    expect(render.testingGetByPlaceholder({}, 'Search')).toBe('placeholder-hit');
     await expect(render.testing_flush()).resolves.toBeUndefined();
     await expect(render.testing_wait_for(() => 'async-ready', 3)).resolves.toBe('async-ready');
 

@@ -596,6 +596,29 @@ function resolveImport(
   return resolveBareImport(fromPath, spec, extensions, lockfileRoot);
 }
 
+function hasSourceBackedStdModule(
+  fromPath: string,
+  spec: string,
+  extensions: string[],
+  stdPath: string,
+  lockfileRoot?: string | null
+): boolean {
+  if (!spec.startsWith('@std/')) return false;
+  const resolved = resolveImport(fromPath, spec, extensions, stdPath, lockfileRoot);
+  return !!resolved && existsSync(resolved);
+}
+
+function shouldBundleImport(
+  fromPath: string,
+  spec: string,
+  stdRegistry: ReturnType<typeof createStdModuleRegistry>,
+  extensions: string[],
+  stdPath: string,
+  lockfileRoot?: string | null
+): boolean {
+  return !stdRegistry.has(spec) || hasSourceBackedStdModule(fromPath, spec, extensions, stdPath, lockfileRoot);
+}
+
 function findLockfileRoot(fromPath: string): string | null {
   let current = path.dirname(fromPath);
   while (true) {
@@ -1649,7 +1672,7 @@ async function bundleProgram(
 
     const imports = extractImports(text);
     for (const imp of imports) {
-      if (stdRegistry.has(imp)) continue;
+      if (!shouldBundleImport(filePath, imp, stdRegistry, extensions, stdPath, lockfileRoot)) continue;
       const resolved = resolveImport(filePath, imp, extensions, stdPath, lockfileRoot);
       if (!resolved) continue;
       resolvedImports.add(imp);
@@ -2207,7 +2230,9 @@ async function compileLumina(
     lockfileRoot
   );
   const stdRegistry = createStdModuleRegistry();
-  const needsBundling = extractImports(source).some((imp) => !stdRegistry.has(imp));
+  const needsBundling = extractImports(source).some((imp) =>
+    shouldBundleImport(sourcePath, imp, stdRegistry, configFileExtensions, configStdPath, lockfileRoot)
+  );
   if (target === 'wasm') {
     if (needsBundling) {
       const bundle = await bundleProgram(
@@ -2593,7 +2618,9 @@ async function checkLumina(
   const source = await fs.readFile(sourcePath, 'utf-8');
   const lockfileRoot = findLockfileRoot(sourcePath);
   const stdRegistry = createStdModuleRegistry();
-  const needsBundling = extractImports(source).some((imp) => !stdRegistry.has(imp));
+  const needsBundling = extractImports(source).some((imp) =>
+    shouldBundleImport(sourcePath, imp, stdRegistry, configFileExtensions, configStdPath, lockfileRoot)
+  );
   await updateDependenciesForFile(
     sourcePath,
     source,

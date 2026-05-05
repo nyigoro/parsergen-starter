@@ -32,6 +32,10 @@ type RouterApi = {
   getScrollRestoration: () => string;
   setScrollRestoration: (mode: string) => void;
   scrollToTop: () => void;
+  supportsNavigationApi: () => boolean;
+  supportsViewTransition: () => boolean;
+  supportsUrlPattern: () => boolean;
+  startViewTransition: (update: () => void) => boolean;
   routeResourceKey: (routerValue: unknown, name: string) => string;
   routeScopedKey: (routerValue: unknown, routeId: string, name: string) => string;
   routeModule: (id: string, pattern: string, title: string) => unknown;
@@ -39,6 +43,15 @@ type RouterApi = {
   routeNodeWithChildren: (id: string, pattern: string, title: string, children: unknown) => unknown;
   routeNodeModule: (node: unknown) => unknown;
   routeNodeChildren: (node: unknown) => unknown;
+  routeNodeMeta: (node: unknown, meta: Record<string, unknown>) => Record<string, unknown>;
+  routeTree: (root: unknown, loading: VNode, error: VNode, meta: Record<string, unknown>) => unknown;
+  routeTreeView: (
+    routerValue: unknown,
+    tree: unknown,
+    renderChildren: (match: unknown) => VNode[] | VNode
+  ) => VNode;
+  routeTreeBoundary: (tree: unknown, renderChildren: () => VNode[] | VNode) => VNode;
+  routeTreeMeta: (tree: unknown) => Record<string, unknown>;
   routeNodeMatch: (routerValue: unknown, node: unknown) => { matched: boolean; params: unknown; search: unknown };
   routeNodeKey: (routerValue: unknown, node: unknown, name: string) => string;
   routeNodeOptions: (node: unknown, options: Record<string, unknown>) => Record<string, unknown>;
@@ -86,6 +99,8 @@ type RouterApi = {
   lazyRouteModule: (id: string, pattern: string, title: string, modulePath: string) => unknown;
   navigationIntentProps: (intent: string, props: Record<string, unknown>) => Record<string, unknown>;
   viewTransitionProps: (name: string, props: Record<string, unknown>) => Record<string, unknown>;
+  navigateWithTransition: (routerValue: unknown, path: string) => void;
+  matchUrlPattern: (pattern: string, path: string) => boolean;
   routeModuleMatch: (routerValue: unknown, module: unknown) => { matched: boolean; params: unknown; search: unknown };
   routeModuleKey: (routerValue: unknown, module: unknown, name: string) => string;
   routeModuleLoader: <T>(
@@ -282,9 +297,39 @@ const runtimeRender = {
   resourceError: (resource: Record<string, unknown>): unknown => resource.error ?? null,
   resourceRead: (resource: Record<string, unknown>): unknown => resource.data,
   resourceRefresh: async (resource: Record<string, unknown>): Promise<unknown> => {
-    resource.status = 'success';
-    resource.data = await (resource.loader as () => Promise<unknown>)();
-    return resource.data;
+    try {
+      resource.status = 'success';
+      resource.data = await (resource.loader as () => Promise<unknown>)();
+      resource.error = null;
+      return resource.data;
+    } catch (error) {
+      resource.status = 'error';
+      resource.error = error;
+      throw error;
+    }
+  },
+  resourceSubmit: async (resource: Record<string, unknown>, submitting: TestSignal<boolean>): Promise<unknown> => {
+    runtimeReactive.set(submitting, true);
+    try {
+      return await runtimeRender.resourceRefresh(resource);
+    } finally {
+      runtimeReactive.set(submitting, false);
+    }
+  },
+  resourceSubmitOptimistic: async (
+    resource: Record<string, unknown>,
+    submitting: TestSignal<boolean>,
+    target: Record<string, unknown>,
+    optimistic: unknown,
+    previous: unknown
+  ): Promise<unknown> => {
+    runtimeRender.resourceMutate(target, optimistic);
+    try {
+      return await runtimeRender.resourceSubmit(resource, submitting);
+    } catch (error) {
+      runtimeRender.resourceMutate(target, previous);
+      throw error;
+    }
   },
   resourceInvalidate: (resource: Record<string, unknown>): void => {
     resource.invalidated = true;
@@ -467,6 +512,14 @@ const runtimeRouter = {
   scrollToTop: (): void => {
     (globalThis as { window?: { scrollTo?: (x: number, y: number) => void } }).window?.scrollTo?.(0, 0);
   },
+  supportsNavigationApi: (): boolean => false,
+  supportsViewTransition: (): boolean => false,
+  supportsUrlPattern: (): boolean => false,
+  startViewTransition: (update: () => void): boolean => {
+    update();
+    return false;
+  },
+  matchUrlPattern: (pattern: string, path: string): boolean => runtimeRouter.matchRoute(pattern, path),
 };
 
 const bindRouterRuntime = (js: string): string =>
@@ -497,7 +550,7 @@ const compileRouterStdlib = (): RouterApi => {
     'reactive',
     'render',
     'module',
-    `${js}\nreturn { createRouter, navigate, replace, getScrollRestoration, setScrollRestoration, scrollToTop, currentPath, currentParams, currentSearchParams, routeResourceKey, routeScopedKey, routeModule, routeNode, routeNodeWithChildren, routeNodeModule, routeNodeChildren, routeNodeMatch, routeNodeKey, routeNodeOptions, routeNodeLoader, routeNodeLoaderWithOptions, routeNodeAction, routeNodeView, routeNodeLayout, prefetchRouteNode, cancelRouteNode, revalidateRouteNode, lazyRouteModule, navigationIntentProps, viewTransitionProps, routeModuleMatch, routeModuleKey, routeModuleLoader, routeModuleLoaderWithOptions, routeModuleAction, routeModuleView, routeLoader, routeLoaderWithOptions, routeLoaderFor, routeLoaderForWithOptions, prefetchRoute, prefetchRouteWithOptions, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, invalidateRouteKey, invalidateRoutePrefix, invalidateRouteTag, invalidateRouteDependency, invalidateRouteScope, optimisticRouteMutate, routeAction, submitRouteAction, routeActionStatus, routeActionData, routeActionError, routeActionSubmitting, matchRoute, isActive, routeMatch, routeParams, routeView, outlet, layout, routeLoading, routeErrorBoundary, extractParams, onRouteChange, link, linkWithProps };`
+    `${js}\nreturn { createRouter, navigate, replace, getScrollRestoration, setScrollRestoration, scrollToTop, supportsNavigationApi, supportsViewTransition, supportsUrlPattern, startViewTransition, currentPath, currentParams, currentSearchParams, routeResourceKey, routeScopedKey, routeModule, routeNode, routeNodeWithChildren, routeNodeModule, routeNodeChildren, routeNodeMeta, routeTree, routeTreeView, routeTreeBoundary, routeTreeMeta, routeNodeMatch, routeNodeKey, routeNodeOptions, routeNodeLoader, routeNodeLoaderWithOptions, routeNodeAction, routeNodeView, routeNodeLayout, prefetchRouteNode, cancelRouteNode, revalidateRouteNode, lazyRouteModule, navigationIntentProps, viewTransitionProps, navigateWithTransition, matchUrlPattern, routeModuleMatch, routeModuleKey, routeModuleLoader, routeModuleLoaderWithOptions, routeModuleAction, routeModuleView, routeLoader, routeLoaderWithOptions, routeLoaderFor, routeLoaderForWithOptions, prefetchRoute, prefetchRouteWithOptions, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, invalidateRouteKey, invalidateRoutePrefix, invalidateRouteTag, invalidateRouteDependency, invalidateRouteScope, optimisticRouteMutate, routeAction, submitRouteAction, routeActionStatus, routeActionData, routeActionError, routeActionSubmitting, matchRoute, isActive, routeMatch, routeParams, routeView, outlet, layout, routeLoading, routeErrorBoundary, extractParams, onRouteChange, link, linkWithProps };`
   ) as (
     routerModule: typeof runtimeRouter,
     strModule: typeof runtimeStr,
@@ -710,8 +763,8 @@ describe('@std/router', () => {
     expect(await routerApi.refreshRoute(resource)).toBe('loaded');
     routerApi.invalidateRoute(resource);
 
-    const prefetch = routerApi.prefetchRoute(routerValue, '/settings/', 'details', async () => 'prefetched');
-    expect(routerApi.routeRead(prefetch)).toBe('data:route:/settings:details');
+    const prefetch = routerApi.prefetchRoute(routerValue, '/settings/?tab=team', 'details', async () => 'prefetched');
+    expect(routerApi.routeRead(prefetch)).toBe('data:route:/settings?tab=team:details');
     expect(routerApi.invalidateRouteKey('route:/tasks?filter=open:details')).toBe(true);
     expect(routerApi.invalidateRoutePrefix('route:/tasks')).toBe(1);
     expect(routerApi.invalidateRouteTag('tasks')).toBe(1);
@@ -771,6 +824,12 @@ describe('@std/router', () => {
       routeTitle: 'Project',
       staleWhileRevalidate: true,
     });
+    expect(routerApi.routeNodeMeta(node, { section: 'detail' })).toMatchObject({
+      routeId: 'project-detail',
+      routePattern: '/projects/:id',
+      routeTitle: 'Project',
+      section: 'detail',
+    });
 
     const resource = routerApi.routeNodeLoaderWithOptions(routerValue, node, 'loader', async () => 'loaded', {
       tags: ['projects'],
@@ -783,8 +842,8 @@ describe('@std/router', () => {
     expect(routerApi.revalidateRouteNode(node)).toBe(1);
     expect(routerApi.cancelRouteNode(node)).toBe(1);
 
-    const prefetched = routerApi.prefetchRouteNode(routerValue, node, '/projects/8', 'loader', async () => 'prefetched');
-    expect(routerApi.routeRead(prefetched)).toBe('data:route:project-detail:/projects/8:loader');
+    const prefetched = routerApi.prefetchRouteNode(routerValue, node, '/projects/8?panel=activity', 'loader', async () => 'prefetched');
+    expect(routerApi.routeRead(prefetched)).toBe('data:route:project-detail:/projects/8?panel=activity:loader');
 
     const view = routerApi.routeNodeLayout(
       routerValue,
@@ -796,6 +855,22 @@ describe('@std/router', () => {
     expect(view.text).toBe('layout');
     expect(routerApi.navigationIntentProps('prefetch', {})['data-lumina-navigation-intent']).toBe('prefetch');
     expect(routerApi.viewTransitionProps('route-main', {}).style).toBe('view-transition-name:route-main');
+    expect(routerApi.supportsNavigationApi()).toBe(false);
+    expect(routerApi.supportsViewTransition()).toBe(false);
+    expect(routerApi.supportsUrlPattern()).toBe(false);
+    expect(routerApi.matchUrlPattern('/projects/:id', '/projects/7')).toBe(true);
+    routerApi.navigateWithTransition(routerValue, '/projects/9');
+    expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/projects/9');
+
+    const tree = routerApi.routeTree(
+      node,
+      { kind: 'text', text: 'loading' },
+      { kind: 'text', text: 'error' },
+      { app: 'projects' }
+    );
+    expect(routerApi.routeTreeMeta(tree)).toMatchObject({ app: 'projects', routeId: 'project-detail' });
+    expect(routerApi.routeTreeView(routerValue, tree, () => ({ kind: 'text', text: 'tree' })).text).toBe('tree');
+    expect(routerApi.routeTreeBoundary(tree, () => ({ kind: 'text', text: 'bounded' })).text).toBe('bounded');
 
     const lazy = routerApi.lazyRouteModule('lazy-settings', '/settings', 'Settings', './routes/settings.lm');
     expect(routerApi.routeNodeChildren(lazy)).toEqual({ modulePath: './routes/settings.lm' });
@@ -834,6 +909,14 @@ describe('@std/router', () => {
     expect(await routerApi.submitRouteAction(action)).toBe('saved');
     expect(routerApi.routeActionData(action)).toBe('saved');
     expect(runtimeReactive.get(routerApi.routeActionSubmitting(action) as never)).toBe(false);
+
+    const failing = routerApi.routeAction(routerValue, 'fail', async () => {
+      throw new Error('failed action');
+    });
+    await expect(routerApi.submitRouteAction(failing)).rejects.toThrow('failed action');
+    expect(routerApi.routeActionStatus(failing)).toBe('error');
+    expect((routerApi.routeActionError(failing) as Error).message).toBe('failed action');
+    expect(runtimeReactive.get(routerApi.routeActionSubmitting(failing) as never)).toBe(false);
   });
 
   test('back and forward style popstate dispatch updates the router signal', () => {

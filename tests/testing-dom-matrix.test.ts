@@ -6,6 +6,8 @@ import {
   getTestingHarnessContainer,
   getTestingHarnessBody,
   getTestingHarnessById,
+  getTestingHarnessByLabel,
+  getTestingHarnessByPlaceholder,
   getTestingHarnessByText,
   queryTestingHarnessByRole,
   getTestingTextContent,
@@ -165,6 +167,18 @@ describe('testing DOM matrix', () => {
     expect(queryTestingHarnessByRole(document.body, 'dialog')).toEqual([element]);
   });
 
+  test('queryTestingHarnessByRole filters by accessible name', () => {
+    const document = new TestingDocument();
+    const save = document.createElement('button');
+    save.appendChild(document.createTextNode('Save'));
+    const cancel = document.createElement('button');
+    cancel.setAttribute('aria-label', 'Cancel action');
+    document.body.appendChild(save);
+    document.body.appendChild(cancel);
+    expect(queryTestingHarnessByRole(document.body, 'button', 'Save')).toEqual([save]);
+    expect(queryTestingHarnessByRole(document.body, 'button', 'Cancel action')).toEqual([cancel]);
+  });
+
   test('queryTestingHarnessByRole returns empty on unknown roles', () => {
     const document = new TestingDocument();
     document.body.appendChild(document.createElement('div'));
@@ -250,6 +264,33 @@ describe('testing DOM matrix', () => {
 
   test('getTestingHarnessByText returns null for invalid scopes', () => {
     expect(getTestingHarnessByText(null, 'Open')).toBeNull();
+  });
+
+  test('getTestingHarnessByLabel resolves explicit and wrapped labels', () => {
+    const harness = createTestingDomHarness();
+    const explicit = harness.document.createElement('input');
+    explicit.setAttribute('id', 'email');
+    const explicitLabel = harness.document.createElement('label');
+    explicitLabel.setAttribute('for', 'email');
+    explicitLabel.appendChild(harness.document.createTextNode('Email'));
+    const wrappedLabel = harness.document.createElement('label');
+    wrappedLabel.appendChild(harness.document.createTextNode('Accept'));
+    const wrapped = harness.document.createElement('input');
+    wrapped.setAttribute('type', 'checkbox');
+    wrappedLabel.appendChild(wrapped);
+    harness.container.appendChild(explicitLabel);
+    harness.container.appendChild(explicit);
+    harness.container.appendChild(wrappedLabel);
+    expect(getTestingHarnessByLabel(harness, 'Email')).toBe(explicit);
+    expect(getTestingHarnessByLabel(harness, 'Accept')).toBe(wrapped);
+  });
+
+  test('getTestingHarnessByPlaceholder resolves placeholder text', () => {
+    const harness = createTestingDomHarness();
+    const input = harness.document.createElement('input');
+    input.setAttribute('placeholder', 'Search docs');
+    harness.container.appendChild(input);
+    expect(getTestingHarnessByPlaceholder(harness, 'Search docs')).toBe(input);
   });
 
   test('dispatchTestingClick calls the click listener', () => {

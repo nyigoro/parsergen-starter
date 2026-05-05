@@ -7,6 +7,8 @@ import {
   dispatchTestingSubmit,
   getTestingHarnessBody,
   getTestingHarnessById,
+  getTestingHarnessByLabel,
+  getTestingHarnessByPlaceholder,
   getTestingHarnessByText,
   getTestingHarnessContainer,
   getTestingTextContent,
@@ -43,7 +45,12 @@ export const createTestingFacade = <TComponentFn, TRoot>(
   testing_get_by_id: (harness: unknown, id: string): unknown => getTestingHarnessById(harness, id),
   testing_get_by_text: (scope: unknown, value: string): unknown => getTestingHarnessByText(scope, value),
   testing_get_by_role: (scope: unknown, role: string): unknown => queryTestingHarnessByRole(scope, role)[0] ?? null,
+  testing_get_by_role_name: (scope: unknown, role: string, name: string): unknown =>
+    queryTestingHarnessByRole(scope, role, name)[0] ?? null,
   testing_query_all_by_role: (scope: unknown, role: string): unknown => queryTestingHarnessByRole(scope, role),
+  testing_get_by_label: (scope: unknown, label: string): unknown => getTestingHarnessByLabel(scope, label),
+  testing_get_by_placeholder: (scope: unknown, placeholder: string): unknown =>
+    getTestingHarnessByPlaceholder(scope, placeholder),
   testing_text_content: (node: unknown): string => getTestingTextContent(node),
   testing_click: (node: unknown): void => dispatchTestingClick(node),
   testing_input: (node: unknown, value: string): void => dispatchTestingInput(node, value),
@@ -54,15 +61,24 @@ export const createTestingFacade = <TComponentFn, TRoot>(
   testing_flush: async (): Promise<void> => {
     await Promise.resolve();
     await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
   },
   testing_wait_for: async (check: () => unknown, attempts = 5): Promise<unknown> => {
     const limit = Math.max(1, Math.trunc(Number(attempts) || 1));
+    let lastError: unknown = null;
     for (let i = 0; i < limit; i += 1) {
-      const value = check();
-      if (value) return value;
-      await Promise.resolve();
+      try {
+        const value = check();
+        if (value) return value;
+        lastError = null;
+      } catch (error) {
+        lastError = error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
       await Promise.resolve();
     }
+    if (lastError) throw lastError;
     return check();
   },
 });

@@ -556,30 +556,12 @@ export function createStdSystemBrowserDomainModules(): Pick<StdDomainModules,
           'std://router-runtime'
         ),
       ],
-      [
-        'matchRoute',
-        moduleFunction(
-          'matchRoute',
-          ['string', 'string'],
-          'bool',
-          [primitive('string'), primitive('string')],
-          primitive('bool'),
-          ['pattern', 'path'],
-          'std://router-runtime'
-        ),
-      ],
-      [
-        'extractParams',
-        moduleFunction(
-          'extractParams',
-          ['string', 'string'],
-          'any',
-          [primitive('string'), primitive('string')],
-          primitive('any'),
-          ['pattern', 'path'],
-          'std://router-runtime'
-        ),
-      ],
+      ['supportsNavigationApi', moduleFunction('supportsNavigationApi', [], 'bool', [], primitive('bool'), [], 'std://router-runtime')],
+      ['supportsViewTransition', moduleFunction('supportsViewTransition', [], 'bool', [], primitive('bool'), [], 'std://router-runtime')],
+      ['supportsUrlPattern', moduleFunction('supportsUrlPattern', [], 'bool', [], primitive('bool'), [], 'std://router-runtime')],
+      ['matchRoute', moduleFunction('matchRoute', ['string', 'string'], 'bool', [primitive('string'), primitive('string')], primitive('bool'), ['pattern', 'path'], 'std://router-runtime')],
+      ['matchUrlPattern', moduleFunction('matchUrlPattern', ['string', 'string'], 'bool', [primitive('string'), primitive('string')], primitive('bool'), ['pattern', 'path'], 'std://router-runtime')],
+      ['extractParams', moduleFunction('extractParams', ['string', 'string'], 'any', [primitive('string'), primitive('string')], primitive('any'), ['pattern', 'path'], 'std://router-runtime')],
       [
         'parseSearchParams',
         moduleFunction(
@@ -688,6 +670,7 @@ export function createStdSystemBrowserDomainModules(): Pick<StdDomainModules,
           'std://router-runtime'
         ),
       ],
+      ['startViewTransition', moduleFunction('startViewTransition', ['fn() -> void'], 'bool', [fnType([], primitive('void'))], primitive('bool'), ['update'], 'std://router-runtime')],
     ]),
   };
 

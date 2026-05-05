@@ -39,8 +39,8 @@ describe('ui showcase example', () => {
 
       expect(result.ok).toBe(true);
       const generated = fs.readFileSync(outPath, 'utf-8');
-      expect(generated).toContain('__lumina_bundle_0_button');
-      expect(generated).toContain('__lumina_bundle_0_presenceCard');
+      expect(generated).toMatch(/__lumina_bundle_\d+_button/);
+      expect(generated).toMatch(/__lumina_bundle_\d+_presenceCard/);
     } finally {
       fs.rmSync(outPath, { force: true });
     }

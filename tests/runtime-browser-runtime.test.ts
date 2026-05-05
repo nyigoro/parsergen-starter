@@ -29,6 +29,8 @@ describe('runtime browser runtime', () => {
   const originalLocation = Object.getOwnPropertyDescriptor(globalThis, 'location');
   const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   const originalSessionStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  const originalNavigation = Object.getOwnPropertyDescriptor(globalThis, 'navigation');
+  const originalURLPattern = Object.getOwnPropertyDescriptor(globalThis, 'URLPattern');
 
   const restore = (): void => {
     const restoreProp = (name: string, descriptor: PropertyDescriptor | undefined): void => {
@@ -45,6 +47,8 @@ describe('runtime browser runtime', () => {
     restoreProp('location', originalLocation);
     restoreProp('localStorage', originalLocalStorage);
     restoreProp('sessionStorage', originalSessionStorage);
+    restoreProp('navigation', originalNavigation);
+    restoreProp('URLPattern', originalURLPattern);
   };
 
   afterEach(() => {
@@ -151,14 +155,33 @@ describe('runtime browser runtime', () => {
       dispatchEvent: (_event: Event) => true,
     };
 
+    const startViewTransition = jest.fn((update: () => unknown) => update());
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
       writable: true,
       value: {
         baseURI: 'https://example.com/app/',
+        startViewTransition,
         querySelector: (_selector: string) => element,
         querySelectorAll: (_selector: string) => [element],
         createElement: (_tag: string) => element,
+      },
+    });
+    Object.defineProperty(globalThis, 'navigation', {
+      configurable: true,
+      writable: true,
+      value: {},
+    });
+    Object.defineProperty(globalThis, 'URLPattern', {
+      configurable: true,
+      writable: true,
+      value: class TestURLPattern {
+        constructor(private readonly input: { pathname?: string }) {}
+        test(next: { pathname?: string }) {
+          return this.input.pathname === '/patterned/:id'
+            ? /^\/patterned\/[^/]+$/.test(next.pathname ?? '')
+            : this.input.pathname === next.pathname;
+        }
       },
     });
     Object.defineProperty(globalThis, 'window', {
@@ -189,7 +212,11 @@ describe('runtime browser runtime', () => {
     expect(router.getCurrentPath()).toBe('/start');
     expect(router.getCurrentHash()).toBe('#a');
     expect(router.getCurrentSearch()).toBe('?q=1');
+    expect(router.supportsNavigationApi()).toBe(true);
+    expect(router.supportsViewTransition()).toBe(true);
+    expect(router.supportsUrlPattern()).toBe(true);
     expect(router.matchRoute('/users/:id', '/users/42')).toBe(true);
+    expect(router.matchUrlPattern('/patterned/:id', '/patterned/42')).toBe(true);
     expect(router.matchRoute('/files/*rest', '/files/a/b')).toBe(true);
     const params = router.extractParams('/users/:id', '/users/a%20b') as TestHashMap<string, string>;
     expect(params.data.get('id')).toBe('a b');
@@ -207,9 +234,10 @@ describe('runtime browser runtime', () => {
 
     router.push('/next?tab=1#top');
     router.replace('/final?tab=2#done');
-    expect(historyCalls).toEqual(['push:/next?tab=1#top', 'replace:/final?tab=2#done']);
-    expect(location.pathname).toBe('/final');
-    expect(location.search).toBe('?tab=2');
-    expect(location.hash).toBe('#done');
+    const transitioned = router.startViewTransition(() => router.push('/transitioned'));
+    expect(transitioned).toBe(true);
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+    expect(historyCalls).toEqual(['push:/next?tab=1#top', 'replace:/final?tab=2#done', 'push:/transitioned']);
+    expect(location.pathname).toBe('/transitioned');
   });
 });

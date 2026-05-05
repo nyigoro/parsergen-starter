@@ -26,7 +26,12 @@ describe('runtime testing facade', () => {
     const input = harness.document.createElement('input');
     input.setAttribute('id', 'name');
     input.setAttribute('type', 'text');
+    input.setAttribute('placeholder', 'Full name');
+    const label = harness.document.createElement('label');
+    label.setAttribute('for', 'name');
+    label.appendChild(new TestingTextNode('Name'));
     const form = harness.document.createElement('form');
+    form.appendChild(label);
     form.appendChild(button);
     form.appendChild(input);
     harness.container.appendChild(form);
@@ -42,8 +47,11 @@ describe('runtime testing facade', () => {
 
     expect(facade.testing_get_by_id(harness, 'save')).toBe(button);
     expect(facade.testing_get_by_text(button, 'Save')).toBe(button);
-    expect(facade.testing_get_by_text(harness, 'Save')).toBe(harness.document.body);
+    expect(facade.testing_get_by_text(harness, 'Save')).toBe(button);
     expect(facade.testing_get_by_role(harness, 'button')).toBe(button);
+    expect(facade.testing_get_by_role_name(harness, 'button', 'Save')).toBe(button);
+    expect(facade.testing_get_by_label(harness, 'Name')).toBe(input);
+    expect(facade.testing_get_by_placeholder(harness, 'Full name')).toBe(input);
     expect(facade.testing_query_all_by_role(harness, 'textbox')).toEqual([input]);
 
     facade.testing_click(button);
@@ -64,5 +72,28 @@ describe('runtime testing facade', () => {
       { hydrate: false, props: { label: 'mount' } },
       { hydrate: true, props: { label: 'hydrate' } },
     ]);
+  });
+
+  test('flushes macrotasks and waitFor retries thrown assertions', async () => {
+    const facade = createTestingFacade<() => unknown, unknown>({
+      createRenderer: () => ({}),
+      mountApp: () => ({}),
+    });
+    let flushed = false;
+    setTimeout(() => {
+      flushed = true;
+    }, 0);
+    await facade.testing_flush();
+    expect(flushed).toBe(true);
+
+    let attempts = 0;
+    await expect(
+      facade.testing_wait_for(() => {
+        attempts += 1;
+        if (attempts < 2) throw new Error('pending');
+        return 'ready';
+      }, 3)
+    ).resolves.toBe('ready');
+    expect(attempts).toBe(2);
   });
 });

@@ -565,6 +565,11 @@ Creates a terminal/text renderer.
 
 Converts VNode tree into escaped HTML string.
 
+### renderToChunks / renderToReadableStream
+
+Expose chunked and `ReadableStream` SSR output for production server pipelines.
+Chunk output must match `render_to_string` when joined.
+
 ### render_to_terminal(node: VNode) -> String
 
 Converts VNode tree into terminal text tree.
@@ -635,12 +640,16 @@ Route modules co-locate a route id, pattern, title, loader/action scope, and
 view guard. Module loaders/actions use route-scoped resource keys and resource
 `scope` metadata so large apps can invalidate by route module.
 
-### routeNode / routeNodeWithChildren / routeNodeLayout
+### routeNode / routeNodeWithChildren / routeTree / routeNodeLayout
 
 Declarative route-tree helpers. A `RouteNode` owns its id, pattern, title,
 module, and child metadata. Use `routeNodeLoader`, `routeNodeAction`,
 `routeNodeView`, and `routeNodeLayout` to keep layout ownership, data scope,
 and route-level loading/error boundaries together.
+
+`routeTree`, `routeTreeView`, `routeTreeBoundary`, `routeNodeMeta`, and
+`routeTreeMeta` are the large-app ownership contract: every route tree carries
+its root route metadata, loading fallback, and error fallback explicitly.
 
 ### prefetchRouteNode / cancelRouteNode / revalidateRouteNode
 
@@ -648,16 +657,21 @@ Route-node delivery helpers for lazy route modules, route-owned prefetch,
 rapid-navigation cancellation by resource scope, and scope-level background
 revalidation.
 
-### navigationIntentProps / viewTransitionProps
+### navigationIntentProps / viewTransitionProps / navigateWithTransition
 
 Small platform-aligned props for prefetch/navigation intent metadata and
-same-document view transition naming.
+same-document view transition naming. `supportsNavigationApi`,
+`supportsViewTransition`, `supportsUrlPattern`, and `matchUrlPattern` are
+progressive enhancement checks around Navigation API, View Transition API, and
+URLPattern. They always fall back to Lumina's route matcher and normal history
+navigation.
 
 ### routeAction<T>(router: Router, name: String, action: fn() -> Promise<T>) -> RouteAction<T>
 
 Creates a disabled resource-backed action. Run it with `submitRouteAction`, then
 read `routeActionStatus`, `routeActionData`, `routeActionError`, and
-`routeActionSubmitting`.
+`routeActionSubmitting`. Rejections reset `submitting` through the runtime
+submit helper.
 
 ### prefetchRoute<T>(router: Router, path: String, name: String, loader: fn() -> Promise<T>) -> RouteResource<T>
 
@@ -729,6 +743,9 @@ Track dirty, touched, and error state per field.
 ### action / actionWithOptions / submitAction / submitActionOptimistic / submitActionWithRollback / rollbackResource
 
 Create resource-backed form actions and wire optimistic resource updates.
+`submitAction` resets submitting after success or rejection, and
+`submitActionWithRollback` restores the previous resource value if the action
+rejects.
 
 ## @std/testing
 

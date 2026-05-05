@@ -170,9 +170,7 @@ pub fn actionWithOptions<T>(key: any, submit: fn() -> Promise<T>, options: any) 
 }
 
 pub async fn submitAction<T>(formAction: FormAction<T>) -> T {
-  let _start = reactive.set(formAction.submitting, true)
-  let value = await render.resourceRefresh<T>(formAction.resource)
-  let _done = reactive.set(formAction.submitting, false)
+  let value = await render.resourceSubmit<T>(formAction.resource, formAction.submitting)
   return value
 }
 
@@ -183,11 +181,7 @@ pub async fn submitActionOptimistic<T>(formAction: FormAction<T>, resource: any,
 }
 
 pub async fn submitActionWithRollback<T>(formAction: FormAction<T>, resource: any, optimistic: T, previous: T) -> T {
-  let _mutated = render.resourceMutate(resource, optimistic)
-  let value = await submitAction(formAction)
-  if (actionStatus(formAction) == "error") {
-    rollbackResource(resource, previous)
-  }
+  let value = await render.resourceSubmitOptimistic<T>(formAction.resource, formAction.submitting, resource, optimistic, previous)
   return value
 }
 

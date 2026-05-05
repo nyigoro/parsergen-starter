@@ -248,6 +248,52 @@ const implicitRoleForElement = (element: TestingElement): string | null => {
   return null;
 };
 
+const labelableTags = new Set(['button', 'input', 'meter', 'output', 'progress', 'select', 'textarea']);
+
+const isDescendantOfTestingElement = (node: TestingNode, ancestor: TestingElement): boolean => {
+  let current: TestingNode | null = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parentNode;
+  }
+  return false;
+};
+
+const labelMatchesElement = (label: TestingElement, element: TestingElement): boolean => {
+  const forId = label.getAttribute('for');
+  if (forId && element.getAttribute('id') === forId) return true;
+  return isDescendantOfTestingElement(element, label);
+};
+
+const findLabelsForElement = (element: TestingElement): TestingElement[] => {
+  const labels: TestingElement[] = [];
+  walkTestingTree(element.ownerDocument.body, (node) => {
+    if (node instanceof TestingElement && node.tagName === 'label' && labelMatchesElement(node, element)) {
+      labels.push(node);
+    }
+  });
+  return labels;
+};
+
+const getTestingAccessibleName = (element: TestingElement): string => {
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel) return ariaLabel;
+  const labelledBy = element.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    const value = labelledBy
+      .split(/\s+/)
+      .map((id) => element.ownerDocument.getElementById(id))
+      .filter((node): node is TestingElement => node instanceof TestingElement)
+      .map((node) => getTestingTextContent(node))
+      .join(' ')
+      .trim();
+    if (value) return value;
+  }
+  const labels = findLabelsForElement(element).map((label) => getTestingTextContent(label)).join(' ').trim();
+  if (labels) return labels;
+  return getTestingTextContent(element).trim();
+};
+
 const createEventBase = (target: TestingElement) => ({
   currentTarget: target,
   target,
@@ -295,7 +341,7 @@ export const getTestingHarnessByText = (scope: unknown, value: string): TestingE
   return found;
 };
 
-export const queryTestingHarnessByRole = (scope: unknown, role: string): TestingElement[] => {
+export const queryTestingHarnessByRole = (scope: unknown, role: string, name?: string): TestingElement[] => {
   const root = resolveTestingRoot(scope);
   if (!root) return [];
   const matches: TestingElement[] = [];
@@ -303,11 +349,35 @@ export const queryTestingHarnessByRole = (scope: unknown, role: string): Testing
     if (!(node instanceof TestingElement)) return;
     const explicitRole = node.getAttribute('role');
     const effectiveRole = explicitRole ?? implicitRoleForElement(node);
-    if (effectiveRole === role) {
+    if (effectiveRole === role && (name === undefined || getTestingAccessibleName(node) === name)) {
       matches.push(node);
     }
   });
   return matches;
+};
+
+export const getTestingHarnessByLabel = (scope: unknown, label: string): TestingElement | null => {
+  const root = resolveTestingRoot(scope);
+  if (!root) return null;
+  let found: TestingElement | null = null;
+  walkTestingTree(root, (node) => {
+    if (found || !(node instanceof TestingElement) || !labelableTags.has(node.tagName)) return;
+    if (findLabelsForElement(node).some((entry) => getTestingTextContent(entry).trim() === label)) {
+      found = node;
+    }
+  });
+  return found;
+};
+
+export const getTestingHarnessByPlaceholder = (scope: unknown, placeholder: string): TestingElement | null => {
+  const root = resolveTestingRoot(scope);
+  if (!root) return null;
+  let found: TestingElement | null = null;
+  walkTestingTree(root, (node) => {
+    if (found || !(node instanceof TestingElement)) return;
+    if ((node.getAttribute('placeholder') ?? '') === placeholder) found = node;
+  });
+  return found;
 };
 
 export const getTestingTextContent = (node: unknown): string => {
