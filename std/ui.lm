@@ -61,6 +61,31 @@ pub fn themeTokens(tokens: string, props: any, children: any) -> VNode {
   themeRoot(props_merge(props_attr("style", tokens), props), children)
 }
 
+pub fn tokenContract(name: string, props: any, children: any) -> VNode {
+  themeRoot(props_merge(props_attr("data-lumina-token-contract", name), props), children)
+}
+
+pub fn surface(variant: string, props: any, children: any) -> VNode {
+  vnode(
+    "section",
+    props_merge(
+      props_class(surface_variant_class(variant)),
+      props
+    ),
+    children
+  )
+}
+
+fn surface_variant_class(variant: string) -> string {
+  if (variant == "raised") {
+    return "border border-slate-200 bg-white p-5 shadow-sm"
+  }
+  if (variant == "muted") {
+    return "border border-slate-200 bg-slate-50 p-5"
+  }
+  return "border border-transparent bg-white p-5"
+}
+
 pub fn appShell(props: any, children: any) -> VNode {
   vnode(
     "div",
@@ -204,6 +229,86 @@ pub fn navList(props: any, children: any) -> VNode {
     "nav",
     props_merge(
       props_class("flex flex-wrap items-center gap-2"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn sidebarNav(props: any, children: any) -> VNode {
+  vnode(
+    "nav",
+    props_merge(
+      props_class("grid gap-1 text-sm"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn navItem(active: bool, props: any, children: any) -> VNode {
+  vnode(
+    "a",
+    props_merge(
+      props_class(nav_item_class(active)),
+      props
+    ),
+    children
+  )
+}
+
+fn nav_item_class(active: bool) -> string {
+  if (active) {
+    return "flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 font-medium text-white"
+  }
+  return "flex items-center gap-2 rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-slate-100"
+}
+
+pub fn toolbar(props: any, children: any) -> VNode {
+  vnode(
+    "div",
+    props_merge(
+      props_class("flex min-h-11 flex-wrap items-center gap-2 border-b border-slate-200 py-2"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn badge(variant: string, props: any, children: any) -> VNode {
+  vnode("span", props_merge(props_class(badge_variant_class(variant)), props), children)
+}
+
+fn badge_variant_class(variant: string) -> string {
+  if (variant == "danger") {
+    return "inline-flex items-center rounded-md bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700"
+  }
+  if (variant == "success") {
+    return "inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
+  }
+  return "inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+}
+
+pub fn formGrid(props: any, children: any) -> VNode {
+  vnode(
+    "div",
+    props_merge(
+      props_class("grid gap-4 md:grid-cols-2"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn dataToolbar(props: any, children: any) -> VNode {
+  toolbar(props, children)
+}
+
+pub fn emptyState(props: any, children: any) -> VNode {
+  vnode(
+    "div",
+    props_merge(
+      props_class("grid min-h-40 place-items-center border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500"),
       props
     ),
     children

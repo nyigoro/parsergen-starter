@@ -243,6 +243,8 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
     const testingChangeCheckedType: Type = fnType([primitive('any'), primitive('bool')], primitive('void'));
     const testingKeydownType: Type = fnType([primitive('any'), primitive('string'), primitive('bool')], primitive('void'));
     const testingSubmitType: Type = fnType([primitive('any')], primitive('void'));
+    const testingFlushType: Type = fnType([], promiseType(primitive('void')));
+    const testingWaitForType: Type = fnType([fnType([], primitive('any')), primitive('int')], promiseType(primitive('any')));
     const devtoolsSnapshotType: Type = fnType([], primitive('any'));
     const installDevtoolsType: Type = fnType([], primitive('any'));
     const devtoolsRecordEventType: Type = fnType(
@@ -2022,6 +2024,8 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
             'std://render'
           ),
         ],
+        ['testingFlush', moduleFunctionWithScheme('testingFlush', [], 'Promise<void>', schemeFromVars(testingFlushType, []), [], 'std://render')],
+        ['testingWaitFor', moduleFunctionWithScheme('testingWaitFor', ['fn() -> any', 'int'], 'Promise<any>', schemeFromVars(testingWaitForType, []), ['check', 'attempts'], 'std://render')],
         [
           'devtoolsSnapshot',
           moduleFunctionWithScheme(

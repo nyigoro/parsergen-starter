@@ -3287,7 +3287,7 @@ Options:
   --check              Verify formatting only, do not write files (fmt)
   --public-only        Include only public declarations in docs (doc)
   --yes                Use defaults without prompts (init)
-  --template <name>    Starter template: routed | minimal | ssr (init)
+  --template <name>    Starter template: routed | minimal | ssr | auth | testing | deploy | large-app (init)
   --frozen             Use npm ci if lockfile is present (install)
   --dev                Add package as dev dependency (add)
   --limit <n>          Limit search result count (search)

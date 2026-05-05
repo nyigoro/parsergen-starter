@@ -10,6 +10,8 @@ export interface SsgPageOptions {
   hydrationStateId?: string;
   hydrationBoundary?: string;
   scriptNonce?: string;
+  requestId?: string;
+  deferredData?: unknown;
 }
 
 export interface SsgApiDeps<VNodeLike, TComponentFn> {
@@ -42,7 +44,7 @@ export const coerceSsgPageOptions = (options: unknown): Required<SsgPageOptions>
     appClassName: typeof candidate.appClassName === 'string' ? candidate.appClassName : '',
     appId: typeof candidate.appId === 'string' && candidate.appId.length > 0 ? candidate.appId : 'app',
     hydrateModule: typeof candidate.hydrateModule === 'string' ? candidate.hydrateModule : '',
-    hydrationState: candidate.hydrationState ?? candidate.state ?? null,
+    hydrationState: candidate.hydrationState ?? candidate.state ?? (candidate.deferredData == null ? null : { deferredData: candidate.deferredData }),
     hydrationStateId:
       typeof candidate.hydrationStateId === 'string' && candidate.hydrationStateId.length > 0
         ? candidate.hydrationStateId
@@ -52,6 +54,8 @@ export const coerceSsgPageOptions = (options: unknown): Required<SsgPageOptions>
         ? candidate.hydrationBoundary
         : 'root',
     scriptNonce: typeof candidate.scriptNonce === 'string' && candidate.scriptNonce.length > 0 ? candidate.scriptNonce : '',
+    requestId: typeof candidate.requestId === 'string' ? candidate.requestId : '',
+    deferredData: candidate.deferredData ?? null,
   };
 };
 
@@ -84,7 +88,7 @@ export const createSsgApi = <VNodeLike, TComponentFn>(deps: SsgApiDeps<VNodeLike
     const bodyClass = normalized.bodyClassName ? ` class="${deps.escapeHtml(normalized.bodyClassName)}"` : '';
     const appClass = normalized.appClassName ? ` class="${deps.escapeHtml(normalized.appClassName)}"` : '';
     const hydrationAttrs = normalized.hydrateModule || normalized.hydrationState !== null
-      ? ` data-lumina-hydration="${deps.escapeHtml(normalized.hydrationBoundary)}"${normalized.hydrationState !== null ? ` data-lumina-state="${deps.escapeHtml(normalized.hydrationStateId)}"` : ''}`
+      ? ` data-lumina-hydration="${deps.escapeHtml(normalized.hydrationBoundary)}"${normalized.hydrationState !== null ? ` data-lumina-state="${deps.escapeHtml(normalized.hydrationStateId)}"` : ''}${normalized.requestId ? ` data-lumina-request-id="${deps.escapeHtml(normalized.requestId)}"` : ''}`
       : '';
     return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}${hydrationAttrs}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
   };

@@ -11,6 +11,11 @@ pub struct FormAction<T> {
   submitting: Signal<bool>
 }
 
+pub struct ServerValidation {
+  field: string,
+  message: string
+}
+
 pub fn bindValue(value: Signal<string>, props: any) -> any {
   render.props_merge(
     props,
@@ -35,8 +40,16 @@ pub fn fileInput(props: any) -> any {
   render.props_merge(props, render.props_type("file"))
 }
 
+pub fn fileInputNamed(name: string, props: any) -> any {
+  fileInput(render.props_merge(props, render.props_name(name)))
+}
+
 pub fn multipartProps(props: any) -> any {
   render.props_merge(props, render.props_attr("enctype", "multipart/form-data"))
+}
+
+pub fn formDataSubmitProps(handler: fn() -> any, props: any) -> any {
+  submitProps(handler, multipartProps(props))
 }
 
 pub fn textArea(value: Signal<string>, props: any) -> any {
@@ -94,6 +107,30 @@ pub fn fieldArrayName(name: string, index: int) -> string {
   str.concat(str.concat(str.concat(name, "["), str.from_int(index)), "]")
 }
 
+pub fn fieldArrayItemName(name: string, index: int, child: string) -> string {
+  nestedFieldName(fieldArrayName(name, index), child)
+}
+
+pub fn schemaAdapter(name: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("data-lumina-schema", name))
+}
+
+pub fn serverValidation(field: string, message: string) -> ServerValidation {
+  ServerValidation { field: field, message: message }
+}
+
+pub fn applyServerValidation(field: FieldState, fieldName: string, validation: ServerValidation) -> bool {
+  if (fieldName == validation.field) {
+    setFieldError(field, validation.message)
+    return true
+  }
+  return false
+}
+
+pub fn serverValidationProps(field: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("data-lumina-server-field", field))
+}
+
 pub fn createFieldState() -> FieldState {
   FieldState {
     dirty: reactive.createSignal(false),
@@ -142,6 +179,15 @@ pub async fn submitAction<T>(formAction: FormAction<T>) -> T {
 pub async fn submitActionOptimistic<T>(formAction: FormAction<T>, resource: any, optimistic: T) -> T {
   let _mutated = render.resourceMutate(resource, optimistic)
   let value = await submitAction(formAction)
+  return value
+}
+
+pub async fn submitActionWithRollback<T>(formAction: FormAction<T>, resource: any, optimistic: T, previous: T) -> T {
+  let _mutated = render.resourceMutate(resource, optimistic)
+  let value = await submitAction(formAction)
+  if (actionStatus(formAction) == "error") {
+    rollbackResource(resource, previous)
+  }
   return value
 }
 

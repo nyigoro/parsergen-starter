@@ -29,6 +29,10 @@ describe('@std/devtools', () => {
     expect(js).toContain('recordRoute');
     expect(js).toContain('recordResource');
     expect(js).toContain('recordHydration');
+    expect(js).toContain('inspectHydrationMismatch');
+    expect(js).toContain('profileStart');
+    expect(js).toContain('profileEnd');
+    expect(js).toContain('recordRenderCost');
     expect(js).toContain('devtoolsTimeline');
     expect(js).toContain('devtoolsClearTimeline');
   });

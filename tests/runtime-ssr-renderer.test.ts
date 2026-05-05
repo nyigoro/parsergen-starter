@@ -62,6 +62,17 @@ describe('runtime ssr renderer', () => {
     };
 
     expect(runtime.renderToString(node)).toBe('<section id="app">Hello Lumina<br></section>');
+    expect(Array.from(runtime.renderToChunks(node))).toEqual([
+      '<section id="app">',
+      'Hello ',
+      'Lumina',
+      '<br>',
+      '</section>',
+    ]);
+    expect(runtime.renderToString(node, { request: { url: '/docs?a=1', requestId: 'req-1' } })).toContain(
+      'Hello Lumina'
+    );
+    expect(runtime.renderToReadableStream(node)).toBeInstanceOf(ReadableStream);
 
     const container: { html?: string } = {};
     const renderer = runtime.createRenderer();

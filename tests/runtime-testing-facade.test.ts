@@ -2,7 +2,7 @@ import { TestingTextNode } from '../src/testing-dom.js';
 import { createTestingFacade } from '../src/runtime/testing-facade.js';
 
 describe('runtime testing facade', () => {
-  test('creates harnesses, delegates mount flows, and proxies DOM queries/events', () => {
+  test('creates harnesses, delegates mount flows, and proxies DOM queries/events', async () => {
     const mountCalls: Array<{ hydrate: boolean; props: unknown }> = [];
     const renderer = { kind: 'renderer' };
     const root = { kind: 'root' };
@@ -50,6 +50,8 @@ describe('runtime testing facade', () => {
     facade.testing_input(input, 'Ada');
     facade.testing_keydown(input, 'Enter', true);
     facade.testing_submit(form);
+    await expect(facade.testing_flush()).resolves.toBeUndefined();
+    await expect(facade.testing_wait_for(() => 'ready', 2)).resolves.toBe('ready');
 
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(inputSpy).toHaveBeenCalledTimes(1);

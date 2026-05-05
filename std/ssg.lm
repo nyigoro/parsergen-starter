@@ -12,6 +12,31 @@ pub fn hydrationBoundaryOptions(state: any, hydrateModule: string, boundary: str
   render.props_merge(hydrationOptions(state, hydrateModule), render.props_attr("hydrationBoundary", boundary))
 }
 
+pub fn requestOptions(requestId: string, options: any) -> any {
+  render.props_merge(options, render.props_attr("requestId", requestId))
+}
+
+pub fn deferredDataOptions(state: any, options: any) -> any {
+  render.props_merge(options, render.props_attr("deferredData", state))
+}
+
+pub fn islandProps(id: string, props: any) -> any {
+  render.props_merge(
+    props,
+    render.props_merge(
+      render.props_attr("data-lumina-island", id),
+      render.props_attr("data-lumina-hydration", "island")
+    )
+  )
+}
+
+pub fn deferredHydrationProps(id: string, props: any) -> any {
+  render.props_merge(
+    islandProps(id, props),
+    render.props_attr("data-lumina-hydration-mode", "defer")
+  )
+}
+
 pub fn renderApp<P>(renderFn: fn(P) -> VNode, props: P, options: any) -> string {
   render.ssgRenderApp(renderFn, props, options)
 }

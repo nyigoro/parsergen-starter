@@ -24,6 +24,14 @@ pub struct RouteModule {
   title: string
 }
 
+pub struct RouteNode {
+  id: string,
+  pattern: string,
+  title: string,
+  module: RouteModule,
+  children: any
+}
+
 pub struct RouteAction<T> {
   resource: RouteResource<T>,
   submitting: Signal<bool>
@@ -228,7 +236,94 @@ pub fn routeModuleKey(routerValue: Router, module: RouteModule, name: string) ->
 }
 
 pub fn routeModuleOptions(module: RouteModule, options: any) -> any {
-  render.props_merge(options, render.props_attr("scope", module.id))
+  render.props_merge(
+    options,
+    render.props_merge(
+      render.props_attr("scope", module.id),
+      render.props_merge(
+        render.props_attr("routeId", module.id),
+        render.props_merge(
+          render.props_attr("routePattern", module.pattern),
+          render.props_attr("routeTitle", module.title)
+        )
+      )
+    )
+  )
+}
+
+pub fn routeNode(id: string, pattern: string, title: string) -> RouteNode {
+  let module = routeModule(id, pattern, title)
+  RouteNode { id: id, pattern: pattern, title: title, module: module, children: render.props_empty() }
+}
+
+pub fn routeNodeWithChildren(id: string, pattern: string, title: string, children: any) -> RouteNode {
+  let module = routeModule(id, pattern, title)
+  RouteNode { id: id, pattern: pattern, title: title, module: module, children: children }
+}
+
+pub fn routeNodeModule(node: RouteNode) -> RouteModule {
+  node.module
+}
+
+pub fn routeNodeChildren(node: RouteNode) -> any {
+  node.children
+}
+
+pub fn routeNodeMatch(routerValue: Router, node: RouteNode) -> RouteMatch {
+  routeModuleMatch(routerValue, node.module)
+}
+
+pub fn routeNodeKey(routerValue: Router, node: RouteNode, name: string) -> string {
+  routeModuleKey(routerValue, node.module, name)
+}
+
+pub fn routeNodeOptions(node: RouteNode, options: any) -> any {
+  routeModuleOptions(node.module, options)
+}
+
+pub fn routeNodeLoader<T>(routerValue: Router, node: RouteNode, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
+  routeModuleLoader(routerValue, node.module, name, loader)
+}
+
+pub fn routeNodeLoaderWithOptions<T>(routerValue: Router, node: RouteNode, name: string, loader: fn(RouteMatch) -> Promise<T>, options: any) -> RouteResource<T> {
+  routeModuleLoaderWithOptions(routerValue, node.module, name, loader, options)
+}
+
+pub fn routeNodeAction<T>(routerValue: Router, node: RouteNode, name: string, action: fn(RouteMatch) -> Promise<T>) -> RouteAction<T> {
+  routeModuleAction(routerValue, node.module, name, action)
+}
+
+pub fn routeNodeView(routerValue: Router, node: RouteNode, renderChildren: fn(RouteMatch) -> any, fallback: any) -> VNode {
+  routeModuleView(routerValue, node.module, renderChildren, fallback)
+}
+
+pub fn routeNodeLayout(routerValue: Router, node: RouteNode, shell: fn(RouteMatch, any) -> VNode, child: any, fallback: any) -> VNode {
+  let matchValue = routeNodeMatch(routerValue, node)
+  render.show(matchValue.matched, fn() -> any { shell(matchValue, child) }, fallback)
+}
+
+pub fn prefetchRouteNode<T>(_routerValue: Router, node: RouteNode, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(route_scoped_key(node.id, normalize_path(path), "", name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, render.props_empty())) }
+}
+
+pub fn cancelRouteNode(node: RouteNode) -> int {
+  render.resourceClearScope(node.id)
+}
+
+pub fn revalidateRouteNode(node: RouteNode) -> int {
+  render.resourceInvalidateScope(node.id)
+}
+
+pub fn lazyRouteModule(id: string, pattern: string, title: string, modulePath: string) -> RouteNode {
+  routeNodeWithChildren(id, pattern, title, render.props_attr("modulePath", modulePath))
+}
+
+pub fn navigationIntentProps(intent: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("data-lumina-navigation-intent", intent))
+}
+
+pub fn viewTransitionProps(name: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("style", str.concat("view-transition-name:", name)))
 }
 
 pub fn routeModuleLoader<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {

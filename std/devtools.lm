@@ -47,6 +47,42 @@ pub fn recordHydration(label: string, detail: any) -> any {
   record("hydration", label, detail)
 }
 
+pub fn inspect(kind: string, label: string, detail: any) -> any {
+  record(kind, label, detail)
+}
+
+pub fn inspectSignal(label: string, detail: any) -> any {
+  inspect("signal", label, detail)
+}
+
+pub fn inspectResource(label: string, detail: any) -> any {
+  inspect("resource", label, detail)
+}
+
+pub fn inspectFrame(label: string, detail: any) -> any {
+  inspect("frame", label, detail)
+}
+
+pub fn inspectRoute(label: string, detail: any) -> any {
+  inspect("route", label, detail)
+}
+
+pub fn inspectHydrationMismatch(label: string, detail: any) -> any {
+  inspect("hydration-mismatch", label, detail)
+}
+
+pub fn profileStart(label: string, detail: any) -> any {
+  record("profile:start", label, detail)
+}
+
+pub fn profileEnd(label: string, detail: any) -> any {
+  record("profile:end", label, detail)
+}
+
+pub fn recordRenderCost(label: string, detail: any) -> any {
+  record("render-cost", label, detail)
+}
+
 pub fn timeline() -> any {
   render.devtoolsTimeline()
 }

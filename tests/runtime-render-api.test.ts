@@ -75,6 +75,8 @@ const createApi = () => {
       testing_change_checked: jest.fn(),
       testing_keydown: jest.fn(),
       testing_submit: jest.fn(),
+      testing_flush: jest.fn(async () => undefined),
+      testing_wait_for: jest.fn(async (check: () => unknown) => check()),
     },
     ssgApi: {
       renderPage: jest.fn(() => '<html/>'),
@@ -128,7 +130,7 @@ const createApi = () => {
 };
 
 describe('runtime render api', () => {
-  test('delegates app, testing, and custom-element surfaces through the extracted API', () => {
+  test('delegates app, testing, and custom-element surfaces through the extracted API', async () => {
     const { render, appRuntime } = createApi();
     const component = ((props: { label: string }) => props.label) as ComponentFunction<
       { label: string },
@@ -144,6 +146,8 @@ describe('runtime render api', () => {
       $payload: 'testing-mount',
     });
     expect(render.testingGetByRole({}, 'tab')).toBe('role-hit');
+    await expect(render.testing_flush()).resolves.toBeUndefined();
+    await expect(render.testing_wait_for(() => 'async-ready', 3)).resolves.toBe('async-ready');
 
     const controller = render.mount_custom_element({}, component, { props: { label: 'Inbox' } });
     expect(controller.props.get()).toEqual({ label: 'Inbox' });
@@ -151,6 +155,8 @@ describe('runtime render api', () => {
 
     expect(appRuntime.renderAppVNode).toHaveBeenCalledTimes(1);
     expect(appRuntime.testingFacade.testing_mount_app).toHaveBeenCalledTimes(1);
+    expect(appRuntime.testingFacade.testing_flush).toHaveBeenCalledTimes(1);
+    expect(appRuntime.testingFacade.testing_wait_for).toHaveBeenCalledTimes(1);
     expect(appRuntime.mountCustomElementInternal).toHaveBeenCalledTimes(1);
   });
 

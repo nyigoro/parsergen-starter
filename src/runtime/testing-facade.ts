@@ -51,4 +51,18 @@ export const createTestingFacade = <TComponentFn, TRoot>(
   testing_keydown: (node: unknown, key: string, shiftKey?: boolean): void =>
     dispatchTestingKeydown(node, key, shiftKey ?? false),
   testing_submit: (node: unknown): void => dispatchTestingSubmit(node),
+  testing_flush: async (): Promise<void> => {
+    await Promise.resolve();
+    await Promise.resolve();
+  },
+  testing_wait_for: async (check: () => unknown, attempts = 5): Promise<unknown> => {
+    const limit = Math.max(1, Math.trunc(Number(attempts) || 1));
+    for (let i = 0; i < limit; i += 1) {
+      const value = check();
+      if (value) return value;
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    return check();
+  },
 });

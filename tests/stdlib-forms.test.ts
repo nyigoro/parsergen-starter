@@ -25,9 +25,15 @@ describe('@std/forms', () => {
     expect(js).toContain('textInput');
     expect(js).toContain('hiddenInput');
     expect(js).toContain('fileInput');
+    expect(js).toContain('fileInputNamed');
     expect(js).toContain('multipartProps');
+    expect(js).toContain('formDataSubmitProps');
     expect(js).toContain('nestedFieldName');
     expect(js).toContain('fieldArrayName');
+    expect(js).toContain('fieldArrayItemName');
+    expect(js).toContain('schemaAdapter');
+    expect(js).toContain('serverValidation');
+    expect(js).toContain('applyServerValidation');
     expect(js).toContain('checkbox');
     expect(js).toContain('radio');
     expect(js).toContain('submitProps');
@@ -37,6 +43,7 @@ describe('@std/forms', () => {
     expect(js).toContain('actionWithOptions');
     expect(js).toContain('submitAction');
     expect(js).toContain('submitActionOptimistic');
+    expect(js).toContain('submitActionWithRollback');
     expect(js).toContain('rollbackResource');
     expect(js).toContain('actionStatus');
     expect(js).toContain('actionSubmitProps');

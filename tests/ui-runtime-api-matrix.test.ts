@@ -69,6 +69,8 @@ const renderFunctionNames = [
   'testingChangeChecked',
   'testingKeydown',
   'testingSubmit',
+  'testingFlush',
+  'testingWaitFor',
   'devtoolsSnapshot',
   'installDevtools',
   'devtoolsRecordEvent',

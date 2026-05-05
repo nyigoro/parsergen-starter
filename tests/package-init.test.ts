@@ -42,18 +42,17 @@ describe('lumina init', () => {
     const indexHtml = fs.readFileSync(path.join(dir, 'index.html'), 'utf-8');
     const appSource = fs.readFileSync(path.join(dir, 'src', 'app.lm'), 'utf-8');
     const clientSource = fs.readFileSync(path.join(dir, 'src', 'client.lm'), 'utf-8');
-    const ssgSource = fs.readFileSync(path.join(dir, 'src', 'ssg.lm'), 'utf-8');
     const styles = fs.readFileSync(path.join(dir, 'src', 'styles.css'), 'utf-8');
     const viteConfig = fs.readFileSync(path.join(dir, 'vite.config.ts'), 'utf-8');
 
     expect(pkg.lumina).toBe('./src/client.lm');
     expect(pkg.luminaTemplate).toBe('routed');
     expect(pkg.scripts?.check).toContain('src/client.lm');
-    expect(pkg.scripts?.build).toContain('lumina compile src/client.lm');
-    expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
+    expect(pkg.scripts?.build).toContain('--target js --module esm');
+    expect(pkg.scripts?.ssg).toBeUndefined();
     expect(pkg.scripts?.dev).toContain('vite --host 127.0.0.1');
     expect(pkg.devDependencies?.vite).toBeTruthy();
-    expect(config).toMatchObject({ entries: ['src/client.lm'], outDir: 'dist', target: 'esm' });
+    expect(config).toMatchObject({ entries: ['src/client.lm'], outDir: 'dist', target: 'js', module: 'esm' });
     expect(indexHtml).toContain('/dist/main.js');
     expect(appSource).toContain('@std/router');
     expect(appSource).toContain('routeLoader');
@@ -61,7 +60,7 @@ describe('lumina init', () => {
     expect(appSource).toContain('routeAction');
     expect(appSource).toContain('submitRouteAction');
     expect(clientSource).toContain('hydrate_reactive');
-    expect(ssgSource).toContain('App(createRouter("/")');
+    expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(false);
     expect(styles).toContain('.app-shell');
     expect(viteConfig).toContain('defineConfig');
   });
@@ -85,5 +84,61 @@ describe('lumina init', () => {
     expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(false);
     expect(appSource).not.toContain('@std/router');
     expect(clientSource).toContain('App()');
+  });
+
+  test('creates an SSR starter with SSG and hydration files', async () => {
+    const dir = createTempDir();
+    process.chdir(dir);
+
+    await initProject({ yes: true, template: 'ssr' });
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
+      luminaTemplate?: string;
+      scripts?: Record<string, string>;
+    };
+    const ssgSource = fs.readFileSync(path.join(dir, 'src', 'ssg.lm'), 'utf-8');
+    const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf-8');
+
+    expect(pkg.luminaTemplate).toBe('ssr');
+    expect(pkg.scripts?.check).toContain('src/ssg.lm');
+    expect(pkg.scripts?.build).toContain('--target js --module esm');
+    expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
+    expect(ssgSource).toContain('App(createRouter("/")');
+    expect(readme).toContain('SSR/SSG-ready');
+  });
+
+  test('creates official complex-app starter variants', async () => {
+    for (const template of ['auth', 'testing', 'deploy', 'large-app'] as const) {
+      const dir = createTempDir();
+      process.chdir(dir);
+
+      await initProject({ yes: true, template });
+
+      const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
+        luminaTemplate?: string;
+        scripts?: Record<string, string>;
+      };
+      const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf-8');
+
+      expect(pkg.luminaTemplate).toBe(template);
+      expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
+      expect(readme).toContain('Commands');
+      expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(true);
+      if (template === 'auth') expect(fs.existsSync(path.join(dir, 'src', 'session.lm'))).toBe(true);
+      if (template === 'testing') expect(fs.existsSync(path.join(dir, 'src', 'app.test.lm'))).toBe(true);
+      if (template === 'deploy') expect(fs.existsSync(path.join(dir, 'deploy', 'README.md'))).toBe(true);
+      if (template === 'large-app') expect(fs.existsSync(path.join(dir, 'src', 'routes.lm'))).toBe(true);
+      process.chdir(originalCwd);
+    }
+  });
+
+  test('rejects unknown starter templates before writing files', async () => {
+    const dir = createTempDir();
+    process.chdir(dir);
+
+    await expect(initProject({ yes: true, template: 'unknown' })).rejects.toThrow(
+      'Unknown Lumina starter template'
+    );
+    expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(false);
   });
 });

@@ -61,7 +61,7 @@ pub fn submit(node: any) -> void {
 }
 
 pub async fn flush() -> void {
-  let _ = 0
+  await render.testingFlush()
 }
 
 pub async fn act(action: fn() -> void) -> void {
@@ -69,13 +69,17 @@ pub async fn act(action: fn() -> void) -> void {
   await flush()
 }
 
+pub async fn waitFor(check: fn() -> any, attempts: int) -> any {
+  render.testingWaitFor(check, attempts)
+}
+
 pub async fn findByText(scope: any, value: string) -> any {
-  await flush()
+  let _ = await waitFor(fn() -> any { getByText(scope, value) }, 5)
   return getByText(scope, value)
 }
 
 pub async fn findByRole(scope: any, role: string) -> any {
-  await flush()
+  let _ = await waitFor(fn() -> any { getByRole(scope, role) }, 5)
   return getByRole(scope, role)
 }
 

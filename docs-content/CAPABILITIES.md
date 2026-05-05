@@ -58,7 +58,7 @@ Last updated for v0.5.7.
 | Core stdlib (`io`, `str`, `math`, `vec`, `hashmap`, `hashset`) | Stable | Shared core surface covered on `js` and `wasm-web` |
 | Browser runtime modules | Stable | `dom`, `web_worker`, `web_storage`, `opfs`, `url`, `web_streams`, `http`, `webgpu`, `sab_channel` |
 | Reactive/runtime UI foundation | Stable | `@std/reactive`, `@std/render`, routing, portals, frame manager, headless primitives, and decomposed runtime layers on the JS/DOM path |
-| UI framework authoring model | Beta | Strong JS/DOM path with app-level SSR/hydration diagnostics, route match/data/action helpers, testing helpers, Web Components interop, transition presence helpers, devtools snapshots/timeline, SSG hydration-state helpers, and a first styled `@std/ui` layer; broader backend parity still in progress |
+| UI framework authoring model | Beta | Strong JS/DOM path with declarative route-node helpers, app-level SSR/hydration diagnostics, route match/data/action helpers, testing helpers, Web Components interop, transition presence helpers, devtools snapshots/timeline/inspector events, SSG hydration-state helpers, and a styled `@std/ui` layer; broader backend parity still in progress |
 | `wasm-standalone` runtime surface | Beta | Pure compute plus native strings are import-free today; broader host-backed features remain intentionally restricted |
 
 ## Tooling and Codegen
@@ -92,7 +92,7 @@ Last updated for v0.5.7.
 2. **WASM optimizer and debug depth**: improve name/debug metadata, binary-size tuning, and lowering optimizations
 3. **GPU CI coverage**: strengthen dedicated GPU-backed validation for browser smoke and WebGPU paths
 4. **Registry ecosystem/discovery depth**: improve package ranking, metadata quality, and adoption workflows
-5. **UI framework parity and tooling**: expand non-DOM/backend parity, deepen testing/devtools, and continue documentation/examples around the shipped app/data/styled surface
+5. **UI framework parity and tooling**: expand non-DOM/backend parity, deepen testing/devtools, and continue documentation/examples around the shipped app/data/styled surface and [LARGE_APP_ARCHITECTURE.md](LARGE_APP_ARCHITECTURE.md)
 6. **Cross-file refactor and publishing polish**: broaden semantic-aware LSP transforms and package workflow refinement
 
 Reference: [WEB_NATIVE_ROADMAP.md](WEB_NATIVE_ROADMAP.md)

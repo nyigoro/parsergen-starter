@@ -20,6 +20,11 @@ describe('@std/resource', () => {
     expect(hmErrors).toHaveLength(0);
 
     const js = generateJSFromAst(ast, { target: 'esm', includeRuntime: true }).code;
+    expect(js).toContain('cachePolicy');
+    expect(js).toContain('backgroundRefresh');
+    expect(js).toContain('requestScope');
+    expect(js).toContain('abortOnRefresh');
+    expect(js).toContain('routeDataPolicy');
     expect(js).toContain('createResource');
     expect(js).toContain('resourceStatus');
     expect(js).toContain('resourceData');

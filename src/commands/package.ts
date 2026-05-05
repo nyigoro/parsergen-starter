@@ -23,10 +23,28 @@ type WorkspacePackage = {
 };
 
 const LOCKFILE_NAME = 'lumina.lock.json';
-type InitTemplate = 'minimal' | 'routed' | 'ssr';
+type InitTemplate = 'minimal' | 'routed' | 'ssr' | 'auth' | 'testing' | 'deploy' | 'large-app';
+const INIT_TEMPLATES = new Set<InitTemplate>(['minimal', 'routed', 'ssr', 'auth', 'testing', 'deploy', 'large-app']);
 
 const normalizeInitTemplate = (value: unknown): InitTemplate => {
-  if (value === 'minimal' || value === 'ssr' || value === 'routed') return value;
+  if (value == null || value === '') return 'routed';
+  if (INIT_TEMPLATES.has(value as InitTemplate)) return value as InitTemplate;
+  throw new Error(`Unknown Lumina starter template '${String(value)}'. Use routed, minimal, ssr, auth, testing, deploy, or large-app.`);
+};
+
+const templateUsesSsg = (template: InitTemplate): boolean => {
+  if (template === 'minimal' || template === 'routed') return false;
+  return true;
+};
+
+const templateReadme = (template: InitTemplate): string => {
+  if (template === 'minimal') return 'Minimal client-only Lumina starter.';
+  if (template === 'routed') return 'Routed SPA starter with route loaders, actions, prefetch, and client hydration.';
+  if (template === 'ssr') return 'SSR/SSG-ready routed starter with a hydration entry.';
+  if (template === 'auth') return 'Auth/session starter. Keep session ownership in src/session.lm and route data behind route module loaders.';
+  if (template === 'testing') return 'Testing-ready starter. Use @std/testing flush, waitFor, and harness helpers for async UI work.';
+  if (template === 'deploy') return 'Deploy-ready starter. Use npm run ssg to produce dist/index.html and dist/main.js.';
+  if (template === 'large-app') return 'Large-app starter. Keep route ownership in route nodes, data scopes, route actions, and app-shell UI wrappers.';
   return 'routed';
 };
 
@@ -173,7 +191,7 @@ export async function initProject(options: { yes?: boolean; template?: string } 
   }
   const name = path.basename(cwd);
   const template = normalizeInitTemplate(options.template);
-  const withSsg = template !== 'minimal';
+  const withSsg = templateUsesSsg(template);
   const pkg = {
     name,
     version: '0.1.0',
@@ -182,13 +200,13 @@ export async function initProject(options: { yes?: boolean; template?: string } 
     scripts: withSsg
       ? {
           check: 'lumina check src/client.lm && lumina check src/ssg.lm',
-          build: 'lumina compile src/client.lm --out dist/main.js --target esm',
+          build: 'lumina compile src/client.lm --target js --module esm --out dist/main.js',
           ssg: 'lumina ssg src/ssg.lm --out dist/index.html --hydrate /dist/main.js --title "Lumina App"',
           dev: 'npm run build && vite --host 127.0.0.1',
         }
       : {
           check: 'lumina check src/client.lm',
-          build: 'lumina compile src/client.lm --out dist/main.js --target esm',
+          build: 'lumina compile src/client.lm --target js --module esm --out dist/main.js',
           dev: 'npm run build && vite --host 127.0.0.1',
         },
     dependencies: {},
@@ -201,7 +219,8 @@ export async function initProject(options: { yes?: boolean; template?: string } 
   await writeJson(path.join(cwd, 'lumina.config.json'), {
     entries: ['src/client.lm'],
     outDir: 'dist',
-    target: 'esm',
+    target: 'js',
+    module: 'esm',
   });
   await writeFileIfMissing(
     path.join(cwd, 'vite.config.ts'),
@@ -400,6 +419,53 @@ pub fn main() -> VNode {
 }
 `
     );
+  }
+  await writeFileIfMissing(path.join(cwd, 'README.md'), `# ${name}
+
+${templateReadme(template)}
+
+## Commands
+
+- \`npm run check\`
+- \`npm run build\`
+${withSsg ? '- `npm run ssg`\n' : ''}
+`);
+  if (template === 'auth') {
+    await writeFileIfMissing(path.join(cwd, 'src', 'session.lm'), `pub struct Session {
+  user: string,
+  authenticated: bool
+}
+
+pub fn anonymous() -> Session {
+  Session { user: "", authenticated: false }
+}
+`);
+  }
+  if (template === 'testing') {
+    await writeFileIfMissing(path.join(cwd, 'src', 'app.test.lm'), `import { testing } from "@std";
+
+pub async fn smoke() -> void {
+  await testing.flush()
+}
+`);
+  }
+  if (template === 'large-app') {
+    await writeFileIfMissing(path.join(cwd, 'src', 'routes.lm'), `import { routeNode, RouteNode } from "@std/router";
+
+pub fn rootRoute() -> RouteNode {
+  routeNode("root", "/", "Home")
+}
+
+pub fn settingsRoute() -> RouteNode {
+  routeNode("settings", "/settings", "Settings")
+}
+`);
+  }
+  if (template === 'deploy') {
+    await writeFileIfMissing(path.join(cwd, 'deploy', 'README.md'), `# Deploy
+
+Run \`npm run build && npm run ssg\`, then publish \`dist/\`.
+`);
   }
   if (!options.yes) {
     console.log(`Initialized package.json in ${cwd}`);

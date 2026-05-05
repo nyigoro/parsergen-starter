@@ -35,9 +35,9 @@ Today the repo includes:
 - `component` declaration syntax as an authoring-friendly alias for component functions
 - suspense and error-boundary render helpers
 - transition-presence helpers for CSS-first mount/unmount animation flows
-- devtools snapshot/install helpers plus a timeline API for signal, resource, frame, route, and hydration inspection
+- devtools snapshot/install helpers plus timeline, inspector, mismatch, and profiler event helpers for signal, resource, frame, route, render, and hydration inspection
 - SSG helpers for app/page rendering and file emission
-- a first styled Tailwind-oriented `@std/ui` layer with button variants, theme roots, and app-shell wrappers on top of the headless primitives
+- a styled Tailwind-oriented `@std/ui` layer with token contracts, button variants, theme roots, app-shell wrappers, navigation, form-grid, toolbar, and empty-state patterns on top of the headless primitives
 - headless DOM primitives in `@std/tabs`, `@std/dialog`, `@std/popover`, `@std/tooltip`, `@std/toast`, `@std/menu`, `@std/select`, `@std/combobox`, `@std/multiselect`, `@std/checkbox`, and `@std/radio`
 
 That foundation is now strong enough to support real headless UI authoring, but the broader app/framework layer is still intentionally incomplete.
@@ -212,12 +212,12 @@ The current shipped baseline is:
 - radio group/item/indicator primitives with ARIA wiring, roving focus, and arrow-key navigation
 - forms helpers for controlled values, checked state, field dirty/touched/error state, submit handling, async action state, and lightweight validation
 - store helpers for app-level signals, derived memo slices, and context-backed sharing
-- route match/view/outlet helpers plus loader, prefetch, refresh, key/prefix/tag invalidation, action lifecycle, and optimistic mutation helpers layered on `@std/router`
-- testing helpers for mount, hydrate, events, text queries, and role queries
+- route match/view/outlet helpers plus declarative route nodes, layout ownership, loader, prefetch, refresh, key/prefix/tag/scope invalidation, action lifecycle, cancellation, and optimistic mutation helpers layered on `@std/router`
+- testing helpers for mount, hydrate, events, text queries, role queries, flush, and waitFor
 - transition presence helpers for CSS-first enter/exit state management
-- devtools helpers for signal/resource/frame snapshots, timeline events, and browser install hooks
+- devtools helpers for signal/resource/frame snapshots, timeline events, inspector events, profiler events, and browser install hooks
 - SSG helpers for page wrapping, app rendering, static file writing, and safe JSON hydration state handoff
-- a first `@std/ui` styled layer with Tailwind-oriented wrappers, app-shell composition, field composition, theme roots, and default button semantics over headless primitives
+- a `@std/ui` styled layer with Tailwind-oriented wrappers, app-shell composition, field composition, token contracts, navigation, data-entry, and default button semantics over headless primitives
 
 The next goal is to widen that baseline while staying visually unopinionated.
 

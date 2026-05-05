@@ -22,6 +22,10 @@ describe('@std/ssg', () => {
     const js = generateJSFromAst(ast, { target: 'esm', includeRuntime: true }).code;
     expect(js).toContain('hydrationOptions');
     expect(js).toContain('hydrationBoundaryOptions');
+    expect(js).toContain('requestOptions');
+    expect(js).toContain('deferredDataOptions');
+    expect(js).toContain('islandProps');
+    expect(js).toContain('deferredHydrationProps');
     expect(js).toContain('ssgPage');
     expect(js).toContain('ssgRenderApp');
     expect(js).toContain('ssgWriteApp');

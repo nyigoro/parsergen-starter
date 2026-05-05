@@ -21,10 +21,16 @@ Starter templates:
 lumina init --template routed --yes
 lumina init --template minimal --yes
 lumina init --template ssr --yes
+lumina init --template auth --yes
+lumina init --template testing --yes
+lumina init --template deploy --yes
+lumina init --template large-app --yes
 ```
 
-`routed` is the default app template, `minimal` is a client-only starter, and
-`ssr` keeps the routed starter plus the SSG/hydration entry.
+`routed` is the default SPA template, `minimal` is a client-only starter, and
+`ssr` adds the SSG/hydration entry. `auth`, `testing`, `deploy`, and
+`large-app` layer official conventions for session ownership, async UI tests,
+static deployment, and large route/data/UI boundaries.
 
 Check program types/semantics:
 

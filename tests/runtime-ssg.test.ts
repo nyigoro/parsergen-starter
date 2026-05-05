@@ -17,6 +17,8 @@ describe('runtime ssg api', () => {
       hydrationStateId: '__lumina-hydration',
       hydrationBoundary: 'root',
       scriptNonce: '',
+      requestId: '',
+      deferredData: null,
     });
 
     const api = createSsgApi<string, (props: { label: string }) => string>({
@@ -65,6 +67,29 @@ describe('runtime ssg api', () => {
     expect(html).toContain('\\u003c/script>');
     expect(html.indexOf('__lumina-hydration')).toBeLessThan(html.indexOf('/app.js'));
     expect(serializeHydrationState({ text: '<script>\u2028' })).toBe('{"text":"\\u003cscript>\\u2028"}');
+  });
+
+  test('serializes request ids and deferred data into hydration handoff', () => {
+    const api = createSsgApi<string, (props: { label: string }) => string>({
+      isVNode: (value): value is string => typeof value === 'string' && value.startsWith('<'),
+      renderToString: (node) => node,
+      coerceRenderableToVNode: (value) => `<p>${String(value)}</p>`,
+      escapeHtml: (value) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
+      resolvePath: (value) => path.resolve(value),
+      dirnamePath: (value) => path.dirname(value),
+      getNodeBuiltinModule: (id) => (id === 'node:fs' ? fs : null),
+      renderApp: (componentFn, props) => componentFn(props as { label: string }),
+    });
+
+    const html = api.renderPage('<main>Deferred</main>', {
+      requestId: 'req-42',
+      deferredData: { route: '/docs' },
+      hydrationStateId: 'lumina-state',
+    });
+
+    expect(html).toContain('data-lumina-request-id="req-42"');
+    expect(html).toContain('id="lumina-state"');
+    expect(html).toContain('"deferredData":{"route":"/docs"}');
   });
 
   test('writes rendered pages to disk', () => {

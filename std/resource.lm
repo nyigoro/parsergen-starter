@@ -4,6 +4,48 @@ pub struct Resource<T> {
   raw: any
 }
 
+pub fn options(props: any) -> any {
+  props
+}
+
+pub fn cachePolicy(ttlMs: int, staleWhileRevalidate: bool, props: any) -> any {
+  render.props_merge(
+    props,
+    render.props_merge(
+      render.props_attr("ttlMs", ttlMs),
+      render.props_attr("staleWhileRevalidate", staleWhileRevalidate)
+    )
+  )
+}
+
+pub fn backgroundRefresh(ttlMs: int, props: any) -> any {
+  cachePolicy(ttlMs, true, props)
+}
+
+pub fn requestScope(requestId: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("scope", requestId))
+}
+
+pub fn scoped(scope: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("scope", scope))
+}
+
+pub fn abortOnRefresh(props: any) -> any {
+  render.props_merge(props, render.props_attr("abortOnRefresh", true))
+}
+
+pub fn tag(tagName: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("tags", tagName))
+}
+
+pub fn dependency(name: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("dependencies", name))
+}
+
+pub fn routeDataPolicy(routeId: string, ttlMs: int, props: any) -> any {
+  dependency(routeId, scoped(routeId, backgroundRefresh(ttlMs, abortOnRefresh(props))))
+}
+
 pub fn createResource<T>(key: any, loader: fn() -> Promise<T>) -> Resource<T> {
   Resource<T> { raw: render.createResource(key, fn() -> Promise<any> { loader() }, render.props_empty()) }
 }

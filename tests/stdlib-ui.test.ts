@@ -27,6 +27,8 @@ describe('@std/ui', () => {
     expect(js).toContain('buttonVariant');
     expect(js).toContain('themeRoot');
     expect(js).toContain('themeTokens');
+    expect(js).toContain('tokenContract');
+    expect(js).toContain('surface');
     expect(js).toContain('appShell');
     expect(js).toContain('appShellSidebar');
     expect(js).toContain('appHeader');
@@ -39,6 +41,12 @@ describe('@std/ui', () => {
     expect(js).toContain('helpText');
     expect(js).toContain('errorText');
     expect(js).toContain('navList');
+    expect(js).toContain('sidebarNav');
+    expect(js).toContain('navItem');
+    expect(js).toContain('toolbar');
+    expect(js).toContain('badge');
+    expect(js).toContain('formGrid');
+    expect(js).toContain('emptyState');
     expect(js).toContain('dataTable');
     expect(js).toContain('tableHeaderCell');
     expect(js).toContain('tableCell');

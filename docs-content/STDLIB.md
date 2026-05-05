@@ -635,6 +635,24 @@ Route modules co-locate a route id, pattern, title, loader/action scope, and
 view guard. Module loaders/actions use route-scoped resource keys and resource
 `scope` metadata so large apps can invalidate by route module.
 
+### routeNode / routeNodeWithChildren / routeNodeLayout
+
+Declarative route-tree helpers. A `RouteNode` owns its id, pattern, title,
+module, and child metadata. Use `routeNodeLoader`, `routeNodeAction`,
+`routeNodeView`, and `routeNodeLayout` to keep layout ownership, data scope,
+and route-level loading/error boundaries together.
+
+### prefetchRouteNode / cancelRouteNode / revalidateRouteNode
+
+Route-node delivery helpers for lazy route modules, route-owned prefetch,
+rapid-navigation cancellation by resource scope, and scope-level background
+revalidation.
+
+### navigationIntentProps / viewTransitionProps
+
+Small platform-aligned props for prefetch/navigation intent metadata and
+same-document view transition naming.
+
 ### routeAction<T>(router: Router, name: String, action: fn() -> Promise<T>) -> RouteAction<T>
 
 Creates a disabled resource-backed action. Run it with `submitRouteAction`, then
@@ -665,6 +683,17 @@ Resource helpers expose cached async data with status/data/error/read/refresh
 operations. Options support `ttlMs`, `staleWhileRevalidate`, `tags`,
 `dependencies` / `dependsOn`, `scope`, and `abortOnRefresh`.
 
+### cachePolicy / backgroundRefresh / requestScope / scoped / abortOnRefresh
+
+Public option builders for app data conventions. They map to the runtime cache
+policy, request/route scope, abortable refresh, and stale-while-revalidate
+metadata used by the resource core.
+
+### tag / dependency / routeDataPolicy
+
+Convenience builders for tag/dependency invalidation and route-owned data
+resources.
+
 ### createResource / createResourceWithOptions
 
 Creates a resource handle. Reads throw promises/errors for suspense and error
@@ -684,15 +713,20 @@ Clears all records, clears one scope, or writes optimistic data into a resource.
 Form helpers cover controlled values, checked controls, file/multipart props,
 field state, async action state, field arrays, and optimistic rollback helpers.
 
-### textInput / checkbox / radio / fileInput / multipartProps
+### textInput / checkbox / radio / fileInput / fileInputNamed / multipartProps / formDataSubmitProps
 
 Build controlled input props and form encoding props.
+
+### fieldArrayItemName / schemaAdapter / serverValidation / applyServerValidation
+
+Helpers for nested fields, schema adapter metadata, server-validation mapping,
+and first-class array-field naming.
 
 ### createFieldState / markDirty / markTouched / setFieldError
 
 Track dirty, touched, and error state per field.
 
-### action / actionWithOptions / submitAction / submitActionOptimistic / rollbackResource
+### action / actionWithOptions / submitAction / submitActionOptimistic / submitActionWithRollback / rollbackResource
 
 Create resource-backed form actions and wire optimistic resource updates.
 
@@ -705,9 +739,11 @@ drive input/click/submit/keyboard events, and provide async flush helpers.
 
 Creates a test DOM harness and mounts or hydrates an app through the runtime.
 
-### findByText / findByRole / clickAndFlush / inputAndFlush / submitAndFlush
+### flush / waitFor / findByText / findByRole / clickAndFlush / inputAndFlush / submitAndFlush
 
 Small async workflow helpers for route/action/resource integration tests.
+`flush` drains microtasks through the runtime facade and `waitFor` retries a
+query/check before returning.
 
 ## @std/devtools
 
@@ -728,6 +764,15 @@ Records a timeline event for render, resource, route, or hydration tooling.
 ### resources / signals / roots / recordRoute / recordResource / recordHydration
 
 Convenience inspector and timeline helpers for complex app debugging.
+
+### inspectSignal / inspectResource / inspectFrame / inspectRoute / inspectHydrationMismatch
+
+Inspector event helpers for resource, route, frame, signal, and hydration
+mismatch tooling.
+
+### profileStart / profileEnd / recordRenderCost
+
+Profiler events for render timeline and cost views.
 
 ### timeline() -> Any
 
@@ -752,9 +797,9 @@ Renders a styled button with `type="button"` by default.
 Variant-aware button wrapper. Current variants: `primary`, `danger`, and the
 default secondary style.
 
-### themeRoot(props: Any, children: Any) -> VNode
+### themeRoot / themeTokens / tokenContract
 
-Theme-token root using CSS custom properties.
+Theme-token roots using CSS custom properties and named token contracts.
 
 ### appShell(props: Any, children: Any) -> VNode
 
@@ -763,6 +808,10 @@ Constrained application shell layout.
 ### appShellSidebar / appHeader / appSidebar / appMain
 
 Application frame primitives for dashboard and complex app layouts.
+
+### sidebarNav / navItem / toolbar / badge / formGrid / emptyState
+
+Large-app navigation, toolbar, status, form-layout, and empty-state wrappers.
 
 ### inputVariant / fieldGroup / dataTable / tableRow / tableHeaderCell / tableCell
 
@@ -775,6 +824,11 @@ SSG helpers render static pages/apps and provide hydration handoff options.
 ### hydrationOptions / hydrationBoundaryOptions
 
 Build safe JSON hydration state and boundary metadata options for SSG output.
+
+### requestOptions / deferredDataOptions / islandProps / deferredHydrationProps
+
+Request metadata, deferred-data, and island/deferred hydration prop helpers for
+production SSR conventions.
 
 ### page / renderApp / writePage / writeApp
 

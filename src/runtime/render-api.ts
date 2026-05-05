@@ -117,6 +117,8 @@ interface TestingFacadeLike<TReactiveRoot> {
   testing_change_checked: (node: unknown, checked: boolean) => void;
   testing_keydown: (node: unknown, key: string, shiftKey?: boolean) => void;
   testing_submit: (node: unknown) => void;
+  testing_flush: () => Promise<void>;
+  testing_wait_for: (check: () => unknown, attempts?: number) => Promise<unknown>;
 }
 
 interface SsgApiLike {
@@ -449,6 +451,8 @@ export const createRenderApi = <
     testingKeydown: (node: unknown, key: string, shiftKey?: boolean): void =>
       render.testing_keydown(node, key, shiftKey),
     testingSubmit: (node: unknown): void => render.testing_submit(node),
+    testingFlush: (): Promise<void> => render.testing_flush(),
+    testingWaitFor: (check: () => unknown, attempts?: number): Promise<unknown> => render.testing_wait_for(check, attempts),
     devtoolsSnapshot: (): DevtoolsSnapshot<VNode | null> => render.devtools_snapshot(),
     installDevtools: (key?: string): Record<string, unknown> => render.install_devtools(key),
     devtoolsRecordEvent: (type: string, label: string, detail?: unknown): DevtoolsTimelineEvent =>
@@ -782,6 +786,8 @@ export const createRenderApi = <
     testing_keydown: (node: unknown, key: string, shiftKey?: boolean): void =>
       deps.appRuntime.testingFacade.testing_keydown(node, key, shiftKey),
     testing_submit: (node: unknown): void => deps.appRuntime.testingFacade.testing_submit(node),
+    testing_flush: (): Promise<void> => deps.appRuntime.testingFacade.testing_flush(),
+    testing_wait_for: (check: () => unknown, attempts?: number): Promise<unknown> => deps.appRuntime.testingFacade.testing_wait_for(check, attempts),
     mount_custom_element: <P>(
       host: unknown,
       componentFn: ComponentFunction<P, ComponentRenderable>,

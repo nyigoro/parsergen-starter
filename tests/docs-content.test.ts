@@ -9,7 +9,31 @@ describe('docs content', () => {
       expect(source).toContain(`## ${heading}`);
     }
     expect(source).toContain('routeModuleLoader');
+    expect(source).toContain('routeNodeLayout');
     expect(source).toContain('invalidateRouteDependency');
+    expect(source).toContain('routeDataPolicy');
+    expect(source).toContain('waitFor');
+    expect(source).toContain('inspectHydrationMismatch');
     expect(source).toContain('hydrationBoundaryOptions');
+  });
+
+  test('large-app architecture docs lock route, data, hydration, testing, and UI conventions', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../docs-content/LARGE_APP_ARCHITECTURE.md'),
+      'utf-8'
+    );
+
+    for (const term of [
+      'routeNode',
+      'routeDataPolicy',
+      'submitActionWithRollback',
+      'deferredHydrationProps',
+      'inspectHydrationMismatch',
+      'testing.waitFor',
+      'tokenContract',
+      'Folder Convention',
+    ]) {
+      expect(source).toContain(term);
+    }
   });
 });

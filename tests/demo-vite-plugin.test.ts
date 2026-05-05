@@ -9,6 +9,9 @@ describe('demo vite plugin', () => {
     const routerPath = path.resolve(__dirname, '../std/router.lm');
     const testingPath = path.resolve(__dirname, '../std/testing.lm');
     const uiPath = path.resolve(__dirname, '../std/ui.lm');
+    const devtoolsPath = path.resolve(__dirname, '../std/devtools.lm');
+    const ssgPath = path.resolve(__dirname, '../std/ssg.lm');
+    const renderPath = path.resolve(__dirname, '../std/render.lm');
     const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-'));
     const entryPath = path.join(workspace, 'main.lm');
     fs.writeFileSync(
@@ -29,7 +32,9 @@ describe('demo vite plugin', () => {
       expect(plugin.resolveId?.('@std/router', importer)).toBe(routerPath);
       expect(plugin.resolveId?.('@std/testing', importer)).toBe(testingPath);
       expect(plugin.resolveId?.('@std/ui', importer)).toBe(uiPath);
-      expect(plugin.resolveId?.('@std/render', importer)).toBeNull();
+      expect(plugin.resolveId?.('@std/devtools', importer)).toBe(devtoolsPath);
+      expect(plugin.resolveId?.('@std/ssg', importer)).toBe(ssgPath);
+      expect(plugin.resolveId?.('@std/render', importer)).toBe(renderPath);
 
       const code = await plugin.load?.call(
         {

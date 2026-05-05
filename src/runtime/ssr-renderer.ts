@@ -16,6 +16,17 @@ export interface SsrRendererLike<TNode> {
   unmount: (container: unknown) => void;
 }
 
+export interface SsrRequestContext {
+  url?: string;
+  method?: string;
+  requestId?: string;
+}
+
+export interface SsrRenderOptions {
+  request?: SsrRequestContext;
+  boundary?: string;
+}
+
 export interface SsrRuntimeDeps<TNode extends SsrNodeLike> {
   normalizeNodeForHtml: (node: TNode) => TNode;
   getKind: (node: TNode) => string;
@@ -145,36 +156,57 @@ export const setContainerMarkup = (container: unknown, output: string): void => 
 export const createSsrRuntime = <TNode extends SsrNodeLike>(
   deps: SsrRuntimeDeps<TNode>
 ): {
-  renderToString: (node: TNode) => string;
+  renderToString: (node: TNode, options?: SsrRenderOptions) => string;
+  renderToChunks: (node: TNode, options?: SsrRenderOptions) => Iterable<string>;
+  renderToReadableStream: (node: TNode, options?: SsrRenderOptions) => ReadableStream<string> | null;
   createRenderer: () => SsrRendererLike<TNode>;
 } => {
-  const vnodeToHtml = (node: TNode): string => {
+  const vnodeToChunks = function* (node: TNode): Iterable<string> {
     const normalized = deps.normalizeNodeForHtml(node);
     const kind = deps.getKind(normalized);
-    if (kind === 'text') return escapeHtml(deps.getText(normalized) ?? '');
-    if (kind === 'live_text') return escapeHtml(String(deps.getSignalValue(normalized) ?? ''));
-
-    const children = deps
-      .getChildren(normalized)
-      .map((child) => vnodeToHtml(child))
-      .join('');
-    if (kind === 'fragment') return children;
+    if (kind === 'text') {
+      yield escapeHtml(deps.getText(normalized) ?? '');
+      return;
+    }
+    if (kind === 'live_text') {
+      yield escapeHtml(String(deps.getSignalValue(normalized) ?? ''));
+      return;
+    }
+    if (kind === 'fragment') {
+      for (const child of deps.getChildren(normalized)) yield* vnodeToChunks(child);
+      return;
+    }
     if (kind === 'portal') {
       const target = deps.getTarget?.(normalized);
       const targetAttr = target ? ` data-lumina-portal-target="${escapeHtml(target)}"` : '';
-      return `<lumina-portal-anchor hidden data-lumina-portal-anchor="true"${targetAttr}></lumina-portal-anchor>`;
+      yield `<lumina-portal-anchor hidden data-lumina-portal-anchor="true"${targetAttr}></lumina-portal-anchor>`;
+      return;
     }
 
     const tag = deps.getTag(normalized) ?? 'div';
     const attrs = serializePropsToHtml(deps.getProps(normalized), deps.getKey?.(normalized));
-    if (voidHtmlTags.has(tag.toLowerCase())) {
-      return `<${tag}${attrs}>`;
-    }
-    return `<${tag}${attrs}>${children}</${tag}>`;
+    yield `<${tag}${attrs}>`;
+    if (voidHtmlTags.has(tag.toLowerCase())) return;
+    for (const child of deps.getChildren(normalized)) yield* vnodeToChunks(child);
+    yield `</${tag}>`;
+  };
+
+  const vnodeToHtml = (node: TNode): string => {
+    return Array.from(vnodeToChunks(node)).join('');
   };
 
   return {
-    renderToString: vnodeToHtml,
+    renderToString: (node: TNode, _options?: SsrRenderOptions): string => vnodeToHtml(node),
+    renderToChunks: (node: TNode, _options?: SsrRenderOptions): Iterable<string> => vnodeToChunks(node),
+    renderToReadableStream: (node: TNode, _options?: SsrRenderOptions): ReadableStream<string> | null => {
+      if (typeof ReadableStream !== 'function') return null;
+      return new ReadableStream<string>({
+        start(controller) {
+          for (const chunk of vnodeToChunks(node)) controller.enqueue(chunk);
+          controller.close();
+        },
+      });
+    },
     createRenderer: () => {
       let current = '';
       return {

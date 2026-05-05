@@ -41,28 +41,11 @@ const currentDir = path.join(repoRoot, 'demo');
 const nodeRequire = createRequire(path.join(currentDir, 'vite-plugin-lumina.ts'));
 
 const importStatementRegex = /^\s*import\s+.+?from\s+["']([^"']+)["'];?\s*$/gm;
-const sourceBackedStdModules = new Set([
-  'router',
-  'forms',
-  'store',
-  'resource',
-  'tabs',
-  'dialog',
-  'popover',
-  'tooltip',
-  'toast',
-  'menu',
-  'select',
-  'combobox',
-  'multiselect',
-  'checkbox',
-  'radio',
-  'testing',
-  'devtools',
-  'ssg',
-  'ui',
-  'web_components',
-]);
+const sourceBackedStdModules = new Set(
+  fs.readdirSync(path.join(repoRoot, 'std'))
+    .filter((entry) => entry.endsWith('.lm'))
+    .map((entry) => entry.slice(0, -'.lm'.length))
+);
 
 const resolveStdModulePath = (repoRoot: string, moduleName: string): string | null => {
   if (!sourceBackedStdModules.has(moduleName)) {
