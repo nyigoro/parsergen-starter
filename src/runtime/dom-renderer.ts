@@ -420,6 +420,32 @@ const setDomStyle = (
   }
 };
 
+const setDomStyleValue = (element: DomElementLike, previous: unknown, next: unknown): void => {
+  if (typeof previous === 'object' && previous !== null && typeof next !== 'object') {
+    setDomStyle(element, previous as Record<string, unknown>, undefined);
+  }
+  if (typeof next === 'string') {
+    if (element.setAttribute) element.setAttribute('style', next);
+    if (element.style && 'cssText' in element.style) {
+      (element.style as Record<string, unknown>).cssText = next;
+    }
+    return;
+  }
+  if (next && typeof next === 'object') {
+    if (typeof previous === 'string' && element.removeAttribute) element.removeAttribute('style');
+    setDomStyle(
+      element,
+      previous && typeof previous === 'object' ? previous as Record<string, unknown> : undefined,
+      next as Record<string, unknown>
+    );
+    return;
+  }
+  if (typeof previous === 'string' && element.removeAttribute) element.removeAttribute('style');
+  if (element.style && 'cssText' in element.style) {
+    (element.style as Record<string, unknown>).cssText = '';
+  }
+};
+
 const setDomProperty = (
   element: DomElementLike,
   name: string,
@@ -457,8 +483,8 @@ const setDomProperty = (
     return;
   }
 
-  if (name === 'style' && typeof value === 'object' && value !== null) {
-    setDomStyle(element, undefined, value as Record<string, unknown>);
+  if (name === 'style') {
+    setDomStyleValue(element, undefined, value);
     return;
   }
 
@@ -493,7 +519,7 @@ const updateDomProperties = (
   for (const key of Object.keys(prev)) {
     if (Object.prototype.hasOwnProperty.call(nxt, key)) continue;
     if (key === 'style') {
-      setDomStyle(element, prev.style as Record<string, unknown>, undefined);
+      setDomStyleValue(element, prev.style, undefined);
       continue;
     }
     setDomProperty(element, key, undefined, eventStore);
@@ -501,11 +527,7 @@ const updateDomProperties = (
 
   for (const [key, value] of Object.entries(nxt)) {
     if (key === 'style') {
-      setDomStyle(
-        element,
-        prev.style as Record<string, unknown> | undefined,
-        value as Record<string, unknown> | undefined
-      );
+      setDomStyleValue(element, prev.style, value);
       continue;
     }
     if (prev[key] === value) continue;
@@ -642,15 +664,18 @@ const hasKeyedChildren = (children: VNode[]): boolean =>
 const getDomHydrationKey = (node: DomNodeLike): string | null =>
   getDomAttribute(node as DomElementLike, LUMINA_HYDRATION_KEY_ATTR);
 
+const isDomTextNode = (node: DomNodeLike): boolean => {
+  const candidate = node as DomNodeLike & { nodeName?: string; nodeType?: number };
+  if (candidate.nodeType === 3 || candidate.nodeName === '#text') return true;
+  return !('tagName' in (node as DomElementLike)) && readChildNodes(node).length === 0;
+};
+
 const getDomHydrationLabel = (node: DomNodeLike): string => {
   const element = node as DomElementLike;
   if (typeof element.tagName === 'string' && element.tagName.length > 0) {
     return element.tagName.toLowerCase();
   }
-  const candidate = node as DomNodeLike & { nodeName?: string; nodeType?: number };
-  if (candidate.nodeType === 3 || candidate.nodeName === '#text') {
-    return '#text';
-  }
+  if (isDomTextNode(node)) return '#text';
   return 'node';
 };
 
@@ -685,8 +710,7 @@ const reportHydrationMismatch = (
 const isIgnorableHydrationNode = (node: DomNodeLike): boolean => {
   const candidate = node as DomNodeLike & { nodeName?: string; nodeType?: number };
   if (candidate.nodeType === 8) return true;
-  const isTextNode = candidate.nodeType === 3 || candidate.nodeName === '#text';
-  return isTextNode && (candidate.textContent ?? '').trim() === '';
+  return isDomTextNode(node) && (candidate.textContent ?? '').trim() === '';
 };
 
 const canIgnoreHydrationWhitespace = (children: VNode[]): boolean =>
@@ -2961,6 +2985,20 @@ const hydrateDomNode = (
   hydration?: HydrationContext
 ): DomNodeLike => {
   if (node.kind === 'text') {
+    if (getDomHydrationLabel(domNode) !== '#text') {
+      reportHydrationMismatch(hydration, {
+        kind: 'tag',
+        expected: '#text',
+        actual: getDomHydrationLabel(domNode),
+      });
+      const replacement = documentLike.createTextNode(node.text ?? '');
+      const parent = domNode.parentNode;
+      if (parent?.replaceChild) {
+        parent.replaceChild(replacement, domNode);
+        disposeDomNode(domNode, eventStore, portalStore, liveTextStore);
+      }
+      return replacement;
+    }
     const nextText = node.text ?? '';
     if (domNode.textContent !== nextText) {
       reportHydrationMismatch(hydration, {

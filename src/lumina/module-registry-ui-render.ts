@@ -1,12 +1,6 @@
 import type { ModuleNamespace } from './module-registry-types.js';
 import { type Type, freshTypeVar, promiseType } from './types.js';
-import {
-  adt,
-  fnType,
-  moduleFunctionWithScheme,
-  primitive,
-  schemeFromVars,
-} from './module-registry-builders.js';
+import { adt, fnType, moduleFunctionWithScheme, primitive, schemeFromVars } from './module-registry-builders.js';
 import type { StdDomainModules } from './module-registry-domains.js';
 export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
   'renderModule'> {
@@ -957,7 +951,10 @@ export function createStdUiRenderDomainModules(): Pick<StdDomainModules,
         ['resourceInvalidateKey', moduleFunctionWithScheme('resourceInvalidateKey', ['any'], 'bool', schemeFromVars(resourceInvalidateKeyType, []), ['key'], 'std://render')],
         ['resourceInvalidatePrefix', moduleFunctionWithScheme('resourceInvalidatePrefix', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['prefix'], 'std://render')],
         ['resourceInvalidateTag', moduleFunctionWithScheme('resourceInvalidateTag', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['tag'], 'std://render')],
+        ['resourceInvalidateDependency', moduleFunctionWithScheme('resourceInvalidateDependency', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['dependency'], 'std://render')],
+        ['resourceInvalidateScope', moduleFunctionWithScheme('resourceInvalidateScope', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['scope'], 'std://render')],
         ['resourceClearCache', moduleFunctionWithScheme('resourceClearCache', [], 'void', schemeFromVars(resourceClearCacheType, []), [], 'std://render')],
+        ['resourceClearScope', moduleFunctionWithScheme('resourceClearScope', ['string'], 'int', schemeFromVars(resourceInvalidatePrefixType, []), ['scope'], 'std://render')],
         [
           'resourceMutate',
           moduleFunctionWithScheme(

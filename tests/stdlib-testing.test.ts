@@ -30,5 +30,10 @@ describe('@std/testing', () => {
     expect(js).toContain('testingTextContent');
     expect(js).toContain('testingInput');
     expect(js).toContain('testingSubmit');
+    expect(js).toContain('flush');
+    expect(js).toContain('act');
+    expect(js).toContain('findByText');
+    expect(js).toContain('findByRole');
+    expect(js).toContain('clickAndFlush');
   });
 });

@@ -20,6 +20,8 @@ describe('@std/ssg', () => {
     expect(hmErrors).toHaveLength(0);
 
     const js = generateJSFromAst(ast, { target: 'esm', includeRuntime: true }).code;
+    expect(js).toContain('hydrationOptions');
+    expect(js).toContain('hydrationBoundaryOptions');
     expect(js).toContain('ssgPage');
     expect(js).toContain('ssgRenderApp');
     expect(js).toContain('ssgWriteApp');

@@ -65,6 +65,18 @@ High-value contribution categories:
 - Performance profiling and WASM parity work
 - Packaging and ecosystem tooling
 
+## 4.1 Community Channels
+
+- [Contact and Community](CONTACT.md)
+- [Discord Rules](DISCORD_RULES.md)
+- [Discord Server Setup Guide](DISCORD_SERVER_SETUP.md)
+
+Recommended use:
+
+- GitHub for issues, PRs, and roadmap items
+- Discord for fast support and design discussion
+- Google Group for durable announcements and longer public discussion
+
 ## 5. Example-Driven Ecosystem Growth
 
 Examples should:

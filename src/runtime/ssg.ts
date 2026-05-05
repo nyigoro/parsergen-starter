@@ -8,6 +8,8 @@ export interface SsgPageOptions {
   hydrateModule?: string;
   hydrationState?: unknown;
   hydrationStateId?: string;
+  hydrationBoundary?: string;
+  scriptNonce?: string;
 }
 
 export interface SsgApiDeps<VNodeLike, TComponentFn> {
@@ -45,10 +47,15 @@ export const coerceSsgPageOptions = (options: unknown): Required<SsgPageOptions>
       typeof candidate.hydrationStateId === 'string' && candidate.hydrationStateId.length > 0
         ? candidate.hydrationStateId
         : '__lumina-hydration',
+    hydrationBoundary:
+      typeof candidate.hydrationBoundary === 'string' && candidate.hydrationBoundary.length > 0
+        ? candidate.hydrationBoundary
+        : 'root',
+    scriptNonce: typeof candidate.scriptNonce === 'string' && candidate.scriptNonce.length > 0 ? candidate.scriptNonce : '',
   };
 };
 
-const serializeHydrationState = (value: unknown): string =>
+export const serializeHydrationState = (value: unknown): string =>
   JSON.stringify(value ?? null)
     .replace(/</g, '\\u003c')
     .replace(/\u2028/g, '\\u2028')
@@ -69,14 +76,17 @@ export const createSsgApi = <VNodeLike, TComponentFn>(deps: SsgApiDeps<VNodeLike
       ...normalized.head,
     ].filter((entry) => entry.length > 0).join('');
     const hydrateScript = normalized.hydrateModule
-      ? `<script type="module" src="${deps.escapeHtml(normalized.hydrateModule)}"></script>`
+      ? `<script type="module"${normalized.scriptNonce ? ` nonce="${deps.escapeHtml(normalized.scriptNonce)}"` : ''} src="${deps.escapeHtml(normalized.hydrateModule)}"></script>`
       : '';
     const hydrationStateScript = normalized.hydrationState !== null
-      ? `<script type="application/json" id="${deps.escapeHtml(normalized.hydrationStateId)}">${serializeHydrationState(normalized.hydrationState)}</script>`
+      ? `<script type="application/json"${normalized.scriptNonce ? ` nonce="${deps.escapeHtml(normalized.scriptNonce)}"` : ''} id="${deps.escapeHtml(normalized.hydrationStateId)}">${serializeHydrationState(normalized.hydrationState)}</script>`
       : '';
     const bodyClass = normalized.bodyClassName ? ` class="${deps.escapeHtml(normalized.bodyClassName)}"` : '';
     const appClass = normalized.appClassName ? ` class="${deps.escapeHtml(normalized.appClassName)}"` : '';
-    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
+    const hydrationAttrs = normalized.hydrateModule || normalized.hydrationState !== null
+      ? ` data-lumina-hydration="${deps.escapeHtml(normalized.hydrationBoundary)}"${normalized.hydrationState !== null ? ` data-lumina-state="${deps.escapeHtml(normalized.hydrationStateId)}"` : ''}`
+      : '';
+    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}${hydrationAttrs}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
   };
 
   const writePage = (filePath: string, body: unknown, options?: unknown): string => {

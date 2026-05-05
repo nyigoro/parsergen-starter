@@ -333,7 +333,21 @@ export const dispatchTestingClick = (node: unknown): void => {
   const element = asTestingElement(node);
   if (!element) return;
   element.focus();
-  element.listeners.get('click')?.(createEventBase(element));
+  const event = createEventBase(element);
+  element.listeners.get('click')?.(event);
+  if (event.defaultPrevented) return;
+  const type = element.getAttribute('type') ?? element.type;
+  const submits = (element.tagName === 'button' && type === 'submit') ||
+    (element.tagName === 'input' && type === 'submit');
+  if (!submits) return;
+  let parent = element.parentNode;
+  while (parent) {
+    if (parent instanceof TestingElement && parent.tagName === 'form') {
+      dispatchTestingSubmit(parent);
+      return;
+    }
+    parent = parent.parentNode;
+  }
 };
 
 export const dispatchTestingInput = (node: unknown, value: string): void => {

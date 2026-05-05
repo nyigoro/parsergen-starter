@@ -1,6 +1,17 @@
 import { render } from "@std";
 
+pub struct DevtoolsSnapshot {
+  roots: any,
+  resources: any,
+  signals: any,
+  timeline: any
+}
+
 pub fn snapshot() -> any {
+  render.devtoolsSnapshot()
+}
+
+pub fn snapshotTyped() -> DevtoolsSnapshot {
   render.devtoolsSnapshot()
 }
 
@@ -10,6 +21,30 @@ pub fn install() -> any {
 
 pub fn record(eventType: string, label: string, detail: any) -> any {
   render.devtoolsRecordEvent(eventType, label, detail)
+}
+
+pub fn resources() -> any {
+  snapshotTyped().resources
+}
+
+pub fn signals() -> any {
+  snapshotTyped().signals
+}
+
+pub fn roots() -> any {
+  snapshotTyped().roots
+}
+
+pub fn recordRoute(label: string, detail: any) -> any {
+  record("route", label, detail)
+}
+
+pub fn recordResource(label: string, detail: any) -> any {
+  record("resource", label, detail)
+}
+
+pub fn recordHydration(label: string, detail: any) -> any {
+  record("hydration", label, detail)
 }
 
 pub fn timeline() -> any {

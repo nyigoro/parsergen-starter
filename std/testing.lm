@@ -59,3 +59,37 @@ pub fn keydown(node: any, key: string, shiftKey: bool) -> void {
 pub fn submit(node: any) -> void {
   render.testingSubmit(node)
 }
+
+pub async fn flush() -> void {
+  let _ = 0
+}
+
+pub async fn act(action: fn() -> void) -> void {
+  action()
+  await flush()
+}
+
+pub async fn findByText(scope: any, value: string) -> any {
+  await flush()
+  return getByText(scope, value)
+}
+
+pub async fn findByRole(scope: any, role: string) -> any {
+  await flush()
+  return getByRole(scope, role)
+}
+
+pub async fn clickAndFlush(node: any) -> void {
+  click(node)
+  await flush()
+}
+
+pub async fn inputAndFlush(node: any, value: string) -> void {
+  input(node, value)
+  await flush()
+}
+
+pub async fn submitAndFlush(node: any) -> void {
+  submit(node)
+  await flush()
+}

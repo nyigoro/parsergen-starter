@@ -1355,6 +1355,7 @@ class JSGenerator {
     const tempGenerator = new JSGenerator(tempBuilder, {
       target: this.target,
       includeRuntime: this.includeRuntime,
+      sourceMap: !this.enableStaticRenderHoists,
       traitMethodResolutions: this.traitMethodResolutions,
     });
     tempGenerator.indentLevel = 1;

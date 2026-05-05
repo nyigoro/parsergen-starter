@@ -20,6 +20,8 @@ describe('runtime testing facade', () => {
 
     const button = harness.document.createElement('button');
     button.setAttribute('id', 'save');
+    button.setAttribute('type', 'submit');
+    button.type = 'submit';
     button.appendChild(new TestingTextNode('Save'));
     const input = harness.document.createElement('input');
     input.setAttribute('id', 'name');
@@ -51,7 +53,7 @@ describe('runtime testing facade', () => {
 
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(inputSpy).toHaveBeenCalledTimes(1);
-    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(submitSpy).toHaveBeenCalledTimes(2);
     expect(facade.testing_text_content(button)).toBe('Save');
 
     expect(facade.testing_mount_app(harness, () => null, { label: 'mount' })).toBe(root);

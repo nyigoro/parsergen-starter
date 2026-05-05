@@ -2,6 +2,7 @@ import { router, reactive, render, str } from "@std"
 
 pub struct Router {
   path: Signal<string>,
+  search: Signal<string>,
   base: string
 }
 
@@ -15,6 +16,12 @@ pub struct RouteMatch {
   matched: bool,
   params: any,
   search: any
+}
+
+pub struct RouteModule {
+  id: string,
+  pattern: string,
+  title: string
 }
 
 pub struct RouteAction<T> {
@@ -144,10 +151,12 @@ pub fn createRouter(base: string) -> Router {
   let normalized_base = normalize_base(base)
   let initial_path = initial_router_path(normalized_base)
   let path_signal = reactive.createSignal(initial_path)
+  let search_signal = reactive.createSignal(router.getCurrentSearch())
   router.onPopState(fn(pathname: string) -> void {
     let _synced = reactive.set(path_signal, strip_base_path(normalize_path(pathname), normalized_base))
+    let _search = reactive.set(search_signal, router.getCurrentSearch())
   })
-  return Router { path: path_signal, base: normalized_base }
+  return Router { path: path_signal, search: search_signal, base: normalized_base }
 }
 
 pub fn navigate(routerValue: Router, path: string) -> void {
@@ -175,24 +184,70 @@ pub fn currentPath(routerValue: Router) -> Signal<string> {
 }
 
 pub fn currentParams(_routerValue: Router) -> any {
-  return router.parseSearchParams(router.getCurrentSearch())
+  return router.parseSearchParams(reactive.get(_routerValue.search))
 }
 
 pub fn currentSearchParams(routerValue: Router) -> any {
   return currentParams(routerValue)
 }
 
-pub fn routeResourceKey(routerValue: Router, name: string) -> string {
-  let path = reactive.get(routerValue.path)
-  let search = router.getCurrentSearch()
+fn route_key(path: string, search: string, name: string) -> string {
   if (str.length(search) > 0) {
     return str.concat(str.concat(str.concat("route:", path), search), str.concat(":", name))
   }
   return str.concat(str.concat("route:", path), str.concat(":", name))
 }
 
+fn route_scoped_key(routeId: string, path: string, search: string, name: string) -> string {
+  if (str.length(search) > 0) {
+    return str.concat(str.concat(str.concat(str.concat("route:", routeId), ":"), path), str.concat(search, str.concat(":", name)))
+  }
+  return str.concat(str.concat(str.concat(str.concat("route:", routeId), ":"), path), str.concat(":", name))
+}
+
+pub fn routeResourceKey(routerValue: Router, name: string) -> string {
+  let path = reactive.get(routerValue.path)
+  let search = reactive.get(routerValue.search)
+  return route_key(path, search, name)
+}
+
 pub fn routeScopedKey(routerValue: Router, routeId: string, name: string) -> string {
-  return str.concat(str.concat(str.concat(str.concat("route:", routeId), ":"), reactive.get(routerValue.path)), str.concat(str.concat(":", router.getCurrentSearch()), str.concat(":", name)))
+  return route_scoped_key(routeId, reactive.get(routerValue.path), reactive.get(routerValue.search), name)
+}
+
+pub fn routeModule(id: string, pattern: string, title: string) -> RouteModule {
+  RouteModule { id: id, pattern: pattern, title: title }
+}
+
+pub fn routeModuleMatch(routerValue: Router, module: RouteModule) -> RouteMatch {
+  routeMatch(routerValue, module.pattern)
+}
+
+pub fn routeModuleKey(routerValue: Router, module: RouteModule, name: string) -> string {
+  routeScopedKey(routerValue, module.id, name)
+}
+
+pub fn routeModuleOptions(module: RouteModule, options: any) -> any {
+  render.props_merge(options, render.props_attr("scope", module.id))
+}
+
+pub fn routeModuleLoader<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(routeModuleMatch(routerValue, module)) }, routeModuleOptions(module, render.props_empty())) }
+}
+
+pub fn routeModuleLoaderWithOptions<T>(routerValue: Router, module: RouteModule, name: string, loader: fn(RouteMatch) -> Promise<T>, options: any) -> RouteResource<T> {
+  RouteResource<T> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(routeModuleMatch(routerValue, module)) }, routeModuleOptions(module, options)) }
+}
+
+pub fn routeModuleAction<T>(routerValue: Router, module: RouteModule, name: string, action: fn(RouteMatch) -> Promise<T>) -> RouteAction<T> {
+  let options = routeModuleOptions(module, render.props_attr("enabled", false))
+  let actionResource = RouteResource<T> { raw: render.createResource(str.concat(routeModuleKey(routerValue, module, name), ":action"), fn() -> Promise<any> { action(routeModuleMatch(routerValue, module)) }, options) }
+  return RouteAction<T> { resource: actionResource, submitting: reactive.createSignal(false) }
+}
+
+pub fn routeModuleView(routerValue: Router, module: RouteModule, renderChildren: fn(RouteMatch) -> any, fallback: any) -> VNode {
+  let matchValue = routeModuleMatch(routerValue, module)
+  render.show(matchValue.matched, fn() -> any { renderChildren(matchValue) }, fallback)
 }
 
 pub fn routeLoader<T>(routerValue: Router, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
@@ -212,11 +267,11 @@ pub fn routeLoaderForWithOptions<T>(routerValue: Router, routeId: string, name: 
 }
 
 pub fn prefetchRoute<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(str.concat(str.concat("route:", normalize_path(path)), str.concat(":", name)), fn() -> Promise<any> { loader() }, render.props_empty()) }
+  RouteResource<T> { raw: render.createResource(route_key(normalize_path(path), "", name), fn() -> Promise<any> { loader() }, render.props_empty()) }
 }
 
 pub fn prefetchRouteWithOptions<T>(_routerValue: Router, path: string, name: string, loader: fn() -> Promise<T>, options: any) -> RouteResource<T> {
-  RouteResource<T> { raw: render.createResource(str.concat(str.concat("route:", normalize_path(path)), str.concat(":", name)), fn() -> Promise<any> { loader() }, options) }
+  RouteResource<T> { raw: render.createResource(route_key(normalize_path(path), "", name), fn() -> Promise<any> { loader() }, options) }
 }
 
 pub fn routeStatus<T>(resource: RouteResource<T>) -> string {
@@ -257,6 +312,14 @@ pub fn invalidateRoutePrefix(prefix: string) -> int {
 
 pub fn invalidateRouteTag(tag: string) -> int {
   render.resourceInvalidateTag(tag)
+}
+
+pub fn invalidateRouteDependency(dependency: string) -> int {
+  render.resourceInvalidateDependency(dependency)
+}
+
+pub fn invalidateRouteScope(scope: string) -> int {
+  render.resourceInvalidateScope(scope)
 }
 
 pub fn routeAction<T>(routerValue: Router, name: string, action: fn() -> Promise<T>) -> RouteAction<T> {

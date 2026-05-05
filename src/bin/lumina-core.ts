@@ -3287,6 +3287,7 @@ Options:
   --check              Verify formatting only, do not write files (fmt)
   --public-only        Include only public declarations in docs (doc)
   --yes                Use defaults without prompts (init)
+  --template <name>    Starter template: routed | minimal | ssr (init)
   --frozen             Use npm ci if lockfile is present (install)
   --dev                Add package as dev dependency (add)
   --limit <n>          Limit search result count (search)
@@ -3542,11 +3543,12 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   }
 
   const initYes = parseBooleanFlag(args, '--yes');
+  const initTemplate = typeof args.get('--template') === 'string' ? String(args.get('--template')) : undefined;
   const fmtCheck = parseBooleanFlag(args, '--check');
   const docPublicOnly = parseBooleanFlag(args, '--public-only');
 
   if (command === 'init') {
-    await initProject({ yes: initYes });
+    await initProject({ yes: initYes, template: initTemplate });
     return;
   }
 

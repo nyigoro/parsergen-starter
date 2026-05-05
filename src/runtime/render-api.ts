@@ -14,10 +14,13 @@ import {
 } from './reactive-core.js';
 import {
   asResourceHandle,
+  clearResourceScope,
   clearResourceRecords,
   ensureResourceCurrent,
+  invalidateResourceDependency,
   invalidateResourceKey,
   invalidateResourcePrefix,
+  invalidateResourceScope,
   invalidateResourceTag,
   ResourceHandle,
   resolveResourceRecord,
@@ -251,7 +254,7 @@ export const createRenderApi = <
     ): VNode => deps.transitionRuntime.transitionPresence(open, props, durationMs, renderChildren),
     resource_create: <T>(
       key: unknown,
-      loader: (() => Promise<T>) | (() => T),
+      loader: ((signal?: AbortSignal) => Promise<T>) | ((signal?: AbortSignal) => T),
       options?: unknown
     ): ResourceHandle<T> => new ResourceHandle<T>(resolveResourceRecord(key, loader, options)),
     resource_status: (resource: unknown): string => {
@@ -312,9 +315,24 @@ export const createRenderApi = <
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
     },
+    resource_invalidate_dependency: (dependency: string): number => {
+      const count = invalidateResourceDependency(dependency);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    },
+    resource_invalidate_scope: (scope: string): number => {
+      const count = invalidateResourceScope(scope);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    },
     resource_clear_cache: (): void => {
       clearResourceRecords();
       deps.scheduleDevtoolsNotify();
+    },
+    resource_clear_scope: (scope: string): number => {
+      const count = clearResourceScope(scope);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
     },
     resource_mutate: <T>(resource: unknown, value: T): T => {
       const handle = asResourceHandle<T>(resource, 'render.resource_mutate');
@@ -363,7 +381,7 @@ export const createRenderApi = <
     },
     createResource: <T>(
       key: unknown,
-      loader: (() => Promise<T>) | (() => T),
+      loader: ((signal?: AbortSignal) => Promise<T>) | ((signal?: AbortSignal) => T),
       options?: unknown
     ): ResourceHandle<T> => render.resource_create(key, loader, options),
     renderApp: <P>(componentFn: ComponentFunction<P, ComponentRenderable>, props: P): VNode =>
@@ -385,7 +403,10 @@ export const createRenderApi = <
     resourceInvalidateKey: (key: unknown): boolean => render.resource_invalidate_key(key),
     resourceInvalidatePrefix: (prefix: string): number => render.resource_invalidate_prefix(prefix),
     resourceInvalidateTag: (tag: string): number => render.resource_invalidate_tag(tag),
+    resourceInvalidateDependency: (dependency: string): number => render.resource_invalidate_dependency(dependency),
+    resourceInvalidateScope: (scope: string): number => render.resource_invalidate_scope(scope),
     resourceClearCache: (): void => render.resource_clear_cache(),
+    resourceClearScope: (scope: string): number => render.resource_clear_scope(scope),
     resourceMutate: <T>(resource: unknown, value: T): T => render.resource_mutate(resource, value),
     errorBoundary: (fallback: unknown, renderChildren: () => ComponentRenderable): VNode =>
       render.error_boundary(fallback, renderChildren),

@@ -28,6 +28,7 @@ describe('lumina init', () => {
 
     const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
       lumina?: string;
+      luminaTemplate?: string;
       scripts?: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
@@ -46,6 +47,7 @@ describe('lumina init', () => {
     const viteConfig = fs.readFileSync(path.join(dir, 'vite.config.ts'), 'utf-8');
 
     expect(pkg.lumina).toBe('./src/client.lm');
+    expect(pkg.luminaTemplate).toBe('routed');
     expect(pkg.scripts?.check).toContain('src/client.lm');
     expect(pkg.scripts?.build).toContain('lumina compile src/client.lm');
     expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
@@ -58,9 +60,30 @@ describe('lumina init', () => {
     expect(appSource).toContain('prefetchRoute');
     expect(appSource).toContain('routeAction');
     expect(appSource).toContain('submitRouteAction');
-    expect(clientSource).toContain('mount_reactive');
+    expect(clientSource).toContain('hydrate_reactive');
     expect(ssgSource).toContain('App(createRouter("/")');
     expect(styles).toContain('.app-shell');
     expect(viteConfig).toContain('defineConfig');
+  });
+
+  test('creates a minimal starter template without router or ssg files', async () => {
+    const dir = createTempDir();
+    process.chdir(dir);
+
+    await initProject({ yes: true, template: 'minimal' });
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
+      luminaTemplate?: string;
+      scripts?: Record<string, string>;
+    };
+    const appSource = fs.readFileSync(path.join(dir, 'src', 'app.lm'), 'utf-8');
+    const clientSource = fs.readFileSync(path.join(dir, 'src', 'client.lm'), 'utf-8');
+
+    expect(pkg.luminaTemplate).toBe('minimal');
+    expect(pkg.scripts?.check).toBe('lumina check src/client.lm');
+    expect(pkg.scripts?.ssg).toBeUndefined();
+    expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(false);
+    expect(appSource).not.toContain('@std/router');
+    expect(clientSource).toContain('App()');
   });
 });

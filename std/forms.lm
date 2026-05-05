@@ -1,4 +1,4 @@
-import { reactive, render } from "@std";
+import { reactive, render, str } from "@std";
 
 pub struct FieldState {
   dirty: Signal<bool>,
@@ -25,6 +25,18 @@ pub fn bindValue(value: Signal<string>, props: any) -> any {
 
 pub fn textInput(value: Signal<string>, props: any) -> any {
   bindValue(value, render.props_merge(props, render.props_type("text")))
+}
+
+pub fn hiddenInput(value: string, props: any) -> any {
+  render.props_merge(props, render.props_merge(render.props_type("hidden"), render.props_value(value)))
+}
+
+pub fn fileInput(props: any) -> any {
+  render.props_merge(props, render.props_type("file"))
+}
+
+pub fn multipartProps(props: any) -> any {
+  render.props_merge(props, render.props_attr("enctype", "multipart/form-data"))
 }
 
 pub fn textArea(value: Signal<string>, props: any) -> any {
@@ -74,6 +86,14 @@ pub fn submitProps(handler: fn() -> any, props: any) -> any {
   render.props_merge(props, render.props_on_submit(handler))
 }
 
+pub fn nestedFieldName(parent: string, child: string) -> string {
+  str.concat(str.concat(parent, "."), child)
+}
+
+pub fn fieldArrayName(name: string, index: int) -> string {
+  str.concat(str.concat(str.concat(name, "["), str.from_int(index)), "]")
+}
+
 pub fn createFieldState() -> FieldState {
   FieldState {
     dirty: reactive.createSignal(false),
@@ -105,11 +125,28 @@ pub fn action<T>(key: any, submit: fn() -> Promise<T>) -> FormAction<T> {
   }
 }
 
+pub fn actionWithOptions<T>(key: any, submit: fn() -> Promise<T>, options: any) -> FormAction<T> {
+  FormAction<T> {
+    resource: render.createResource(key, fn() -> Promise<any> { submit() }, render.props_merge(options, render.props_attr("enabled", false))),
+    submitting: reactive.createSignal(false)
+  }
+}
+
 pub async fn submitAction<T>(formAction: FormAction<T>) -> T {
   let _start = reactive.set(formAction.submitting, true)
   let value = await render.resourceRefresh<T>(formAction.resource)
   let _done = reactive.set(formAction.submitting, false)
   return value
+}
+
+pub async fn submitActionOptimistic<T>(formAction: FormAction<T>, resource: any, optimistic: T) -> T {
+  let _mutated = render.resourceMutate(resource, optimistic)
+  let value = await submitAction(formAction)
+  return value
+}
+
+pub fn rollbackResource<T>(resource: any, previous: T) -> T {
+  return render.resourceMutate(resource, previous)
 }
 
 pub fn actionStatus<T>(formAction: FormAction<T>) -> string {

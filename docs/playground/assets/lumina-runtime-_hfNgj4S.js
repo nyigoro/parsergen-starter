@@ -337,7 +337,9 @@ var coerceSsgPageOptions = /* @__PURE__ */ __name((options) => {
     appId: typeof candidate.appId === "string" && candidate.appId.length > 0 ? candidate.appId : "app",
     hydrateModule: typeof candidate.hydrateModule === "string" ? candidate.hydrateModule : "",
     hydrationState: candidate.hydrationState ?? candidate.state ?? null,
-    hydrationStateId: typeof candidate.hydrationStateId === "string" && candidate.hydrationStateId.length > 0 ? candidate.hydrationStateId : "__lumina-hydration"
+    hydrationStateId: typeof candidate.hydrationStateId === "string" && candidate.hydrationStateId.length > 0 ? candidate.hydrationStateId : "__lumina-hydration",
+    hydrationBoundary: typeof candidate.hydrationBoundary === "string" && candidate.hydrationBoundary.length > 0 ? candidate.hydrationBoundary : "root",
+    scriptNonce: typeof candidate.scriptNonce === "string" && candidate.scriptNonce.length > 0 ? candidate.scriptNonce : ""
   };
 }, "coerceSsgPageOptions");
 var serializeHydrationState = /* @__PURE__ */ __name((value) => JSON.stringify(value ?? null).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"), "serializeHydrationState");
@@ -351,11 +353,12 @@ var createSsgApi = /* @__PURE__ */ __name((deps) => {
       normalized.title ? `<title>${deps.escapeHtml(normalized.title)}</title>` : "",
       ...normalized.head
     ].filter((entry) => entry.length > 0).join("");
-    const hydrateScript = normalized.hydrateModule ? `<script type="module" src="${deps.escapeHtml(normalized.hydrateModule)}"></script>` : "";
-    const hydrationStateScript = normalized.hydrationState !== null ? `<script type="application/json" id="${deps.escapeHtml(normalized.hydrationStateId)}">${serializeHydrationState(normalized.hydrationState)}</script>` : "";
+    const hydrateScript = normalized.hydrateModule ? `<script type="module"${normalized.scriptNonce ? ` nonce="${deps.escapeHtml(normalized.scriptNonce)}"` : ""} src="${deps.escapeHtml(normalized.hydrateModule)}"></script>` : "";
+    const hydrationStateScript = normalized.hydrationState !== null ? `<script type="application/json"${normalized.scriptNonce ? ` nonce="${deps.escapeHtml(normalized.scriptNonce)}"` : ""} id="${deps.escapeHtml(normalized.hydrationStateId)}">${serializeHydrationState(normalized.hydrationState)}</script>` : "";
     const bodyClass = normalized.bodyClassName ? ` class="${deps.escapeHtml(normalized.bodyClassName)}"` : "";
     const appClass = normalized.appClassName ? ` class="${deps.escapeHtml(normalized.appClassName)}"` : "";
-    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
+    const hydrationAttrs = normalized.hydrateModule || normalized.hydrationState !== null ? ` data-lumina-hydration="${deps.escapeHtml(normalized.hydrationBoundary)}"${normalized.hydrationState !== null ? ` data-lumina-state="${deps.escapeHtml(normalized.hydrationStateId)}"` : ""}` : "";
+    return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}${hydrationAttrs}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
   }, "renderPage");
   const writePage = /* @__PURE__ */ __name((filePath, body, options) => {
     const resolvedPath = deps.resolvePath(filePath);
@@ -671,7 +674,20 @@ var dispatchTestingClick = /* @__PURE__ */ __name((node) => {
   const element = asTestingElement(node);
   if (!element) return;
   element.focus();
-  element.listeners.get("click")?.(createEventBase(element));
+  const event = createEventBase(element);
+  element.listeners.get("click")?.(event);
+  if (event.defaultPrevented) return;
+  const type = element.getAttribute("type") ?? element.type;
+  const submits = element.tagName === "button" && type === "submit" || element.tagName === "input" && type === "submit";
+  if (!submits) return;
+  let parent = element.parentNode;
+  while (parent) {
+    if (parent instanceof TestingElement && parent.tagName === "form") {
+      dispatchTestingSubmit(parent);
+      return;
+    }
+    parent = parent.parentNode;
+  }
 }, "dispatchTestingClick");
 var dispatchTestingInput = /* @__PURE__ */ __name((node, value) => {
   const element = asTestingElement(node);
@@ -846,6 +862,7 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
         kind,
         source
       });
+      scheduleNotify();
       return id;
     },
     unregisterSignal(id) {
@@ -5357,6 +5374,7 @@ var normalizeHtmlPropName = /* @__PURE__ */ __name((name) => {
   if (name === "htmlFor") return "for";
   return name;
 }, "normalizeHtmlPropName");
+var isSafeHtmlAttrName = /* @__PURE__ */ __name((name) => /^[A-Za-z_:-][A-Za-z0-9_.:-]*$/.test(name) && !/^on/i.test(name), "isSafeHtmlAttrName");
 var serializeStyleValue = /* @__PURE__ */ __name((value) => Object.entries(value).filter(([, entry]) => entry !== null && entry !== void 0).map(([key2, entry]) => `${kebabCase(key2)}:${String(entry)}`).join(";"), "serializeStyleValue");
 var serializePropsToHtml = /* @__PURE__ */ __name((props, hydrationKey) => {
   const propSource = props ?? {};
@@ -5364,9 +5382,10 @@ var serializePropsToHtml = /* @__PURE__ */ __name((props, hydrationKey) => {
   const keyForHydration = typeof hydrationKey === "string" || typeof hydrationKey === "number" ? hydrationKey : typeof propSource.key === "string" || typeof propSource.key === "number" ? propSource.key : void 0;
   for (const [key2, value] of Object.entries(propSource)) {
     if (key2 === "key") continue;
-    if (key2.startsWith("on") && typeof value === "function") continue;
+    if (/^on/i.test(key2)) continue;
     if (value === false || value === null || value === void 0) continue;
     const attrName = normalizeHtmlPropName(key2);
+    if (!isSafeHtmlAttrName(attrName)) continue;
     if (key2 === "style" && typeof value === "object" && value !== null) {
       const styleText = serializeStyleValue(value);
       if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);
@@ -5891,6 +5910,27 @@ var setDomStyle = /* @__PURE__ */ __name((element, previous, next) => {
     }
   }
 }, "setDomStyle");
+var setDomStyleValue = /* @__PURE__ */ __name((element, previous, next) => {
+  if (typeof previous === "object" && previous !== null && typeof next !== "object") {
+    setDomStyle(element, previous, void 0);
+  }
+  if (typeof next === "string") {
+    if (element.setAttribute) element.setAttribute("style", next);
+    if (element.style && "cssText" in element.style) {
+      element.style.cssText = next;
+    }
+    return;
+  }
+  if (next && typeof next === "object") {
+    if (typeof previous === "string" && element.removeAttribute) element.removeAttribute("style");
+    setDomStyle(element, previous && typeof previous === "object" ? previous : void 0, next);
+    return;
+  }
+  if (typeof previous === "string" && element.removeAttribute) element.removeAttribute("style");
+  if (element.style && "cssText" in element.style) {
+    element.style.cssText = "";
+  }
+}, "setDomStyleValue");
 var setDomProperty = /* @__PURE__ */ __name((element, name, value, eventStore) => {
   if (name === "key") return;
   if (name === "autoFocus") {
@@ -5920,8 +5960,8 @@ var setDomProperty = /* @__PURE__ */ __name((element, name, value, eventStore) =
     }
     return;
   }
-  if (name === "style" && typeof value === "object" && value !== null) {
-    setDomStyle(element, void 0, value);
+  if (name === "style") {
+    setDomStyleValue(element, void 0, value);
     return;
   }
   if (value === false || value === null || value === void 0) {
@@ -5947,14 +5987,14 @@ var updateDomProperties = /* @__PURE__ */ __name((element, previous, next, event
   for (const key2 of Object.keys(prev)) {
     if (Object.prototype.hasOwnProperty.call(nxt, key2)) continue;
     if (key2 === "style") {
-      setDomStyle(element, prev.style, void 0);
+      setDomStyleValue(element, prev.style, void 0);
       continue;
     }
     setDomProperty(element, key2, void 0, eventStore);
   }
   for (const [key2, value] of Object.entries(nxt)) {
     if (key2 === "style") {
-      setDomStyle(element, prev.style, value);
+      setDomStyleValue(element, prev.style, value);
       continue;
     }
     if (prev[key2] === value) continue;
@@ -6057,15 +6097,17 @@ var vnodeKindTag = /* @__PURE__ */ __name((node) => `${node.kind}:${node.tag ?? 
 var hasVNodeKey = /* @__PURE__ */ __name((node) => typeof node.key === "string" || typeof node.key === "number", "hasVNodeKey");
 var hasKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasKeyedChildren");
 var getDomHydrationKey = /* @__PURE__ */ __name((node) => getDomAttribute(node, LUMINA_HYDRATION_KEY_ATTR), "getDomHydrationKey");
+var isDomTextNode = /* @__PURE__ */ __name((node) => {
+  const candidate = node;
+  if (candidate.nodeType === 3 || candidate.nodeName === "#text") return true;
+  return !("tagName" in node) && readChildNodes(node).length === 0;
+}, "isDomTextNode");
 var getDomHydrationLabel = /* @__PURE__ */ __name((node) => {
   const element = node;
   if (typeof element.tagName === "string" && element.tagName.length > 0) {
     return element.tagName.toLowerCase();
   }
-  const candidate = node;
-  if (candidate.nodeType === 3 || candidate.nodeName === "#text") {
-    return "#text";
-  }
+  if (isDomTextNode(node)) return "#text";
   return "node";
 }, "getDomHydrationLabel");
 var childHydrationContext = /* @__PURE__ */ __name((hydration, segment) => hydration ? {
@@ -6090,8 +6132,7 @@ var reportHydrationMismatch = /* @__PURE__ */ __name((hydration, mismatch) => {
 var isIgnorableHydrationNode = /* @__PURE__ */ __name((node) => {
   const candidate = node;
   if (candidate.nodeType === 8) return true;
-  const isTextNode = candidate.nodeType === 3 || candidate.nodeName === "#text";
-  return isTextNode && (candidate.textContent ?? "").trim() === "";
+  return isDomTextNode(node) && (candidate.textContent ?? "").trim() === "";
 }, "isIgnorableHydrationNode");
 var canIgnoreHydrationWhitespace = /* @__PURE__ */ __name((children2) => children2.every((child) => child.kind !== "text" && child.kind !== "live_text"), "canIgnoreHydrationWhitespace");
 var findHydrationRootNode = /* @__PURE__ */ __name((children2, node) => {
@@ -7473,6 +7514,20 @@ var patchDomNode = /* @__PURE__ */ __name((domNode, prevNode, nextNode, document
 }, "patchDomNode");
 var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydration) => {
   if (node.kind === "text") {
+    if (getDomHydrationLabel(domNode) !== "#text") {
+      reportHydrationMismatch(hydration, {
+        kind: "tag",
+        expected: "#text",
+        actual: getDomHydrationLabel(domNode)
+      });
+      const replacement = documentLike.createTextNode(node.text ?? "");
+      const parent = domNode.parentNode;
+      if (parent?.replaceChild) {
+        parent.replaceChild(replacement, domNode);
+        disposeDomNode(domNode, eventStore, portalStore, liveTextStore);
+      }
+      return replacement;
+    }
     const nextText = node.text ?? "";
     if (domNode.textContent !== nextText) {
       reportHydrationMismatch(hydration, {
@@ -11243,12 +11298,18 @@ var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
   const ttlMs = typeof ttlRaw === "number" && Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : 0;
   const enabled = candidate.enabled !== false;
   const staleWhileRevalidate = candidate.staleWhileRevalidate === true || candidate.swr === true;
+  const abortOnRefresh = candidate.abortOnRefresh === true || candidate.abort === true;
+  const scope = typeof candidate.scope === "string" && candidate.scope.trim() ? candidate.scope.trim() : "global";
   const tags = normalizeResourceTags(candidate.tags ?? candidate.tag);
+  const dependencies = normalizeResourceTags(candidate.dependencies ?? candidate.dependency ?? candidate.dependsOn);
   return {
     ttlMs,
     enabled,
     staleWhileRevalidate,
-    tags
+    abortOnRefresh,
+    scope,
+    tags,
+    dependencies
   };
 }, "normalizeResourceOptions");
 var resourceHasData = /* @__PURE__ */ __name((record) => !!record.hasData.peek(), "resourceHasData");
@@ -11258,12 +11319,16 @@ var createResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => ({
   ttlMs: options.ttlMs,
   enabled: options.enabled,
   staleWhileRevalidate: options.staleWhileRevalidate,
+  abortOnRefresh: options.abortOnRefresh,
+  scope: options.scope,
   tags: new Set(options.tags),
+  dependencies: new Set(options.dependencies),
   data: new Signal(null),
   hasData: new Signal(false),
   error: new Signal(null),
   status: new Signal("idle"),
   promise: null,
+  abortController: null,
   expiresAt: 0,
   version: 0
 }), "createResourceRecord");
@@ -11274,11 +11339,15 @@ var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
   }
   const version = record.version + 1;
   record.version = version;
+  if (force && record.abortOnRefresh) {
+    record.abortController?.abort();
+  }
+  record.abortController = typeof AbortController === "undefined" ? null : new AbortController();
   record.status.set("loading");
   record.error.set(null);
   let loadResult;
   try {
-    loadResult = Promise.resolve(record.loader());
+    loadResult = Promise.resolve(record.loader(record.abortController?.signal));
   } catch (error) {
     loadResult = Promise.reject(error);
   }
@@ -11292,6 +11361,7 @@ var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
     record.status.set("success");
     record.expiresAt = record.ttlMs > 0 ? Date.now() + record.ttlMs : Number.POSITIVE_INFINITY;
     record.promise = null;
+    record.abortController = null;
     resourceHooks.notifyDevtools?.();
     return value;
   }, (error) => {
@@ -11302,6 +11372,7 @@ var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
     record.status.set("error");
     record.expiresAt = 0;
     record.promise = null;
+    record.abortController = null;
     resourceHooks.notifyDevtools?.();
     throw error;
   });
@@ -11325,10 +11396,16 @@ var ensureResourceCurrent = /* @__PURE__ */ __name((record) => {
 }, "ensureResourceCurrent");
 var invalidateResourceRecord = /* @__PURE__ */ __name((record) => {
   record.expiresAt = 0;
+  record.version += 1;
+  record.abortController?.abort();
+  record.abortController = null;
+  record.promise = null;
   if (!record.hasData.peek() || !record.staleWhileRevalidate) {
     record.status.set("idle");
   }
-  ensureResourceCurrent(record);
+  if (record.enabled) {
+    startResourceLoad(record, true);
+  }
 }, "invalidateResourceRecord");
 var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
   const normalizedKey = normalizeResourceKey(key2);
@@ -11339,7 +11416,10 @@ var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
     existing.ttlMs = normalizedOptions.ttlMs;
     existing.enabled = normalizedOptions.enabled;
     existing.staleWhileRevalidate = normalizedOptions.staleWhileRevalidate;
+    existing.abortOnRefresh = normalizedOptions.abortOnRefresh;
+    existing.scope = normalizedOptions.scope;
     existing.tags = new Set(normalizedOptions.tags);
+    existing.dependencies = new Set(normalizedOptions.dependencies);
     ensureResourceCurrent(existing);
     return existing;
   }
@@ -11386,11 +11466,46 @@ var invalidateResourceTag = /* @__PURE__ */ __name((tag) => {
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
 }, "invalidateResourceTag");
+var invalidateResourceDependency = /* @__PURE__ */ __name((dependency) => {
+  const normalizedDependency = String(dependency).trim();
+  if (!normalizedDependency) return 0;
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (!record.dependencies.has(normalizedDependency)) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+}, "invalidateResourceDependency");
+var invalidateResourceScope = /* @__PURE__ */ __name((scope) => {
+  const normalizedScope = String(scope).trim() || "global";
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (record.scope !== normalizedScope) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+}, "invalidateResourceScope");
 var clearResourceRecords = /* @__PURE__ */ __name(() => {
   if (resourceCache.size === 0) return;
   resourceCache.clear();
   resourceHooks.notifyDevtools?.();
 }, "clearResourceRecords");
+var clearResourceScope = /* @__PURE__ */ __name((scope) => {
+  const normalizedScope = String(scope).trim() || "global";
+  let count = 0;
+  for (const [key2, record] of resourceCache) {
+    if (record.scope !== normalizedScope) continue;
+    record.abortController?.abort();
+    resourceCache.delete(key2);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+}, "clearResourceScope");
 
 // src/runtime/root-runtime.ts
 var coerceRenderer2 = /* @__PURE__ */ __name((candidate) => coerceRenderer(candidate), "coerceRenderer");
@@ -11529,10 +11644,25 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
     }, "resource_invalidate_tag"),
+    resource_invalidate_dependency: /* @__PURE__ */ __name((dependency) => {
+      const count = invalidateResourceDependency(dependency);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    }, "resource_invalidate_dependency"),
+    resource_invalidate_scope: /* @__PURE__ */ __name((scope) => {
+      const count = invalidateResourceScope(scope);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    }, "resource_invalidate_scope"),
     resource_clear_cache: /* @__PURE__ */ __name(() => {
       clearResourceRecords();
       deps.scheduleDevtoolsNotify();
     }, "resource_clear_cache"),
+    resource_clear_scope: /* @__PURE__ */ __name((scope) => {
+      const count = clearResourceScope(scope);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    }, "resource_clear_scope"),
     resource_mutate: /* @__PURE__ */ __name((resource, value) => {
       const handle = asResourceHandle(resource, "render.resource_mutate");
       handle.record.version += 1;
@@ -11584,7 +11714,10 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     resourceInvalidateKey: /* @__PURE__ */ __name((key2) => render2.resource_invalidate_key(key2), "resourceInvalidateKey"),
     resourceInvalidatePrefix: /* @__PURE__ */ __name((prefix) => render2.resource_invalidate_prefix(prefix), "resourceInvalidatePrefix"),
     resourceInvalidateTag: /* @__PURE__ */ __name((tag) => render2.resource_invalidate_tag(tag), "resourceInvalidateTag"),
+    resourceInvalidateDependency: /* @__PURE__ */ __name((dependency) => render2.resource_invalidate_dependency(dependency), "resourceInvalidateDependency"),
+    resourceInvalidateScope: /* @__PURE__ */ __name((scope) => render2.resource_invalidate_scope(scope), "resourceInvalidateScope"),
     resourceClearCache: /* @__PURE__ */ __name(() => render2.resource_clear_cache(), "resourceClearCache"),
+    resourceClearScope: /* @__PURE__ */ __name((scope) => render2.resource_clear_scope(scope), "resourceClearScope"),
     resourceMutate: /* @__PURE__ */ __name((resource, value) => render2.resource_mutate(resource, value), "resourceMutate"),
     errorBoundary: /* @__PURE__ */ __name((fallback, renderChildren) => render2.error_boundary(fallback, renderChildren), "errorBoundary"),
     mountApp: /* @__PURE__ */ __name((renderer, container, componentFn, props) => render2.mount_app(renderer, container, componentFn, props), "mountApp"),
@@ -13032,7 +13165,10 @@ var renderSurface = {
   resourceInvalidateKey: render.resource_invalidate_key,
   resourceInvalidatePrefix: render.resource_invalidate_prefix,
   resourceInvalidateTag: render.resource_invalidate_tag,
+  resourceInvalidateDependency: render.resource_invalidate_dependency,
+  resourceInvalidateScope: render.resource_invalidate_scope,
   resourceClearCache: render.resource_clear_cache,
+  resourceClearScope: render.resource_clear_scope,
   resourceMutate: render.resource_mutate,
   suspense: render.suspense,
   errorBoundary: render.error_boundary,
@@ -13159,7 +13295,7 @@ var renderSurface = {
   ssgWritePage: render.ssg_write_page,
   ssgWriteApp: render.ssg_write_app
 };
-var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceClearCache, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingQueryAllByRole, devtoolsSnapshot, installDevtools, devtoolsRecordEvent, devtoolsTimeline, devtoolsClearTimeline, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
+var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceInvalidateDependency, resourceInvalidateScope, resourceClearCache, resourceClearScope, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingQueryAllByRole, devtoolsSnapshot, installDevtools, devtoolsRecordEvent, devtoolsTimeline, devtoolsClearTimeline, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
 var reactive = {
   createSignal,
   get,
@@ -13372,11 +13508,14 @@ export {
   renderToStringApp,
   renderToTerminal,
   resourceClearCache,
+  resourceClearScope,
   resourceData,
   resourceError,
   resourceInvalidate,
+  resourceInvalidateDependency,
   resourceInvalidateKey,
   resourceInvalidatePrefix,
+  resourceInvalidateScope,
   resourceInvalidateTag,
   resourceMutate,
   resourceRead,

@@ -30,7 +30,10 @@ describe('@std/resource', () => {
     expect(js).toContain('resourceInvalidateKey');
     expect(js).toContain('resourceInvalidatePrefix');
     expect(js).toContain('resourceInvalidateTag');
+    expect(js).toContain('resourceInvalidateDependency');
+    expect(js).toContain('resourceInvalidateScope');
     expect(js).toContain('resourceClearCache');
+    expect(js).toContain('resourceClearScope');
     expect(js).toContain('resourceMutate');
   });
 });

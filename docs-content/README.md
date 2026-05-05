@@ -19,6 +19,9 @@ Related directories:
 - [Using Lumina](USING_LUMINA.md) - CLI workflow and language usage patterns
 - [Learning Path](LEARNING_PATH.md) - structured lessons from beginner to advanced
 - [Lessons](lessons/) - hands-on tutorial lessons with exercises
+- [Contact and Community](CONTACT.md) - maintainer contact and community links
+- [Discord Rules](DISCORD_RULES.md) - community rules for the Lumina Discord
+- [Discord Server Setup Guide](DISCORD_SERVER_SETUP.md) - recommended Discord structure and moderation setup
 - [Migration from TS/JS](MIGRATION_FROM_TS_JS.md) - practical migration strategy from TS/JS
 - [Ecosystem](ECOSYSTEM.md) - ecosystem status, package guidance, and contribution model
 - [Capabilities](CAPABILITIES.md) - feature matrix and status

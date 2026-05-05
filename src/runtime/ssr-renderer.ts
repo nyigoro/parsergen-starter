@@ -50,6 +50,9 @@ const normalizeHtmlPropName = (name: string): string => {
   return name;
 };
 
+const isSafeHtmlAttrName = (name: string): boolean =>
+  /^[A-Za-z_:-][A-Za-z0-9_.:-]*$/.test(name) && !/^on/i.test(name);
+
 export const serializeStyleValue = (value: Record<string, unknown>): string =>
   Object.entries(value)
     .filter(([, entry]) => entry !== null && entry !== undefined)
@@ -70,9 +73,10 @@ export const serializePropsToHtml = (
         : undefined;
   for (const [key, value] of Object.entries(propSource)) {
     if (key === 'key') continue;
-    if (key.startsWith('on') && typeof value === 'function') continue;
+    if (/^on/i.test(key)) continue;
     if (value === false || value === null || value === undefined) continue;
     const attrName = normalizeHtmlPropName(key);
+    if (!isSafeHtmlAttrName(attrName)) continue;
     if (key === 'style' && typeof value === 'object' && value !== null) {
       const styleText = serializeStyleValue(value as Record<string, unknown>);
       if (styleText.length > 0) attrs.push(`style="${escapeHtml(styleText)}"`);

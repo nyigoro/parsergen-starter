@@ -4,6 +4,14 @@ pub fn page(body: any, options: any) -> string {
   render.ssgPage(body, options)
 }
 
+pub fn hydrationOptions(state: any, hydrateModule: string) -> any {
+  render.props_merge(render.props_attr("hydrationState", state), render.props_attr("hydrateModule", hydrateModule))
+}
+
+pub fn hydrationBoundaryOptions(state: any, hydrateModule: string, boundary: string) -> any {
+  render.props_merge(hydrationOptions(state, hydrateModule), render.props_attr("hydrationBoundary", boundary))
+}
+
 pub fn renderApp<P>(renderFn: fn(P) -> VNode, props: P, options: any) -> string {
   render.ssgRenderApp(renderFn, props, options)
 }

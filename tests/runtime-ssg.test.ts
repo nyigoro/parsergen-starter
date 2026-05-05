@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { coerceSsgPageOptions, createSsgApi } from '../src/runtime/ssg.js';
+import { coerceSsgPageOptions, createSsgApi, serializeHydrationState } from '../src/runtime/ssg.js';
 
 describe('runtime ssg api', () => {
   test('normalizes options and renders pages/apps', () => {
@@ -15,6 +15,8 @@ describe('runtime ssg api', () => {
       hydrateModule: '',
       hydrationState: null,
       hydrationStateId: '__lumina-hydration',
+      hydrationBoundary: 'root',
+      scriptNonce: '',
     });
 
     const api = createSsgApi<string, (props: { label: string }) => string>({
@@ -52,11 +54,17 @@ describe('runtime ssg api', () => {
     const html = api.renderPage('<main>Body</main>', {
       hydrateModule: '/app.js',
       hydrationState: { props: { title: '</script><img>' } },
+      hydrationBoundary: 'route:/dashboard',
+      scriptNonce: 'nonce-1',
     });
 
-    expect(html).toContain('type="application/json" id="__lumina-hydration"');
+    expect(html).toContain('data-lumina-hydration="route:/dashboard"');
+    expect(html).toContain('data-lumina-state="__lumina-hydration"');
+    expect(html).toContain('type="application/json" nonce="nonce-1" id="__lumina-hydration"');
+    expect(html).toContain('type="module" nonce="nonce-1" src="/app.js"');
     expect(html).toContain('\\u003c/script>');
     expect(html.indexOf('__lumina-hydration')).toBeLessThan(html.indexOf('/app.js'));
+    expect(serializeHydrationState({ text: '<script>\u2028' })).toBe('{"text":"\\u003cscript>\\u2028"}');
   });
 
   test('writes rendered pages to disk', () => {

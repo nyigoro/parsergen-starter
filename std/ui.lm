@@ -57,11 +57,59 @@ pub fn themeRoot(props: any, children: any) -> VNode {
   )
 }
 
+pub fn themeTokens(tokens: string, props: any, children: any) -> VNode {
+  themeRoot(props_merge(props_attr("style", tokens), props), children)
+}
+
 pub fn appShell(props: any, children: any) -> VNode {
   vnode(
     "div",
     props_merge(
       props_class("mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 md:px-6"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn appShellSidebar(props: any, children: any) -> VNode {
+  vnode(
+    "div",
+    props_merge(
+      props_class("grid min-h-screen grid-cols-1 bg-[var(--lumina-color-bg,#f8fafc)] text-[var(--lumina-color-fg,#0f172a)] md:grid-cols-[16rem_1fr]"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn appHeader(props: any, children: any) -> VNode {
+  vnode(
+    "header",
+    props_merge(
+      props_class("sticky top-0 z-10 flex min-h-14 items-center border-b border-slate-200 bg-white/95 px-4"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn appSidebar(props: any, children: any) -> VNode {
+  vnode(
+    "aside",
+    props_merge(
+      props_class("border-r border-slate-200 bg-white px-3 py-4"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn appMain(props: any, children: any) -> VNode {
+  vnode(
+    "main",
+    props_merge(
+      props_class("min-w-0 px-4 py-5"),
       props
     ),
     children
@@ -79,11 +127,36 @@ pub fn input(props: any) -> VNode {
   )
 }
 
+fn input_variant_class(variant: string) -> string {
+  if (variant == "error") {
+    return "w-full rounded-lg border border-rose-400 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-rose-100"
+  }
+  if (variant == "quiet") {
+    return "w-full rounded-lg border border-transparent bg-slate-100 px-3 py-2 text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-sky-100"
+  }
+  return "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+}
+
+pub fn inputVariant(variant: string, props: any) -> VNode {
+  vnode("input", props_merge(props_class(input_variant_class(variant)), props), [])
+}
+
 pub fn field(props: any, children: any) -> VNode {
   vnode(
     "div",
     props_merge(
       props_class("grid gap-2"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn fieldGroup(props: any, children: any) -> VNode {
+  vnode(
+    "fieldset",
+    props_merge(
+      props_class("grid gap-3 rounded-lg border border-slate-200 p-4"),
       props
     ),
     children
@@ -146,6 +219,40 @@ pub fn card(props: any, children: any) -> VNode {
     ),
     children
   )
+}
+
+pub fn section(props: any, children: any) -> VNode {
+  vnode(
+    "section",
+    props_merge(
+      props_class("grid gap-4 py-4"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn dataTable(props: any, children: any) -> VNode {
+  vnode(
+    "table",
+    props_merge(
+      props_class("w-full border-collapse text-left text-sm"),
+      props
+    ),
+    children
+  )
+}
+
+pub fn tableRow(props: any, children: any) -> VNode {
+  vnode("tr", props_merge(props_class("border-b border-slate-200"), props), children)
+}
+
+pub fn tableHeaderCell(props: any, children: any) -> VNode {
+  vnode("th", props_merge(props_class("px-3 py-2 text-xs font-semibold uppercase text-slate-500"), props), children)
+}
+
+pub fn tableCell(props: any, children: any) -> VNode {
+  vnode("td", props_merge(props_class("px-3 py-2 text-slate-800"), props), children)
 }
 
 pub fn tabsListStyled(props: any, renderChildren: fn() -> any) -> VNode {

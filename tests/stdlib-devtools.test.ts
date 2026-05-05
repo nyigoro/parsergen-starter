@@ -23,6 +23,12 @@ describe('@std/devtools', () => {
     expect(js).toContain('devtoolsSnapshot');
     expect(js).toContain('installDevtools');
     expect(js).toContain('devtoolsRecordEvent');
+    expect(js).toContain('resources');
+    expect(js).toContain('signals');
+    expect(js).toContain('roots');
+    expect(js).toContain('recordRoute');
+    expect(js).toContain('recordResource');
+    expect(js).toContain('recordHydration');
     expect(js).toContain('devtoolsTimeline');
     expect(js).toContain('devtoolsClearTimeline');
   });

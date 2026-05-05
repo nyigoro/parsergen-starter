@@ -29,6 +29,22 @@ describe('Lumina codegen', () => {
     expect(result.map?.mappings.length).toBeGreaterThan(0);
   });
 
+  test('binds compiled render-list helpers from the runtime facade', () => {
+    const program = `
+      fn main() -> int {
+        return 1;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program);
+    const ir = optimizeIR(lowerLumina(ast as never))!;
+    const esm = generateJS(ir, { target: 'esm' }).code;
+    const cjs = generateJS(ir, { target: 'cjs' }).code;
+
+    expect(esm).toContain('liveText, indexList, forList');
+    expect(cjs).toContain('liveText, indexList, forList');
+  });
+
   test('generates calls and if statements', () => {
     const program = `
       fn add(a: int, b: int) -> int {

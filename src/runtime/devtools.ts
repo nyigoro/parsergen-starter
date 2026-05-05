@@ -112,6 +112,7 @@ export const createDevtoolsController = <TRoot extends object, TCurrent>(
     registerSignal(kind: 'signal' | 'memo', source: DevtoolsSignalLike): number {
       const id = nextSignalId++;
       signalEntries.set(id, { kind, source });
+      scheduleNotify();
       return id;
     },
     unregisterSignal(id: number): void {

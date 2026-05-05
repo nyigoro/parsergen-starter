@@ -6,21 +6,28 @@ export interface ResourceOptions {
   ttlMs: number;
   enabled: boolean;
   staleWhileRevalidate: boolean;
+  abortOnRefresh: boolean;
+  scope: string;
   tags: string[];
+  dependencies: string[];
 }
 
 export interface ResourceRecord<T = unknown> {
   key: string;
-  loader: () => Promise<T> | T;
+  loader: (signal?: AbortSignal) => Promise<T> | T;
   ttlMs: number;
   enabled: boolean;
   staleWhileRevalidate: boolean;
+  abortOnRefresh: boolean;
+  scope: string;
   tags: Set<string>;
+  dependencies: Set<string>;
   data: Signal<unknown>;
   hasData: Signal<boolean>;
   error: Signal<unknown>;
   status: Signal<ResourceStatus>;
   promise: Promise<T> | null;
+  abortController: AbortController | null;
   expiresAt: number;
   version: number;
 }
@@ -76,15 +83,18 @@ const normalizeResourceOptions = (options: unknown): ResourceOptions => {
   const ttlMs = typeof ttlRaw === 'number' && Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : 0;
   const enabled = candidate.enabled !== false;
   const staleWhileRevalidate = candidate.staleWhileRevalidate === true || candidate.swr === true;
+  const abortOnRefresh = candidate.abortOnRefresh === true || candidate.abort === true;
+  const scope = typeof candidate.scope === 'string' && candidate.scope.trim() ? candidate.scope.trim() : 'global';
   const tags = normalizeResourceTags(candidate.tags ?? candidate.tag);
-  return { ttlMs, enabled, staleWhileRevalidate, tags };
+  const dependencies = normalizeResourceTags(candidate.dependencies ?? candidate.dependency ?? candidate.dependsOn);
+  return { ttlMs, enabled, staleWhileRevalidate, abortOnRefresh, scope, tags, dependencies };
 };
 
 const resourceHasData = (record: ResourceRecord<unknown>): boolean => !!record.hasData.peek();
 
 const createResourceRecord = <T>(
   key: string,
-  loader: () => Promise<T> | T,
+  loader: (signal?: AbortSignal) => Promise<T> | T,
   options: ResourceOptions
 ): ResourceRecord<T> => ({
   key,
@@ -92,12 +102,16 @@ const createResourceRecord = <T>(
   ttlMs: options.ttlMs,
   enabled: options.enabled,
   staleWhileRevalidate: options.staleWhileRevalidate,
+  abortOnRefresh: options.abortOnRefresh,
+  scope: options.scope,
   tags: new Set(options.tags),
+  dependencies: new Set(options.dependencies),
   data: new Signal<unknown>(null),
   hasData: new Signal<boolean>(false),
   error: new Signal<unknown>(null),
   status: new Signal<ResourceStatus>('idle'),
   promise: null,
+  abortController: null,
   expiresAt: 0,
   version: 0,
 });
@@ -109,12 +123,16 @@ export const startResourceLoad = <T>(record: ResourceRecord<T>, force: boolean =
   }
   const version = record.version + 1;
   record.version = version;
+  if (force && record.abortOnRefresh) {
+    record.abortController?.abort();
+  }
+  record.abortController = typeof AbortController === 'undefined' ? null : new AbortController();
   record.status.set('loading');
   record.error.set(null);
 
   let loadResult: Promise<T>;
   try {
-    loadResult = Promise.resolve(record.loader());
+    loadResult = Promise.resolve(record.loader(record.abortController?.signal));
   } catch (error) {
     loadResult = Promise.reject(error);
   }
@@ -130,6 +148,7 @@ export const startResourceLoad = <T>(record: ResourceRecord<T>, force: boolean =
       record.status.set('success');
       record.expiresAt = record.ttlMs > 0 ? Date.now() + record.ttlMs : Number.POSITIVE_INFINITY;
       record.promise = null;
+      record.abortController = null;
       resourceHooks.notifyDevtools?.();
       return value;
     },
@@ -141,6 +160,7 @@ export const startResourceLoad = <T>(record: ResourceRecord<T>, force: boolean =
       record.status.set('error');
       record.expiresAt = 0;
       record.promise = null;
+      record.abortController = null;
       resourceHooks.notifyDevtools?.();
       throw error;
     }
@@ -170,15 +190,21 @@ export const ensureResourceCurrent = <T>(record: ResourceRecord<T>): void => {
 
 const invalidateResourceRecord = (record: ResourceRecord<unknown>): void => {
   record.expiresAt = 0;
+  record.version += 1;
+  record.abortController?.abort();
+  record.abortController = null;
+  record.promise = null;
   if (!record.hasData.peek() || !record.staleWhileRevalidate) {
     record.status.set('idle');
   }
-  ensureResourceCurrent(record);
+  if (record.enabled) {
+    startResourceLoad(record, true);
+  }
 };
 
 export const resolveResourceRecord = <T>(
   key: unknown,
-  loader: () => Promise<T> | T,
+  loader: (signal?: AbortSignal) => Promise<T> | T,
   options: unknown
 ): ResourceRecord<T> => {
   const normalizedKey = normalizeResourceKey(key);
@@ -189,7 +215,10 @@ export const resolveResourceRecord = <T>(
     existing.ttlMs = normalizedOptions.ttlMs;
     existing.enabled = normalizedOptions.enabled;
     existing.staleWhileRevalidate = normalizedOptions.staleWhileRevalidate;
+    existing.abortOnRefresh = normalizedOptions.abortOnRefresh;
+    existing.scope = normalizedOptions.scope;
     existing.tags = new Set(normalizedOptions.tags);
+    existing.dependencies = new Set(normalizedOptions.dependencies);
     ensureResourceCurrent(existing);
     return existing;
   }
@@ -243,8 +272,46 @@ export const invalidateResourceTag = (tag: string): number => {
   return count;
 };
 
+export const invalidateResourceDependency = (dependency: string): number => {
+  const normalizedDependency = String(dependency).trim();
+  if (!normalizedDependency) return 0;
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (!record.dependencies.has(normalizedDependency)) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+};
+
+export const invalidateResourceScope = (scope: string): number => {
+  const normalizedScope = String(scope).trim() || 'global';
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (record.scope !== normalizedScope) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+};
+
 export const clearResourceRecords = (): void => {
   if (resourceCache.size === 0) return;
   resourceCache.clear();
   resourceHooks.notifyDevtools?.();
+};
+
+export const clearResourceScope = (scope: string): number => {
+  const normalizedScope = String(scope).trim() || 'global';
+  let count = 0;
+  for (const [key, record] of resourceCache) {
+    if (record.scope !== normalizedScope) continue;
+    record.abortController?.abort();
+    resourceCache.delete(key);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
 };

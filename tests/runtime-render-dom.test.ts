@@ -343,6 +343,31 @@ describe('render DOM renderer', () => {
     expect(span.childNodes[0].textContent).toBe('world');
   });
 
+  test('handles string and object style props without treating strings as style maps', () => {
+    const fakeDocument = new FakeDocument();
+    const renderer = render.create_dom_renderer({ document: fakeDocument as never });
+    const container = fakeDocument.createElement('div');
+    const root = render.create_root(renderer, container);
+
+    root.mount(render.element('section', { style: 'color: red;' }, [render.text('style')]));
+    const section = container.childNodes[0] as FakeElement;
+    expect(section.getAttribute('style')).toBe('color: red;');
+    expect(section.style['0']).toBeUndefined();
+
+    root.update(render.element('section', { style: { color: 'blue', marginTop: '4px' } }, [render.text('style')]));
+    expect(section.getAttribute('style')).toBeNull();
+    expect(section.style.color).toBe('blue');
+    expect(section.style.marginTop).toBe('4px');
+
+    root.update(render.element('section', { style: 'display: block;' }, [render.text('style')]));
+    expect(section.getAttribute('style')).toBe('display: block;');
+    expect(section.style.color).toBe('');
+    expect(section.style.marginTop).toBe('');
+
+    root.update(render.element('section', {}, [render.text('style')]));
+    expect(section.getAttribute('style')).toBeNull();
+  });
+
   test('clones static DOM templates for hoisted element vnodes when template support exists', () => {
     const fakeDocument = new FakeDocument();
     const renderer = render.create_dom_renderer({ document: fakeDocument as never });
@@ -2301,6 +2326,33 @@ describe('render DOM renderer', () => {
     );
     expect(textSection.childNodes[0].textContent).toBe('New text');
     render.unmount(textRoot);
+
+    const textOverElementContainer = fakeDocument.createElement('div');
+    const textOverElementSection = fakeDocument.createElement('section');
+    const staleSpan = fakeDocument.createElement('span');
+    staleSpan.appendChild(fakeDocument.createTextNode('Old element'));
+    textOverElementSection.appendChild(staleSpan);
+    textOverElementContainer.appendChild(textOverElementSection);
+    const textOverElementRoot = render.hydrate(
+      renderer,
+      textOverElementContainer,
+      render.element('section', null, [render.text('Plain text')])
+    );
+
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'tag',
+          path: 'root.0',
+          expected: '#text',
+          actual: 'span',
+        }),
+      ])
+    );
+    expect(textOverElementSection.childNodes[0]).not.toBe(staleSpan);
+    expect(textOverElementSection.childNodes[0]).toBeInstanceOf(FakeTextNode);
+    expect(textOverElementSection.childNodes[0].textContent).toBe('Plain text');
+    render.unmount(textOverElementRoot);
   });
 
   test('strict hydration converts mismatches into hydrate errors', () => {

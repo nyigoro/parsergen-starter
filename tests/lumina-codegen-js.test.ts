@@ -295,8 +295,12 @@ describe('Lumina AST JS codegen', () => {
       import { vnode, text, props_class } from "@std/render";
 
       fn shell() -> VNode {
+        let renderBody = fn() -> VNode {
+          vnode("p", props_class("body"), [text("Nested")])
+        };
         vnode("section", props_class("card"), [
-          vnode("h1", props_class("title"), [text("Profile")])
+          vnode("h1", props_class("title"), [text("Profile")]),
+          renderBody()
         ])
       }
     `.trim() + '\n';

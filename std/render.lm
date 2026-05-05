@@ -112,8 +112,20 @@ pub fn resourceInvalidateTag(tag: string) -> int {
   render.resourceInvalidateTag(tag)
 }
 
+pub fn resourceInvalidateDependency(dependency: string) -> int {
+  render.resourceInvalidateDependency(dependency)
+}
+
+pub fn resourceInvalidateScope(scope: string) -> int {
+  render.resourceInvalidateScope(scope)
+}
+
 pub fn resourceClearCache() -> void {
   render.resourceClearCache()
+}
+
+pub fn resourceClearScope(scope: string) -> int {
+  render.resourceClearScope(scope)
 }
 
 pub fn resourceMutate<T>(resource: any, value: T) -> T {

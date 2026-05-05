@@ -23,6 +23,12 @@ type WorkspacePackage = {
 };
 
 const LOCKFILE_NAME = 'lumina.lock.json';
+type InitTemplate = 'minimal' | 'routed' | 'ssr';
+
+const normalizeInitTemplate = (value: unknown): InitTemplate => {
+  if (value === 'minimal' || value === 'ssr' || value === 'routed') return value;
+  return 'routed';
+};
 
 function spawnCommand(command: string, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -158,7 +164,7 @@ async function buildLockfile(root: string): Promise<LuminaLockfile> {
   return { lockfileVersion: 1, packages };
 }
 
-export async function initProject(options: { yes?: boolean } = {}): Promise<void> {
+export async function initProject(options: { yes?: boolean; template?: string } = {}): Promise<void> {
   const cwd = process.cwd();
   const pkgPath = path.join(cwd, 'package.json');
   if (await fileExists(pkgPath)) {
@@ -166,16 +172,25 @@ export async function initProject(options: { yes?: boolean } = {}): Promise<void
     return;
   }
   const name = path.basename(cwd);
+  const template = normalizeInitTemplate(options.template);
+  const withSsg = template !== 'minimal';
   const pkg = {
     name,
     version: '0.1.0',
+    luminaTemplate: template,
     lumina: './src/client.lm',
-    scripts: {
-      check: 'lumina check src/client.lm && lumina check src/ssg.lm',
-      build: 'lumina compile src/client.lm --out dist/main.js --target esm',
-      ssg: 'lumina ssg src/ssg.lm --out dist/index.html --hydrate /dist/main.js --title "Lumina App"',
-      dev: 'npm run build && vite --host 127.0.0.1',
-    },
+    scripts: withSsg
+      ? {
+          check: 'lumina check src/client.lm && lumina check src/ssg.lm',
+          build: 'lumina compile src/client.lm --out dist/main.js --target esm',
+          ssg: 'lumina ssg src/ssg.lm --out dist/index.html --hydrate /dist/main.js --title "Lumina App"',
+          dev: 'npm run build && vite --host 127.0.0.1',
+        }
+      : {
+          check: 'lumina check src/client.lm',
+          build: 'lumina compile src/client.lm --out dist/main.js --target esm',
+          dev: 'npm run build && vite --host 127.0.0.1',
+        },
     dependencies: {},
     devDependencies: {
       vite: '^7.2.6',
@@ -263,9 +278,19 @@ body {
 }
 `
   );
-  await writeFileIfMissing(
-    path.join(cwd, 'src', 'app.lm'),
-    `import { render } from "@std";
+  const appSource = template === 'minimal'
+    ? `import { render } from "@std";
+
+pub component App() -> VNode {
+  render.element("main", render.props_class("app-shell"), [
+    render.element("section", render.props_class("app-panel"), [
+      render.element("h1", render.props_class("app-title"), [render.text("Lumina App")]),
+      render.element("p", render.props_class("app-data"), [render.text("Minimal starter ready")])
+    ])
+  ])
+}
+`
+    : `import { render } from "@std";
 import {
   createRouter,
   currentPath,
@@ -334,11 +359,23 @@ pub component App(appRouter: Router) -> VNode {
     ])
   ])
 }
-`
-  );
+`;
+  await writeFileIfMissing(path.join(cwd, 'src', 'app.lm'), appSource);
   await writeFileIfMissing(
     path.join(cwd, 'src', 'client.lm'),
-    `import { render } from "@std";
+    template === 'minimal'
+      ? `import { render } from "@std";
+import { App } from "./app.lm";
+
+pub fn main() -> void {
+  let container = render.dom_get_element_by_id("app");
+  let renderer = render.createDomRenderer();
+  let _root = render.mount_reactive(renderer, container, || App());
+}
+
+main();
+`
+      : `import { render } from "@std";
 import { createRouter } from "@std/router";
 import { App } from "./app.lm";
 
@@ -346,22 +383,24 @@ pub fn main() -> void {
   let container = render.dom_get_element_by_id("app");
   let renderer = render.createDomRenderer();
   let appRouter = createRouter("/");
-  let _root = render.mount_reactive(renderer, container, || App(appRouter));
+  let _root = render.hydrate_reactive(renderer, container, || App(appRouter));
 }
 
 main();
 `
   );
-  await writeFileIfMissing(
-    path.join(cwd, 'src', 'ssg.lm'),
-    `import { createRouter } from "@std/router";
+  if (withSsg) {
+    await writeFileIfMissing(
+      path.join(cwd, 'src', 'ssg.lm'),
+      `import { createRouter } from "@std/router";
 import { App } from "./app.lm";
 
 pub fn main() -> VNode {
   App(createRouter("/"))
 }
 `
-  );
+    );
+  }
   if (!options.yes) {
     console.log(`Initialized package.json in ${cwd}`);
   }

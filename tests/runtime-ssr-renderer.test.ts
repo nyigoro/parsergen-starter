@@ -26,6 +26,17 @@ describe('runtime ssr renderer', () => {
     expect(serializePropsToHtml({ key: 'row-a' })).toBe(' data-lumina-key="row-a"');
   });
 
+  test('skips unsafe attribute names and event props during SSR', () => {
+    expect(
+      serializePropsToHtml({
+        'x" autofocus="': 'y',
+        onclick: 'alert(1)',
+        onClick: 'alert(2)',
+        'data-safe': 'ok',
+      })
+    ).toBe(' data-safe="ok"');
+  });
+
   test('renders markup and updates containers through the SSR renderer', () => {
     const runtime = createSsrRuntime<TestNode>({
       normalizeNodeForHtml: (node) => node,

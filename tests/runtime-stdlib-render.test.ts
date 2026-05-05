@@ -328,6 +328,55 @@ describe('runtime render module', () => {
     expect(render.resourceInvalidateKey(key)).toBe(false);
   });
 
+  test('resource helpers scope records, track dependencies, and abort forced refreshes', async () => {
+    const key = `resource:${Date.now()}:scoped`;
+    const aborted: string[] = [];
+    const resolvers: Array<(value: string) => void> = [];
+    const loader = jest.fn((signal?: AbortSignal) => new Promise<string>((resolve, reject) => {
+      resolvers.push(resolve);
+      signal?.addEventListener('abort', () => {
+        aborted.push('aborted');
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      });
+    }));
+
+    const resource = render.createResource(key, loader, {
+      scope: 'account:1',
+      dependencies: ['profile'],
+      abortOnRefresh: true,
+      staleWhileRevalidate: true,
+    });
+    expect(render.resourceStatus(resource)).toBe('loading');
+
+    const refreshed = render.resourceRefresh(resource);
+    expect(aborted).toEqual(['aborted']);
+    resolvers[1]?.('fresh');
+    await refreshed;
+    expect(render.resourceData(resource)).toBe('fresh');
+
+    expect(render.resourceInvalidateDependency('profile')).toBe(1);
+    resolvers[2]?.('dependency');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(render.resourceData(resource)).toBe('dependency');
+
+    expect(render.resourceInvalidateScope('account:1')).toBe(1);
+    resolvers[3]?.('scope');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(render.resourceData(resource)).toBe('scope');
+
+    const other = render.createResource(`${key}:other`, () => 'other', { scope: 'account:2' });
+    await Promise.resolve();
+    expect(render.resourceClearScope('account:1')).toBe(1);
+    expect(render.resourceInvalidateKey(key)).toBe(false);
+    expect(render.resourceInvalidateKey(`${key}:other`)).toBe(true);
+    render.resourceClearCache();
+    expect(other).toBeTruthy();
+  });
+
   test('suspense and error boundary helpers catch the right thrown values', () => {
     const suspenseFallback = render.suspense(render.text('Loading'), () => {
       throw Promise.resolve('pending');

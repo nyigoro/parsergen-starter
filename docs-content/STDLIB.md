@@ -629,6 +629,12 @@ stale data.
 `routeView` and `outlet` render branch content with `render.show`, giving apps a
 small route-tree/layout convention without hiding the underlying signal model.
 
+### routeModule / routeModuleLoader / routeModuleAction / routeModuleView
+
+Route modules co-locate a route id, pattern, title, loader/action scope, and
+view guard. Module loaders/actions use route-scoped resource keys and resource
+`scope` metadata so large apps can invalidate by route module.
+
 ### routeAction<T>(router: Router, name: String, action: fn() -> Promise<T>) -> RouteAction<T>
 
 Creates a disabled resource-backed action. Run it with `submitRouteAction`, then
@@ -648,9 +654,60 @@ Reads route data. Use inside `render.suspense` and `render.errorBoundary`.
 
 Refresh, invalidate, and optimistically update route data.
 
-### invalidateRouteKey / invalidateRoutePrefix / invalidateRouteTag
+### invalidateRouteKey / invalidateRoutePrefix / invalidateRouteTag / invalidateRouteDependency / invalidateRouteScope
 
-Invalidates cached route/resource entries by exact key, prefix, or tag.
+Invalidates cached route/resource entries by exact key, prefix, tag, declared
+dependency, or scope.
+
+## @std/resource
+
+Resource helpers expose cached async data with status/data/error/read/refresh
+operations. Options support `ttlMs`, `staleWhileRevalidate`, `tags`,
+`dependencies` / `dependsOn`, `scope`, and `abortOnRefresh`.
+
+### createResource / createResourceWithOptions
+
+Creates a resource handle. Reads throw promises/errors for suspense and error
+boundaries; `data` returns nullable data for non-suspense reads.
+
+### invalidateKey / invalidatePrefix / invalidateTag / invalidateDependency / invalidateScope
+
+Invalidates matching records and restarts enabled resources. Forced reloads can
+abort the previous request when `abortOnRefresh` is enabled.
+
+### clearCache / clearScope / mutate
+
+Clears all records, clears one scope, or writes optimistic data into a resource.
+
+## @std/forms
+
+Form helpers cover controlled values, checked controls, file/multipart props,
+field state, async action state, field arrays, and optimistic rollback helpers.
+
+### textInput / checkbox / radio / fileInput / multipartProps
+
+Build controlled input props and form encoding props.
+
+### createFieldState / markDirty / markTouched / setFieldError
+
+Track dirty, touched, and error state per field.
+
+### action / actionWithOptions / submitAction / submitActionOptimistic / rollbackResource
+
+Create resource-backed form actions and wire optimistic resource updates.
+
+## @std/testing
+
+Testing helpers create DOM harnesses, mount/hydrate apps, query by id/text/role,
+drive input/click/submit/keyboard events, and provide async flush helpers.
+
+### createDomHarness / mountApp / hydrateApp
+
+Creates a test DOM harness and mounts or hydrates an app through the runtime.
+
+### findByText / findByRole / clickAndFlush / inputAndFlush / submitAndFlush
+
+Small async workflow helpers for route/action/resource integration tests.
 
 ## @std/devtools
 
@@ -668,6 +725,10 @@ Installs `globalThis.__LUMINA_DEVTOOLS__`.
 
 Records a timeline event for render, resource, route, or hydration tooling.
 
+### resources / signals / roots / recordRoute / recordResource / recordHydration
+
+Convenience inspector and timeline helpers for complex app debugging.
+
 ### timeline() -> Any
 
 Returns recorded timeline events.
@@ -678,7 +739,7 @@ Clears the timeline buffer.
 
 ## @std/ui
 
-Styled wrappers over headless primitives. The layer is intentionally thin:
+Styled Tailwind-oriented wrappers over headless primitives. The layer is intentionally thin:
 tokens, app shells, variants, and class composition live here while behavior
 stays in `@std/render` primitives.
 
@@ -698,6 +759,26 @@ Theme-token root using CSS custom properties.
 ### appShell(props: Any, children: Any) -> VNode
 
 Constrained application shell layout.
+
+### appShellSidebar / appHeader / appSidebar / appMain
+
+Application frame primitives for dashboard and complex app layouts.
+
+### inputVariant / fieldGroup / dataTable / tableRow / tableHeaderCell / tableCell
+
+Form composition and data-entry primitives for larger app surfaces.
+
+## @std/ssg
+
+SSG helpers render static pages/apps and provide hydration handoff options.
+
+### hydrationOptions / hydrationBoundaryOptions
+
+Build safe JSON hydration state and boundary metadata options for SSG output.
+
+### page / renderApp / writePage / writeApp
+
+Render or write HTML pages with optional client hydration modules.
 
 ## Duration Helpers
 

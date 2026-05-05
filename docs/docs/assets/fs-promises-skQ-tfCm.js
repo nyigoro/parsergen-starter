@@ -1,0 +1,1 @@
+async function r(){throw new Error("fs/promises is not available in the browser demo")}async function e(){throw new Error("fs/promises is not available in the browser demo")}export{r as readFile,e as stat};

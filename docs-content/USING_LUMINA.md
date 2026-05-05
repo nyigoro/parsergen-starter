@@ -15,6 +15,17 @@ npm run build
 npm run dev
 ```
 
+Starter templates:
+
+```bash
+lumina init --template routed --yes
+lumina init --template minimal --yes
+lumina init --template ssr --yes
+```
+
+`routed` is the default app template, `minimal` is a client-only starter, and
+`ssr` keeps the routed starter plus the SSG/hydration entry.
+
 Check program types/semantics:
 
 ```bash

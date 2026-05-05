@@ -34,6 +34,34 @@ type RouterApi = {
   scrollToTop: () => void;
   routeResourceKey: (routerValue: unknown, name: string) => string;
   routeScopedKey: (routerValue: unknown, routeId: string, name: string) => string;
+  routeModule: (id: string, pattern: string, title: string) => unknown;
+  routeModuleMatch: (routerValue: unknown, module: unknown) => { matched: boolean; params: unknown; search: unknown };
+  routeModuleKey: (routerValue: unknown, module: unknown, name: string) => string;
+  routeModuleLoader: <T>(
+    routerValue: unknown,
+    module: unknown,
+    name: string,
+    loader: (match: unknown) => Promise<T>
+  ) => unknown;
+  routeModuleLoaderWithOptions: <T>(
+    routerValue: unknown,
+    module: unknown,
+    name: string,
+    loader: (match: unknown) => Promise<T>,
+    options: Record<string, unknown>
+  ) => unknown;
+  routeModuleAction: <T>(
+    routerValue: unknown,
+    module: unknown,
+    name: string,
+    action: (match: unknown) => Promise<T>
+  ) => unknown;
+  routeModuleView: (
+    routerValue: unknown,
+    module: unknown,
+    renderChildren: (match: unknown) => VNode[] | VNode,
+    fallback: VNode
+  ) => VNode;
   routeLoader: <T>(routerValue: unknown, name: string, loader: () => Promise<T>) => unknown;
   routeLoaderWithOptions: <T>(
     routerValue: unknown,
@@ -67,6 +95,8 @@ type RouterApi = {
   invalidateRouteKey: (key: unknown) => boolean;
   invalidateRoutePrefix: (prefix: string) => number;
   invalidateRouteTag: (tag: string) => number;
+  invalidateRouteDependency: (dependency: string) => number;
+  invalidateRouteScope: (scope: string) => number;
   optimisticRouteMutate: <T>(resource: unknown, value: T) => T;
   routeAction: <T>(routerValue: unknown, name: string, action: () => Promise<T>) => unknown;
   submitRouteAction: <T>(action: unknown) => Promise<T>;
@@ -182,6 +212,8 @@ const runtimeReactive = {
   },
 };
 
+const runtimeResources = new Map<string, Record<string, unknown>>();
+
 const runtimeRender = {
   props_empty: (): Record<string, unknown> => ({}),
   props_attr: (name: string, value: unknown): Record<string, unknown> => ({ [name]: value }),
@@ -189,14 +221,11 @@ const runtimeRender = {
     key: string,
     loader: () => Promise<unknown>,
     options: Record<string, unknown> | null
-  ): Record<string, unknown> => ({
-    key,
-    loader,
-    options,
-    status: 'success',
-    data: `data:${key}`,
-    invalidated: false,
-  }),
+  ): Record<string, unknown> => {
+    const record = { key, loader, options, status: 'success', data: `data:${key}`, invalidated: false };
+    runtimeResources.set(key, record);
+    return record;
+  },
   resourceStatus: (resource: Record<string, unknown>): string => String(resource.status),
   resourceData: (resource: Record<string, unknown>): unknown => resource.data,
   resourceError: (resource: Record<string, unknown>): unknown => resource.error ?? null,
@@ -209,9 +238,62 @@ const runtimeRender = {
   resourceInvalidate: (resource: Record<string, unknown>): void => {
     resource.invalidated = true;
   },
-  resourceInvalidateKey: (_key: unknown): boolean => true,
-  resourceInvalidatePrefix: (_prefix: string): number => 1,
-  resourceInvalidateTag: (_tag: string): number => 1,
+  resourceInvalidateKey: (key: unknown): boolean => {
+    const record = runtimeResources.get(String(key));
+    if (!record) return false;
+    record.invalidated = true;
+    return true;
+  },
+  resourceInvalidatePrefix: (prefix: string): number => {
+    let count = 0;
+    for (const [key, record] of runtimeResources) {
+      if (!key.startsWith(prefix)) continue;
+      record.invalidated = true;
+      count += 1;
+    }
+    return count;
+  },
+  resourceInvalidateTag: (tag: string): number => {
+    let count = 0;
+    for (const record of runtimeResources.values()) {
+      const tags = (record.options as { tags?: unknown } | null)?.tags;
+      const list = Array.isArray(tags) ? tags : typeof tags === 'string' ? [tags] : [];
+      if (!list.includes(tag)) continue;
+      record.invalidated = true;
+      count += 1;
+    }
+    return count;
+  },
+  resourceInvalidateDependency: (dependency: string): number => {
+    let count = 0;
+    for (const record of runtimeResources.values()) {
+      const deps = (record.options as { dependencies?: unknown; dependsOn?: unknown } | null)?.dependencies
+        ?? (record.options as { dependsOn?: unknown } | null)?.dependsOn;
+      const list = Array.isArray(deps) ? deps : typeof deps === 'string' ? [deps] : [];
+      if (!list.includes(dependency)) continue;
+      record.invalidated = true;
+      count += 1;
+    }
+    return count;
+  },
+  resourceInvalidateScope: (scope: string): number => {
+    let count = 0;
+    for (const record of runtimeResources.values()) {
+      if ((record.options as { scope?: unknown } | null)?.scope !== scope) continue;
+      record.invalidated = true;
+      count += 1;
+    }
+    return count;
+  },
+  resourceClearScope: (scope: string): number => {
+    let count = 0;
+    for (const [key, record] of runtimeResources) {
+      if ((record.options as { scope?: unknown } | null)?.scope !== scope) continue;
+      runtimeResources.delete(key);
+      count += 1;
+    }
+    return count;
+  },
   resourceMutate: (resource: Record<string, unknown>, value: unknown): unknown => {
     resource.data = value;
     return value;
@@ -364,7 +446,7 @@ const compileRouterStdlib = (): RouterApi => {
     'reactive',
     'render',
     'module',
-    `${js}\nreturn { createRouter, navigate, replace, getScrollRestoration, setScrollRestoration, scrollToTop, currentPath, currentParams, currentSearchParams, routeResourceKey, routeScopedKey, routeLoader, routeLoaderWithOptions, routeLoaderFor, routeLoaderForWithOptions, prefetchRoute, prefetchRouteWithOptions, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, invalidateRouteKey, invalidateRoutePrefix, invalidateRouteTag, optimisticRouteMutate, routeAction, submitRouteAction, routeActionStatus, routeActionData, routeActionError, routeActionSubmitting, matchRoute, isActive, routeMatch, routeParams, routeView, outlet, layout, routeLoading, routeErrorBoundary, extractParams, onRouteChange, link, linkWithProps };`
+    `${js}\nreturn { createRouter, navigate, replace, getScrollRestoration, setScrollRestoration, scrollToTop, currentPath, currentParams, currentSearchParams, routeResourceKey, routeScopedKey, routeModule, routeModuleMatch, routeModuleKey, routeModuleLoader, routeModuleLoaderWithOptions, routeModuleAction, routeModuleView, routeLoader, routeLoaderWithOptions, routeLoaderFor, routeLoaderForWithOptions, prefetchRoute, prefetchRouteWithOptions, routeStatus, routeData, routeError, routeRead, refreshRoute, invalidateRoute, invalidateRouteKey, invalidateRoutePrefix, invalidateRouteTag, invalidateRouteDependency, invalidateRouteScope, optimisticRouteMutate, routeAction, submitRouteAction, routeActionStatus, routeActionData, routeActionError, routeActionSubmitting, matchRoute, isActive, routeMatch, routeParams, routeView, outlet, layout, routeLoading, routeErrorBoundary, extractParams, onRouteChange, link, linkWithProps };`
   ) as (
     routerModule: typeof runtimeRouter,
     strModule: typeof runtimeStr,
@@ -396,17 +478,19 @@ const installBrowserEnv = (
     scrollRestoration: 'auto',
     pushState: (_data: unknown, _unused: string, url?: string | URL | null) => {
       const next = typeof url === 'string' ? url : String(url ?? location.pathname);
+      const parsed = new URL(next, 'https://lumina.dev');
       history.pushes.push(next);
-      location.pathname = next;
-      location.search = '';
-      location.hash = '';
+      location.pathname = parsed.pathname;
+      location.search = parsed.search;
+      location.hash = parsed.hash;
     },
     replaceState: (_data: unknown, _unused: string, url?: string | URL | null) => {
       const next = typeof url === 'string' ? url : String(url ?? location.pathname);
+      const parsed = new URL(next, 'https://lumina.dev');
       history.replacements.push(next);
-      location.pathname = next;
-      location.search = '';
-      location.hash = '';
+      location.pathname = parsed.pathname;
+      location.search = parsed.search;
+      location.hash = parsed.hash;
     },
   };
   const fakeWindow = {
@@ -473,6 +557,7 @@ describe('@std/router', () => {
   };
 
   afterEach(() => {
+    runtimeResources.clear();
     restoreGlobals();
   });
 
@@ -542,14 +627,31 @@ describe('@std/router', () => {
     expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/lumina');
   });
 
+  test('search-only navigation updates params and resource keys', () => {
+    installBrowserEnv('/app/tasks', { search: '?filter=open', baseURI: 'https://lumina.dev/app/' });
+    const routerApi = compileRouterStdlib();
+
+    const routerValue = routerApi.createRouter('/app');
+    expect(getPayload(runtimeHashmap.get(routerApi.currentSearchParams(routerValue) as never, 'filter'))).toBe('open');
+    routerApi.navigate(routerValue, '/tasks?filter=closed');
+
+    expect(runtimeReactive.get(routerApi.currentPath(routerValue) as never)).toBe('/tasks');
+    expect(getPayload(runtimeHashmap.get(routerApi.currentSearchParams(routerValue) as never, 'filter'))).toBe('closed');
+    expect(routerApi.routeResourceKey(routerValue, 'details')).toBe('route:/tasks?filter=closed:details');
+  });
+
   test('route loaders, prefetch, invalidation, and optimistic mutation compose with router state', async () => {
     installBrowserEnv('/app/tasks', { search: '?filter=open', baseURI: 'https://lumina.dev/app/' });
     const routerApi = compileRouterStdlib();
     const routerValue = routerApi.createRouter('/app');
 
     expect(routerApi.routeResourceKey(routerValue, 'details')).toBe('route:/tasks?filter=open:details');
-    expect(routerApi.routeScopedKey(routerValue, 'task-list', 'details')).toBe('route:task-list:/tasks:?filter=open:details');
-    const resource = routerApi.routeLoader(routerValue, 'details', async () => 'loaded');
+    expect(routerApi.routeScopedKey(routerValue, 'task-list', 'details')).toBe('route:task-list:/tasks?filter=open:details');
+    const resource = routerApi.routeLoaderWithOptions(routerValue, 'details', async () => 'loaded', {
+      tags: ['tasks'],
+      dependencies: ['account'],
+      scope: 'task-list',
+    });
     expect(routerApi.routeStatus(resource)).toBe('success');
     expect(routerApi.routeRead(resource)).toBe('data:route:/tasks?filter=open:details');
     expect(routerApi.optimisticRouteMutate(resource, 'optimistic')).toBe('optimistic');
@@ -562,6 +664,39 @@ describe('@std/router', () => {
     expect(routerApi.invalidateRouteKey('route:/tasks?filter=open:details')).toBe(true);
     expect(routerApi.invalidateRoutePrefix('route:/tasks')).toBe(1);
     expect(routerApi.invalidateRouteTag('tasks')).toBe(1);
+    expect(routerApi.invalidateRouteDependency('account')).toBe(1);
+    expect(routerApi.invalidateRouteScope('task-list')).toBe(1);
+  });
+
+  test('route module helpers co-locate match, loaders, actions, and scoped keys', async () => {
+    installBrowserEnv('/app/tasks/42', {
+      search: '?tab=activity',
+      baseURI: 'https://lumina.dev/app/',
+    });
+    const routerApi = compileRouterStdlib();
+    const routerValue = routerApi.createRouter('/app');
+    const module = routerApi.routeModule('task-detail', '/tasks/:id', 'Task detail');
+
+    expect(routerApi.routeModuleKey(routerValue, module, 'details')).toBe('route:task-detail:/tasks/42?tab=activity:details');
+    expect(routerApi.routeModuleMatch(routerValue, module).matched).toBe(true);
+
+    const resource = routerApi.routeModuleLoader(routerValue, module, 'details', async (match) => {
+      expect((match as { matched: boolean }).matched).toBe(true);
+      return 'loaded';
+    });
+    expect(routerApi.routeRead(resource)).toBe('data:route:task-detail:/tasks/42?tab=activity:details');
+    expect((resource as { raw?: { options?: { scope?: string } } }).raw?.options?.scope).toBe('task-detail');
+
+    const view = routerApi.routeModuleView(
+      routerValue,
+      module,
+      () => ({ kind: 'text', text: 'module' }),
+      { kind: 'text', text: 'fallback' }
+    );
+    expect(view.text).toBe('module');
+
+    const action = routerApi.routeModuleAction(routerValue, module, 'save', async () => 'saved');
+    expect(await routerApi.submitRouteAction(action)).toBe('saved');
   });
 
   test('route match, route view, action state, and scroll helpers compose', async () => {
