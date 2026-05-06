@@ -1,4 +1,4 @@
-import{B as m,c as u}from"./compiler-analysis-zbvgs3Zx.js";import{F as p,G as _}from"./compiler-core-BWerKu1p.js";import{g as y,a as f}from"./compiler-js-BhAeJlO0.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-D5glGexP.js";const x=`{\r
+import{B as m,c as u}from"./compiler-analysis-Dz9WapxC.js";import{F as p,G as _}from"./compiler-core-BWerKu1p.js";import{g as y,a as f}from"./compiler-js-CtJY83bI.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-Z7VdhV9x.js";const x=`{\r
   let nodeId = 0;\r
   function createNode(type, data, loc) {\r
     const resolvedLoc = data && data.location ? data.location : loc();\r
@@ -1764,7 +1764,7 @@ extern fn count_q<T>(q: Query<T>) -> int from "@std/query";\r
 extern fn first_q<T>(q: Query<T>) -> Option<T> from "@std/query";\r
 extern fn to_vec_q<T>(q: Query<T>) -> Vec<T> from "@std/query";\r
 extern fn join_q<T, U, K>(left: Query<T>, right: Query<U>, left_key: fn(T) -> K, right_key: fn(U) -> K) -> Query<Tuple<T, U>> from "@std/query";\r
-`,b=""+new URL("lumina-runtime-_hfNgj4S.js",import.meta.url).href,N=u(x),g=1,T=new URL(b,import.meta.url).href,v=()=>new m(N,{preludeText:h}),A=n=>{const a=n.replace(/^\uFEFF/,"").replace(/\r\n?/g,`
+`,b=""+new URL("lumina-runtime-0gbd7SGy.js",import.meta.url).href,N=u(x),g=1,T=new URL(b,import.meta.url).href,v=()=>new m(N,{preludeText:h}),A=n=>{const a=n.replace(/^\uFEFF/,"").replace(/\r\n?/g,`
 `).split(`
 `),t=[];let e=0;for(const i of a){const o=i.replace(/[ \t]+$/g,"");if(o.length===0){e+=1,e<=g&&t.push("");continue}e=0,t.push(o)}for(;t.length>0&&t[t.length-1]==="";)t.pop();return`${t.join(`
 `)}

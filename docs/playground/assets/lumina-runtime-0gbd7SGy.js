@@ -328,6 +328,17 @@ var coerceSsgPageOptions = /* @__PURE__ */ __name((options) => {
   const head = Array.isArray(headValue) ? headValue.map((entry) => String(entry)) : headValue == null ? [] : [
     String(headValue)
   ];
+  const lifecycleState = candidate.loaderState == null && candidate.islandState == null && candidate.deferredData == null ? null : {
+    ...candidate.loaderState == null ? {} : {
+      loaderState: candidate.loaderState
+    },
+    ...candidate.islandState == null ? {} : {
+      islandState: candidate.islandState
+    },
+    ...candidate.deferredData == null ? {} : {
+      deferredData: candidate.deferredData
+    }
+  };
   return {
     title: typeof candidate.title === "string" ? candidate.title : "",
     lang: typeof candidate.lang === "string" && candidate.lang.length > 0 ? candidate.lang : "en",
@@ -336,10 +347,12 @@ var coerceSsgPageOptions = /* @__PURE__ */ __name((options) => {
     appClassName: typeof candidate.appClassName === "string" ? candidate.appClassName : "",
     appId: typeof candidate.appId === "string" && candidate.appId.length > 0 ? candidate.appId : "app",
     hydrateModule: typeof candidate.hydrateModule === "string" ? candidate.hydrateModule : "",
-    hydrationState: candidate.hydrationState ?? candidate.state ?? null,
+    hydrationState: candidate.hydrationState ?? candidate.state ?? candidate.serializedState ?? lifecycleState,
     hydrationStateId: typeof candidate.hydrationStateId === "string" && candidate.hydrationStateId.length > 0 ? candidate.hydrationStateId : "__lumina-hydration",
     hydrationBoundary: typeof candidate.hydrationBoundary === "string" && candidate.hydrationBoundary.length > 0 ? candidate.hydrationBoundary : "root",
-    scriptNonce: typeof candidate.scriptNonce === "string" && candidate.scriptNonce.length > 0 ? candidate.scriptNonce : ""
+    scriptNonce: typeof candidate.scriptNonce === "string" && candidate.scriptNonce.length > 0 ? candidate.scriptNonce : "",
+    requestId: typeof candidate.requestId === "string" ? candidate.requestId : "",
+    deferredData: candidate.deferredData ?? null
   };
 }, "coerceSsgPageOptions");
 var serializeHydrationState = /* @__PURE__ */ __name((value) => JSON.stringify(value ?? null).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"), "serializeHydrationState");
@@ -357,7 +370,7 @@ var createSsgApi = /* @__PURE__ */ __name((deps) => {
     const hydrationStateScript = normalized.hydrationState !== null ? `<script type="application/json"${normalized.scriptNonce ? ` nonce="${deps.escapeHtml(normalized.scriptNonce)}"` : ""} id="${deps.escapeHtml(normalized.hydrationStateId)}">${serializeHydrationState(normalized.hydrationState)}</script>` : "";
     const bodyClass = normalized.bodyClassName ? ` class="${deps.escapeHtml(normalized.bodyClassName)}"` : "";
     const appClass = normalized.appClassName ? ` class="${deps.escapeHtml(normalized.appClassName)}"` : "";
-    const hydrationAttrs = normalized.hydrateModule || normalized.hydrationState !== null ? ` data-lumina-hydration="${deps.escapeHtml(normalized.hydrationBoundary)}"${normalized.hydrationState !== null ? ` data-lumina-state="${deps.escapeHtml(normalized.hydrationStateId)}"` : ""}` : "";
+    const hydrationAttrs = normalized.hydrateModule || normalized.hydrationState !== null ? ` data-lumina-hydration="${deps.escapeHtml(normalized.hydrationBoundary)}"${normalized.hydrationState !== null ? ` data-lumina-state="${deps.escapeHtml(normalized.hydrationStateId)}"` : ""}${normalized.requestId ? ` data-lumina-request-id="${deps.escapeHtml(normalized.requestId)}"` : ""}` : "";
     return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}${hydrationAttrs}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
   }, "renderPage");
   const writePage = /* @__PURE__ */ __name((filePath, body, options) => {
@@ -606,6 +619,49 @@ var implicitRoleForElement = /* @__PURE__ */ __name((element) => {
   if (element.tagName === "select") return "combobox";
   return null;
 }, "implicitRoleForElement");
+var labelableTags = /* @__PURE__ */ new Set([
+  "button",
+  "input",
+  "meter",
+  "output",
+  "progress",
+  "select",
+  "textarea"
+]);
+var isDescendantOfTestingElement = /* @__PURE__ */ __name((node, ancestor) => {
+  let current = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parentNode;
+  }
+  return false;
+}, "isDescendantOfTestingElement");
+var labelMatchesElement = /* @__PURE__ */ __name((label, element) => {
+  const forId = label.getAttribute("for");
+  if (forId && element.getAttribute("id") === forId) return true;
+  return isDescendantOfTestingElement(element, label);
+}, "labelMatchesElement");
+var findLabelsForElement = /* @__PURE__ */ __name((element) => {
+  const labels = [];
+  walkTestingTree(element.ownerDocument.body, (node) => {
+    if (node instanceof TestingElement && node.tagName === "label" && labelMatchesElement(node, element)) {
+      labels.push(node);
+    }
+  });
+  return labels;
+}, "findLabelsForElement");
+var getTestingAccessibleName = /* @__PURE__ */ __name((element) => {
+  const ariaLabel = element.getAttribute("aria-label");
+  if (ariaLabel) return ariaLabel;
+  const labelledBy = element.getAttribute("aria-labelledby");
+  if (labelledBy) {
+    const value = labelledBy.split(/\s+/).map((id) => element.ownerDocument.getElementById(id)).filter((node) => node instanceof TestingElement).map((node) => getTestingTextContent(node)).join(" ").trim();
+    if (value) return value;
+  }
+  const labels = findLabelsForElement(element).map((label) => getTestingTextContent(label)).join(" ").trim();
+  if (labels) return labels;
+  return getTestingTextContent(element).trim();
+}, "getTestingAccessibleName");
 var createEventBase = /* @__PURE__ */ __name((target) => ({
   currentTarget: target,
   target,
@@ -640,7 +696,7 @@ var getTestingHarnessByText = /* @__PURE__ */ __name((scope, value) => {
   });
   return found;
 }, "getTestingHarnessByText");
-var queryTestingHarnessByRole = /* @__PURE__ */ __name((scope, role) => {
+var queryTestingHarnessByRole = /* @__PURE__ */ __name((scope, role, name) => {
   const root = resolveTestingRoot(scope);
   if (!root) return [];
   const matches = [];
@@ -648,12 +704,34 @@ var queryTestingHarnessByRole = /* @__PURE__ */ __name((scope, role) => {
     if (!(node instanceof TestingElement)) return;
     const explicitRole = node.getAttribute("role");
     const effectiveRole = explicitRole ?? implicitRoleForElement(node);
-    if (effectiveRole === role) {
+    if (effectiveRole === role && (name === void 0 || getTestingAccessibleName(node) === name)) {
       matches.push(node);
     }
   });
   return matches;
 }, "queryTestingHarnessByRole");
+var getTestingHarnessByLabel = /* @__PURE__ */ __name((scope, label) => {
+  const root = resolveTestingRoot(scope);
+  if (!root) return null;
+  let found = null;
+  walkTestingTree(root, (node) => {
+    if (found || !(node instanceof TestingElement) || !labelableTags.has(node.tagName)) return;
+    if (findLabelsForElement(node).some((entry) => getTestingTextContent(entry).trim() === label)) {
+      found = node;
+    }
+  });
+  return found;
+}, "getTestingHarnessByLabel");
+var getTestingHarnessByPlaceholder = /* @__PURE__ */ __name((scope, placeholder) => {
+  const root = resolveTestingRoot(scope);
+  if (!root) return null;
+  let found = null;
+  walkTestingTree(root, (node) => {
+    if (found || !(node instanceof TestingElement)) return;
+    if ((node.getAttribute("placeholder") ?? "") === placeholder) found = node;
+  });
+  return found;
+}, "getTestingHarnessByPlaceholder");
 var getTestingTextContent = /* @__PURE__ */ __name((node) => {
   if (node == null) return "";
   if (typeof node === "string") return node;
@@ -673,12 +751,13 @@ var getTestingTextContent = /* @__PURE__ */ __name((node) => {
 var dispatchTestingClick = /* @__PURE__ */ __name((node) => {
   const element = asTestingElement(node);
   if (!element) return;
+  if (element.disabled || element.getAttribute("disabled") !== null) return;
   element.focus();
   const event = createEventBase(element);
   element.listeners.get("click")?.(event);
   if (event.defaultPrevented) return;
   const type = element.getAttribute("type") ?? element.type;
-  const submits = element.tagName === "button" && type === "submit" || element.tagName === "input" && type === "submit";
+  const submits = element.tagName === "button" && type === "submit" || element.tagName === "button" && (type === null || type === void 0 || type === "") || element.tagName === "input" && type === "submit";
   if (!submits) return;
   let parent = element.parentNode;
   while (parent) {
@@ -723,6 +802,27 @@ var dispatchTestingSubmit = /* @__PURE__ */ __name((node) => {
 }, "dispatchTestingSubmit");
 
 // src/runtime/testing-facade.ts
+var sleep = /* @__PURE__ */ __name((ms) => new Promise((resolve) => setTimeout(resolve, ms)), "sleep");
+var settleTestingAttempt = /* @__PURE__ */ __name(async (check, timeoutMs) => {
+  const pending = Promise.resolve().then(check);
+  pending.catch(() => void 0);
+  const timeout2 = sleep(timeoutMs).then(() => ({
+    __timeout: true
+  }));
+  const value = await Promise.race([
+    pending,
+    timeout2
+  ]);
+  if (value && typeof value === "object" && value.__timeout === true) {
+    return {
+      settled: false
+    };
+  }
+  return {
+    settled: true,
+    value
+  };
+}, "settleTestingAttempt");
 var createTestingFacade = /* @__PURE__ */ __name((deps) => ({
   testing_create_dom_harness: /* @__PURE__ */ __name(() => {
     const harness = createTestingDomHarness();
@@ -736,13 +836,41 @@ var createTestingFacade = /* @__PURE__ */ __name((deps) => ({
   testing_get_by_id: /* @__PURE__ */ __name((harness, id) => getTestingHarnessById(harness, id), "testing_get_by_id"),
   testing_get_by_text: /* @__PURE__ */ __name((scope, value) => getTestingHarnessByText(scope, value), "testing_get_by_text"),
   testing_get_by_role: /* @__PURE__ */ __name((scope, role) => queryTestingHarnessByRole(scope, role)[0] ?? null, "testing_get_by_role"),
+  testing_get_by_role_name: /* @__PURE__ */ __name((scope, role, name) => queryTestingHarnessByRole(scope, role, name)[0] ?? null, "testing_get_by_role_name"),
   testing_query_all_by_role: /* @__PURE__ */ __name((scope, role) => queryTestingHarnessByRole(scope, role), "testing_query_all_by_role"),
+  testing_get_by_label: /* @__PURE__ */ __name((scope, label) => getTestingHarnessByLabel(scope, label), "testing_get_by_label"),
+  testing_get_by_placeholder: /* @__PURE__ */ __name((scope, placeholder) => getTestingHarnessByPlaceholder(scope, placeholder), "testing_get_by_placeholder"),
   testing_text_content: /* @__PURE__ */ __name((node) => getTestingTextContent(node), "testing_text_content"),
   testing_click: /* @__PURE__ */ __name((node) => dispatchTestingClick(node), "testing_click"),
   testing_input: /* @__PURE__ */ __name((node, value) => dispatchTestingInput(node, value), "testing_input"),
   testing_change_checked: /* @__PURE__ */ __name((node, checked) => dispatchTestingCheckedChange(node, checked), "testing_change_checked"),
   testing_keydown: /* @__PURE__ */ __name((node, key2, shiftKey) => dispatchTestingKeydown(node, key2, shiftKey ?? false), "testing_keydown"),
-  testing_submit: /* @__PURE__ */ __name((node) => dispatchTestingSubmit(node), "testing_submit")
+  testing_submit: /* @__PURE__ */ __name((node) => dispatchTestingSubmit(node), "testing_submit"),
+  testing_flush: /* @__PURE__ */ __name(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+  }, "testing_flush"),
+  testing_wait_for: /* @__PURE__ */ __name(async (check, attempts = 5) => {
+    const limit = Math.max(1, Math.trunc(Number(attempts) || 1));
+    let lastError = null;
+    for (let i = 0; i < limit; i += 1) {
+      try {
+        const attempt = await settleTestingAttempt(check, 10);
+        if (attempt.settled && attempt.value) return attempt.value;
+        lastError = null;
+        if (attempt.settled) {
+          await sleep(10);
+        }
+      } catch (error) {
+        lastError = error;
+        await sleep(10);
+      }
+    }
+    if (lastError) throw lastError;
+    return null;
+  }, "testing_wait_for")
 }), "createTestingFacade");
 
 // src/runtime/app-runtime.ts
@@ -814,6 +942,24 @@ var snapshotComponentFrame = /* @__PURE__ */ __name((frame) => ({
     ...frame.unkeyedChildren.map(snapshotComponentFrame)
   ]
 }), "snapshotComponentFrame");
+var cloneDevtoolsValue = /* @__PURE__ */ __name((value) => {
+  if (value === null || value === void 0) return value;
+  if (typeof globalThis.structuredClone === "function") {
+    try {
+      return globalThis.structuredClone(value);
+    } catch {
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}, "cloneDevtoolsValue");
+var cloneTimelineEvent = /* @__PURE__ */ __name((event) => Object.freeze({
+  ...event,
+  detail: cloneDevtoolsValue(event.detail)
+}), "cloneTimelineEvent");
 var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
   let nextSignalId = 1;
   let nextRootId = 1;
@@ -824,6 +970,21 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
   const rootIds = /* @__PURE__ */ new WeakMap();
   const listeners = /* @__PURE__ */ new Set();
   const timeline = [];
+  const recordEvent = /* @__PURE__ */ __name((type, label, detail = null) => {
+    const event = {
+      id: nextEventId++,
+      type,
+      label,
+      timestamp: Date.now(),
+      detail: cloneDevtoolsValue(detail)
+    };
+    timeline.push(event);
+    if (timeline.length > 500) {
+      timeline.splice(0, timeline.length - 500);
+    }
+    scheduleNotify();
+    return cloneTimelineEvent(event);
+  }, "recordEvent");
   const snapshot = /* @__PURE__ */ __name(() => ({
     roots: Array.from(roots.entries()).map(([id, root]) => deps.snapshotRoot(root, id)),
     resources: deps.snapshotResources(),
@@ -832,7 +993,7 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
       kind: entry.kind,
       value: entry.source.peek()
     })),
-    timeline: timeline.slice()
+    timeline: timeline.map(cloneTimelineEvent)
   }), "snapshot");
   const scheduleNotify = /* @__PURE__ */ __name(() => {
     if (listeners.size === 0 || notifyPending) return;
@@ -885,23 +1046,9 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
         scheduleNotify();
       }
     },
-    recordEvent(type, label, detail = null) {
-      const event = {
-        id: nextEventId++,
-        type,
-        label,
-        timestamp: Date.now(),
-        detail
-      };
-      timeline.push(event);
-      if (timeline.length > 500) {
-        timeline.splice(0, timeline.length - 500);
-      }
-      scheduleNotify();
-      return event;
-    },
+    recordEvent,
     timeline() {
-      return timeline.slice();
+      return timeline.map(cloneTimelineEvent);
     },
     clearTimeline() {
       if (timeline.length === 0) return;
@@ -916,7 +1063,8 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
         version: "beta",
         snapshot: /* @__PURE__ */ __name(() => snapshot(), "snapshot"),
         subscribe,
-        timeline: /* @__PURE__ */ __name(() => timeline.slice(), "timeline"),
+        timeline: /* @__PURE__ */ __name(() => timeline.map(cloneTimelineEvent), "timeline"),
+        recordEvent,
         clearTimeline: /* @__PURE__ */ __name(() => {
           timeline.splice(0, timeline.length);
           scheduleNotify();
@@ -1272,6 +1420,38 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     }
     return baseURI;
   }, "readRouterBasePath");
+  const supportsRouterNavigationApi = /* @__PURE__ */ __name(() => {
+    const windowHandle = getRouterWindowHandle();
+    return typeof (windowHandle?.navigation ?? globalThis.navigation) === "object";
+  }, "supportsRouterNavigationApi");
+  const supportsRouterViewTransition = /* @__PURE__ */ __name(() => {
+    const documentHandle = globalThis.document;
+    return typeof documentHandle?.startViewTransition === "function";
+  }, "supportsRouterViewTransition");
+  const supportsRouterUrlPattern = /* @__PURE__ */ __name(() => typeof globalThis.URLPattern === "function", "supportsRouterUrlPattern");
+  const matchRouterUrlPattern = /* @__PURE__ */ __name((pattern, path2) => {
+    const URLPatternCtor = globalThis.URLPattern;
+    if (typeof URLPatternCtor !== "function") return matchRouterPattern(pattern, path2);
+    try {
+      return new URLPatternCtor({
+        pathname: pattern
+      }).test({
+        pathname: normalizeRouterPath(path2)
+      });
+    } catch {
+      return matchRouterPattern(pattern, path2);
+    }
+  }, "matchRouterUrlPattern");
+  const startRouterViewTransition = /* @__PURE__ */ __name((update) => {
+    if (typeof update !== "function") return false;
+    const documentHandle = globalThis.document;
+    if (typeof documentHandle?.startViewTransition === "function") {
+      documentHandle.startViewTransition(() => update());
+      return true;
+    }
+    update();
+    return false;
+  }, "startRouterViewTransition");
   const url2 = {
     is_available: /* @__PURE__ */ __name(() => typeof URL === "function", "is_available"),
     parse: /* @__PURE__ */ __name((raw) => {
@@ -1504,7 +1684,11 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     getCurrentPath: /* @__PURE__ */ __name(() => readRouterPathname(), "getCurrentPath"),
     getCurrentHash: /* @__PURE__ */ __name(() => readRouterHash(), "getCurrentHash"),
     getCurrentSearch: /* @__PURE__ */ __name(() => readRouterSearch(), "getCurrentSearch"),
+    supportsNavigationApi: /* @__PURE__ */ __name(() => supportsRouterNavigationApi(), "supportsNavigationApi"),
+    supportsViewTransition: /* @__PURE__ */ __name(() => supportsRouterViewTransition(), "supportsViewTransition"),
+    supportsUrlPattern: /* @__PURE__ */ __name(() => supportsRouterUrlPattern(), "supportsUrlPattern"),
     matchRoute: /* @__PURE__ */ __name((pattern, path2) => matchRouterPattern(pattern, path2), "matchRoute"),
+    matchUrlPattern: /* @__PURE__ */ __name((pattern, path2) => matchRouterUrlPattern(pattern, path2), "matchUrlPattern"),
     extractParams: /* @__PURE__ */ __name((pattern, path2) => extractRouterParams(pattern, path2), "extractParams"),
     parseSearchParams: /* @__PURE__ */ __name((search) => parseRouterSearchParams(search), "parseSearchParams"),
     push: /* @__PURE__ */ __name((path2) => {
@@ -1582,7 +1766,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         windowHandle?.scrollTo?.(0, 0);
       } catch {
       }
-    }, "scrollToTop")
+    }, "scrollToTop"),
+    startViewTransition: /* @__PURE__ */ __name((update) => startRouterViewTransition(update), "startViewTransition")
   };
   return {
     url: url2,
@@ -5441,27 +5626,49 @@ var setContainerMarkup = /* @__PURE__ */ __name((container, output) => {
   }
 }, "setContainerMarkup");
 var createSsrRuntime = /* @__PURE__ */ __name((deps) => {
-  const vnodeToHtml = /* @__PURE__ */ __name((node) => {
+  const vnodeToChunks = /* @__PURE__ */ __name(function* (node) {
     const normalized = deps.normalizeNodeForHtml(node);
     const kind = deps.getKind(normalized);
-    if (kind === "text") return escapeHtml(deps.getText(normalized) ?? "");
-    if (kind === "live_text") return escapeHtml(String(deps.getSignalValue(normalized) ?? ""));
-    const children2 = deps.getChildren(normalized).map((child) => vnodeToHtml(child)).join("");
-    if (kind === "fragment") return children2;
+    if (kind === "text") {
+      yield escapeHtml(deps.getText(normalized) ?? "");
+      return;
+    }
+    if (kind === "live_text") {
+      yield escapeHtml(String(deps.getSignalValue(normalized) ?? ""));
+      return;
+    }
+    if (kind === "fragment") {
+      for (const child of deps.getChildren(normalized)) yield* vnodeToChunks(child);
+      return;
+    }
     if (kind === "portal") {
       const target = deps.getTarget?.(normalized);
       const targetAttr = target ? ` data-lumina-portal-target="${escapeHtml(target)}"` : "";
-      return `<lumina-portal-anchor hidden data-lumina-portal-anchor="true"${targetAttr}></lumina-portal-anchor>`;
+      yield `<lumina-portal-anchor hidden data-lumina-portal-anchor="true"${targetAttr}></lumina-portal-anchor>`;
+      return;
     }
     const tag = deps.getTag(normalized) ?? "div";
     const attrs = serializePropsToHtml(deps.getProps(normalized), deps.getKey?.(normalized));
-    if (voidHtmlTags.has(tag.toLowerCase())) {
-      return `<${tag}${attrs}>`;
-    }
-    return `<${tag}${attrs}>${children2}</${tag}>`;
+    yield `<${tag}${attrs}>`;
+    if (voidHtmlTags.has(tag.toLowerCase())) return;
+    for (const child of deps.getChildren(normalized)) yield* vnodeToChunks(child);
+    yield `</${tag}>`;
+  }, "vnodeToChunks");
+  const vnodeToHtml = /* @__PURE__ */ __name((node) => {
+    return Array.from(vnodeToChunks(node)).join("");
   }, "vnodeToHtml");
   return {
-    renderToString: vnodeToHtml,
+    renderToString: /* @__PURE__ */ __name((node, _options) => vnodeToHtml(node), "renderToString"),
+    renderToChunks: /* @__PURE__ */ __name((node, _options) => vnodeToChunks(node), "renderToChunks"),
+    renderToReadableStream: /* @__PURE__ */ __name((node, _options) => {
+      if (typeof ReadableStream !== "function") return null;
+      return new ReadableStream({
+        start(controller) {
+          for (const chunk of vnodeToChunks(node)) controller.enqueue(chunk);
+          controller.close();
+        }
+      });
+    }, "renderToReadableStream"),
     createRenderer: /* @__PURE__ */ __name(() => {
       let current = "";
       return {
@@ -8048,7 +8255,11 @@ var propsOnSubmit = /* @__PURE__ */ __name((handler) => ({
   onSubmit: /* @__PURE__ */ __name((event) => {
     event?.preventDefault?.();
     if (typeof handler !== "function") return void 0;
-    return handler();
+    const outcome = handler();
+    if (outcome && (typeof outcome === "object" || typeof outcome === "function") && typeof outcome.then === "function") {
+      outcome.then(void 0, () => void 0);
+    }
+    return outcome;
   }, "onSubmit")
 }), "propsOnSubmit");
 
@@ -11300,6 +11511,7 @@ var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
   const staleWhileRevalidate = candidate.staleWhileRevalidate === true || candidate.swr === true;
   const abortOnRefresh = candidate.abortOnRefresh === true || candidate.abort === true;
   const scope = typeof candidate.scope === "string" && candidate.scope.trim() ? candidate.scope.trim() : "global";
+  const requestId = typeof candidate.requestId === "string" && candidate.requestId.trim() ? candidate.requestId.trim() : "";
   const tags = normalizeResourceTags(candidate.tags ?? candidate.tag);
   const dependencies = normalizeResourceTags(candidate.dependencies ?? candidate.dependency ?? candidate.dependsOn);
   return {
@@ -11308,10 +11520,16 @@ var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
     staleWhileRevalidate,
     abortOnRefresh,
     scope,
+    requestId,
     tags,
     dependencies
   };
 }, "normalizeResourceOptions");
+var resourceCacheIdentity = /* @__PURE__ */ __name((key2, scope, requestId) => JSON.stringify([
+  scope,
+  requestId,
+  key2
+]), "resourceCacheIdentity");
 var resourceHasData = /* @__PURE__ */ __name((record) => !!record.hasData.peek(), "resourceHasData");
 var createResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => ({
   key: key2,
@@ -11321,6 +11539,7 @@ var createResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => ({
   staleWhileRevalidate: options.staleWhileRevalidate,
   abortOnRefresh: options.abortOnRefresh,
   scope: options.scope,
+  requestId: options.requestId,
   tags: new Set(options.tags),
   dependencies: new Set(options.dependencies),
   data: new Signal(null),
@@ -11394,12 +11613,17 @@ var ensureResourceCurrent = /* @__PURE__ */ __name((record) => {
     startResourceLoad(record);
   }
 }, "ensureResourceCurrent");
-var invalidateResourceRecord = /* @__PURE__ */ __name((record) => {
-  record.expiresAt = 0;
+var discardResourcePending = /* @__PURE__ */ __name((record, abort) => {
   record.version += 1;
-  record.abortController?.abort();
+  if (abort) {
+    record.abortController?.abort();
+  }
   record.abortController = null;
   record.promise = null;
+}, "discardResourcePending");
+var invalidateResourceRecord = /* @__PURE__ */ __name((record) => {
+  record.expiresAt = 0;
+  discardResourcePending(record, record.abortOnRefresh);
   if (!record.hasData.peek() || !record.staleWhileRevalidate) {
     record.status.set("idle");
   }
@@ -11410,7 +11634,8 @@ var invalidateResourceRecord = /* @__PURE__ */ __name((record) => {
 var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
   const normalizedKey = normalizeResourceKey(key2);
   const normalizedOptions = normalizeResourceOptions(options);
-  const existing = resourceCache.get(normalizedKey);
+  const cacheIdentity = resourceCacheIdentity(normalizedKey, normalizedOptions.scope, normalizedOptions.requestId);
+  const existing = resourceCache.get(cacheIdentity);
   if (existing) {
     existing.loader = loader;
     existing.ttlMs = normalizedOptions.ttlMs;
@@ -11418,13 +11643,14 @@ var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
     existing.staleWhileRevalidate = normalizedOptions.staleWhileRevalidate;
     existing.abortOnRefresh = normalizedOptions.abortOnRefresh;
     existing.scope = normalizedOptions.scope;
+    existing.requestId = normalizedOptions.requestId;
     existing.tags = new Set(normalizedOptions.tags);
     existing.dependencies = new Set(normalizedOptions.dependencies);
     ensureResourceCurrent(existing);
     return existing;
   }
   const record = createResourceRecord(normalizedKey, loader, normalizedOptions);
-  resourceCache.set(normalizedKey, record);
+  resourceCache.set(cacheIdentity, record);
   ensureResourceCurrent(record);
   return record;
 }, "resolveResourceRecord");
@@ -11437,11 +11663,14 @@ var asResourceHandle = /* @__PURE__ */ __name((candidate, apiName) => {
 var listResourceRecords = /* @__PURE__ */ __name(() => Array.from(resourceCache.values()), "listResourceRecords");
 var invalidateResourceKey = /* @__PURE__ */ __name((key2) => {
   const normalizedKey = normalizeResourceKey(key2);
-  const record = resourceCache.get(normalizedKey);
-  if (!record) return false;
-  invalidateResourceRecord(record);
-  resourceHooks.notifyDevtools?.();
-  return true;
+  let changed = false;
+  for (const record of resourceCache.values()) {
+    if (record.key !== normalizedKey) continue;
+    invalidateResourceRecord(record);
+    changed = true;
+  }
+  if (changed) resourceHooks.notifyDevtools?.();
+  return changed;
 }, "invalidateResourceKey");
 var invalidateResourcePrefix = /* @__PURE__ */ __name((prefix) => {
   const normalizedPrefix = String(prefix);
@@ -11489,8 +11718,23 @@ var invalidateResourceScope = /* @__PURE__ */ __name((scope) => {
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
 }, "invalidateResourceScope");
+var invalidateResourceRequest = /* @__PURE__ */ __name((requestId) => {
+  const normalizedRequestId = String(requestId).trim();
+  if (!normalizedRequestId) return 0;
+  let count = 0;
+  for (const record of resourceCache.values()) {
+    if (record.requestId !== normalizedRequestId) continue;
+    invalidateResourceRecord(record);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+}, "invalidateResourceRequest");
 var clearResourceRecords = /* @__PURE__ */ __name(() => {
   if (resourceCache.size === 0) return;
+  for (const record of resourceCache.values()) {
+    discardResourcePending(record, true);
+  }
   resourceCache.clear();
   resourceHooks.notifyDevtools?.();
 }, "clearResourceRecords");
@@ -11499,13 +11743,26 @@ var clearResourceScope = /* @__PURE__ */ __name((scope) => {
   let count = 0;
   for (const [key2, record] of resourceCache) {
     if (record.scope !== normalizedScope) continue;
-    record.abortController?.abort();
+    discardResourcePending(record, true);
     resourceCache.delete(key2);
     count += 1;
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
 }, "clearResourceScope");
+var clearResourceRequest = /* @__PURE__ */ __name((requestId) => {
+  const normalizedRequestId = String(requestId).trim();
+  if (!normalizedRequestId) return 0;
+  let count = 0;
+  for (const [key2, record] of resourceCache) {
+    if (record.requestId !== normalizedRequestId) continue;
+    discardResourcePending(record, true);
+    resourceCache.delete(key2);
+    count += 1;
+  }
+  if (count > 0) resourceHooks.notifyDevtools?.();
+  return count;
+}, "clearResourceRequest");
 
 // src/runtime/root-runtime.ts
 var coerceRenderer2 = /* @__PURE__ */ __name((candidate) => coerceRenderer(candidate), "coerceRenderer");
@@ -11622,11 +11879,26 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       handle.record.expiresAt = 0;
       return startResourceLoad(handle.record, true);
     }, "resource_refresh"),
+    resource_submit: /* @__PURE__ */ __name(async (resource, submitting) => {
+      if (submitting instanceof Signal) submitting.set(true);
+      try {
+        return await render2.resource_refresh(resource);
+      } finally {
+        if (submitting instanceof Signal) submitting.set(false);
+      }
+    }, "resource_submit"),
+    resource_submit_optimistic: /* @__PURE__ */ __name(async (resource, submitting, target, optimistic, previous) => {
+      render2.resource_mutate(target, optimistic);
+      try {
+        return await render2.resource_submit(resource, submitting);
+      } catch (error) {
+        render2.resource_mutate(target, previous);
+        throw error;
+      }
+    }, "resource_submit_optimistic"),
     resource_invalidate: /* @__PURE__ */ __name((resource) => {
       const handle = asResourceHandle(resource, "render.resource_invalidate");
-      handle.record.expiresAt = 0;
-      if (!handle.record.hasData.peek() || !handle.record.staleWhileRevalidate) handle.record.status.set("idle");
-      ensureResourceCurrent(handle.record);
+      invalidateResourceRecord(handle.record);
       deps.scheduleDevtoolsNotify();
     }, "resource_invalidate"),
     resource_invalidate_key: /* @__PURE__ */ __name((key2) => {
@@ -11654,6 +11926,11 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
     }, "resource_invalidate_scope"),
+    resource_invalidate_request: /* @__PURE__ */ __name((requestId) => {
+      const count = invalidateResourceRequest(requestId);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    }, "resource_invalidate_request"),
     resource_clear_cache: /* @__PURE__ */ __name(() => {
       clearResourceRecords();
       deps.scheduleDevtoolsNotify();
@@ -11663,9 +11940,16 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
     }, "resource_clear_scope"),
+    resource_clear_request: /* @__PURE__ */ __name((requestId) => {
+      const count = clearResourceRequest(requestId);
+      if (count > 0) deps.scheduleDevtoolsNotify();
+      return count;
+    }, "resource_clear_request"),
     resource_mutate: /* @__PURE__ */ __name((resource, value) => {
       const handle = asResourceHandle(resource, "render.resource_mutate");
       handle.record.version += 1;
+      handle.record.abortController?.abort();
+      handle.record.abortController = null;
       handle.record.promise = null;
       handle.record.data.set(value);
       handle.record.hasData.set(true);
@@ -11704,20 +11988,26 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     createResource: /* @__PURE__ */ __name((key2, loader, options) => render2.resource_create(key2, loader, options), "createResource"),
     renderApp: /* @__PURE__ */ __name((componentFn, props) => render2.render_app(componentFn, props), "renderApp"),
     renderToStringApp: /* @__PURE__ */ __name((componentFn, props) => render2.render_to_string_app(componentFn, props), "renderToStringApp"),
+    renderToChunks: /* @__PURE__ */ __name((node) => render2.render_to_chunks(node), "renderToChunks"),
+    renderToReadableStream: /* @__PURE__ */ __name((node) => render2.render_to_readable_stream(node), "renderToReadableStream"),
     transitionPresence: /* @__PURE__ */ __name((open, props, durationMs, renderChildren) => render2.transition_presence(open, props, durationMs, renderChildren), "transitionPresence"),
     resourceStatus: /* @__PURE__ */ __name((resource) => render2.resource_status(resource), "resourceStatus"),
     resourceData: /* @__PURE__ */ __name((resource) => render2.resource_data(resource), "resourceData"),
     resourceError: /* @__PURE__ */ __name((resource) => render2.resource_error(resource), "resourceError"),
     resourceRead: /* @__PURE__ */ __name((resource) => render2.resource_read(resource), "resourceRead"),
     resourceRefresh: /* @__PURE__ */ __name((resource) => render2.resource_refresh(resource), "resourceRefresh"),
+    resourceSubmit: /* @__PURE__ */ __name((resource, submitting) => render2.resource_submit(resource, submitting), "resourceSubmit"),
+    resourceSubmitOptimistic: /* @__PURE__ */ __name((resource, submitting, target, optimistic, previous) => render2.resource_submit_optimistic(resource, submitting, target, optimistic, previous), "resourceSubmitOptimistic"),
     resourceInvalidate: /* @__PURE__ */ __name((resource) => render2.resource_invalidate(resource), "resourceInvalidate"),
     resourceInvalidateKey: /* @__PURE__ */ __name((key2) => render2.resource_invalidate_key(key2), "resourceInvalidateKey"),
     resourceInvalidatePrefix: /* @__PURE__ */ __name((prefix) => render2.resource_invalidate_prefix(prefix), "resourceInvalidatePrefix"),
     resourceInvalidateTag: /* @__PURE__ */ __name((tag) => render2.resource_invalidate_tag(tag), "resourceInvalidateTag"),
     resourceInvalidateDependency: /* @__PURE__ */ __name((dependency) => render2.resource_invalidate_dependency(dependency), "resourceInvalidateDependency"),
     resourceInvalidateScope: /* @__PURE__ */ __name((scope) => render2.resource_invalidate_scope(scope), "resourceInvalidateScope"),
+    resourceInvalidateRequest: /* @__PURE__ */ __name((requestId) => render2.resource_invalidate_request(requestId), "resourceInvalidateRequest"),
     resourceClearCache: /* @__PURE__ */ __name(() => render2.resource_clear_cache(), "resourceClearCache"),
     resourceClearScope: /* @__PURE__ */ __name((scope) => render2.resource_clear_scope(scope), "resourceClearScope"),
+    resourceClearRequest: /* @__PURE__ */ __name((requestId) => render2.resource_clear_request(requestId), "resourceClearRequest"),
     resourceMutate: /* @__PURE__ */ __name((resource, value) => render2.resource_mutate(resource, value), "resourceMutate"),
     errorBoundary: /* @__PURE__ */ __name((fallback, renderChildren) => render2.error_boundary(fallback, renderChildren), "errorBoundary"),
     mountApp: /* @__PURE__ */ __name((renderer, container, componentFn, props) => render2.mount_app(renderer, container, componentFn, props), "mountApp"),
@@ -11733,13 +12023,18 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       const matches = render2.testing_query_all_by_role(scope, role);
       return matches[0] ?? null;
     }, "testingGetByRole"),
+    testingGetByRoleName: /* @__PURE__ */ __name((scope, role, name) => render2.testing_get_by_role_name(scope, role, name), "testingGetByRoleName"),
     testingQueryAllByRole: /* @__PURE__ */ __name((scope, role) => render2.testing_query_all_by_role(scope, role), "testingQueryAllByRole"),
+    testingGetByLabel: /* @__PURE__ */ __name((scope, label) => render2.testing_get_by_label(scope, label), "testingGetByLabel"),
+    testingGetByPlaceholder: /* @__PURE__ */ __name((scope, placeholder) => render2.testing_get_by_placeholder(scope, placeholder), "testingGetByPlaceholder"),
     testingTextContent: /* @__PURE__ */ __name((node) => render2.testing_text_content(node), "testingTextContent"),
     testingClick: /* @__PURE__ */ __name((node) => render2.testing_click(node), "testingClick"),
     testingInput: /* @__PURE__ */ __name((node, value) => render2.testing_input(node, value), "testingInput"),
     testingChangeChecked: /* @__PURE__ */ __name((node, checked) => render2.testing_change_checked(node, checked), "testingChangeChecked"),
     testingKeydown: /* @__PURE__ */ __name((node, key2, shiftKey) => render2.testing_keydown(node, key2, shiftKey), "testingKeydown"),
     testingSubmit: /* @__PURE__ */ __name((node) => render2.testing_submit(node), "testingSubmit"),
+    testingFlush: /* @__PURE__ */ __name(() => render2.testing_flush(), "testingFlush"),
+    testingWaitFor: /* @__PURE__ */ __name((check, attempts) => render2.testing_wait_for(check, attempts), "testingWaitFor"),
     devtoolsSnapshot: /* @__PURE__ */ __name(() => render2.devtools_snapshot(), "devtoolsSnapshot"),
     installDevtools: /* @__PURE__ */ __name((key2) => render2.install_devtools(key2), "installDevtools"),
     devtoolsRecordEvent: /* @__PURE__ */ __name((type, label, detail) => render2.devtools_record_event(type, label, detail), "devtoolsRecordEvent"),
@@ -11872,6 +12167,8 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     create_canvas_renderer: /* @__PURE__ */ __name((options) => deps.createCanvasRenderer(options), "create_canvas_renderer"),
     create_terminal_renderer: /* @__PURE__ */ __name(() => deps.createTerminalRenderer(), "create_terminal_renderer"),
     render_to_string: /* @__PURE__ */ __name((node) => deps.renderToString(node), "render_to_string"),
+    render_to_chunks: /* @__PURE__ */ __name((node) => deps.renderToChunks(node), "render_to_chunks"),
+    render_to_readable_stream: /* @__PURE__ */ __name((node) => deps.renderToReadableStream(node), "render_to_readable_stream"),
     render_to_terminal: /* @__PURE__ */ __name((node) => deps.renderToTerminal(node), "render_to_terminal"),
     create_root: /* @__PURE__ */ __name((renderer, container) => new deps.RenderRoot(deps.coerceRenderer(renderer), container), "create_root"),
     mount: /* @__PURE__ */ __name((renderer, container, node) => {
@@ -11905,13 +12202,18 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     testing_body: /* @__PURE__ */ __name((harness) => deps.appRuntime.testingFacade.testing_body(harness), "testing_body"),
     testing_get_by_id: /* @__PURE__ */ __name((harness, id) => deps.appRuntime.testingFacade.testing_get_by_id(harness, id), "testing_get_by_id"),
     testing_get_by_text: /* @__PURE__ */ __name((scope, value) => deps.appRuntime.testingFacade.testing_get_by_text(scope, value), "testing_get_by_text"),
+    testing_get_by_role_name: /* @__PURE__ */ __name((scope, role, name) => deps.appRuntime.testingFacade.testing_get_by_role_name(scope, role, name), "testing_get_by_role_name"),
     testing_query_all_by_role: /* @__PURE__ */ __name((scope, role) => deps.appRuntime.testingFacade.testing_query_all_by_role(scope, role), "testing_query_all_by_role"),
+    testing_get_by_label: /* @__PURE__ */ __name((scope, label) => deps.appRuntime.testingFacade.testing_get_by_label(scope, label), "testing_get_by_label"),
+    testing_get_by_placeholder: /* @__PURE__ */ __name((scope, placeholder) => deps.appRuntime.testingFacade.testing_get_by_placeholder(scope, placeholder), "testing_get_by_placeholder"),
     testing_text_content: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_text_content(node), "testing_text_content"),
     testing_click: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_click(node), "testing_click"),
     testing_input: /* @__PURE__ */ __name((node, value) => deps.appRuntime.testingFacade.testing_input(node, value), "testing_input"),
     testing_change_checked: /* @__PURE__ */ __name((node, checked) => deps.appRuntime.testingFacade.testing_change_checked(node, checked), "testing_change_checked"),
     testing_keydown: /* @__PURE__ */ __name((node, key2, shiftKey) => deps.appRuntime.testingFacade.testing_keydown(node, key2, shiftKey), "testing_keydown"),
     testing_submit: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_submit(node), "testing_submit"),
+    testing_flush: /* @__PURE__ */ __name(() => deps.appRuntime.testingFacade.testing_flush(), "testing_flush"),
+    testing_wait_for: /* @__PURE__ */ __name((check, attempts) => deps.appRuntime.testingFacade.testing_wait_for(check, attempts), "testing_wait_for"),
     mount_custom_element: /* @__PURE__ */ __name((host, componentFn, options) => deps.appRuntime.mountCustomElementInternal(host, componentFn, options), "mount_custom_element"),
     define_custom_element: /* @__PURE__ */ __name((tagName, componentFn, options) => deps.appRuntime.defineCustomElementInternal(tagName, componentFn, options), "define_custom_element"),
     update: /* @__PURE__ */ __name((root, node) => {
@@ -12964,6 +13266,8 @@ var devtools = createDevtoolsController({
     status: record.status.peek(),
     hasData: record.hasData.peek(),
     error: record.error.peek(),
+    scope: record.scope,
+    requestId: record.requestId,
     tags: Array.from(record.tags)
   })), "snapshotResources")
 });
@@ -13014,6 +13318,8 @@ var ssrRuntime = createSsrRuntime({
 });
 var createSsrRenderer = /* @__PURE__ */ __name(() => ssrRuntime.createRenderer(), "createSsrRenderer");
 var renderToString = /* @__PURE__ */ __name((node) => ssrRuntime.renderToString(node), "renderToString");
+var renderToChunks = /* @__PURE__ */ __name((node) => Array.from(ssrRuntime.renderToChunks(node)), "renderToChunks");
+var renderToReadableStream = /* @__PURE__ */ __name((node) => ssrRuntime.renderToReadableStream(node), "renderToReadableStream");
 var renderTargetsRuntime = createRenderTargetsRuntime({
   getKind: /* @__PURE__ */ __name((node) => node.kind, "getKind"),
   getTag: /* @__PURE__ */ __name((node) => node.tag, "getTag"),
@@ -13119,6 +13425,8 @@ var render = createRenderApi({
   appRuntime,
   headlessPrimitiveRender,
   renderToString,
+  renderToChunks,
+  renderToReadableStream,
   renderToTerminal,
   createDomRenderer: createDomRenderer2,
   createSsrRenderer,
@@ -13161,14 +13469,18 @@ var renderSurface = {
   resourceError: render.resource_error,
   resourceRead: render.resource_read,
   resourceRefresh: render.resource_refresh,
+  resourceSubmit: render.resource_submit,
+  resourceSubmitOptimistic: render.resource_submit_optimistic,
   resourceInvalidate: render.resource_invalidate,
   resourceInvalidateKey: render.resource_invalidate_key,
   resourceInvalidatePrefix: render.resource_invalidate_prefix,
   resourceInvalidateTag: render.resource_invalidate_tag,
   resourceInvalidateDependency: render.resource_invalidate_dependency,
   resourceInvalidateScope: render.resource_invalidate_scope,
+  resourceInvalidateRequest: render.resource_invalidate_request,
   resourceClearCache: render.resource_clear_cache,
   resourceClearScope: render.resource_clear_scope,
+  resourceClearRequest: render.resource_clear_request,
   resourceMutate: render.resource_mutate,
   suspense: render.suspense,
   errorBoundary: render.error_boundary,
@@ -13187,6 +13499,8 @@ var renderSurface = {
   testingChangeChecked: render.testing_change_checked,
   testingKeydown: render.testing_keydown,
   testingSubmit: render.testing_submit,
+  testingFlush: render.testing_flush,
+  testingWaitFor: render.testing_wait_for,
   mountCustomElement: render.mount_custom_element,
   defineCustomElement: render.define_custom_element,
   children: render.children,
@@ -13284,6 +13598,9 @@ var renderSurface = {
   transitionPresence: render.transition_presence,
   testingGetByText: render.testing_get_by_text,
   testingGetByRole: render.testingGetByRole,
+  testingGetByRoleName: render.testingGetByRoleName,
+  testingGetByLabel: render.testingGetByLabel,
+  testingGetByPlaceholder: render.testingGetByPlaceholder,
   testingQueryAllByRole: render.testing_query_all_by_role,
   devtoolsSnapshot: render.devtools_snapshot,
   installDevtools: render.install_devtools,
@@ -13295,7 +13612,7 @@ var renderSurface = {
   ssgWritePage: render.ssg_write_page,
   ssgWriteApp: render.ssg_write_app
 };
-var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceInvalidateDependency, resourceInvalidateScope, resourceClearCache, resourceClearScope, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingQueryAllByRole, devtoolsSnapshot, installDevtools, devtoolsRecordEvent, devtoolsTimeline, devtoolsClearTimeline, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
+var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceSubmit, resourceSubmitOptimistic, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceInvalidateDependency, resourceInvalidateScope, resourceInvalidateRequest, resourceClearCache, resourceClearScope, resourceClearRequest, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, testingFlush, testingWaitFor, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingGetByRoleName, testingGetByLabel, testingGetByPlaceholder, testingQueryAllByRole, devtoolsSnapshot, installDevtools, devtoolsRecordEvent, devtoolsTimeline, devtoolsClearTimeline, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
 var reactive = {
   createSignal,
   get,
@@ -13504,10 +13821,13 @@ export {
   remember,
   render,
   renderApp,
+  renderToChunks,
+  renderToReadableStream,
   renderToString,
   renderToStringApp,
   renderToTerminal,
   resourceClearCache,
+  resourceClearRequest,
   resourceClearScope,
   resourceData,
   resourceError,
@@ -13515,12 +13835,15 @@ export {
   resourceInvalidateDependency,
   resourceInvalidateKey,
   resourceInvalidatePrefix,
+  resourceInvalidateRequest,
   resourceInvalidateScope,
   resourceInvalidateTag,
   resourceMutate,
   resourceRead,
   resourceRefresh,
   resourceStatus,
+  resourceSubmit,
+  resourceSubmitOptimistic,
   reverse_vec,
   router,
   sab_channel,
@@ -13560,8 +13883,12 @@ export {
   testingClick,
   testingContainer,
   testingCreateDomHarness,
+  testingFlush,
   testingGetById,
+  testingGetByLabel,
+  testingGetByPlaceholder,
   testingGetByRole,
+  testingGetByRoleName,
   testingGetByText,
   testingHydrateApp,
   testingInput,
@@ -13570,6 +13897,7 @@ export {
   testingQueryAllByRole,
   testingSubmit,
   testingTextContent,
+  testingWaitFor,
   text,
   thread,
   time,

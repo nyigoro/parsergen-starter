@@ -46,6 +46,7 @@ describe('lumina init', () => {
       outDir?: string;
       target?: string;
     };
+    const manifest = fs.readFileSync(path.join(dir, 'lumina.toml'), 'utf-8');
     const indexHtml = fs.readFileSync(path.join(dir, 'index.html'), 'utf-8');
     const appSource = fs.readFileSync(path.join(dir, 'src', 'app.lm'), 'utf-8');
     const clientSource = fs.readFileSync(path.join(dir, 'src', 'client.lm'), 'utf-8');
@@ -60,6 +61,8 @@ describe('lumina init', () => {
     expect(pkg.scripts?.dev).toContain('vite --host 127.0.0.1');
     expect(pkg.devDependencies?.vite).toBeTruthy();
     expect(config).toMatchObject({ entries: ['src/client.lm'], outDir: 'dist', target: 'js', module: 'esm' });
+    expect(manifest).toContain('[package]');
+    expect(manifest).toContain('entry = "src/client.lm"');
     expect(indexHtml).toContain('/dist/main.js');
     expect(appSource).toContain('@std/router');
     expect(appSource).toContain('routeLoader');
@@ -91,6 +94,27 @@ describe('lumina init', () => {
     expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(false);
     expect(appSource).not.toContain('@std/router');
     expect(clientSource).toContain('App()');
+  });
+
+  test('can emit a plugin-native Vite starter mode', async () => {
+    const dir = createTempDir();
+    process.chdir(dir);
+
+    await initProject({ yes: true, vitePlugin: true });
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
+      scripts?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const viteConfig = fs.readFileSync(path.join(dir, 'vite.config.ts'), 'utf-8');
+    const indexHtml = fs.readFileSync(path.join(dir, 'index.html'), 'utf-8');
+
+    expect(pkg.scripts?.build).toBe('vite build');
+    expect(pkg.scripts?.dev).toBe('vite --host 127.0.0.1');
+    expect(pkg.devDependencies?.['lumina-lang']).toBeTruthy();
+    expect(viteConfig).toContain("from 'lumina-lang/vite-plugin'");
+    expect(viteConfig).toContain('luminaPlugin()');
+    expect(indexHtml).toContain('/src/client.lm');
   });
 
   test('creates an SSR starter with SSG and hydration files', async () => {

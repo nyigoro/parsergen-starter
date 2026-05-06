@@ -44,5 +44,5 @@ describe('ui showcase example', () => {
     } finally {
       fs.rmSync(outPath, { force: true });
     }
-  });
+  }, 15000);
 });

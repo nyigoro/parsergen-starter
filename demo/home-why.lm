@@ -1,0 +1,24 @@
+import { div_node, subheading, paragraph, anchor_node } from "./components.lm";
+
+fn why_card(title: string, content: string) -> VNode {
+  return div_node("lumina-why-card rounded-xl border border-gray-800 bg-gray-900", [
+    subheading(title),
+    paragraph("mt-3 text-sm leading-7 text-gray-400", content)
+  ]);
+}
+
+pub fn why_section(doc_link_class: string) -> VNode {
+  let title = subheading("Why Lumina?");
+  let intro = paragraph(
+    "mt-3 text-sm leading-7 text-gray-400",
+    "Use Lumina when you want stronger types than TypeScript, richer language ergonomics than AssemblyScript, and a more browser-native UI/runtime story than ML-to-WASM languages focused mainly on compilation targets."
+  );
+  let why_ts = why_card("Over TypeScript", "Choose Lumina when you want algebraic data types, traits, and exhaustiveness checks to stay with you across both JS and WASM targets.");
+  let why_as = why_card("Over AssemblyScript", "Choose Lumina when the language design matters as much as the target: HM inference, match-heavy modeling, and higher-level app code, not just TypeScript-shaped WASM.");
+  let why_ml = why_card("Over Grain / Gleam", "Choose Lumina when you want an ML-inspired type story with a browser-first runtime, reactive UI, WebGPU, workers, and direct JS interop in the same toolchain.");
+  let link = anchor_node(doc_link_class, "./docs/#/why-lumina", "Read the full comparison");
+  return div_node("lumina-why-section rounded-2xl border border-gray-800 bg-gray-950", [
+    div_node("lumina-why-copy space-y-3", [title, intro, link]),
+    div_node("lumina-why-grid", [why_ts, why_as, why_ml])
+  ]);
+}

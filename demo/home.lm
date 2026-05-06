@@ -1,17 +1,16 @@
-import { props_class, props_id, props_merge, vnode, text } from "@std/render";
-import { div_node, heading, subheading, paragraph, anchor_node } from "./components.lm";
+import { div_node, paragraph, anchor_node } from "./components.lm";
+import { home_header } from "./home-header.lm";
+import { examples_section } from "./home-examples.lm";
+import { why_section } from "./home-why.lm";
+import { docs_section } from "./home-docs.lm";
 
 pub fn home_view() -> VNode {
-  let primary_class = "rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-500";
-  let secondary_class = "rounded-lg bg-gray-800 px-6 py-3 font-medium text-white hover:bg-gray-700";
-  let doc_link_class = "inline-flex items-center rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm font-medium text-gray-200 hover:border-blue-500 hover:text-white";
-  let title = heading("Lumina");
-  let subtitle = paragraph(
-    "mt-4 text-xl text-gray-400",
-    "A statically typed, web-native language for JavaScript and WebAssembly."
-  );
+  let primary_class = "rounded-lg bg-amber-400 px-6 py-3 font-semibold text-gray-950 hover:bg-amber-300";
+  let secondary_class = "rounded-lg border border-teal-700/70 bg-teal-950/80 px-6 py-3 font-medium text-teal-50 hover:bg-teal-900";
+  let doc_link_class = "inline-flex items-center rounded-lg border border-amber-500/30 bg-gray-950/70 px-4 py-2 text-sm font-medium text-amber-100 hover:border-amber-300 hover:text-white";
+
   let hero_copy = paragraph(
-    "mt-4 max-w-2xl text-base leading-8 text-gray-300",
+    "max-w-2xl text-base leading-8 text-gray-300",
     "Build reactive UIs, browser-native systems, and WASM workloads in one language. Lumina combines HM type inference, traits, pattern matching, and a browser-first runtime."
   );
   let playground_button = anchor_node(
@@ -34,63 +33,13 @@ pub fn home_view() -> VNode {
     "https://github.com/nyigoro/lumina-lang",
     "GitHub"
   );
-  let actions = div_node("mt-8 flex flex-wrap gap-4", [playground_button, docs_button, why_button, github_button]);
-  let code_block = vnode(
-    "div",
-    props_merge(
-      props_class("home-code-sample overflow-hidden rounded-2xl border border-gray-800 bg-gray-950 text-sm leading-6"),
-      props_id("home-code-sample")
-    ),
-    [text("Loading syntax-highlighted sample...")]
-  );
-  let hero_text = div_node("space-y-4", [title, subtitle, hero_copy, actions]);
-  let hero = div_node("grid gap-8 py-16 lg:grid-cols-2 lg:items-start", [hero_text, code_block]);
+  let actions = div_node("mt-6 flex flex-wrap gap-4", [playground_button, docs_button, why_button, github_button]);
+  let hero_text = div_node("space-y-5", [hero_copy, actions]);
+  let hero = div_node("lumina-hero-section", [hero_text]);
 
-  let trait_chip = vnode("span", props_class("rounded-full border border-blue-500/40 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200"), [text("Traits")]);
-  let match_chip = vnode("span", props_class("rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200"), [text("match")]);
-  let vec_chip = vnode("span", props_class("rounded-full border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-1 text-xs font-medium text-fuchsia-200"), [text("Vec")]);
-  let signal_chip = vnode("span", props_class("rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200"), [text("Signal")]);
-  let chip_row = div_node("flex flex-wrap gap-2", [trait_chip, match_chip, vec_chip, signal_chip]);
-
-  let why_title = subheading("Why Lumina?");
-  let why_intro = paragraph(
-    "mt-3 text-sm leading-7 text-gray-400",
-    "Use Lumina when you want stronger types than TypeScript, richer language ergonomics than AssemblyScript, and a more browser-native UI/runtime story than ML-to-WASM languages focused mainly on compilation targets."
+  let body = div_node(
+    "mx-auto flex max-w-6xl flex-col gap-10 px-6 pb-12 pt-3 lg:px-8",
+    [hero, examples_section(), why_section(doc_link_class), docs_section(doc_link_class)]
   );
-  let why_ts = div_node("rounded-xl border border-gray-800 bg-gray-900 p-6", [
-    subheading("Over TypeScript"),
-    paragraph("mt-3 text-sm leading-7 text-gray-400", "Choose Lumina when you want algebraic data types, traits, and exhaustiveness checks to stay with you across both JS and WASM targets.")
-  ]);
-  let why_as = div_node("rounded-xl border border-gray-800 bg-gray-900 p-6", [
-    subheading("Over AssemblyScript"),
-    paragraph("mt-3 text-sm leading-7 text-gray-400", "Choose Lumina when the language design matters as much as the target: HM inference, match-heavy modeling, and higher-level app code, not just TypeScript-shaped WASM.")
-  ]);
-  let why_ml = div_node("rounded-xl border border-gray-800 bg-gray-900 p-6", [
-    subheading("Over Grain / Gleam"),
-    paragraph("mt-3 text-sm leading-7 text-gray-400", "Choose Lumina when you want an ML-inspired type story with a browser-first runtime, reactive UI, WebGPU, workers, and direct JS interop in the same toolchain.")
-  ]);
-  let why_link = anchor_node(
-    doc_link_class,
-    "./docs/#/why-lumina",
-    "Read the full comparison"
-  );
-  let why = div_node("space-y-5 rounded-2xl border border-gray-800 bg-gray-950 p-6", [
-    div_node("space-y-3", [why_title, why_intro, why_link]),
-    div_node("grid gap-6 lg:grid-cols-3", [why_ts, why_as, why_ml])
-  ]);
-
-  let docs_title = subheading("Read Next");
-  let docs_intro = paragraph(
-    "mt-3 text-sm leading-7 text-gray-400",
-    "Start with the docs that answer the exact questions people are asking: why Lumina exists, when to pick JS or WASM, and what is solid today."
-  );
-  let getting_started = anchor_node(doc_link_class, "./docs/#/getting-started", "Getting Started");
-  let why_doc = anchor_node(doc_link_class, "./docs/#/why-lumina", "Why Lumina?");
-  let targets_doc = anchor_node(doc_link_class, "./docs/#/js-vs-wasm", "JS vs WASM targets");
-  let capabilities_doc = anchor_node(doc_link_class, "./docs/#/capabilities", "Capabilities");
-  let docs_grid = div_node("mt-4 flex flex-wrap gap-3", [getting_started, why_doc, targets_doc, capabilities_doc]);
-  let docs_section = div_node("rounded-xl border border-gray-800 bg-gray-900 p-6", [docs_title, docs_intro, docs_grid]);
-
-  let body = div_node("mx-auto flex max-w-6xl flex-col gap-10", [hero, chip_row, why, docs_section]);
-  return div_node("min-h-screen bg-gray-950 p-8 text-white", [body]);
+  return div_node("lumina-home-page min-h-screen text-white", [home_header(), body]);
 }

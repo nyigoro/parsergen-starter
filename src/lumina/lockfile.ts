@@ -3,11 +3,19 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { PackageManifest } from './package-manifest.js';
+import {
+  BROWSER_LOCKFILE_FILENAME,
+  LEGACY_LOCKFILE_FILENAME,
+  LOCKFILE_FILENAME,
+  LOCKFILE_VERSION,
+} from './lockfile-format.js';
 
-export const LOCKFILE_FILENAME = 'lumina.lock';
-export const LEGACY_LOCKFILE_FILENAME = 'lumina.lock.json';
-export const BROWSER_LOCKFILE_FILENAME = 'lumina.browser.lock';
-export const LOCKFILE_VERSION = 1;
+export {
+  BROWSER_LOCKFILE_FILENAME,
+  LEGACY_LOCKFILE_FILENAME,
+  LOCKFILE_FILENAME,
+  LOCKFILE_VERSION,
+} from './lockfile-format.js';
 
 export type LockfileEntry = {
   name: string;

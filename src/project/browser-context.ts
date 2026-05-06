@@ -9,6 +9,12 @@ import { type LuminaProgram, type LuminaType } from '../lumina/ast.js';
 import { createStdModuleRegistry, type ModuleRegistry } from '../lumina/module-registry.js';
 import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
 import { resolveModuleBindings, type ModuleExport, type ModuleNamespace } from '../lumina/module-registry.js';
+import {
+  LEGACY_LOCKFILE_FILENAME,
+  LOCKFILE_FILENAME,
+  normalizeLockfileObject,
+  type NormalizedLockfile,
+} from '../lumina/lockfile-format.js';
 
 export interface BrowserSourceDocument {
   uri: string;
@@ -37,17 +43,7 @@ type ImportBinding = {
   namespace: boolean;
 };
 
-type LuminaLockfile = {
-  lockfileVersion: number;
-  packages: Record<string, LockfilePackage>;
-};
-
-type LockfilePackage = {
-  version: string;
-  resolved: string;
-  integrity?: string;
-  lumina?: string | Record<string, string>;
-};
+type LuminaLockfile = NormalizedLockfile;
 
 type BareResolveResult =
   | { resolved: string }
@@ -56,6 +52,18 @@ type BareResolveResult =
 const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
+};
+
+const virtualExt = (spec: string): string => {
+  const lastSlash = spec.lastIndexOf('/');
+  const fileName = lastSlash === -1 ? spec : spec.slice(lastSlash + 1);
+  const dot = fileName.lastIndexOf('.');
+  return dot === -1 ? '' : fileName.slice(dot);
+};
+
+const isLuminaVirtualSource = (spec: string): boolean => {
+  const ext = virtualExt(spec);
+  return !ext || ext === '.lm' || ext === '.lumina' || ext === '.lum';
 };
 
 export class BrowserProjectContext {
@@ -104,6 +112,7 @@ export class BrowserProjectContext {
   registerVirtualFile(spec: string, text: string, version: number = 1) {
     const normalized = this.normalizeVirtualSpec(spec);
     this.virtualFiles.set(normalized, text);
+    if (!isLuminaVirtualSource(normalized)) return;
     const uri = this.virtualUriFor(normalized);
     this.addOrUpdateDocument(uri, text, version);
   }
@@ -111,7 +120,7 @@ export class BrowserProjectContext {
   addOrUpdateDocument(uri: string, text: string, version: number = 1) {
     if (!this.parser) return;
     const normalized = this.toVirtualUri(uri);
-    const imports = extractImports(text);
+    const imports = extractImports(text, { parser: this.parser, grammarSource: normalized });
     const existing = this.documents.get(normalized);
     const doc: BrowserSourceDocument = {
       uri: normalized,
@@ -389,8 +398,10 @@ export class BrowserProjectContext {
     const spec = this.normalizeVirtualSpec(fromUri);
     let current = spec.includes('/') ? spec.slice(0, spec.lastIndexOf('/')) : '';
     while (true) {
-      const candidate = current ? `${current}/lumina.lock.json` : 'lumina.lock.json';
-      if (this.virtualFiles.has(candidate)) return candidate;
+      const modern = current ? `${current}/${LOCKFILE_FILENAME}` : LOCKFILE_FILENAME;
+      if (this.virtualFiles.has(modern)) return modern;
+      const legacy = current ? `${current}/${LEGACY_LOCKFILE_FILENAME}` : LEGACY_LOCKFILE_FILENAME;
+      if (this.virtualFiles.has(legacy)) return legacy;
       if (!current) return null;
       current = current.includes('/') ? current.slice(0, current.lastIndexOf('/')) : '';
     }
@@ -402,7 +413,8 @@ export class BrowserProjectContext {
     const raw = this.virtualFiles.get(spec);
     if (!raw) return null;
     try {
-      const parsed = JSON.parse(raw) as LuminaLockfile;
+      const parsed = normalizeLockfileObject(JSON.parse(raw));
+      if (!parsed) return null;
       this.lockfileCache.set(spec, parsed);
       return parsed;
     } catch {
@@ -433,24 +445,24 @@ export class BrowserProjectContext {
     const lockSpec = this.findLockfileSpec(fromUri);
     if (!lockSpec) {
       return {
-        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+        error: { code: 'PKG-004', message: `Cannot resolve package imports: ${LOCKFILE_FILENAME} not found` },
       };
     }
     const lockfile = this.loadLockfile(lockSpec);
     if (!lockfile) {
       return {
-        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+        error: { code: 'PKG-004', message: `Cannot resolve package imports: ${LOCKFILE_FILENAME} not found` },
       };
     }
     const { pkgName, subpath } = this.parsePackageSpecifier(specifier);
     const pkg = lockfile.packages?.[pkgName];
     if (!pkg) {
-      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in lumina.lock.json` } };
+      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in ${LOCKFILE_FILENAME}` } };
     }
     const lumina = pkg.lumina;
     if (!lumina) {
       return {
-        error: { code: 'PKG-002', message: `Package '${pkgName}' missing 'lumina' field in lumina.lock.json` },
+        error: { code: 'PKG-002', message: `Package '${pkgName}' missing 'lumina' field in ${LOCKFILE_FILENAME}` },
       };
     }
     let entry: string | undefined;
@@ -476,7 +488,7 @@ export class BrowserProjectContext {
       return { error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '.'` } };
     }
     const lockDir = lockSpec.includes('/') ? lockSpec.slice(0, lockSpec.lastIndexOf('/')) : '';
-    let pkgRoot = pkg.resolved;
+    let pkgRoot = pkg.path ?? pkg.resolved;
     if (!pkgRoot.startsWith('/')) {
       pkgRoot = lockDir ? `${lockDir}/${pkgRoot}` : pkgRoot;
     }
@@ -520,10 +532,11 @@ export class BrowserProjectContext {
   }
 
   private ensureVirtualExtension(resolved: string): string {
-    if (resolved.endsWith('.lum') || resolved.endsWith('.lumina')) return resolved;
-    if (this.virtualFiles.has(`${resolved}.lum`)) return `${resolved}.lum`;
+    if (resolved.endsWith('.lm') || resolved.endsWith('.lumina') || resolved.endsWith('.lum')) return resolved;
+    if (this.virtualFiles.has(`${resolved}.lm`)) return `${resolved}.lm`;
     if (this.virtualFiles.has(`${resolved}.lumina`)) return `${resolved}.lumina`;
-    return `${resolved}.lum`;
+    if (this.virtualFiles.has(`${resolved}.lum`)) return `${resolved}.lum`;
+    return `${resolved}.lm`;
   }
 }
 

@@ -1,4 +1,19 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
+
+@source './*.html';
+@source './*.ts';
+@source './*.tsx';
+@source './*.lm';
+@source './content/**/*.lm';
+
+:root {
+  --lumina-ink: #03070a;
+  --lumina-panel: #10191b;
+  --lumina-teal: #0e3a43;
+  --lumina-copper: #9b5a32;
+  --lumina-gold: #e4bd73;
+  --lumina-cream: #f6e3b5;
+}
 
 /* Base styles for a modern dark theme */
 body {
@@ -56,24 +71,239 @@ button {
   /* gray-200 */
 }
 
-.home-code-sample {
+.lumina-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+  height: 52vh;
+  max-height: 500px;
+  overflow: hidden;
+  text-align: center;
+  background: var(--lumina-ink);
+}
+
+.lumina-banner-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.lumina-home-page {
+  position: relative;
+  overflow-x: hidden;
+  background-color: var(--lumina-ink);
+  background-image:
+    linear-gradient(180deg, rgb(3 7 10 / 0.48) 0, rgb(3 7 10 / 0.9) 36rem, var(--lumina-ink) 82rem),
+    linear-gradient(90deg, var(--lumina-ink) 0, rgb(3 7 10 / 0.44) 26%, rgb(3 7 10 / 0.48) 74%, var(--lumina-ink) 100%),
+    radial-gradient(circle at 14% 18%, rgb(228 189 115 / 0.14), transparent 22rem),
+    radial-gradient(circle at 82% 8%, rgb(14 58 67 / 0.26), transparent 24rem),
+    url('/assets/lumina-texture.png');
+  background-attachment: scroll, scroll, scroll, scroll, fixed;
+  background-position: center top, center top, left top, right top, center center;
+  background-repeat: no-repeat;
+  background-size: auto, auto, auto, auto, cover;
+}
+
+.lumina-home-page::before {
+  content: "";
+  position: absolute;
+  inset: 31rem 0 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgb(228 189 115 / 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgb(228 189 115 / 0.035) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, transparent, #000 12rem, transparent 54rem);
+}
+
+.lumina-home-page > * {
+  position: relative;
+}
+
+.lumina-hero-section,
+.lumina-docs-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.lumina-hero-section {
+  padding-block: clamp(1rem, 2.5vh, 2rem) clamp(2rem, 5vh, 4rem);
+}
+
+.lumina-docs-section {
+  padding-block: clamp(2rem, 5vh, 4rem);
+}
+
+@media (max-width: 640px) {
+  .lumina-banner {
+    min-height: 260px;
+    height: 34vh;
+  }
+
+  .lumina-banner-image {
+    object-fit: contain;
+  }
+
+  .lumina-home-page {
+    background-attachment: scroll;
+    background-size: auto, auto, auto, auto, auto 100%;
+  }
+}
+
+.lumina-examples-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(1.25rem, 3vh, 2rem);
+  padding-block: clamp(2rem, 4vh, 3.5rem);
+}
+
+.lumina-example-heading {
+  max-width: 44rem;
+}
+
+.lumina-example-grid {
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+.lumina-example-card {
+  display: flex;
+  min-width: 0;
   min-height: 20rem;
-  max-height: 24rem;
-  overflow-y: auto;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid rgb(228 189 115 / 0.58);
+  border-radius: 0.75rem;
+  background: rgb(20 18 15 / 0.9);
+  padding: 1.75rem;
+  box-shadow: 0 28px 88px rgb(0 0 0 / 0.34);
 }
 
-.home-code-sample .shiki {
-  margin: 0;
-  min-height: 100%;
-  overflow-x: auto;
-  padding: 1.25rem;
+.lumina-example-label {
+  color: var(--lumina-gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-.home-code-sample .shiki code {
-  display: block;
-  min-width: max-content;
+.lumina-example-code {
+  max-width: 100%;
+  margin: 1.25rem 0;
+  overflow: auto;
+  color: #e9edf0;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: clamp(0.78rem, 1.1vw, 0.95rem);
+  font-weight: 600;
+  line-height: 1.55;
+  overflow-wrap: normal;
+  tab-size: 2;
+  white-space: pre;
 }
 
-.home-code-sample .line {
-  display: block;
+.lumina-code-token {
+  color: #e9edf0;
+}
+
+.lumina-code-keyword {
+  color: #ff8f7e;
+}
+
+.lumina-code-call {
+  color: #8fc7ff;
+}
+
+.lumina-code-string {
+  color: #e9d08a;
+}
+
+.lumina-code-type {
+  color: #7dd7d0;
+}
+
+.lumina-code-number {
+  color: #f5b861;
+}
+
+.lumina-code-variant {
+  color: #d7b8ff;
+}
+
+.lumina-example-action {
+  align-self: center;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #efd48f, #d7ae5d);
+  color: #1b1713;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 0.85rem 2.75rem;
+}
+
+.lumina-example-action:hover {
+  background: linear-gradient(180deg, #ffe6a6, #e2bd73);
+}
+
+.lumina-home-chips {
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .lumina-examples-section {
+    min-height: clamp(34rem, 88svh, 56rem);
+  }
+
+  .lumina-example-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.lumina-why-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(1.5rem, 4vh, 3rem);
+  padding: clamp(1.5rem, 4vw, 3rem);
+}
+
+.lumina-why-copy {
+  max-width: 70rem;
+}
+
+.lumina-why-grid {
+  display: grid;
+  gap: clamp(1rem, 2vw, 1.75rem);
+  min-width: 0;
+}
+
+.lumina-why-card {
+  display: flex;
+  min-width: 0;
+  min-height: clamp(13rem, 26vh, 17.25rem);
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+}
+
+@media (min-width: 1024px) {
+  .lumina-why-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 760px) {
+  .lumina-why-card {
+    min-height: 12rem;
+  }
+}
+
+.lumina-docs-section {
+  padding: clamp(1.5rem, 4vw, 3rem);
 }

@@ -5,7 +5,6 @@ import {
   props_merge,
   props_href
 } from "@std/render";
-import { Router, link } from "@std/router";
 
 pub fn div_node(cls: string, children: any) -> VNode {
   return vnode("div", props_class(cls), children);
@@ -33,15 +32,4 @@ pub fn anchor_node(cls: string, href: string, label: string) -> VNode {
 
 pub fn pre_block(cls: string, content: string) -> VNode {
   return vnode("pre", props_class(cls), [text(content)]);
-}
-
-pub fn nav_link(routerValue: Router, href: string, label: string, active: bool) -> VNode {
-  if (active) {
-    return vnode(
-      "span",
-      props_class("inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"),
-      [text(label)]
-    );
-  }
-  return link(routerValue, href, label);
 }

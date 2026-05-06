@@ -1,0 +1,12 @@
+import { props_attr, props_class, props_merge, vnode, text } from "@std/render";
+
+pub fn home_header() -> VNode {
+  let image_props = props_merge(
+    props_class("lumina-banner-image"),
+    props_merge(props_attr("src", "./assets/lumina-header.png"), props_attr("alt", "Lumina - a web native system programming language"))
+  );
+  let image = vnode("img", image_props, []);
+  let title = vnode("h1", props_class("sr-only"), [text("Lumina")]);
+  let subtitle = vnode("p", props_class("sr-only"), [text("a web native system programming language")]);
+  return vnode("header", props_class("lumina-banner"), [image, title, subtitle]);
+}

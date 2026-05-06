@@ -58,7 +58,7 @@ import { runLuminaBundle } from './lumina-bundle.js';
 import { runLuminaImportmap } from './lumina-importmap.js';
 import { readManifest } from '../lumina/package-manifest.js';
 import { resolveRegistryConfig, search as searchRegistry } from '../lumina/registry-client.js';
-import { readLockfileSync } from '../lumina/lockfile.js';
+import { LEGACY_LOCKFILE_FILENAME, LOCKFILE_FILENAME, readLockfileSync } from '../lumina/lockfile.js';
 import { scanDirectory } from '../lumina/secret-scan.js';
 import { generateExportsMap } from '../lumina/dual-output.js';
 import { type AnalyzeTarget } from '../lumina/target-profiles.js';
@@ -622,8 +622,8 @@ function shouldBundleImport(
 function findLockfileRoot(fromPath: string): string | null {
   let current = path.dirname(fromPath);
   while (true) {
-    const modern = path.join(current, 'lumina.lock');
-    const candidate = path.join(current, 'lumina.lock.json');
+    const modern = path.join(current, LOCKFILE_FILENAME);
+    const candidate = path.join(current, LEGACY_LOCKFILE_FILENAME);
     if (existsSync(modern) || existsSync(candidate)) return current;
     const parent = path.dirname(current);
     if (parent === current) return null;
@@ -632,7 +632,7 @@ function findLockfileRoot(fromPath: string): string | null {
 }
 
 function loadLockfile(root: string): LuminaLockfile | null {
-  const modernLock = path.join(root, 'lumina.lock');
+  const modernLock = path.join(root, LOCKFILE_FILENAME);
   if (existsSync(modernLock)) {
     const modern = readLockfileSync(root);
     const packages: Record<string, LockfilePackage> = {};
@@ -650,7 +650,7 @@ function loadLockfile(root: string): LuminaLockfile | null {
       packages,
     };
   }
-  const lockPath = path.join(root, 'lumina.lock.json');
+  const lockPath = path.join(root, LEGACY_LOCKFILE_FILENAME);
   try {
     const stat = statSync(lockPath);
     const cached = lockfileCache.get(root);
@@ -729,6 +729,7 @@ function graphStats(graph: Map<string, string[]>): { nodes: number; edges: numbe
 async function updateDependenciesForFile(
   sourcePath: string,
   source: string,
+  parser: ReturnType<typeof compileGrammar>,
   extensions: string[],
   stdPath: string,
   lockfileRoot?: string | null
@@ -738,7 +739,7 @@ async function updateDependenciesForFile(
   if (cached && cached.hash === fileHash) {
     return;
   }
-  const rawImports = extractImports(source);
+  const rawImports = extractImports(source, { parser, grammarSource: sourcePath });
   const resolved = rawImports
     .map((imp) => resolveImport(sourcePath, imp, extensions, stdPath, lockfileRoot))
     .filter((imp): imp is string => Boolean(imp));
@@ -1670,7 +1671,7 @@ async function bundleProgram(
     visited.set(filePath, { ast, text, bindings, resolvedImports });
     sources.set(filePath, text);
 
-    const imports = extractImports(text);
+    const imports = extractImports(text, { parser, grammarSource: filePath });
     for (const imp of imports) {
       if (!shouldBundleImport(filePath, imp, stdRegistry, extensions, stdPath, lockfileRoot)) continue;
       const resolved = resolveImport(filePath, imp, extensions, stdPath, lockfileRoot);
@@ -1750,7 +1751,7 @@ async function runSsgCommand(options: {
   useRecovery: boolean;
 }): Promise<boolean> {
   const grammar = await fs.readFile(options.grammarPath, 'utf-8');
-  const parser = compileGrammar(grammar);
+  const parser = compileGrammar(grammar, { cache: true });
   const bundled = await bundleProgram(
     options.sourcePath,
     parser,
@@ -2226,12 +2227,13 @@ async function compileLumina(
   await updateDependenciesForFile(
     sourcePath,
     source,
+    parser,
     configFileExtensions,
     configStdPath,
     lockfileRoot
   );
   const stdRegistry = createStdModuleRegistry();
-  const needsBundling = extractImports(source).some((imp) =>
+  const needsBundling = extractImports(source, { parser, grammarSource: sourcePath }).some((imp) =>
     shouldBundleImport(sourcePath, imp, stdRegistry, configFileExtensions, configStdPath, lockfileRoot)
   );
   if (target === 'wasm') {
@@ -2306,6 +2308,7 @@ async function compileLumina(
       await updateDependenciesForFile(
         depPath,
         depSource,
+        parser,
         configFileExtensions,
         configStdPath,
         lockfileRoot
@@ -2624,12 +2627,13 @@ async function checkLumina(
   const source = await fs.readFile(sourcePath, 'utf-8');
   const lockfileRoot = findLockfileRoot(sourcePath);
   const stdRegistry = createStdModuleRegistry();
-  const needsBundling = extractImports(source).some((imp) =>
+  const needsBundling = extractImports(source, { parser, grammarSource: sourcePath }).some((imp) =>
     shouldBundleImport(sourcePath, imp, stdRegistry, configFileExtensions, configStdPath, lockfileRoot)
   );
   await updateDependenciesForFile(
     sourcePath,
     source,
+    parser,
     configFileExtensions,
     configStdPath,
     lockfileRoot
@@ -3321,6 +3325,7 @@ Options:
   --public-only        Include only public declarations in docs (doc)
   --yes                Use defaults without prompts (init)
   --template <name>    Starter template: routed | minimal | ssr | auth | testing | deploy | large-app (init)
+  --vite-plugin        Emit a plugin-native Vite dev setup for init
   --frozen             Use npm ci if lockfile is present (install)
   --dev                Add package as dev dependency (add)
   --limit <n>          Limit search result count (search)
@@ -3341,7 +3346,7 @@ Commands:
   search <query>       Search package registry
   secret-scan [dir]    Scan directory for likely secrets
   remove <pkg...>      Remove dependency
-  list                 List Lumina-resolvable packages from lumina.lock.json
+  list                 List Lumina-resolvable packages from lumina.lock
 `);
 }
 
@@ -3577,11 +3582,12 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
 
   const initYes = parseBooleanFlag(args, '--yes');
   const initTemplate = typeof args.get('--template') === 'string' ? String(args.get('--template')) : undefined;
+  const initVitePlugin = parseBooleanFlag(args, '--vite-plugin');
   const fmtCheck = parseBooleanFlag(args, '--check');
   const docPublicOnly = parseBooleanFlag(args, '--public-only');
 
   if (command === 'init') {
-    await initProject({ yes: initYes, template: initTemplate });
+    await initProject({ yes: initYes, template: initTemplate, vitePlugin: initVitePlugin });
     return;
   }
 

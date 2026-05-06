@@ -3,6 +3,15 @@ import path from 'node:path';
 import { luminaPlugin } from '../demo/vite-plugin-lumina.js';
 
 describe('demo vite plugin', () => {
+  test('keeps the static home shell off router stdlib compilation path', () => {
+    const componentsSource = fs.readFileSync(path.resolve(__dirname, '../demo/components.lm'), 'utf-8');
+    const styleSource = fs.readFileSync(path.resolve(__dirname, '../demo/style.css'), 'utf-8');
+
+    expect(componentsSource).not.toContain('@std/router');
+    expect(styleSource).toContain("@import 'tailwindcss' source(none);");
+    expect(styleSource).toContain("@source './*.lm';");
+  });
+
   test('resolves source-backed std modules beyond router', async () => {
     const plugin = luminaPlugin();
     const importer = path.resolve(__dirname, '../demo/main.lm');
@@ -66,4 +75,125 @@ describe('demo vite plugin', () => {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  test('resolves extensionless local Lumina imports through the plugin path', async () => {
+    const plugin = luminaPlugin();
+    const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-ext-'));
+    const entryPath = path.join(workspace, 'main.lm');
+    const helperPath = path.join(workspace, 'helper.lm');
+    fs.writeFileSync(
+      helperPath,
+      `pub fn localValue() -> string { "local" }\n`,
+      'utf-8'
+    );
+    fs.writeFileSync(
+      entryPath,
+      `
+        import { localValue } from "./helper";
+
+        pub fn main() -> VNode {
+          localValue()
+        }
+      `.trim() + '\n',
+      'utf-8'
+    );
+
+    try {
+      expect(plugin.resolveId?.('./helper', entryPath)).toBe(helperPath);
+      const code = await plugin.load?.call(
+        {
+          error(message: string) {
+            throw new Error(message);
+          },
+        },
+        entryPath
+      );
+      expect(typeof code).toBe('string');
+      expect(code).toContain('localValue');
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves bare package imports from lumina.lock during Vite compilation', async () => {
+    const plugin = luminaPlugin();
+    const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-pkg-'));
+    const entryPath = path.join(workspace, 'main.lm');
+    const pkgRoot = path.join(workspace, '.lumina', 'packages', 'json-utils@1.2.3');
+    const pkgEntry = path.join(pkgRoot, 'src', 'lib.lm');
+
+    fs.mkdirSync(path.dirname(pkgEntry), { recursive: true });
+    fs.writeFileSync(pkgEntry, 'pub fn parse() -> string { "ok" }\n', 'utf-8');
+    fs.writeFileSync(
+      path.join(workspace, 'lumina.lock'),
+      JSON.stringify(
+        {
+          version: 1,
+          packages: {
+            'json-utils@1.2.3': {
+              name: 'json-utils',
+              version: '1.2.3',
+              resolved: 'https://registry.example.dev/json-utils-1.2.3.tgz',
+              path: './.lumina/packages/json-utils@1.2.3',
+              integrity: 'sha256:test',
+              lumina: './src/lib.lm',
+              deps: {},
+            },
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf-8'
+    );
+    fs.writeFileSync(
+      entryPath,
+      `
+        import { parse } from "json-utils";
+
+        pub fn main() -> VNode {
+          parse()
+        }
+      `.trim() + '\n',
+      'utf-8'
+    );
+
+    try {
+      expect(plugin.resolveId?.('json-utils', entryPath)).toBe(pkgEntry);
+      const code = await plugin.load?.call(
+        {
+          error(message: string) {
+            throw new Error(message);
+          },
+        },
+        entryPath
+      );
+      expect(typeof code).toBe('string');
+      expect(code).toContain('.lumina/packages/json-utils@1.2.3/src/lib.lm');
+      expect(code).not.toContain('from "json-utils"');
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test('compiles the source-backed router std module without stalling', async () => {
+    const plugin = luminaPlugin();
+    const routerPath = path.resolve(__dirname, '../std/router.lm');
+    const startedAt = Date.now();
+
+    const code = await plugin.load?.call(
+      {
+        error(message: string) {
+          throw new Error(message);
+        },
+      },
+      routerPath
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(10000);
+    expect(typeof code).toBe('string');
+    expect(code).toContain('createRouter');
+    expect(code).toContain('routeTree');
+    expect(code).toContain('export {');
+  }, 15000);
 });

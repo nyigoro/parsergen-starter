@@ -20,7 +20,7 @@ function createTempDir(): string {
 }
 
 function writeLockfile(dir: string, lockfile: object | null) {
-  const lockPath = path.join(dir, 'lumina.lock.json');
+  const lockPath = path.join(dir, 'lumina.lock');
   if (lockfile == null) {
     if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath);
     return;

@@ -6,6 +6,7 @@ import { extractImports } from '../project/imports.js';
 import type { LuminaProgram } from './ast.js';
 import type { IRProgram } from './ir.js';
 import type { Diagnostic } from '../parser/index.js';
+import { LEGACY_LOCKFILE_FILENAME, LOCKFILE_FILENAME } from './lockfile-format.js';
 
 const EXTERNAL_NODE_KINDS = new Set<ModuleKind>(['std', 'std-root']);
 const STD_PREFIX = '@std/';
@@ -200,7 +201,7 @@ const ensureExtension = (resolved: string, extensions: string[]): string => {
 const findLockfileRoot = (fromPath: string): string | null => {
   let current = path.dirname(fromPath);
   while (true) {
-    if (existsSync(path.join(current, 'lumina.lock')) || existsSync(path.join(current, 'lumina.lock.json'))) {
+    if (existsSync(path.join(current, LOCKFILE_FILENAME)) || existsSync(path.join(current, LEGACY_LOCKFILE_FILENAME))) {
       return current;
     }
     const parent = path.dirname(current);
@@ -245,8 +246,8 @@ const normalizeLockfile = (parsed: LegacyLockfileData | ModernLockfileData): Loc
 
 const readLockfile = (root: string | null | undefined): LockfileData | null => {
   if (!root) return null;
-  const modernPath = path.join(root, 'lumina.lock');
-  const legacyPath = path.join(root, 'lumina.lock.json');
+  const modernPath = path.join(root, LOCKFILE_FILENAME);
+  const legacyPath = path.join(root, LEGACY_LOCKFILE_FILENAME);
   const candidate = existsSync(modernPath) ? modernPath : existsSync(legacyPath) ? legacyPath : null;
   if (!candidate) return null;
   try {
@@ -519,7 +520,7 @@ const walkNode = async (
       node.diagnostics = cached.diagnostics;
       node.status = node.diagnostics.some((d) => d.severity === 'error') ? 'error' : 'cached';
     } else {
-      node.imports = extractImports(source);
+      node.imports = extractImports(source, { grammarPath: ctx.options.grammarPath, grammarSource: node.path ?? node.key });
       node.resolvedDeps = [];
       node.status = 'pending';
     }

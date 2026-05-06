@@ -2,18 +2,14 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
-
-type LuminaLockfile = {
-  lockfileVersion: 1;
-  packages: Record<string, LockfilePackage>;
-};
-
-type LockfilePackage = {
-  version: string;
-  resolved: string;
-  integrity?: string;
-  lumina?: string | Record<string, string>;
-};
+import {
+  LOCKFILE_FILENAME,
+  readLockfile,
+  writeLockfile,
+  type LockfileData,
+  type LockfileEntry,
+} from '../lumina/lockfile.js';
+import { writeManifest } from '../lumina/package-manifest.js';
 
 type WorkspacePackage = {
   name: string;
@@ -22,7 +18,6 @@ type WorkspacePackage = {
   version?: string;
 };
 
-const LOCKFILE_NAME = 'lumina.lock.json';
 type InitTemplate = 'minimal' | 'routed' | 'ssr' | 'auth' | 'testing' | 'deploy' | 'large-app';
 const INIT_TEMPLATES = new Set<InitTemplate>(['minimal', 'routed', 'ssr', 'auth', 'testing', 'deploy', 'large-app']);
 
@@ -47,6 +42,8 @@ const templateReadme = (template: InitTemplate): string => {
   if (template === 'large-app') return 'Large-app starter. Keep route ownership in route nodes, data scopes, route actions, and app-shell UI wrappers.';
   return 'routed';
 };
+
+const luminaPackageVersion = 'latest';
 
 function spawnCommand(command: string, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -135,7 +132,12 @@ function extractLuminaField(pkg: { lumina?: string | Record<string, string> }): 
   return undefined;
 }
 
-async function buildLockfile(root: string): Promise<LuminaLockfile> {
+const toPosixRelative = (base: string, target: string): string =>
+  path.relative(base, target).replace(/\\/g, '/');
+
+const lockfileKey = (name: string, version: string): string => `${name}@${version}`;
+
+async function buildLockfile(root: string): Promise<LockfileData> {
   const pkgJson = await readJson<{
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
@@ -150,17 +152,22 @@ async function buildLockfile(root: string): Promise<LuminaLockfile> {
     packages?: Record<string, { version?: string; resolved?: string; integrity?: string }>;
   }>(path.join(root, 'package-lock.json'));
 
-  const packages: Record<string, LockfilePackage> = {};
+  const packages = new Map<string, LockfileEntry>();
 
   for (const name of deps) {
     if (workspacePackages.has(name)) {
       const ws = workspacePackages.get(name)!;
       if (!ws.lumina) continue;
-      packages[name] = {
-        version: ws.version ?? '0.0.0',
+      const version = ws.version ?? '0.0.0';
+      packages.set(lockfileKey(name, version), {
+        name,
+        version,
         resolved: ws.dir,
+        path: toPosixRelative(root, ws.dir),
+        integrity: 'sha256:',
         lumina: ws.lumina,
-      };
+        deps: new Map(),
+      });
       continue;
     }
     const nodePath = path.join(root, 'node_modules', ...name.split('/'));
@@ -171,18 +178,22 @@ async function buildLockfile(root: string): Promise<LuminaLockfile> {
     if (!lumina) continue;
     const lockKey = `node_modules/${name}`;
     const lockEntry = lock?.packages?.[lockKey];
-    packages[name] = {
-      version: pkg?.version ?? lockEntry?.version ?? '0.0.0',
+    const version = pkg?.version ?? lockEntry?.version ?? '0.0.0';
+    packages.set(lockfileKey(name, version), {
+      name,
+      version,
       resolved: lockEntry?.resolved ?? nodePath,
-      integrity: lockEntry?.integrity,
+      path: toPosixRelative(root, nodePath),
+      integrity: lockEntry?.integrity ?? 'sha256:',
       lumina,
-    };
+      deps: new Map(),
+    });
   }
 
-  return { lockfileVersion: 1, packages };
+  return { version: 1, packages };
 }
 
-export async function initProject(options: { yes?: boolean; template?: string } = {}): Promise<void> {
+export async function initProject(options: { yes?: boolean; template?: string; vitePlugin?: boolean } = {}): Promise<void> {
   const cwd = process.cwd();
   const pkgPath = path.join(cwd, 'package.json');
   if (await fileExists(pkgPath)) {
@@ -192,6 +203,13 @@ export async function initProject(options: { yes?: boolean; template?: string } 
   const name = path.basename(cwd);
   const template = normalizeInitTemplate(options.template);
   const withSsg = templateUsesSsg(template);
+  const useVitePlugin = options.vitePlugin === true;
+  const buildScript = withSsg || !useVitePlugin
+    ? 'lumina compile src/client.lm --target js --module esm --out dist/main.js'
+    : 'vite build';
+  const devScript = useVitePlugin
+    ? 'vite --host 127.0.0.1'
+    : 'npm run build && vite --host 127.0.0.1';
   const pkg = {
     name,
     version: '0.1.0',
@@ -200,22 +218,35 @@ export async function initProject(options: { yes?: boolean; template?: string } 
     scripts: withSsg
       ? {
           check: 'lumina check src/client.lm && lumina check src/ssg.lm',
-          build: 'lumina compile src/client.lm --target js --module esm --out dist/main.js',
+          build: buildScript,
           ssg: 'lumina ssg src/ssg.lm --out dist/index.html --hydrate ./main.js --title "Lumina App"',
-          dev: 'npm run build && vite --host 127.0.0.1',
+          dev: devScript,
         }
       : {
           check: 'lumina check src/client.lm',
-          build: 'lumina compile src/client.lm --target js --module esm --out dist/main.js',
-          dev: 'npm run build && vite --host 127.0.0.1',
+          build: buildScript,
+          dev: devScript,
         },
     dependencies: {},
     devDependencies: {
       vite: '^7.2.6',
+      ...(useVitePlugin ? { 'lumina-lang': luminaPackageVersion } : {}),
     },
   };
   await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
   await writeJson(pkgPath, pkg);
+  await writeManifest(cwd, {
+    name,
+    version: '0.1.0',
+    entry: 'src/client.lm',
+    description: null,
+    authors: [],
+    license: null,
+    dependencies: new Map(),
+    devDeps: new Map(),
+    registry: null,
+    cdn: null,
+  });
   await writeJson(path.join(cwd, 'lumina.config.json'), {
     entries: ['src/client.lm'],
     outDir: 'dist',
@@ -224,7 +255,21 @@ export async function initProject(options: { yes?: boolean; template?: string } 
   });
   await writeFileIfMissing(
     path.join(cwd, 'vite.config.ts'),
-    `import { defineConfig } from 'vite';
+    useVitePlugin
+      ? `import { defineConfig } from 'vite';
+import { luminaPlugin } from 'lumina-lang/vite-plugin';
+
+export default defineConfig({
+  plugins: [luminaPlugin()],
+  server: {
+    host: '127.0.0.1'
+  },
+  preview: {
+    host: '127.0.0.1'
+  }
+});
+`
+      : `import { defineConfig } from 'vite';
 
 export default defineConfig({
   server: {
@@ -248,7 +293,7 @@ export default defineConfig({
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/dist/main.js"></script>
+    <script type="module" src="${useVitePlugin ? '/src/client.lm' : '/dist/main.js'}"></script>
   </body>
 </html>
 `
@@ -477,7 +522,7 @@ export async function installPackages(options: { frozen?: boolean } = {}): Promi
   const args = options.frozen ? ['ci'] : ['install'];
   await spawnCommand('npm', args, root);
   const lockfile = await buildLockfile(root);
-  await writeJson(path.join(root, LOCKFILE_NAME), lockfile);
+  await writeLockfile(root, lockfile);
 }
 
 export async function addPackages(
@@ -489,7 +534,7 @@ export async function addPackages(
   const args = ['install', ...(options.dev ? ['-D'] : []), ...specs];
   await spawnCommand('npm', args, root);
   const lockfile = await buildLockfile(root);
-  await writeJson(path.join(root, LOCKFILE_NAME), lockfile);
+  await writeLockfile(root, lockfile);
 }
 
 export async function removePackages(specs: string[]): Promise<void> {
@@ -498,18 +543,18 @@ export async function removePackages(specs: string[]): Promise<void> {
   const args = ['uninstall', ...specs];
   await spawnCommand('npm', args, root);
   const lockfile = await buildLockfile(root);
-  await writeJson(path.join(root, LOCKFILE_NAME), lockfile);
+  await writeLockfile(root, lockfile);
 }
 
 export async function listPackages(): Promise<void> {
   const root = await findPackageRoot(process.cwd());
-  const lockfile = await readJson<LuminaLockfile>(path.join(root, LOCKFILE_NAME));
-  if (!lockfile || !lockfile.packages || Object.keys(lockfile.packages).length === 0) {
-    console.log('No Lumina packages found (lumina.lock.json missing or empty).');
+  const lockfile = await readLockfile(root);
+  if (lockfile.packages.size === 0) {
+    console.log(`No Lumina packages found (${LOCKFILE_FILENAME} missing or empty).`);
     return;
   }
-  for (const [name, pkg] of Object.entries(lockfile.packages)) {
+  for (const pkg of Array.from(lockfile.packages.values()).sort((a, b) => a.name.localeCompare(b.name))) {
     const entry = typeof pkg.lumina === 'string' ? pkg.lumina : pkg.lumina?.['.'];
-    console.log(`${name}@${pkg.version} -> ${entry ?? '(no entry)'}`);
+    console.log(`${pkg.name}@${pkg.version} -> ${entry ?? '(no entry)'}`);
   }
 }

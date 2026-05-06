@@ -1,0 +1,15 @@
+import { div_node, subheading, paragraph, anchor_node } from "./components.lm";
+
+pub fn docs_section(doc_link_class: string) -> VNode {
+  let title = subheading("Read Next");
+  let intro = paragraph(
+    "mt-3 text-sm leading-7 text-gray-400",
+    "Start with the docs that answer the exact questions people are asking: why Lumina exists, when to pick JS or WASM, and what is solid today."
+  );
+  let getting_started = anchor_node(doc_link_class, "./docs/#/getting-started", "Getting Started");
+  let why_doc = anchor_node(doc_link_class, "./docs/#/why-lumina", "Why Lumina?");
+  let targets_doc = anchor_node(doc_link_class, "./docs/#/js-vs-wasm", "JS vs WASM targets");
+  let capabilities_doc = anchor_node(doc_link_class, "./docs/#/capabilities", "Capabilities");
+  let docs_grid = div_node("mt-4 flex flex-wrap gap-3", [getting_started, why_doc, targets_doc, capabilities_doc]);
+  return div_node("lumina-docs-section rounded-xl border border-gray-800 bg-gray-900", [title, intro, docs_grid]);
+}

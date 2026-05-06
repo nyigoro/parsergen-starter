@@ -11,18 +11,14 @@ import { analyzeLumina, type SymbolTable as LuminaSymbolTable, type SymbolInfo }
 import { type LuminaProgram, type LuminaType } from '../lumina/ast.js';
 import { createStdModuleRegistry, resolveModuleBindings, type ModuleExport, type ModuleNamespace, type ModuleRegistry } from '../lumina/module-registry.js';
 import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
+import {
+  LEGACY_LOCKFILE_FILENAME,
+  LOCKFILE_FILENAME,
+  normalizeLockfileObject,
+  type NormalizedLockfile,
+} from '../lumina/lockfile-format.js';
 
-type LuminaLockfile = {
-  lockfileVersion: number;
-  packages: Record<string, LockfilePackage>;
-};
-
-type LockfilePackage = {
-  version: string;
-  resolved: string;
-  integrity?: string;
-  lumina?: string | Record<string, string>;
-};
+type LuminaLockfile = NormalizedLockfile;
 
 type BareResolveResult =
   | { resolved: string }
@@ -31,6 +27,11 @@ type BareResolveResult =
 const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
   end: { line: 1, column: 1, offset: 0 },
+};
+
+const isLuminaVirtualSource = (spec: string): boolean => {
+  const ext = path.posix.extname(spec);
+  return !ext || ext === '.lm' || ext === '.lumina' || ext === '.lum';
 };
 
 export interface SourceDocument {
@@ -103,8 +104,7 @@ export class ProjectContext {
   private preludeNames = new Set<string>();
   private preludeLoaded = false;
   private preludePath = path.resolve('std/prelude.lm');
-  private lockfileCache = new Map<string, { mtimeMs: number; data: LuminaLockfile }>();
-  private lockfileName = 'lumina.lock.json';
+  private lockfileCache = new Map<string, { path: string; mtimeMs: number; data: LuminaLockfile }>();
   private packageDiagnostics: Diagnostic[] = [];
 
   constructor(
@@ -176,6 +176,7 @@ export class ProjectContext {
   registerVirtualFile(spec: string, text: string, version: number = 1) {
     const normalized = this.normalizeVirtualSpec(spec);
     this.virtualFiles.set(normalized, text);
+    if (!isLuminaVirtualSource(normalized)) return;
     const uri = this.virtualUriFor(normalized);
     this.addOrUpdateDocument(uri, text, version);
   }
@@ -184,7 +185,7 @@ export class ProjectContext {
     this.ensurePreludeLoaded();
     const fsPath = this.toFsPath(uri);
     const normalizedUri = this.toUri(fsPath);
-    const imports = extractImports(text);
+    const imports = extractImports(text, { parser: this.parser, grammarSource: normalizedUri });
     const existing = this.documents.get(normalizedUri);
     const doc: SourceDocument = {
       uri: normalizedUri,
@@ -732,18 +733,24 @@ export class ProjectContext {
 
   private ensureExtension(resolved: string): string {
     if (path.extname(resolved)) return resolved;
-    const candidates = ['.lum', '.lumina'].map((ext) => resolved + ext);
+    const candidates = ['.lm', '.lumina', '.lum'].map((ext) => resolved + ext);
     for (const candidate of candidates) {
       if (fs.existsSync(candidate)) return candidate;
     }
-    return resolved + '.lum';
+    return resolved + '.lm';
+  }
+
+  private findLockfilePath(root: string): string | null {
+    const modern = path.join(root, LOCKFILE_FILENAME);
+    if (fs.existsSync(modern)) return modern;
+    const legacy = path.join(root, LEGACY_LOCKFILE_FILENAME);
+    return fs.existsSync(legacy) ? legacy : null;
   }
 
   private findLockfileRoot(fromFsPath: string): string | null {
     let current = path.dirname(fromFsPath);
     while (true) {
-      const candidate = path.join(current, this.lockfileName);
-      if (fs.existsSync(candidate)) return current;
+      if (this.findLockfilePath(current)) return current;
       const parent = path.dirname(current);
       if (parent === current) return null;
       current = parent;
@@ -751,14 +758,16 @@ export class ProjectContext {
   }
 
   private loadLockfile(root: string): LuminaLockfile | null {
-    const lockPath = path.join(root, this.lockfileName);
+    const lockPath = this.findLockfilePath(root);
+    if (!lockPath) return null;
     try {
       const stat = fs.statSync(lockPath);
       const cached = this.lockfileCache.get(root);
-      if (cached && cached.mtimeMs === stat.mtimeMs) return cached.data;
+      if (cached && cached.path === lockPath && cached.mtimeMs === stat.mtimeMs) return cached.data;
       const raw = fs.readFileSync(lockPath, 'utf-8');
-      const parsed = JSON.parse(raw) as LuminaLockfile;
-      this.lockfileCache.set(root, { mtimeMs: stat.mtimeMs, data: parsed });
+      const parsed = normalizeLockfileObject(JSON.parse(raw));
+      if (!parsed) return null;
+      this.lockfileCache.set(root, { path: lockPath, mtimeMs: stat.mtimeMs, data: parsed });
       return parsed;
     } catch {
       return null;
@@ -788,24 +797,24 @@ export class ProjectContext {
     const root = this.findLockfileRoot(fromFsPath);
     if (!root) {
       return {
-        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+        error: { code: 'PKG-004', message: `Cannot resolve package imports: ${LOCKFILE_FILENAME} not found` },
       };
     }
     const lockfile = this.loadLockfile(root);
     if (!lockfile) {
       return {
-        error: { code: 'PKG-004', message: 'Cannot resolve package imports: lumina.lock.json not found' },
+        error: { code: 'PKG-004', message: `Cannot resolve package imports: ${LOCKFILE_FILENAME} not found` },
       };
     }
     const { pkgName, subpath } = this.parsePackageSpecifier(specifier);
     const pkg = lockfile.packages?.[pkgName];
     if (!pkg) {
-      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in lumina.lock.json` } };
+      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in ${LOCKFILE_FILENAME}` } };
     }
     const lumina = pkg.lumina;
     if (!lumina) {
       return {
-        error: { code: 'PKG-002', message: `Package '${pkgName}' missing 'lumina' field in lumina.lock.json` },
+        error: { code: 'PKG-002', message: `Package '${pkgName}' missing 'lumina' field in ${LOCKFILE_FILENAME}` },
       };
     }
     let entry: string | undefined;
@@ -830,7 +839,7 @@ export class ProjectContext {
     if (!entry) {
       return { error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '.'` } };
     }
-    let pkgRoot = pkg.resolved;
+    let pkgRoot = pkg.path ?? pkg.resolved;
     if (!path.isAbsolute(pkgRoot)) {
       pkgRoot = path.resolve(root, pkgRoot);
     }
@@ -946,11 +955,11 @@ export class ProjectContext {
 
   private ensureVirtualExtension(resolved: string): string {
     if (path.extname(resolved)) return resolved;
-    const candidates = ['.lum', '.lumina'].map((ext) => resolved + ext);
+    const candidates = ['.lm', '.lumina', '.lum'].map((ext) => resolved + ext);
     for (const candidate of candidates) {
       if (this.virtualFiles.has(candidate)) return candidate;
     }
-    return resolved + '.lum';
+    return resolved + '.lm';
   }
 }
 

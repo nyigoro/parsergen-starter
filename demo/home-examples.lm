@@ -1,0 +1,42 @@
+import { props_class, vnode, text } from "@std/render";
+import { div_node, subheading, paragraph, anchor_node } from "./components.lm";
+import { home_chips } from "./home-chips.lm";
+
+fn code_token(kind: string, value: string) -> VNode {
+  return vnode("span", props_class("lumina-code-token " + kind), [text(value)]);
+}
+
+fn example_card(title: string, code: any) -> VNode {
+  let label = vnode("div", props_class("lumina-example-label"), [text(title)]);
+  let sample = vnode("pre", props_class("lumina-example-code"), code);
+  let action = anchor_node("lumina-example-action", "./playground/", "TRY!");
+  return div_node("lumina-example-card", [label, sample, action]);
+}
+
+pub fn examples_section() -> VNode {
+  let title = subheading("Examples");
+  let intro = paragraph(
+    "mt-3 max-w-2xl text-sm leading-7 text-gray-300",
+    "Short Lumina patterns for state, data modeling, and UI rendering."
+  );
+  let counter_code = [
+    code_token("lumina-code-keyword", "let"), text(" count = "), code_token("lumina-code-call", "createSignal"), text("("), code_token("lumina-code-number", "0"), text(")\n\n"),
+    code_token("lumina-code-call", "vnode"), text("("), code_token("lumina-code-string", "\"button\""), text(",\n  "),
+    code_token("lumina-code-call", "props_on_click_inc"), text("(count),\n  ["), code_token("lumina-code-call", "text"), text("("), code_token("lumina-code-call", "to_string"), text("("), code_token("lumina-code-call", "get"), text("(count)))]\n)")
+  ];
+  let model_code = [
+    code_token("lumina-code-keyword", "enum"), text(" "), code_token("lumina-code-type", "LoadState"), text(" \{\n  "),
+    code_token("lumina-code-variant", "Idle"), text(",\n  "), code_token("lumina-code-variant", "Ready"), text("("), code_token("lumina-code-type", "Vec"), text("<"), code_token("lumina-code-type", "int"), text(">),\n  "),
+    code_token("lumina-code-variant", "Failed"), text("("), code_token("lumina-code-type", "string"), text(")\n\}\n\n"),
+    code_token("lumina-code-keyword", "match"), text(" state \{\n  "), code_token("lumina-code-variant", "Ready"), text("(items) => items.len()\n  _ => "), code_token("lumina-code-number", "0"), text("\n\}")
+  ];
+  let view_code = [
+    code_token("lumina-code-keyword", "pub"), text(" "), code_token("lumina-code-keyword", "fn"), text(" "), code_token("lumina-code-call", "app"), text("() -> "), code_token("lumina-code-type", "VNode"), text(" \{\n  "),
+    code_token("lumina-code-call", "div_node"), text("("), code_token("lumina-code-string", "\"app-shell\""), text(", [\n    "), code_token("lumina-code-call", "text"), text("("), code_token("lumina-code-string", "\"web native systems\""), text(")\n  ])\n\}")
+  ];
+  let counter = example_card("State", counter_code);
+  let match_state = example_card("Model", model_code);
+  let view = example_card("View", view_code);
+  let cards = div_node("lumina-example-grid", [counter, match_state, view]);
+  return div_node("lumina-examples-section", [div_node("lumina-example-heading", [title, intro]), cards, home_chips()]);
+}

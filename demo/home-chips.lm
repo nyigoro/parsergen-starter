@@ -1,0 +1,10 @@
+import { props_class, vnode, text } from "@std/render";
+import { div_node } from "./components.lm";
+
+pub fn home_chips() -> VNode {
+  let trait_chip = vnode("span", props_class("rounded-full border border-blue-500/40 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200"), [text("Traits")]);
+  let match_chip = vnode("span", props_class("rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200"), [text("match")]);
+  let vec_chip = vnode("span", props_class("rounded-full border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-1 text-xs font-medium text-fuchsia-200"), [text("Vec")]);
+  let signal_chip = vnode("span", props_class("rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200"), [text("Signal")]);
+  return div_node("lumina-home-chips flex flex-wrap gap-2", [trait_chip, match_chip, vec_chip, signal_chip]);
+}

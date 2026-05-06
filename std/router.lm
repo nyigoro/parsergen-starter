@@ -236,8 +236,11 @@ pub fn createRouter(base: string) -> Router {
   let path_signal = reactive.createSignal(initial_path)
   let search_signal = reactive.createSignal(router.getCurrentSearch())
   router.onPopState(fn(pathname: string) -> void {
-    let _synced = reactive.set(path_signal, strip_base_path(normalize_path(pathname), normalized_base))
-    let _search = reactive.set(search_signal, router.getCurrentSearch())
+    let normalized_path = normalize_path(pathname)
+    let stripped_path = strip_base_path(normalized_path, normalized_base)
+    let _synced = reactive.set(path_signal, stripped_path)
+    let current_search = router.getCurrentSearch()
+    let _search = reactive.set(search_signal, current_search)
   })
   return Router { path: path_signal, search: search_signal, base: normalized_base }
 }

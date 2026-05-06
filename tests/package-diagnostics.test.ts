@@ -16,7 +16,7 @@ function createTempDir(): string {
 }
 
 function writeLockfile(dir: string, lockfile: object | null) {
-  const lockPath = path.join(dir, 'lumina.lock.json');
+  const lockPath = path.join(dir, 'lumina.lock');
   if (lockfile == null) {
     if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath);
     return;
@@ -50,7 +50,7 @@ describe('Package Diagnostics', () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].code).toBe('PKG-004');
     expect(diagnostics[0].severity).toBe('error');
-    expect(diagnostics[0].message).toBe('Cannot resolve package imports: lumina.lock.json not found');
+    expect(diagnostics[0].message).toBe('Cannot resolve package imports: lumina.lock not found');
   });
 
   it('PKG-001: emits error when package not in lockfile', () => {
@@ -68,7 +68,7 @@ describe('Package Diagnostics', () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].code).toBe('PKG-001');
     expect(diagnostics[0].severity).toBe('error');
-    expect(diagnostics[0].message).toBe("Package 'missing-pkg' not found in lumina.lock.json");
+    expect(diagnostics[0].message).toBe("Package 'missing-pkg' not found in lumina.lock");
   });
 
   it('PKG-002: emits error when lumina field missing', () => {
@@ -85,7 +85,7 @@ describe('Package Diagnostics', () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].code).toBe('PKG-002');
     expect(diagnostics[0].severity).toBe('error');
-    expect(diagnostics[0].message).toBe("Package 'bad-pkg' missing 'lumina' field in lumina.lock.json");
+    expect(diagnostics[0].message).toBe("Package 'bad-pkg' missing 'lumina' field in lumina.lock");
   });
 
   it('PKG-003: emits error when subpath not exported', () => {
