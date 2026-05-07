@@ -83,9 +83,9 @@ fn stat(label: string, value: string, id: string) -> VNode {
   div_node("stat", [top, bottom])
 }
 
-fn insight_row(label: string, value: string) -> VNode {
+fn insight_row(label: string, value: string, id: string) -> VNode {
   let keyNode = vnode("span", props_class("insight-key"), [text(label)]);
-  let valueNode = vnode("span", props_class("insight-value"), [text(value)]);
+  let valueNode = vnode("span", attrs2(props_class("insight-value"), props_id(id)), [text(value)]);
   div_node("insight-row", [keyNode, valueNode])
 }
 
@@ -101,6 +101,20 @@ fn text_input(id: string, placeholder: string) -> VNode {
       props_id(id),
       props_type("text"),
       props_value(""),
+      props_placeholder(placeholder)
+    ),
+    []
+  )
+}
+
+fn plain_input(id: string, value: string, placeholder: string, cls: string) -> VNode {
+  vnode(
+    "input",
+    attrs5(
+      props_class(cls),
+      props_id(id),
+      props_type("text"),
+      props_value(value),
       props_placeholder(placeholder)
     ),
     []
@@ -130,6 +144,7 @@ pub fn app() -> VNode {
 
   let runButton = tool_button("run-button", "Run", "primary");
   let stopButton = disabled_tool_button("stop-run-button", "Stop", "secondary");
+  let stopCompileButton = disabled_tool_button("stop-compile-button", "Stop Compile", "secondary");
   let checkButton = tool_button("check-button", "Check", "secondary");
   let formatButton = tool_button("format-button", "Format", "secondary");
   let shareButton = tool_button("share-button", "Share", "secondary");
@@ -137,6 +152,7 @@ pub fn app() -> VNode {
   let toolRow = div_node("tool-row", [
     runButton,
     stopButton,
+    stopCompileButton,
     checkButton,
     formatButton,
     shareButton,
@@ -179,6 +195,25 @@ pub fn app() -> VNode {
     packagePreset
   ]);
 
+  let workspaceHeading = vnode("div", props_class("panel-title"), [text("Workspace")]);
+  let workspaceInput = plain_input("workspace-name-input", "", "starter-app", "workspace-input");
+  let workspaceControls = div_node("tool-row compact-tools", [
+    tool_button("save-workspace-button", "Save", "secondary"),
+    tool_button("save-workspace-as-button", "Save As", "secondary"),
+    tool_button("delete-workspace-button", "Delete", "secondary"),
+    tool_button("export-workspace-button", "Export", "secondary"),
+    tool_button("import-workspace-button", "Import", "secondary"),
+    tool_button("scaffold-package-button", "Scaffold Package", "secondary"),
+    tool_button("reset-workspace-button", "Reset", "secondary")
+  ]);
+  let workspaceRecent = vnode("div", attrs2(props_class("workspace-recent-list"), props_id("recent-workspaces-root")), []);
+  let workspacePanel = vnode("section", props_class("workspace-manager panel"), [
+    div_node("panel-heading-row", [workspaceHeading, vnode("span", attrs2(props_class("small-pill"), props_id("workspace-status-pill")), [text("local")])]),
+    workspaceInput,
+    workspaceControls,
+    workspaceRecent
+  ]);
+
   let sourceTitle = vnode("div", props_class("panel-title"), [text("Project")]);
   let sourceSize = vnode("span", attrs2(props_class("small-pill"), props_id("source-size")), [text("0 lines")]);
   let editorTop = div_node("panel-heading-row", [
@@ -190,6 +225,9 @@ pub fn app() -> VNode {
     vnode("div", props_class("panel-title"), [text("Files")]),
     div_node("tool-row compact-tools", [
       tool_button("new-file-button", "New File", "secondary"),
+      tool_button("rename-file-button", "Rename", "secondary"),
+      tool_button("duplicate-file-button", "Duplicate", "secondary"),
+      tool_button("set-entry-button", "Set Entry", "secondary"),
       tool_button("delete-file-button", "Delete File", "secondary")
     ])
   ]);
@@ -197,14 +235,18 @@ pub fn app() -> VNode {
   let fileSidebar = vnode("aside", props_class("file-sidebar"), [fileHeader, fileList]);
 
   let activeFile = vnode("span", attrs2(props_class("small-pill"), props_id("active-file-label")), [text("main.lm")]);
+  let entryFile = vnode("span", attrs2(props_class("small-pill"), props_id("entry-file-label")), [text("entry: main.lm")]);
   let editorHeader = div_node("panel-heading-row", [
     vnode("div", props_class("panel-title"), [text("Editor")]),
-    activeFile
+    div_node("panel-heading-row editor-pill-row", [entryFile, activeFile])
   ]);
+  let fileTabs = vnode("div", attrs2(props_class("file-tabs"), props_id("file-tabs-root")), []);
   let editorMount = vnode("div", props_id("editor-root"), []);
   let editorStack = div_node("editor-stack", [
     presets,
+    workspacePanel,
     editorHeader,
+    fileTabs,
     editorMount
   ]);
   let editorWorkbench = div_node("editor-workbench", [fileSidebar, editorStack]);
@@ -235,6 +277,7 @@ pub fn app() -> VNode {
     routeFields,
     routeButtons
   ]);
+  let routeEventsPanel = panel("Route Events", "route-events-root", "route-events-list");
 
   let consoleHeading = vnode("div", props_class("panel-title"), [text("Console")]);
   let consoleStatus = vnode("span", attrs2(props_class("small-pill"), props_id("run-status")), [text("Not run")]);
@@ -247,6 +290,7 @@ pub fn app() -> VNode {
 
   let diagnosticsPanel = panel("Diagnostics", "diagnostics-root", "diagnostics-list");
   let debugPanel = panel("Import Graph", "module-graph-root", "debug-list");
+  let compilePanel = panel("Compile Details", "compile-details-root", "debug-list");
   let jsTitle = vnode("div", props_class("panel-title"), [text("Generated JavaScript")]);
   let jsBadge = vnode("span", props_class("small-pill"), [text("ES module")]);
   let jsHeader = div_node("panel-heading-row", [jsTitle, jsBadge]);
@@ -257,21 +301,23 @@ pub fn app() -> VNode {
   ]);
 
   let insightTitle = vnode("div", props_class("insight-title"), [text("Workbench")]);
-  let compileRow = insight_row("Compile", "Browser");
-  let runRow = insight_row("Run", "main()");
-  let shareRow = insight_row("Share", "Project URL");
-  let targetRow = insight_row("Modules", "0");
-  let debugRow = insight_row("Graph", "0 edges");
+  let compileRow = insight_row("Compile", "Browser", "insight-compile");
+  let runRow = insight_row("Run", "main()", "insight-run");
+  let shareRow = insight_row("Share", "Project URL", "insight-share");
+  let targetRow = insight_row("Modules", "0", "insight-modules");
+  let debugRow = insight_row("Graph", "0 edges", "insight-graph");
+  let workspaceRow = insight_row("Workspace", "ephemeral", "insight-workspace");
   let insightPanel = vnode("aside", props_class("insight-panel"), [
     insightTitle,
     compileRow,
     runRow,
     shareRow,
     targetRow,
-    debugRow
+    debugRow,
+    workspaceRow
   ]);
 
-  let rightColumn = div_node("result-column", [routePanel, consolePanel, diagnosticsPanel, debugPanel, jsPanel]);
+  let rightColumn = div_node("result-column", [routePanel, routeEventsPanel, consolePanel, diagnosticsPanel, debugPanel, compilePanel, jsPanel]);
   let workspace = div_node("workspace-grid", [editorPanel, rightColumn]);
 
   let toast = vnode("div", attrs2(props_class("toast"), props_id("toast-root")), [text("")]);

@@ -84,18 +84,30 @@ describe('site routing and playground integration', () => {
       path.resolve(__dirname, '../playground/src/compiler-bridge.ts'),
       'utf-8'
     );
+    const compilerWorker = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/compiler-worker.ts'),
+      'utf-8'
+    );
+    const compileClient = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/compile-client.ts'),
+      'utf-8'
+    );
 
     expect(importSource).not.toContain('node:fs');
     expect(importSource).not.toContain('node:path');
-    expect(playgroundIndex).not.toContain(
-      "Promise.all([import('./codemirror-bridge'), import('./compiler-bridge')])"
-    );
+    expect(playgroundIndex).not.toContain("import('./compiler-bridge')");
     expect(playgroundIndex).toContain('stateFromPreset');
     expect(playgroundIndex).toContain("document.getElementById('file-list-root')");
     expect(playgroundIndex).toContain("document.getElementById('route-apply-button')");
+    expect(playgroundIndex).toContain("document.getElementById('file-tabs-root')");
+    expect(playgroundIndex).toContain("document.getElementById('save-workspace-button')");
+    expect(playgroundIndex).toContain("document.getElementById('stop-compile-button')");
     expect(compilerBridge).toContain('compileLuminaGrammar(luminaGrammarRaw, { cache: true })');
     expect(compilerBridge).toContain("import routerStdRaw from '../../std/router.lm?raw';");
     expect(compilerBridge).toContain('compileLuminaProject');
     expect(compilerBridge).toContain("'@std/router', routerStdRaw");
+    expect(compilerBridge).toContain('importResolutions');
+    expect(compilerWorker).toContain("type: 'compile-result'");
+    expect(compileClient).toContain("new URL('./compiler-worker.ts', import.meta.url)");
   });
 });

@@ -7,6 +7,7 @@ import { BrowserProjectContext } from '../../src/project/browser-context';
 import { lowerLumina } from '../../src/lumina/lower';
 import { optimizeIR } from '../../src/lumina/optimize';
 import { generateJS } from '../../src/lumina/codegen';
+import { extractImports } from '../../src/project/imports';
 import type { PlaygroundProjectFile } from './playground-state';
 import type { RunnableModuleArtifact } from './runnable-module-graph';
 import { buildRunnableModuleGraph } from './runnable-module-graph';
@@ -25,6 +26,22 @@ export type PlaygroundCompileInput = {
   files: PlaygroundProjectFile[];
 };
 
+export type CompileImportResolution = {
+  fromUri: string;
+  specifier: string;
+  resolvedUri: string;
+  kind: 'relative' | 'std' | 'package' | 'virtual';
+  sourceBacked: boolean;
+};
+
+export type CompileTimings = {
+  diagnosticsMs: number;
+  lowerMs: number;
+  codegenMs: number;
+  moduleGraphMs: number;
+  totalMs: number;
+};
+
 export type CompileResult = {
   ok: boolean;
   js: string;
@@ -36,6 +53,8 @@ export type CompileResult = {
   entryUri: string;
   graphEdges: number;
   graphNodes: number;
+  importResolutions: CompileImportResolution[];
+  timings: CompileTimings;
 };
 
 const maxEmptyLines = 1;
@@ -46,6 +65,10 @@ type PlaygroundCompilerRuntime = {
 };
 
 const sourceExtensions = new Set(['.lm', '.lumina', '.lum']);
+const now = (): number =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
 
 const extname = (uri: string): string => {
   const lastSlash = uri.lastIndexOf('/');
@@ -185,13 +208,44 @@ const buildProjectContext = (runtime: PlaygroundCompilerRuntime, files: Playgrou
   return project;
 };
 
+const classifyImportResolution = (specifier: string): CompileImportResolution['kind'] => {
+  if (specifier.startsWith('.')) return 'relative';
+  if (specifier === '@std' || specifier.startsWith('@std/')) return 'std';
+  if (specifier.startsWith('virtual://')) return 'virtual';
+  return 'package';
+};
+
+const collectImportResolutions = (
+  runtime: PlaygroundCompilerRuntime,
+  project: BrowserProjectContext,
+  files: PlaygroundProjectFile[]
+): CompileImportResolution[] =>
+  files
+    .filter((file) => isSourceFile(file.uri))
+    .flatMap((file) =>
+      extractImports(file.text, { parser: runtime.parser, grammarSource: file.uri }).map((specifier) => {
+        const resolvedUri = project.resolveImportUri(file.uri, specifier);
+        return {
+          fromUri: file.uri,
+          specifier,
+          resolvedUri,
+          kind: classifyImportResolution(specifier),
+          sourceBacked: Boolean(project.getDocumentText(resolvedUri)),
+        } satisfies CompileImportResolution;
+      })
+    );
+
 export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResult => {
+  const startedAt = now();
   try {
     const runtime = getCompilerRuntime();
     const project = buildProjectContext(runtime, input.files);
+    const diagnosticsStartedAt = now();
     const diagnostics = input.files
       .filter((file) => isSourceFile(file.uri))
       .flatMap((file) => toDiagnostics(file.uri, file.text, project.getDiagnostics(file.uri)));
+    const importResolutions = collectImportResolutions(runtime, project, input.files);
+    const diagnosticsMs = now() - diagnosticsStartedAt;
     const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === 'error');
     if (hasErrors) {
       return {
@@ -205,6 +259,14 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
         entryUri: input.entryUri,
         graphEdges: 0,
         graphNodes: 0,
+        importResolutions,
+        timings: {
+          diagnosticsMs,
+          lowerMs: 0,
+          codegenMs: 0,
+          moduleGraphMs: 0,
+          totalMs: now() - startedAt,
+        },
       };
     }
 
@@ -227,17 +289,31 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
         entryUri: input.entryUri,
         graphEdges: 0,
         graphNodes: 0,
+        importResolutions,
+        timings: {
+          diagnosticsMs,
+          lowerMs: 0,
+          codegenMs: 0,
+          moduleGraphMs: 0,
+          totalMs: now() - startedAt,
+        },
       };
     }
 
+    const lowerStartedAt = now();
     const lowered = lowerLumina(ast as never);
     const optimized = optimizeIR(lowered);
+    const lowerMs = now() - lowerStartedAt;
+    const codegenStartedAt = now();
     const js = optimized ? generateJS(optimized as never).code : '// No JavaScript output generated.';
+    const codegenMs = now() - codegenStartedAt;
+    const moduleGraphStartedAt = now();
     const runnableGraph = buildRunnableModuleGraph({
       project,
       entryUri: input.entryUri,
       runtimeUrl: resolvedRuntimeUrl,
     });
+    const moduleGraphMs = now() - moduleGraphStartedAt;
     const entryModule = runnableGraph.modules.find((module) => module.uri === runnableGraph.entryUri);
     if (!entryModule) {
       return {
@@ -257,6 +333,14 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
         entryUri: input.entryUri,
         graphEdges: 0,
         graphNodes: 0,
+        importResolutions,
+        timings: {
+          diagnosticsMs,
+          lowerMs,
+          codegenMs,
+          moduleGraphMs,
+          totalMs: now() - startedAt,
+        },
       };
     }
 
@@ -274,6 +358,14 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
         0
       ),
       graphNodes: runnableGraph.modules.length,
+      importResolutions,
+      timings: {
+        diagnosticsMs,
+        lowerMs,
+        codegenMs,
+        moduleGraphMs,
+        totalMs: now() - startedAt,
+      },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -288,6 +380,14 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
       entryUri: input.entryUri,
       graphEdges: 0,
       graphNodes: 0,
+      importResolutions: [],
+      timings: {
+        diagnosticsMs: 0,
+        lowerMs: 0,
+        codegenMs: 0,
+        moduleGraphMs: 0,
+        totalMs: now() - startedAt,
+      },
     };
   }
 };

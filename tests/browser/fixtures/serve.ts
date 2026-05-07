@@ -18,6 +18,7 @@ type SmokeServer = {
 const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
 const grammarPath = path.resolve(fixtureDir, '../../../examples/lumina.peg');
 const domRenderDir = path.resolve(fixtureDir, '../../../examples/dom-render');
+const playgroundDir = path.resolve(fixtureDir, '../../../docs/playground');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 
@@ -49,6 +50,8 @@ const domRenderContentType = (filePath: string): string => {
   if (filePath.endsWith('.js')) return 'text/javascript; charset=utf-8';
   if (filePath.endsWith('.css')) return 'text/css; charset=utf-8';
   if (filePath.endsWith('.json')) return 'application/json; charset=utf-8';
+  if (filePath.endsWith('.map')) return 'application/json; charset=utf-8';
+  if (filePath.endsWith('.svg')) return 'image/svg+xml';
   return 'text/plain; charset=utf-8';
 };
 
@@ -117,6 +120,28 @@ export async function startSmokeServer(): Promise<SmokeServer> {
         const normalizedPath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '');
         const filePath = path.resolve(domRenderDir, normalizedPath);
         if (!filePath.startsWith(domRenderDir) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+          res.writeHead(404, makeHeaders('text/plain; charset=utf-8'));
+          res.end('not found');
+          return;
+        }
+        res.writeHead(200, makeHeaders(domRenderContentType(filePath)));
+        res.end(fs.readFileSync(filePath));
+        return;
+      }
+
+      if (pathname === '/playground' || pathname.startsWith('/playground/')) {
+        const relativePath = pathname === '/playground' ? 'index.html' : pathname.slice('/playground/'.length) || 'index.html';
+        const normalizedPath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '');
+        let filePath = path.resolve(playgroundDir, normalizedPath);
+        if (
+          normalizedPath.length === 0 ||
+          normalizedPath.endsWith(path.sep) ||
+          normalizedPath.endsWith('/') ||
+          (!fs.existsSync(filePath) && !path.extname(normalizedPath))
+        ) {
+          filePath = path.resolve(playgroundDir, 'index.html');
+        }
+        if (!filePath.startsWith(playgroundDir) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
           res.writeHead(404, makeHeaders('text/plain; charset=utf-8'));
           res.end('not found');
           return;
