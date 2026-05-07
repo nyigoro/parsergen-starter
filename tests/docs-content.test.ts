@@ -11,6 +11,7 @@ describe('docs content', () => {
     expect(source).toContain('routeModuleLoader');
     expect(source).toContain('routeNodeLayout');
     expect(source).toContain('routeTree');
+    expect(source).toContain('virtual:lumina-routes');
     expect(source).toContain('routeBoundary');
     expect(source).toContain('routeLayout');
     expect(source).toContain('routeLinkProps');

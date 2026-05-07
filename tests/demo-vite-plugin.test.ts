@@ -196,4 +196,55 @@ describe('demo vite plugin', () => {
     expect(code).toContain('routeTree');
     expect(code).toContain('export {');
   }, 15000);
+
+  test('exposes a virtual route manifest with lazy route imports', async () => {
+    const plugin = luminaPlugin();
+    const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-routes-'));
+    const appPath = path.join(workspace, 'src', 'app.lm');
+    const settingsPath = path.join(workspace, 'src', 'routes', 'settings.lm');
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, 'pub fn Settings() -> string { "settings" }\n', 'utf-8');
+    fs.writeFileSync(
+      appPath,
+      `
+        import { render } from "@std";
+        import { routeNode, routeNodeWithChildren, lazyRouteModule } from "@std/router";
+
+        pub fn routes() -> any {
+          let home = routeNode("home", "/", "Home")
+          let projects = routeNodeWithChildren("projects", "/projects", "Projects", render.props_empty())
+          let settings = lazyRouteModule("settings", "/settings", "Settings", "./routes/settings.lm")
+          home
+        }
+      `.trim() + '\n',
+      'utf-8'
+    );
+
+    try {
+      plugin.configResolved?.({ root: workspace });
+      const resolved = await plugin.resolveId?.('virtual:lumina-routes');
+      expect(resolved).toBe('\0virtual:lumina-routes');
+
+      const code = await plugin.load?.call(
+        {
+          error(message: string) {
+            throw new Error(message);
+          },
+        },
+        String(resolved)
+      );
+
+      expect(typeof code).toBe('string');
+      expect(code).toContain('export const routes');
+      expect(code).toContain('"id": "home"');
+      expect(code).toContain('"id": "projects"');
+      expect(code).toContain('"id": "settings"');
+      expect(code).toContain('"lazy": true');
+      expect(code).toContain('"/src/routes/settings.lm"');
+      expect(code).toContain('"settings": () => import("/src/routes/settings.lm")');
+      expect(code).toContain('export const duplicateRouteIds = []');
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  }, 15000);
 });

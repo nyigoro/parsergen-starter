@@ -663,6 +663,15 @@ request scope, TTL, stale-while-revalidate, and abort-on-refresh defaults.
 lock route-owned shell functions as first-class app architecture instead of
 ad-hoc layout composition.
 
+### virtual:lumina-routes
+
+The Lumina Vite plugin exposes `virtual:lumina-routes` for build-tool route
+visibility. It parses project `.lm` files, extracts static `routeNode`,
+`routeNodeWithChildren`, `routeModule`, and `lazyRouteModule` calls, and exports
+`routes`, `duplicateRouteIds`, and `lazyRouteModules`. Lazy route module entries
+are emitted as Vite-friendly dynamic imports so future SSR delivery,
+preloading, and route splitting can use the same manifest.
+
 ### prefetchRouteNode / prefetchRouteNodeWithOptions / cancelRouteNode / revalidateRouteNode
 
 Route-node delivery helpers for lazy route modules, route-owned prefetch,

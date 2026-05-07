@@ -1,4 +1,4 @@
-import{B as m,c as u}from"./compiler-analysis-Dz9WapxC.js";import{F as p,G as _}from"./compiler-core-BWerKu1p.js";import{g as y,a as f}from"./compiler-js-CtJY83bI.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-Z7VdhV9x.js";const x=`{\r
+import{B as m,c as u}from"./compiler-analysis-y147WjSn.js";import{I as p,J as _}from"./compiler-core-Bu_R4ek3.js";import{g as y,a as f}from"./compiler-js-CewKDTmu.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-BPutdx6R.js";const x=`{\r
   let nodeId = 0;\r
   function createNode(type, data, loc) {\r
     const resolvedLoc = data && data.location ? data.location : loc();\r

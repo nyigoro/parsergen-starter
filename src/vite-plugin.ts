@@ -38,6 +38,19 @@ type LuminaVitePlugin = {
   ) => ViteModuleNode[] | void | Promise<ViteModuleNode[] | void>;
 };
 
+type RouteManifestEntry = {
+  id: string;
+  pattern: string;
+  title: string;
+  kind: 'node' | 'module';
+  lazy: boolean;
+  file: string;
+  line: number;
+  column: number;
+  modulePath: string | null;
+  moduleSpecifier: string | null;
+};
+
 type CompilerModule = {
   compileGrammar: (grammar: string, options?: Record<string, unknown>) => unknown;
   parseLumina: (parser: unknown, input: string, options?: Record<string, unknown>) => unknown;
@@ -60,6 +73,8 @@ const cwdRequire = createRequire(path.join(process.cwd(), '__lumina_vite_probe__
 
 const defaultFileExtensions = ['.lm', '.lumina'];
 const importStatementRegex = /^\s*import\s+.+?from\s+["']([^"']+)["'];?\s*$/gm;
+const routeManifestVirtualId = 'virtual:lumina-routes';
+const resolvedRouteManifestVirtualId = '\0virtual:lumina-routes';
 
 const findPackageRoot = (): string => {
   const candidates = [
@@ -340,6 +355,129 @@ function resolveLuminaImport(
   return null;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function getCalleeName(expr: unknown): string | null {
+  if (!isPlainObject(expr)) return null;
+  if (expr.type === 'Identifier' && typeof expr.name === 'string') return expr.name;
+  if (expr.type === 'Member' && typeof expr.member === 'string') return expr.member;
+  return null;
+}
+
+function getStringArg(call: Record<string, unknown>, index: number): string | null {
+  const args = Array.isArray(call.args) ? call.args : [];
+  const arg = args[index];
+  if (!isPlainObject(arg)) return null;
+  const value = arg.value;
+  if (!isPlainObject(value) || value.type !== 'String' || typeof value.value !== 'string') {
+    return null;
+  }
+  return value.value;
+}
+
+function getLocation(call: Record<string, unknown>): { line: number; column: number } {
+  const location = isPlainObject(call.location) ? call.location : null;
+  const start = location && isPlainObject(location.start) ? location.start : null;
+  return {
+    line: typeof start?.line === 'number' ? start.line : 0,
+    column: typeof start?.column === 'number' ? start.column : 0,
+  };
+}
+
+function walkAst(node: unknown, visit: (node: Record<string, unknown>) => void): void {
+  if (!isPlainObject(node)) return;
+  visit(node);
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) {
+      for (const item of value) walkAst(item, visit);
+    } else if (isPlainObject(value)) {
+      walkAst(value, visit);
+    }
+  }
+}
+
+function normalizeProjectPath(projectRoot: string, filePath: string): string {
+  return normalizeSpecifier(projectRoot, filePath).replace(/^\.\//, '');
+}
+
+function moduleSpecifierForRoute(projectRoot: string, fromFile: string, modulePath: string | null): string | null {
+  if (!modulePath) return null;
+  const resolved = modulePath.startsWith('/')
+    ? path.resolve(projectRoot, `.${modulePath}`)
+    : path.resolve(path.dirname(fromFile), modulePath);
+  return `/${path.relative(projectRoot, resolved).replace(/\\/g, '/')}`;
+}
+
+function collectRouteManifestEntries(ast: unknown, projectRoot: string, filePath: string): RouteManifestEntry[] {
+  const entries: RouteManifestEntry[] = [];
+  walkAst(ast, (node) => {
+    if (node.type !== 'Call') return;
+    const callee = getCalleeName(node.callee);
+    if (callee !== 'routeNode' && callee !== 'routeNodeWithChildren' && callee !== 'routeModule' && callee !== 'lazyRouteModule') {
+      return;
+    }
+    const id = getStringArg(node, 0);
+    const pattern = getStringArg(node, 1);
+    const title = getStringArg(node, 2);
+    if (!id || !pattern || !title) return;
+    const modulePath = callee === 'lazyRouteModule' ? getStringArg(node, 3) : null;
+    const location = getLocation(node);
+    entries.push({
+      id,
+      pattern,
+      title,
+      kind: callee === 'routeModule' ? 'module' : 'node',
+      lazy: callee === 'lazyRouteModule',
+      file: normalizeProjectPath(projectRoot, filePath),
+      line: location.line,
+      column: location.column,
+      modulePath,
+      moduleSpecifier: moduleSpecifierForRoute(projectRoot, filePath, modulePath),
+    });
+  });
+  return entries;
+}
+
+function collectLuminaFiles(root: string, extensions: string[]): string[] {
+  const ignored = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.lumina']);
+  const files: string[] = [];
+  const visit = (dir: string): void => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (ignored.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath);
+        continue;
+      }
+      if (entry.isFile() && isLuminaFile(fullPath, extensions)) {
+        files.push(fullPath);
+      }
+    }
+  };
+  visit(root);
+  return files.sort();
+}
+
+function duplicateRouteIds(routes: RouteManifestEntry[]): string[] {
+  const seen = new Set<string>();
+  const duplicate = new Set<string>();
+  for (const route of routes) {
+    if (seen.has(route.id)) duplicate.add(route.id);
+    seen.add(route.id);
+  }
+  return Array.from(duplicate).sort();
+}
+
+function routeImportEntries(routes: RouteManifestEntry[]): string {
+  return routes
+    .filter((route) => route.lazy && route.moduleSpecifier)
+    .map((route) => `  ${JSON.stringify(route.id)}: () => import(${JSON.stringify(route.moduleSpecifier)}),`)
+    .join('\n');
+}
+
 export function luminaPlugin(): LuminaVitePlugin {
   const grammarPath = path.join(packageRoot, 'src', 'grammar', 'lumina.peg');
   const runtimePath = path.join(packageRoot, 'dist', 'lumina-runtime.js');
@@ -414,6 +552,30 @@ export function luminaPlugin(): LuminaVitePlugin {
     }
   };
 
+  const compileRouteManifestModule = async (): Promise<string> => {
+    const compiler = await getCompiler();
+    const parser = await getParser();
+    const routes: RouteManifestEntry[] = [];
+    for (const file of collectLuminaFiles(projectRoot, luminaExtensions)) {
+      const source = fs.readFileSync(file, 'utf-8');
+      try {
+        const ast = compiler.parseLumina(parser, source, { grammarSource: file });
+        routes.push(...collectRouteManifestEntries(ast, projectRoot, file));
+      } catch {
+        // Regular .lm module compilation reports syntax errors. The manifest stays best-effort
+        // so an unrelated route scan cannot hide the primary Vite diagnostic.
+      }
+    }
+    const imports = routeImportEntries(routes);
+    return [
+      `export const routes = ${JSON.stringify(routes, null, 2)};`,
+      `export const duplicateRouteIds = ${JSON.stringify(duplicateRouteIds(routes), null, 2)};`,
+      `export const lazyRouteModules = {\n${imports}\n};`,
+      'export default { routes, duplicateRouteIds, lazyRouteModules };',
+      '',
+    ].join('\n');
+  };
+
   const collectAffectedModules = (seed: Array<ViteModuleNode | undefined>): ViteModuleNode[] => {
     const queue = [...seed];
     const seen = new Set<ViteModuleNode>();
@@ -436,6 +598,9 @@ export function luminaPlugin(): LuminaVitePlugin {
       luminaExtensions = readLuminaFileExtensions(projectRoot);
     },
     resolveId(source: string, importer?: string) {
+      if (source === routeManifestVirtualId) {
+        return resolvedRouteManifestVirtualId;
+      }
       const resolved = resolveLuminaImport(
         source,
         importer,
@@ -445,6 +610,9 @@ export function luminaPlugin(): LuminaVitePlugin {
       return resolved ?? null;
     },
     async load(this: { error: (message: string) => never }, id: string) {
+      if (id === resolvedRouteManifestVirtualId) {
+        return await compileRouteManifestModule();
+      }
       if (!isLuminaFile(id, luminaExtensions)) return null;
       try {
         return await compileModule(id);
@@ -457,8 +625,10 @@ export function luminaPlugin(): LuminaVitePlugin {
     },
     handleHotUpdate({ file, modules, server }: ViteHotUpdateContext) {
       if (!isLuminaFile(file, luminaExtensions)) return;
+      const manifestModule = server.moduleGraph.getModuleById(resolvedRouteManifestVirtualId);
       const directModule = server.moduleGraph.getModuleById(file);
       const affected = collectAffectedModules([
+        manifestModule,
         directModule,
         ...modules,
       ]);
