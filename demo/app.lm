@@ -15,12 +15,12 @@ pub fn app() -> VNode {
   );
   let docs_link = anchor_node(
     "inline-flex items-center justify-center rounded-lg px-2 py-2 text-xs font-medium text-gray-300 hover:text-amber-100 sm:px-4 sm:text-sm",
-    "/docs/",
+    "./docs/",
     "Docs"
   );
   let playground_link = anchor_node(
     "inline-flex items-center justify-center rounded-lg px-2 py-2 text-xs font-medium text-gray-300 hover:text-amber-100 sm:px-4 sm:text-sm",
-    "/playground/",
+    "./playground/",
     "Playground"
   );
   let github_link = anchor_node(

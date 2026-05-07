@@ -4,10 +4,25 @@ import { luminaPlugin } from '../demo/vite-plugin-lumina.js';
 
 describe('demo vite plugin', () => {
   test('keeps the static home shell off router stdlib compilation path', () => {
+    const appSource = fs.readFileSync(path.resolve(__dirname, '../demo/app.lm'), 'utf-8');
     const componentsSource = fs.readFileSync(path.resolve(__dirname, '../demo/components.lm'), 'utf-8');
+    const examplesSource = fs.readFileSync(path.resolve(__dirname, '../demo/home-examples.lm'), 'utf-8');
+    const playgroundAppSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/app.lm'), 'utf-8');
+    const playgroundSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/index.ts'), 'utf-8');
     const styleSource = fs.readFileSync(path.resolve(__dirname, '../demo/style.css'), 'utf-8');
 
     expect(componentsSource).not.toContain('@std/router');
+    expect(appSource).toContain('"./docs/"');
+    expect(appSource).toContain('"./playground/"');
+    expect(appSource).not.toContain('"/docs/"');
+    expect(appSource).not.toContain('"/playground/"');
+    expect(examplesSource).toContain('./playground/?preset=basics');
+    expect(examplesSource).toContain('./playground/?preset=results');
+    expect(examplesSource).toContain('./playground/?preset=view-basic');
+    expect(playgroundSource).toContain("id: 'view-basic'");
+    expect(playgroundAppSource).toContain('preset_button("view-basic"');
+    expect(playgroundSource).toContain('readPresetFromLocation');
+    expect(playgroundSource).toContain("searchParams.get('preset')");
     expect(styleSource).toContain("@import 'tailwindcss' source(none);");
     expect(styleSource).toContain("@source './*.lm';");
   });

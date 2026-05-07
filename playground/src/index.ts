@@ -118,6 +118,16 @@ fn main() -> int {
 }`,
   },
   {
+    id: 'view-basic',
+    source: `import { io } from "@std";
+
+fn main() -> int {
+  let view = "<main class=\\"app-shell\\">web native systems</main>";
+  io.println(view);
+  return 0
+}`,
+  },
+  {
     id: 'keyed-ui',
     source: `import { io, render } from "@std";
 
@@ -234,6 +244,12 @@ const fromBase64Url = (value: string): string | null => {
 const readSharedSource = (): string | null => {
   const encoded = new URL(window.location.href).searchParams.get('code');
   return encoded ? fromBase64Url(encoded) : null;
+};
+
+const readPresetFromLocation = (): PlaygroundPreset | null => {
+  const presetId = new URL(window.location.href).searchParams.get('preset');
+  if (!presetId) return null;
+  return presets.find((preset) => preset.id === presetId) ?? null;
 };
 
 const readStoredSource = (): string | null => {
@@ -368,7 +384,22 @@ const copyText = async (value: string, successMessage: string): Promise<void> =>
 const createShareUrl = (source: string): string => {
   const url = new URL(window.location.href);
   url.searchParams.set('code', toBase64Url(source));
+  url.searchParams.delete('preset');
   return url.toString();
+};
+
+const writePresetUrl = (presetId: string): void => {
+  const url = new URL(window.location.href);
+  url.searchParams.set('preset', presetId);
+  url.searchParams.delete('code');
+  window.history.replaceState(null, '', url.toString());
+};
+
+const clearPresetUrl = (): void => {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('preset')) return;
+  url.searchParams.delete('preset');
+  window.history.replaceState(null, '', url.toString());
 };
 
 const setActivePreset = (presetId: string | null): void => {
@@ -444,8 +475,10 @@ const startPlayground = async (): Promise<void> => {
   if (!diagnosticsRoot || !outputRoot || !consoleRoot) return;
 
   let lastResult: CompileResult | null = null;
-  const initialSource = readSharedSource() ?? readStoredSource() ?? defaultPreset.source;
-  const initialPreset = initialSource === defaultPreset.source ? defaultPreset.id : null;
+  const sharedSource = readSharedSource();
+  const locationPreset = sharedSource ? null : readPresetFromLocation();
+  const initialSource = sharedSource ?? locationPreset?.source ?? readStoredSource() ?? defaultPreset.source;
+  const initialPreset = locationPreset?.id ?? (initialSource === defaultPreset.source ? defaultPreset.id : null);
 
   const compileAndRender = (): CompileResult => {
     const source = getEditorText('editor-root');
@@ -493,6 +526,7 @@ const startPlayground = async (): Promise<void> => {
   let compileTimer: number | undefined;
   onEditorChange('editor-root', (value) => {
     setActivePreset(null);
+    clearPresetUrl();
     updateSourceStats(value);
     writeStoredSource(value);
     if (compileTimer) window.clearTimeout(compileTimer);
@@ -538,6 +572,7 @@ const startPlayground = async (): Promise<void> => {
 
       setEditorText('editor-root', selectedPreset.source);
       setActivePreset(selectedPreset.id);
+      writePresetUrl(selectedPreset.id);
       compileAndRender();
     });
   });

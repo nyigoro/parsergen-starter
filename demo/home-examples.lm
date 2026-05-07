@@ -6,10 +6,10 @@ fn code_token(kind: string, value: string) -> VNode {
   return vnode("span", props_class("lumina-code-token " + kind), [text(value)]);
 }
 
-fn example_card(title: string, code: any) -> VNode {
+fn example_card(title: string, code: any, href: string) -> VNode {
   let label = vnode("div", props_class("lumina-example-label"), [text(title)]);
   let sample = vnode("pre", props_class("lumina-example-code"), code);
-  let action = anchor_node("lumina-example-action", "./playground/", "TRY!");
+  let action = anchor_node("lumina-example-action", href, "TRY!");
   return div_node("lumina-example-card", [label, sample, action]);
 }
 
@@ -34,9 +34,9 @@ pub fn examples_section() -> VNode {
     code_token("lumina-code-keyword", "pub"), text(" "), code_token("lumina-code-keyword", "fn"), text(" "), code_token("lumina-code-call", "app"), text("() -> "), code_token("lumina-code-type", "VNode"), text(" \{\n  "),
     code_token("lumina-code-call", "div_node"), text("("), code_token("lumina-code-string", "\"app-shell\""), text(", [\n    "), code_token("lumina-code-call", "text"), text("("), code_token("lumina-code-string", "\"web native systems\""), text(")\n  ])\n\}")
   ];
-  let counter = example_card("State", counter_code);
-  let match_state = example_card("Model", model_code);
-  let view = example_card("View", view_code);
+  let counter = example_card("State", counter_code, "./playground/?preset=basics");
+  let match_state = example_card("Model", model_code, "./playground/?preset=results");
+  let view = example_card("View", view_code, "./playground/?preset=view-basic");
   let cards = div_node("lumina-example-grid", [counter, match_state, view]);
   return div_node("lumina-examples-section", [div_node("lumina-example-heading", [title, intro]), cards, home_chips()]);
 }

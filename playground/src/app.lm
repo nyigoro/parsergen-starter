@@ -118,6 +118,7 @@ pub fn app() -> VNode {
   let indexingPreset = preset_button("safe-index", "Safe Indexing", "Option instead of undefined");
   let iteratorsPreset = preset_button("iterators", "Iterators", "Vec map, fold, and match");
   let resultsPreset = preset_button("results", "Results", "Error flow with Result");
+  let viewPreset = preset_button("view-basic", "View", "DOM-shaped render output");
   let keyedPreset = preset_button("keyed-ui", "Keyed UI", "Stable list identity and SSR keys");
   let genericKeyedPreset = preset_button("generic-keyed-ui", "Generic Keys", "Manual panel and branch identity");
   let starterPreset = preset_button("starter-app", "Starter App", "Router, loader, and SSR-ready shell");
@@ -126,6 +127,7 @@ pub fn app() -> VNode {
     indexingPreset,
     iteratorsPreset,
     resultsPreset,
+    viewPreset,
     keyedPreset,
     genericKeyedPreset,
     starterPreset
