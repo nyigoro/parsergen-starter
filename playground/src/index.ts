@@ -24,6 +24,14 @@ type CompileResult = {
 
 type CompileLuminaSource = (source: string) => CompileResult;
 type FormatLuminaSource = (source: string) => string;
+type PlaygroundBridge = {
+  compileLuminaSource: CompileLuminaSource;
+  formatLuminaSource: FormatLuminaSource;
+};
+type RunResult = {
+  output: string;
+  status: 'ok' | 'timeout' | 'error';
+};
 
 type PlaygroundPreset = {
   id: string;
@@ -268,24 +276,6 @@ const writeStoredSource = (source: string): void => {
   }
 };
 
-const formatRuntimeValue = (value: unknown): string => {
-  if (value === undefined) return 'void';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint')
-    return String(value);
-  if (value && typeof value === 'object' && '$tag' in value) {
-    const tagged = value as { $tag: string; $payload?: unknown };
-    return tagged.$payload === undefined
-      ? tagged.$tag
-      : `${tagged.$tag}(${formatRuntimeValue(tagged.$payload)})`;
-  }
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
-};
-
 const setText = (id: string, value: string): void => {
   const element = document.getElementById(id);
   if (element) element.textContent = value;
@@ -409,82 +399,162 @@ const setActivePreset = (presetId: string | null): void => {
   });
 };
 
-const runCompiledModule = async (result: CompileResult): Promise<string> => {
-  if (!result.hasMain) return 'No main() function found.';
+const runCompiledModule = async (result: CompileResult): Promise<RunResult> => {
+  if (!result.hasMain) {
+    return { output: 'No main() function found.', status: 'error' };
+  }
+  if (typeof Worker === 'undefined') {
+    return { output: 'Worker execution is unavailable in this browser.', status: 'error' };
+  }
 
   const moduleSource = `${result.runnableJs}\nexport { main as __luminaMain };\n`;
-  const blob = new Blob([moduleSource], { type: 'text/javascript' });
-  const moduleUrl = URL.createObjectURL(blob);
-  const logs: string[] = [];
-  /* eslint-disable no-console */
-  const originalLog = console.log;
-  const originalError = console.error;
-
-  console.log = (...args: unknown[]) => {
-    logs.push(args.map(formatRuntimeValue).join(' '));
-    originalLog(...args);
-  };
-  console.error = (...args: unknown[]) => {
-    logs.push(args.map(formatRuntimeValue).join(' '));
-    originalError(...args);
-  };
+  const moduleUrl = URL.createObjectURL(new Blob([moduleSource], { type: 'text/javascript' }));
+  const runnerSource = `
+const moduleUrl = ${JSON.stringify(moduleUrl)};
+const logs = [];
+const formatValue = (value) => {
+  if (value === undefined) return 'void';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+  if (value && typeof value === 'object' && '$tag' in value) {
+    const tagged = value;
+    return tagged.$payload === undefined
+      ? tagged.$tag
+      : \`\${tagged.$tag}(\${formatValue(tagged.$payload)})\`;
+  }
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+};
+console.log = (...args) => { logs.push(args.map(formatValue).join(' ')); };
+console.error = (...args) => { logs.push(args.map(formatValue).join(' ')); };
+(async () => {
+  try {
+    const module = await import(moduleUrl);
+    const returned = await module.__luminaMain?.();
+    postMessage({
+      type: 'done',
+      logs,
+      hasReturn: returned !== undefined,
+      returned: returned === undefined ? null : formatValue(returned),
+      error: null
+    });
+  } catch (error) {
+    postMessage({
+      type: 'done',
+      logs,
+      hasReturn: false,
+      returned: null,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+})();
+`;
+  const runnerUrl = URL.createObjectURL(new Blob([runnerSource], { type: 'text/javascript' }));
+  const worker = new Worker(runnerUrl, { type: 'module' });
 
   try {
-    const module = (await import(/* @vite-ignore */ moduleUrl)) as {
-      __luminaMain?: () => unknown | Promise<unknown>;
-    };
-    const returned = await module.__luminaMain?.();
-    if (returned !== undefined) logs.push(`return ${formatRuntimeValue(returned)}`);
+    return await new Promise<RunResult>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        worker.terminate();
+        resolve({
+          output: 'Execution timed out after 5 seconds. Stop the program or simplify the workload and try again.',
+          status: 'timeout',
+        });
+      }, 5000);
+
+      worker.onmessage = (event: MessageEvent<{
+        type?: string;
+        logs?: string[];
+        hasReturn?: boolean;
+        returned?: string | null;
+        error?: string | null;
+      }>) => {
+        if (event.data?.type !== 'done') return;
+        window.clearTimeout(timeout);
+        worker.terminate();
+
+        const lines = [...(event.data.logs ?? [])];
+        if (event.data.error) {
+          lines.push(event.data.error);
+        }
+        if (event.data.hasReturn && event.data.returned) {
+          lines.push(`return ${event.data.returned}`);
+        }
+
+        resolve({
+          output: lines.length > 0 ? lines.join('\n') : 'main() completed.',
+          status: event.data.error ? 'error' : 'ok',
+        });
+      };
+
+      worker.onerror = (event) => {
+        window.clearTimeout(timeout);
+        worker.terminate();
+        reject(new Error(event.message || 'Worker execution failed.'));
+      };
+    });
   } finally {
-    console.log = originalLog;
-    console.error = originalError;
+    URL.revokeObjectURL(runnerUrl);
     URL.revokeObjectURL(moduleUrl);
   }
-  /* eslint-enable no-console */
-
-  return logs.length > 0 ? logs.join('\n') : 'main() completed.';
 };
 
 const startPlayground = async (): Promise<void> => {
   updateLinks();
 
-  await Promise.all([import('./codemirror-bridge'), import('./compiler-bridge')]);
-
   const bridge = globalThis as Record<string, unknown>;
+  await import('./codemirror-bridge');
+
   const mountEditor = bridge.mountEditor as MountEditor | undefined;
   const getEditorText = bridge.getEditorText as GetEditorText | undefined;
   const setEditorText = bridge.setEditorText as SetEditorText | undefined;
   const onEditorChange = bridge.onEditorChange as OnEditorChange | undefined;
-  const compileLuminaSource = bridge.compileLuminaSource as CompileLuminaSource | undefined;
-  const formatSource = bridge.formatLuminaSource as FormatLuminaSource | undefined;
-  if (
-    !mountEditor ||
-    !getEditorText ||
-    !setEditorText ||
-    !onEditorChange ||
-    !compileLuminaSource ||
-    !formatSource
-  ) {
-    showToast('Playground tools did not load.');
-    return;
+  if (!mountEditor || !getEditorText || !setEditorText || !onEditorChange) {
+    throw new Error('Editor tools did not load.');
   }
 
   const diagnosticsRoot = document.getElementById('diagnostics-root');
   const outputRoot = document.getElementById('output-root');
   const consoleRoot = document.getElementById('console-root');
-  if (!diagnosticsRoot || !outputRoot || !consoleRoot) return;
+  if (!diagnosticsRoot || !outputRoot || !consoleRoot) {
+    throw new Error('Playground panels did not mount.');
+  }
 
   let lastResult: CompileResult | null = null;
+  let compilerBridge: PlaygroundBridge | null = null;
+  let compilerLoadPromise: Promise<boolean> | null = null;
   const sharedSource = readSharedSource();
   const locationPreset = sharedSource ? null : readPresetFromLocation();
   const initialSource = sharedSource ?? locationPreset?.source ?? readStoredSource() ?? defaultPreset.source;
   const initialPreset = locationPreset?.id ?? (initialSource === defaultPreset.source ? defaultPreset.id : null);
 
-  const compileAndRender = (): CompileResult => {
+  const renderLoadFailure = (message: string): void => {
+    const diagnostic = [{ severity: 'error', message, code: 'PLAYGROUND-LOAD' }];
+    setText('compile-status', 'Load failed');
+    setDataset('compile-status', 'status', 'error');
+    setText('run-status', 'Blocked');
+    setDataset('run-status', 'status', 'error');
+    diagnosticsRoot.innerHTML = '';
+    renderDiagnostics(diagnosticsRoot, diagnostic);
+    outputRoot.textContent = message;
+    consoleRoot.textContent = message;
+  };
+
+  const compileAndRender = (): CompileResult | null => {
+    if (!compilerBridge) {
+      setText('compile-status', 'Loading compiler');
+      setDataset('compile-status', 'status', 'running');
+      outputRoot.textContent = 'Compiler bridge is still loading...';
+      return null;
+    }
+
     const source = getEditorText('editor-root');
     updateSourceStats(source);
     writeStoredSource(source);
-    const result = compileLuminaSource(source);
+    const result = compilerBridge.compileLuminaSource(source);
     lastResult = result;
     setText('compile-status', result.ok ? 'Compiled' : 'Needs attention');
     setDataset('compile-status', 'status', result.ok ? 'ok' : 'error');
@@ -494,9 +564,47 @@ const startPlayground = async (): Promise<void> => {
     return result;
   };
 
+  const ensureCompilerBridge = (): Promise<boolean> => {
+    if (compilerBridge) return Promise.resolve(true);
+    if (!compilerLoadPromise) {
+      setText('compile-status', 'Loading compiler');
+      setDataset('compile-status', 'status', 'running');
+      outputRoot.textContent = 'Loading compiler bridge...';
+      compilerLoadPromise = new Promise<boolean>((resolve) => {
+        window.setTimeout(async () => {
+          try {
+            await import('./compiler-bridge');
+            const compileLuminaSource = bridge.compileLuminaSource as CompileLuminaSource | undefined;
+            const formatLuminaSource = bridge.formatLuminaSource as FormatLuminaSource | undefined;
+            if (!compileLuminaSource || !formatLuminaSource) {
+              throw new Error('Compiler tools did not register.');
+            }
+
+            compilerBridge = {
+              compileLuminaSource,
+              formatLuminaSource,
+            };
+            resolve(true);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            renderLoadFailure(message);
+            showToast('Compiler tools failed to load.');
+            resolve(false);
+          }
+        }, 0);
+      }).finally(() => {
+        compilerLoadPromise = null;
+      });
+    }
+
+    return compilerLoadPromise;
+  };
+
   const runSource = async (): Promise<void> => {
+    const ready = await ensureCompilerBridge();
+    if (!ready) return;
     const result = compileAndRender();
-    if (!result.ok) {
+    if (!result || !result.ok) {
       setText('run-status', 'Blocked');
       setDataset('run-status', 'status', 'error');
       consoleRoot.textContent = 'Fix diagnostics before running.';
@@ -506,9 +614,18 @@ const startPlayground = async (): Promise<void> => {
     setText('run-status', 'Running');
     setDataset('run-status', 'status', 'running');
     try {
-      consoleRoot.textContent = await runCompiledModule(result);
-      setText('run-status', 'Done');
-      setDataset('run-status', 'status', 'ok');
+      const runResult = await runCompiledModule(result);
+      consoleRoot.textContent = runResult.output;
+      if (runResult.status === 'timeout') {
+        setText('run-status', 'Timed out');
+        setDataset('run-status', 'status', 'error');
+      } else if (runResult.status === 'error') {
+        setText('run-status', 'Error');
+        setDataset('run-status', 'status', 'error');
+      } else {
+        setText('run-status', 'Done');
+        setDataset('run-status', 'status', 'ok');
+      }
     } catch (error) {
       consoleRoot.textContent = error instanceof Error ? error.message : String(error);
       setText('run-status', 'Error');
@@ -522,22 +639,35 @@ const startPlayground = async (): Promise<void> => {
   });
   setActivePreset(initialPreset);
   updateSourceStats(initialSource);
+  setText('compile-status', 'Loading compiler');
+  setDataset('compile-status', 'status', 'running');
+  outputRoot.textContent = 'Loading compiler bridge...';
 
   let compileTimer: number | undefined;
+  let suppressNextScheduledCompile = false;
   onEditorChange('editor-root', (value) => {
     setActivePreset(null);
     clearPresetUrl();
     updateSourceStats(value);
     writeStoredSource(value);
+    if (suppressNextScheduledCompile) {
+      suppressNextScheduledCompile = false;
+      return;
+    }
     if (compileTimer) window.clearTimeout(compileTimer);
     compileTimer = window.setTimeout(() => {
-      compileAndRender();
+      void ensureCompilerBridge().then((ready) => {
+        if (ready) compileAndRender();
+      });
     }, 220);
   });
 
   document.getElementById('check-button')?.addEventListener('click', () => {
-    compileAndRender();
-    showToast('Checked.');
+    void ensureCompilerBridge().then((ready) => {
+      if (!ready) return;
+      compileAndRender();
+      showToast('Checked.');
+    });
   });
 
   document.getElementById('run-button')?.addEventListener('click', () => {
@@ -545,10 +675,15 @@ const startPlayground = async (): Promise<void> => {
   });
 
   document.getElementById('format-button')?.addEventListener('click', () => {
-    const formatted = formatSource(getEditorText('editor-root'));
-    setEditorText('editor-root', formatted);
-    compileAndRender();
-    showToast('Formatted.');
+    void ensureCompilerBridge().then((ready) => {
+      if (!ready || !compilerBridge) return;
+      if (compileTimer) window.clearTimeout(compileTimer);
+      suppressNextScheduledCompile = true;
+      const formatted = compilerBridge.formatLuminaSource(getEditorText('editor-root'));
+      setEditorText('editor-root', formatted);
+      compileAndRender();
+      showToast('Formatted.');
+    });
   });
 
   document.getElementById('share-button')?.addEventListener('click', () => {
@@ -558,8 +693,12 @@ const startPlayground = async (): Promise<void> => {
   });
 
   document.getElementById('copy-js-button')?.addEventListener('click', () => {
-    const result = lastResult ?? compileAndRender();
-    void copyText(result.js, 'JavaScript copied.');
+    void ensureCompilerBridge().then((ready) => {
+      if (!ready) return;
+      const result = lastResult ?? compileAndRender();
+      if (!result) return;
+      void copyText(result.js, 'JavaScript copied.');
+    });
   });
 
   document.querySelectorAll<HTMLElement>('.preset-button').forEach((button) => {
@@ -570,20 +709,58 @@ const startPlayground = async (): Promise<void> => {
       const selectedPreset = presets.find((preset) => preset.id === selectedPresetId);
       if (!selectedPreset) return;
 
+      if (compileTimer) window.clearTimeout(compileTimer);
+      suppressNextScheduledCompile = true;
       setEditorText('editor-root', selectedPreset.source);
       setActivePreset(selectedPreset.id);
       writePresetUrl(selectedPreset.id);
-      compileAndRender();
+      void ensureCompilerBridge().then((ready) => {
+        if (ready) compileAndRender();
+      });
     });
   });
 
-  compileAndRender();
+  void ensureCompilerBridge().then((ready) => {
+    if (ready) compileAndRender();
+  });
 };
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    void startPlayground();
+    void startPlayground().catch((error) => {
+      showToast('Playground failed to start.');
+      const message = error instanceof Error ? error.message : String(error);
+      setText('compile-status', 'Load failed');
+      setDataset('compile-status', 'status', 'error');
+      setText('run-status', 'Blocked');
+      setDataset('run-status', 'status', 'error');
+      setText('diagnostic-count', '1');
+      const diagnosticsRoot = document.getElementById('diagnostics-root');
+      const outputRoot = document.getElementById('output-root');
+      const consoleRoot = document.getElementById('console-root');
+      if (diagnosticsRoot) {
+        diagnosticsRoot.innerHTML = `<p class="empty-state">${escapeHtml(message)}</p>`;
+      }
+      if (outputRoot) outputRoot.textContent = message;
+      if (consoleRoot) consoleRoot.textContent = message;
+    });
   });
 } else {
-  void startPlayground();
+  void startPlayground().catch((error) => {
+    showToast('Playground failed to start.');
+    const message = error instanceof Error ? error.message : String(error);
+    setText('compile-status', 'Load failed');
+    setDataset('compile-status', 'status', 'error');
+    setText('run-status', 'Blocked');
+    setDataset('run-status', 'status', 'error');
+    setText('diagnostic-count', '1');
+    const diagnosticsRoot = document.getElementById('diagnostics-root');
+    const outputRoot = document.getElementById('output-root');
+    const consoleRoot = document.getElementById('console-root');
+    if (diagnosticsRoot) {
+      diagnosticsRoot.innerHTML = `<p class="empty-state">${escapeHtml(message)}</p>`;
+    }
+    if (outputRoot) outputRoot.textContent = message;
+    if (consoleRoot) consoleRoot.textContent = message;
+  });
 }

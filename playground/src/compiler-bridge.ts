@@ -24,12 +24,29 @@ export type CompileResult = {
   diagnostics: CompileDiagnostic[];
 };
 
-const parser = compileLuminaGrammar(luminaGrammarRaw);
 const maxEmptyLines = 1;
 const resolvedRuntimeUrl = new URL(luminaRuntimeUrl, import.meta.url).href;
 
-const createProject = (): BrowserProjectContext =>
-  new BrowserProjectContext(parser, { preludeText: preludeRaw });
+type PlaygroundCompilerRuntime = {
+  parser: ReturnType<typeof compileLuminaGrammar>;
+  project: BrowserProjectContext;
+  version: number;
+};
+
+let compilerRuntime: PlaygroundCompilerRuntime | null = null;
+
+const getCompilerRuntime = (): PlaygroundCompilerRuntime => {
+  if (!compilerRuntime) {
+    const parser = compileLuminaGrammar(luminaGrammarRaw, { cache: true });
+    compilerRuntime = {
+      parser,
+      project: new BrowserProjectContext(parser, { preludeText: preludeRaw }),
+      version: 0,
+    };
+  }
+
+  return compilerRuntime;
+};
 
 export const formatLuminaSource = (source: string): string => {
   const normalized = source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
@@ -122,10 +139,11 @@ const hasMainFunction = (ast: unknown): boolean =>
 
 export const compileLuminaSource = (source: string): CompileResult => {
   try {
-    const project = createProject();
-    project.addOrUpdateDocument('main.lm', source, 1);
+    const runtime = getCompilerRuntime();
+    runtime.version += 1;
+    runtime.project.addOrUpdateDocument('main.lm', source, runtime.version);
 
-    const diagnostics = toDiagnostics(source, project.getDiagnostics('main.lm'));
+    const diagnostics = toDiagnostics(source, runtime.project.getDiagnostics('main.lm'));
     const hasErrors = diagnostics.some(diagnostic => diagnostic.severity === 'error');
     if (hasErrors) {
       return {
@@ -137,7 +155,7 @@ export const compileLuminaSource = (source: string): CompileResult => {
       };
     }
 
-    const ast = project.getDocumentAst('main.lm');
+    const ast = runtime.project.getDocumentAst('main.lm');
     if (!ast) {
       return {
         ok: false,

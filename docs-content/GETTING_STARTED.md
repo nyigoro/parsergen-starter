@@ -74,7 +74,7 @@ Notes:
 
 ## 7. VS Code
 
-The extension lives in [vscode-extension/](../vscode-extension/).
+The extension lives in [vscode-extension/](https://github.com/nyigoro/lumina-lang/tree/main/vscode-extension).
 
 ```bash
 cd vscode-extension

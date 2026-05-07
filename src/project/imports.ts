@@ -1,6 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { compileGrammar, type CompiledGrammar } from '../grammar/index.js';
+import { type CompiledGrammar } from '../grammar/index.js';
 import { type LuminaProgram } from '../lumina/ast.js';
 import { createLuminaLexer, luminaSyncTokenTypes, type LuminaToken } from '../lumina/lexer.js';
 import { parseWithPanicRecovery } from './panic.js';
@@ -29,34 +27,6 @@ const importSyncKeywords = [
   'extern',
   'pub',
 ];
-
-let cachedImportParser: { grammarPath: string; parser: CompiledGrammar<unknown> } | null = null;
-
-function resolveGrammarPath(explicitPath?: string): string | null {
-  const candidates = [
-    explicitPath ? path.resolve(explicitPath) : null,
-    path.resolve('src/grammar/lumina.peg'),
-    path.resolve('examples/lumina.peg'),
-  ].filter((candidate): candidate is string => typeof candidate === 'string');
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
-  return null;
-}
-
-function getImportParser(options: ImportExtractionOptions): CompiledGrammar<unknown> | null {
-  if (options.parser) return options.parser;
-  const grammarPath = resolveGrammarPath(options.grammarPath);
-  if (!grammarPath) return null;
-  if (cachedImportParser?.grammarPath === grammarPath) return cachedImportParser.parser;
-
-  const grammar = fs.readFileSync(grammarPath, 'utf-8');
-  const parser = compileGrammar<LuminaProgram>(grammar, { cache: true }) as CompiledGrammar<unknown>;
-  cachedImportParser = { grammarPath, parser };
-  return parser;
-}
 
 function collectImportsFromProgram(program: unknown): string[] | null {
   if (!program || typeof program !== 'object') return null;
@@ -97,7 +67,7 @@ function collectImportsWithLexer(source: string): string[] {
 }
 
 export function extractImports(source: string, options: ImportExtractionOptions = {}): string[] {
-  const parser = getImportParser(options);
+  const parser = options.parser ?? null;
   if (!parser) return collectImportsWithLexer(source);
 
   const result = parseWithPanicRecovery<LuminaProgram>(parser, source, {

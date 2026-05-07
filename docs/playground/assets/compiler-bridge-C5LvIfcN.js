@@ -1,4 +1,4 @@
-import{B as m,c as u}from"./compiler-analysis-y147WjSn.js";import{I as p,J as _}from"./compiler-core-Bu_R4ek3.js";import{g as y,a as f}from"./compiler-js-CewKDTmu.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-BPutdx6R.js";const x=`{\r
+import{c as u,B as p}from"./compiler-analysis-fjHScViP.js";import{I as _,J as y}from"./compiler-core-Bu_R4ek3.js";import{g as f,a as x}from"./compiler-js-CewKDTmu.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-BPutdx6R.js";const h=`{\r
   let nodeId = 0;\r
   function createNode(type, data, loc) {\r
     const resolvedLoc = data && data.location ? data.location : loc();\r
@@ -1675,7 +1675,7 @@ AwaitExpr\r
   = "await" __ value:PrimaryNoAwait {\r
       return createNode("Await", { value }, location);\r
     }\r
-`,h=`extern fn print(message: string) -> void from "console";\r
+`,b=`extern fn print(message: string) -> void from "console";\r
 extern fn abs(value: int) -> int from "math";\r
 extern fn max(a: int, b: int) -> int from "math";\r
 extern fn min(a: int, b: int) -> int from "math";\r
@@ -1764,10 +1764,10 @@ extern fn count_q<T>(q: Query<T>) -> int from "@std/query";\r
 extern fn first_q<T>(q: Query<T>) -> Option<T> from "@std/query";\r
 extern fn to_vec_q<T>(q: Query<T>) -> Vec<T> from "@std/query";\r
 extern fn join_q<T, U, K>(left: Query<T>, right: Query<U>, left_key: fn(T) -> K, right_key: fn(U) -> K) -> Query<Tuple<T, U>> from "@std/query";\r
-`,b=""+new URL("lumina-runtime-0gbd7SGy.js",import.meta.url).href,N=u(x),g=1,T=new URL(b,import.meta.url).href,v=()=>new m(N,{preludeText:h}),A=n=>{const a=n.replace(/^\uFEFF/,"").replace(/\r\n?/g,`
+`,N=""+new URL("lumina-runtime-0gbd7SGy.js",import.meta.url).href,g=1,v=new URL(N,import.meta.url).href;let d=null;const T=()=>{if(!d){const n=u(h,{cache:!0});d={parser:n,project:new p(n,{preludeText:b}),version:0}}return d},A=n=>{const a=n.replace(/^\uFEFF/,"").replace(/\r\n?/g,`
 `).split(`
-`),t=[];let e=0;for(const i of a){const o=i.replace(/[ \t]+$/g,"");if(o.length===0){e+=1,e<=g&&t.push("");continue}e=0,t.push(o)}for(;t.length>0&&t[t.length-1]==="";)t.pop();return`${t.join(`
+`),t=[];let r=0;for(const i of a){const o=i.replace(/[ \t]+$/g,"");if(o.length===0){r+=1,r<=g&&t.push("");continue}r=0,t.push(o)}for(;t.length>0&&t[t.length-1]==="";)t.pop();return`${t.join(`
 `)}
-`},I=(n,r=120)=>{const t=n.replace(/\r\n?/g,`
+`},I=(n,e=120)=>{const t=n.replace(/\r\n?/g,`
 `).split(`
-`),e=[];for(let i=0;i<t.length;i+=1){const o=t[i],l=i+1,s=o.match(/[ \t]+$/);s&&e.push({severity:"warning",message:"Trailing whitespace",line:l,column:s.index+1,code:"LINT-TRAILING-WS"});const c=o.indexOf("	");c>=0&&e.push({severity:"warning",message:"Tab indentation found; use spaces",line:l,column:c+1,code:"LINT-TAB-INDENT"}),o.length>r&&e.push({severity:"warning",message:`Line exceeds ${r} characters`,line:l,column:r+1,code:"LINT-LINE-LENGTH"})}return e},E=(n,r)=>{const a=r.map(e=>({severity:e.severity,message:e.message,line:e.location?.start?.line,column:e.location?.start?.column,code:e.code})),t=I(n);return[...a,...t]},P=n=>!!(n&&typeof n=="object"&&Array.isArray(n.body)&&n.body.some(r=>r.type==="FnDecl"&&r.name==="main")),S=n=>{try{const r=v();r.addOrUpdateDocument("main.lm",n,1);const a=E(n,r.getDiagnostics("main.lm"));if(a.some(c=>c.severity==="error"))return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:a};const e=r.getDocumentAst("main.lm");if(!e)return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:[{severity:"error",message:"No AST produced for main.lm"}]};const i=p(e),o=_(i),l=o?y(o).code:"// No JavaScript output generated.",s=f(e,{target:"esm",includeRuntime:!0,sourceMap:!1,sourceFile:"main.lm",sourceContent:n}).code.replace(/from\s+["']\.\/lumina-runtime\.js["']/g,`from ${JSON.stringify(T)}`);return{ok:!0,js:l,runnableJs:s,hasMain:P(e),diagnostics:a}}catch(r){return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:[{severity:"error",message:r instanceof Error?r.message:String(r)}]}}},d=globalThis;d.compileLuminaSource=S;d.formatLuminaSource=A;export{S as compileLuminaSource,A as formatLuminaSource};
+`),r=[];for(let i=0;i<t.length;i+=1){const o=t[i],l=i+1,s=o.match(/[ \t]+$/);s&&r.push({severity:"warning",message:"Trailing whitespace",line:l,column:s.index+1,code:"LINT-TRAILING-WS"});const c=o.indexOf("	");c>=0&&r.push({severity:"warning",message:"Tab indentation found; use spaces",line:l,column:c+1,code:"LINT-TAB-INDENT"}),o.length>e&&r.push({severity:"warning",message:`Line exceeds ${e} characters`,line:l,column:e+1,code:"LINT-LINE-LENGTH"})}return r},E=(n,e)=>{const a=e.map(r=>({severity:r.severity,message:r.message,line:r.location?.start?.line,column:r.location?.start?.column,code:r.code})),t=I(n);return[...a,...t]},P=n=>!!(n&&typeof n=="object"&&Array.isArray(n.body)&&n.body.some(e=>e.type==="FnDecl"&&e.name==="main")),S=n=>{try{const e=T();e.version+=1,e.project.addOrUpdateDocument("main.lm",n,e.version);const a=E(n,e.project.getDiagnostics("main.lm"));if(a.some(c=>c.severity==="error"))return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:a};const r=e.project.getDocumentAst("main.lm");if(!r)return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:[{severity:"error",message:"No AST produced for main.lm"}]};const i=_(r),o=y(i),l=o?f(o).code:"// No JavaScript output generated.",s=x(r,{target:"esm",includeRuntime:!0,sourceMap:!1,sourceFile:"main.lm",sourceContent:n}).code.replace(/from\s+["']\.\/lumina-runtime\.js["']/g,`from ${JSON.stringify(v)}`);return{ok:!0,js:l,runnableJs:s,hasMain:P(r),diagnostics:a}}catch(e){return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:[{severity:"error",message:e instanceof Error?e.message:String(e)}]}}},m=globalThis;m.compileLuminaSource=S;m.formatLuminaSource=A;export{S as compileLuminaSource,A as formatLuminaSource};

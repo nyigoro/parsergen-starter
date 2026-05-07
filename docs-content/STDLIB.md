@@ -965,6 +965,10 @@ Encrypts with AES-GCM and returns base64 payload (`iv + ciphertext`).
 
 Decrypts base64 payload from `aesGcmEncrypt`.
 
+## Result
+
+Result-oriented helpers and combinators for mapping, applying, chaining, folding, and traversing success/error values.
+
 ## @std/functor
 
 Container mapping helpers aligned with `Functor<F<_>>` patterns.

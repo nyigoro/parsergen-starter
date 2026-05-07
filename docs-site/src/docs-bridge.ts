@@ -34,17 +34,24 @@ const loadBundle = async (): Promise<DocsBundle> => {
   return bundlePromise;
 };
 
-const slugFromLocation = (): string => {
+const routeFromLocation = (): { section: string | null; slug: string } => {
   const hash = window.location.hash.replace(/^#\/?/, '').trim();
-  if (hash.length > 0) return hash;
+  if (hash.length > 0) {
+    const [slugPart, query = ''] = hash.split('?');
+    const slug = slugPart.replace(/^\/+|\/+$/g, '');
+    const section = new URLSearchParams(query).get('section');
+    return { slug: slug.length > 0 ? slug : defaultSlug, section };
+  }
 
   const parts = window.location.pathname.split('/').filter(Boolean);
   if (parts.length > 0) {
     const last = parts[parts.length - 1];
-    if (last !== 'docs' && last !== 'index.html') return last;
+    if (last !== '404.html' && last !== 'docs' && last !== 'index.html') {
+      return { slug: last, section: null };
+    }
   }
 
-  return defaultSlug;
+  return { slug: defaultSlug, section: null };
 };
 
 const escapeHtml = (value: string): string =>
@@ -76,7 +83,8 @@ const renderSidebar = (items: DocsBundle['index'], activeSlug: string): string =
 
 const renderCurrentDoc = async (): Promise<void> => {
   const bundle = await loadBundle();
-  const slug = slugFromLocation();
+  const route = routeFromLocation();
+  const slug = route.slug;
   const page = bundle.pages.find(candidate => candidate.slug === slug) ?? bundle.pages.find(candidate => candidate.slug === defaultSlug);
   if (!page) return;
 
@@ -108,6 +116,12 @@ const renderCurrentDoc = async (): Promise<void> => {
   }
 
   document.title = `${page.title} | Lumina Docs`;
+
+  if (route.section) {
+    window.requestAnimationFrame(() => {
+      document.getElementById(route.section!)?.scrollIntoView({ block: 'start' });
+    });
+  }
 };
 
 const listDocPages = async (): Promise<DocsBundle['index']> => {

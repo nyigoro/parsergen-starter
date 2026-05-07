@@ -86,10 +86,46 @@ const extractTitle = (source, fallback) => {
   return match?.[1]?.trim() ?? fallback;
 };
 
-const resolveDocHref = (currentLookupKey, href, slugByLookupKey) => {
-  if (/^(?:[a-z]+:|#|\/)/i.test(href)) return href;
+const slugifyHeading = value =>
+  value
+    .toLowerCase()
+    .replace(/&amp;/g, 'and')
+    .replace(/&#39;/g, '')
+    .replace(/&quot;/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[^a-z0-9\s-]+/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
 
-  const [rawTarget] = href.split('#');
+const addHeadingIds = html => {
+  const seen = new Map();
+  return html.replace(/<h([1-6])>([\s\S]*?)<\/h\1>/g, (_match, level, inner) => {
+    const baseId = slugifyHeading(inner) || 'section';
+    const nextCount = seen.get(baseId) ?? 0;
+    seen.set(baseId, nextCount + 1);
+    const id = nextCount === 0 ? baseId : `${baseId}-${nextCount}`;
+    return `<h${level} id="${id}">${inner}</h${level}>`;
+  });
+};
+
+const buildDocRouteHref = (slug, section) => {
+  if (!section) return `#/${slug}`;
+  return `#/${slug}?section=${encodeURIComponent(section)}`;
+};
+
+const resolveDocHref = (currentLookupKey, href, slugByLookupKey) => {
+  if (/^(?:[a-z]+:|\/)/i.test(href)) return href;
+
+  if (href.startsWith('#/')) return href;
+
+  if (href.startsWith('#')) {
+    const currentSlug = slugByLookupKey.get(currentLookupKey);
+    const section = href.slice(1).trim();
+    return currentSlug ? buildDocRouteHref(currentSlug, section) : href;
+  }
+
+  const [rawTarget, rawSection] = href.split('#');
   if (!rawTarget) return href;
 
   const currentDir = currentLookupKey.includes('/') ? path.posix.dirname(currentLookupKey) : '.';
@@ -106,7 +142,7 @@ const resolveDocHref = (currentLookupKey, href, slugByLookupKey) => {
   }
 
   const slug = candidateKeys.map(key => slugByLookupKey.get(key)).find(Boolean);
-  return slug ? `#/${slug}` : href;
+  return slug ? buildDocRouteHref(slug, rawSection?.trim()) : href;
 };
 
 const rewriteDocLinks = (html, currentLookupKey, slugByLookupKey) =>
@@ -199,7 +235,7 @@ const renderMarkdown = async (source, currentLookupKey, slugByLookupKey) => {
   const tokens = marked.lexer(source);
   await replaceCodeTokens(tokens);
   const html = marked.parser(tokens);
-  return rewriteDocLinks(html, currentLookupKey, slugByLookupKey);
+  return rewriteDocLinks(addHeadingIds(html), currentLookupKey, slugByLookupKey);
 };
 
 const buildManifest = async () => {

@@ -7,8 +7,50 @@
     <meta http-equiv="refresh" content="0; url=./">
     <script>
       (function () {
-        var redirect = location.origin + '/#' + location.pathname + location.search + location.hash;
-        location.replace(redirect);
+        function trimAppSuffix(pathname) {
+          return pathname.replace(/\/404\.html$/i, '').replace(/\/+$/g, '');
+        }
+
+        function buildDocsRedirect(origin, pathname) {
+          var cleaned = trimAppSuffix(pathname);
+          var marker = '/docs';
+          var markerIndex = cleaned.indexOf(marker);
+          var prefix = markerIndex >= 0 ? cleaned.slice(0, markerIndex) : '';
+          var afterMarker = markerIndex >= 0 ? cleaned.slice(markerIndex + marker.length) : '';
+          var slug = afterMarker.replace(/^\/+/, '');
+          var base = origin + prefix + marker + '/';
+          return slug.length > 0 ? base + '#/' + slug : base;
+        }
+
+        function buildPlaygroundRedirect(origin, pathname, search, hash) {
+          var cleaned = trimAppSuffix(pathname);
+          var marker = '/playground';
+          var markerIndex = cleaned.indexOf(marker);
+          var prefix = markerIndex >= 0 ? cleaned.slice(0, markerIndex) : '';
+          return origin + prefix + marker + '/' + search + hash;
+        }
+
+        function buildRootRedirect(origin, pathname) {
+          var cleaned = trimAppSuffix(pathname);
+          var segments = cleaned.split('/').filter(Boolean);
+          if (segments.length >= 2) {
+            return origin + '/' + segments[0] + '/';
+          }
+          return origin + '/';
+        }
+
+        function computeRedirectUrl(locationValue) {
+          var pathname = locationValue.pathname || '/';
+          if (pathname.includes('/docs/')) {
+            return buildDocsRedirect(locationValue.origin, pathname);
+          }
+          if (pathname.includes('/playground/')) {
+            return buildPlaygroundRedirect(locationValue.origin, pathname, locationValue.search || '', locationValue.hash || '');
+          }
+          return buildRootRedirect(locationValue.origin, pathname);
+        }
+
+        location.replace(computeRedirectUrl(location));
       })();
     </script>
   </head>
