@@ -14,6 +14,19 @@ const createTempDir = (): string => {
   return dir;
 };
 
+const writePresetProject = (root: string, presetId: string): string => {
+  const preset = playgroundPresets.find((entry) => entry.id === presetId);
+  expect(preset).toBeTruthy();
+
+  for (const file of preset!.files) {
+    const fullPath = path.join(root, file.uri);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, `${file.source.trim()}\n`, 'utf-8');
+  }
+
+  return path.join(root, preset!.entryUri);
+};
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0, tempDirs.length)) {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -25,13 +38,13 @@ describe('playground presets', () => {
     setDefaultStdPath(path.join(repoRoot, 'std'));
   });
 
-  test('starter-app preset stays aligned with the CLI checker', async () => {
-    const preset = playgroundPresets.find((entry) => entry.id === 'starter-app');
-    expect(preset).toBeTruthy();
-
+  test.each([
+    'starter-app',
+    'forms-resource',
+    'package-import',
+  ])('%s preset stays aligned with the CLI checker', async (presetId) => {
     const dir = createTempDir();
-    const sourcePath = path.join(dir, 'starter-app.lm');
-    fs.writeFileSync(sourcePath, `${preset!.source.trim()}\n`, 'utf-8');
+    const sourcePath = writePresetProject(dir, presetId);
 
     const result = await checkLuminaTask({
       sourcePath,
@@ -40,5 +53,5 @@ describe('playground presets', () => {
     });
 
     expect(result.ok).toBe(true);
-  }, 15000);
+  }, 20000);
 });

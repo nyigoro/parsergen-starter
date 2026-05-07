@@ -7,6 +7,7 @@ import { BrowserProjectContext } from '../../src/project/browser-context';
 import { lowerLumina } from '../../src/lumina/lower';
 import { optimizeIR } from '../../src/lumina/optimize';
 import { generateJS } from '../../src/lumina/codegen';
+import type { PlaygroundProjectFile } from './playground-state';
 import type { RunnableModuleArtifact } from './runnable-module-graph';
 import { buildRunnableModuleGraph } from './runnable-module-graph';
 
@@ -16,6 +17,12 @@ export type CompileDiagnostic = {
   line?: number;
   column?: number;
   code?: string;
+  fileUri?: string;
+};
+
+export type PlaygroundCompileInput = {
+  entryUri: string;
+  files: PlaygroundProjectFile[];
 };
 
 export type CompileResult = {
@@ -26,6 +33,9 @@ export type CompileResult = {
   runnableModules: RunnableModuleArtifact[];
   hasMain: boolean;
   diagnostics: CompileDiagnostic[];
+  entryUri: string;
+  graphEdges: number;
+  graphNodes: number;
 };
 
 const maxEmptyLines = 1;
@@ -33,26 +43,25 @@ const resolvedRuntimeUrl = new URL(luminaRuntimeUrl, import.meta.url).href;
 
 type PlaygroundCompilerRuntime = {
   parser: ReturnType<typeof compileLuminaGrammar>;
-  project: BrowserProjectContext;
-  version: number;
 };
 
-const playgroundVirtualStdFiles = {
-  '@std/router': routerStdRaw,
+const sourceExtensions = new Set(['.lm', '.lumina', '.lum']);
+
+const extname = (uri: string): string => {
+  const lastSlash = uri.lastIndexOf('/');
+  const fileName = lastSlash >= 0 ? uri.slice(lastSlash + 1) : uri;
+  const dot = fileName.lastIndexOf('.');
+  return dot >= 0 ? fileName.slice(dot) : '';
 };
+
+const isSourceFile = (uri: string): boolean => sourceExtensions.has(extname(uri));
 
 let compilerRuntime: PlaygroundCompilerRuntime | null = null;
 
 const getCompilerRuntime = (): PlaygroundCompilerRuntime => {
   if (!compilerRuntime) {
-    const parser = compileLuminaGrammar(luminaGrammarRaw, { cache: true });
     compilerRuntime = {
-      parser,
-      project: new BrowserProjectContext(parser, {
-        preludeText: preludeRaw,
-        virtualFiles: playgroundVirtualStdFiles,
-      }),
-      version: 0,
+      parser: compileLuminaGrammar(luminaGrammarRaw, { cache: true }),
     };
   }
 
@@ -80,7 +89,11 @@ export const formatLuminaSource = (source: string): string => {
   return `${out.join('\n')}\n`;
 };
 
-const collectStyleLintIssues = (source: string, maxLineLength = 120): CompileDiagnostic[] => {
+const collectStyleLintIssues = (
+  fileUri: string,
+  source: string,
+  maxLineLength = 120
+): CompileDiagnostic[] => {
   const normalized = source.replace(/\r\n?/g, '\n');
   const lines = normalized.split('\n');
   const issues: CompileDiagnostic[] = [];
@@ -96,6 +109,7 @@ const collectStyleLintIssues = (source: string, maxLineLength = 120): CompileDia
         line: lineNo,
         column: trailing.index! + 1,
         code: 'LINT-TRAILING-WS',
+        fileUri,
       });
     }
 
@@ -107,6 +121,7 @@ const collectStyleLintIssues = (source: string, maxLineLength = 120): CompileDia
         line: lineNo,
         column: tabIndex + 1,
         code: 'LINT-TAB-INDENT',
+        fileUri,
       });
     }
 
@@ -117,6 +132,7 @@ const collectStyleLintIssues = (source: string, maxLineLength = 120): CompileDia
         line: lineNo,
         column: maxLineLength + 1,
         code: 'LINT-LINE-LENGTH',
+        fileUri,
       });
     }
   }
@@ -124,16 +140,21 @@ const collectStyleLintIssues = (source: string, maxLineLength = 120): CompileDia
   return issues;
 };
 
-const toDiagnostics = (source: string, projectDiagnostics: ReturnType<BrowserProjectContext['getDiagnostics']>): CompileDiagnostic[] => {
-  const compilerDiagnostics = projectDiagnostics.map(diagnostic => ({
+const toDiagnostics = (
+  fileUri: string,
+  source: string,
+  projectDiagnostics: ReturnType<BrowserProjectContext['getDiagnostics']>
+): CompileDiagnostic[] => {
+  const compilerDiagnostics = projectDiagnostics.map((diagnostic) => ({
     severity: diagnostic.severity,
     message: diagnostic.message,
     line: diagnostic.location?.start?.line,
     column: diagnostic.location?.start?.column,
     code: diagnostic.code,
+    fileUri,
   }));
 
-  const lintDiagnostics = collectStyleLintIssues(source);
+  const lintDiagnostics = collectStyleLintIssues(fileUri, source);
 
   return [...compilerDiagnostics, ...lintDiagnostics];
 };
@@ -144,18 +165,34 @@ const hasMainFunction = (ast: unknown): boolean =>
     typeof ast === 'object' &&
     Array.isArray((ast as { body?: unknown }).body) &&
     (ast as { body: Array<{ type?: string; name?: string }> }).body.some(
-      statement => statement.type === 'FnDecl' && statement.name === 'main'
+      (statement) => statement.type === 'FnDecl' && statement.name === 'main'
     )
   );
 
-export const compileLuminaSource = (source: string): CompileResult => {
+const buildProjectContext = (runtime: PlaygroundCompilerRuntime, files: PlaygroundProjectFile[]) => {
+  const virtualFiles = new Map<string, string>([['@std/router', routerStdRaw]]);
+  for (const file of files) {
+    virtualFiles.set(file.uri, file.text);
+  }
+  const project = new BrowserProjectContext(runtime.parser, {
+    preludeText: preludeRaw,
+    virtualFiles,
+  });
+  for (const file of files) {
+    if (!isSourceFile(file.uri)) continue;
+    project.addOrUpdateDocument(file.uri, file.text, 1);
+  }
+  return project;
+};
+
+export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResult => {
   try {
     const runtime = getCompilerRuntime();
-    runtime.version += 1;
-    runtime.project.addOrUpdateDocument('main.lm', source, runtime.version);
-
-    const diagnostics = toDiagnostics(source, runtime.project.getDiagnostics('main.lm'));
-    const hasErrors = diagnostics.some(diagnostic => diagnostic.severity === 'error');
+    const project = buildProjectContext(runtime, input.files);
+    const diagnostics = input.files
+      .filter((file) => isSourceFile(file.uri))
+      .flatMap((file) => toDiagnostics(file.uri, file.text, project.getDiagnostics(file.uri)));
+    const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === 'error');
     if (hasErrors) {
       return {
         ok: false,
@@ -165,10 +202,13 @@ export const compileLuminaSource = (source: string): CompileResult => {
         runnableModules: [],
         hasMain: false,
         diagnostics,
+        entryUri: input.entryUri,
+        graphEdges: 0,
+        graphNodes: 0,
       };
     }
 
-    const ast = runtime.project.getDocumentAst('main.lm');
+    const ast = project.getDocumentAst(input.entryUri);
     if (!ast) {
       return {
         ok: false,
@@ -177,7 +217,16 @@ export const compileLuminaSource = (source: string): CompileResult => {
         runnableEntryUri: null,
         runnableModules: [],
         hasMain: false,
-        diagnostics: [{ severity: 'error', message: 'No AST produced for main.lm' }],
+        diagnostics: [
+          {
+            severity: 'error',
+            message: `No AST produced for ${input.entryUri}`,
+            fileUri: input.entryUri,
+          },
+        ],
+        entryUri: input.entryUri,
+        graphEdges: 0,
+        graphNodes: 0,
       };
     }
 
@@ -185,8 +234,8 @@ export const compileLuminaSource = (source: string): CompileResult => {
     const optimized = optimizeIR(lowered);
     const js = optimized ? generateJS(optimized as never).code : '// No JavaScript output generated.';
     const runnableGraph = buildRunnableModuleGraph({
-      project: runtime.project,
-      entryUri: 'main.lm',
+      project,
+      entryUri: input.entryUri,
       runtimeUrl: resolvedRuntimeUrl,
     });
     const entryModule = runnableGraph.modules.find((module) => module.uri === runnableGraph.entryUri);
@@ -198,7 +247,16 @@ export const compileLuminaSource = (source: string): CompileResult => {
         runnableEntryUri: null,
         runnableModules: [],
         hasMain: false,
-        diagnostics: [{ severity: 'error', message: 'No runnable entry module produced for main.lm' }],
+        diagnostics: [
+          {
+            severity: 'error',
+            message: `No runnable entry module produced for ${input.entryUri}`,
+            fileUri: input.entryUri,
+          },
+        ],
+        entryUri: input.entryUri,
+        graphEdges: 0,
+        graphNodes: 0,
       };
     }
 
@@ -210,6 +268,12 @@ export const compileLuminaSource = (source: string): CompileResult => {
       runnableModules: runnableGraph.modules,
       hasMain: hasMainFunction(ast),
       diagnostics,
+      entryUri: input.entryUri,
+      graphEdges: runnableGraph.modules.reduce(
+        (count, module) => count + module.sourceImports.length,
+        0
+      ),
+      graphNodes: runnableGraph.modules.length,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -221,10 +285,13 @@ export const compileLuminaSource = (source: string): CompileResult => {
       runnableModules: [],
       hasMain: false,
       diagnostics: [{ severity: 'error', message }],
+      entryUri: input.entryUri,
+      graphEdges: 0,
+      graphNodes: 0,
     };
   }
 };
 
 const bridgeTarget = globalThis as Record<string, unknown>;
-bridgeTarget.compileLuminaSource = compileLuminaSource;
+bridgeTarget.compileLuminaProject = compileLuminaProject;
 bridgeTarget.formatLuminaSource = formatLuminaSource;

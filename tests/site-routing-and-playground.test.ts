@@ -90,8 +90,12 @@ describe('site routing and playground integration', () => {
     expect(playgroundIndex).not.toContain(
       "Promise.all([import('./codemirror-bridge'), import('./compiler-bridge')])"
     );
+    expect(playgroundIndex).toContain('stateFromPreset');
+    expect(playgroundIndex).toContain("document.getElementById('file-list-root')");
+    expect(playgroundIndex).toContain("document.getElementById('route-apply-button')");
     expect(compilerBridge).toContain('compileLuminaGrammar(luminaGrammarRaw, { cache: true })');
     expect(compilerBridge).toContain("import routerStdRaw from '../../std/router.lm?raw';");
-    expect(compilerBridge).toContain("'@std/router': routerStdRaw");
+    expect(compilerBridge).toContain('compileLuminaProject');
+    expect(compilerBridge).toContain("'@std/router', routerStdRaw");
   });
 });

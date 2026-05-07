@@ -34,6 +34,14 @@ const isLuminaVirtualSource = (spec: string): boolean => {
   return !ext || ext === '.lm' || ext === '.lumina' || ext === '.lum';
 };
 
+const normalizeVirtualPath = (spec: string): string => {
+  const normalized = spec.replace(/\\/g, '/');
+  const cleaned = normalized.startsWith('virtual://') ? normalized.slice('virtual://'.length) : normalized;
+  const collapsed = path.posix.normalize(cleaned);
+  if (collapsed === '.' || collapsed === './') return '';
+  return collapsed.startsWith('./') ? collapsed.slice(2) : collapsed;
+};
+
 export interface SourceDocument {
   uri: string;
   fsPath: string;
@@ -938,7 +946,7 @@ export class ProjectContext {
   }
 
   private normalizeVirtualSpec(spec: string): string {
-    return spec.startsWith('virtual://') ? spec.slice('virtual://'.length) : spec;
+    return normalizeVirtualPath(spec);
   }
 
   private virtualUriFor(spec: string): string {

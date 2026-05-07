@@ -1,52 +1,60 @@
 import './style.css';
 import './main.lm';
 import { defaultPlaygroundPreset, playgroundPresets, type PlaygroundPreset } from './presets';
+import type { CompileDiagnostic, CompileResult, PlaygroundCompileInput } from './compiler-bridge';
+import {
+  addProjectFile,
+  cloneProject,
+  createRoutePreview,
+  currentRouteLocation,
+  decodeSharedState,
+  encodeSharedState,
+  getProjectFile,
+  nextUntitledFileUri,
+  projectFromPreset,
+  removeProjectFile,
+  replaceRouteLocation,
+  routeHrefFromLocation,
+  routePreviewCanGoBack,
+  routePreviewCanGoForward,
+  sanitizePersistedState,
+  setActiveProjectFile,
+  stepRoutePreview,
+  type PersistedPlaygroundState,
+  type PlaygroundProject,
+  type PlaygroundProjectFile,
+  type PlaygroundRouteLocation,
+  type PlaygroundRoutePreview,
+  updateProjectFileText,
+} from './playground-state';
 
 type MountEditor = (options: { elementId: string; initialValue: string }) => void;
 type GetEditorText = (elementId: string) => string;
 type SetEditorText = (elementId: string, value: string) => void;
 type OnEditorChange = (elementId: string, handler: (value: string) => void) => () => void;
 
-type CompileDiagnostic = {
-  severity: string;
-  message: string;
-  line?: number;
-  column?: number;
-  code?: string;
-};
-
-type CompileResult = {
-  ok: boolean;
-  js: string;
-  runnableJs: string;
-  runnableEntryUri: string | null;
-  runnableModules: Array<{
-    uri: string;
-    code: string;
-    sourceImports: Array<{
-      resolvedUri: string;
-      statement: string;
-    }>;
-  }>;
-  hasMain: boolean;
-  diagnostics: CompileDiagnostic[];
-};
-
-type CompileLuminaSource = (source: string) => CompileResult;
+type CompileLuminaProject = (input: PlaygroundCompileInput) => CompileResult;
 type FormatLuminaSource = (source: string) => string;
 type PlaygroundBridge = {
-  compileLuminaSource: CompileLuminaSource;
+  compileLuminaProject: CompileLuminaProject;
   formatLuminaSource: FormatLuminaSource;
 };
+
 type RunResult = {
   output: string;
-  status: 'ok' | 'timeout' | 'error';
+  status: 'ok' | 'timeout' | 'error' | 'cancelled';
 };
 
-const storageKey = 'lumina-playground-source';
+type PlaygroundUiState = {
+  project: PlaygroundProject;
+  routePreview: PlaygroundRoutePreview;
+  consoleOutput: string;
+};
+
+const storageKey = 'lumina-playground-state-v2';
 const isDirectPlaygroundDev = import.meta.env.DEV && window.location.port === '5175';
-const devAppUrl = (port: string, path: string): string =>
-  `${window.location.protocol}//${window.location.hostname}:${port}${path}`;
+const devAppUrl = (port: string, pathname: string): string =>
+  `${window.location.protocol}//${window.location.hostname}:${port}${pathname}`;
 
 const escapeHtml = (value: string): string =>
   value
@@ -55,13 +63,6 @@ const escapeHtml = (value: string): string =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-
-const toBase64Url = (value: string): string => {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');
-};
 
 const fromBase64Url = (value: string): string | null => {
   try {
@@ -77,9 +78,16 @@ const fromBase64Url = (value: string): string | null => {
   }
 };
 
-const readSharedSource = (): string | null => {
+const readLegacySharedSource = (): string | null => {
   const encoded = new URL(window.location.href).searchParams.get('code');
   return encoded ? fromBase64Url(encoded) : null;
+};
+
+const readSharedState = (): PersistedPlaygroundState | null => {
+  const encoded = new URL(window.location.href).searchParams.get('project');
+  if (!encoded) return null;
+  const decoded = decodeSharedState(encoded);
+  return decoded ? sanitizePersistedState(decoded) : null;
 };
 
 const readPresetFromLocation = (): PlaygroundPreset | null => {
@@ -88,19 +96,21 @@ const readPresetFromLocation = (): PlaygroundPreset | null => {
   return playgroundPresets.find((preset) => preset.id === presetId) ?? null;
 };
 
-const readStoredSource = (): string | null => {
+const readStoredState = (): PersistedPlaygroundState | null => {
   try {
-    return window.localStorage.getItem(storageKey);
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    return sanitizePersistedState(JSON.parse(raw) as PersistedPlaygroundState);
   } catch {
     return null;
   }
 };
 
-const writeStoredSource = (source: string): void => {
+const writeStoredState = (state: PersistedPlaygroundState): void => {
   try {
-    window.localStorage.setItem(storageKey, source);
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
-    // Storage is optional; sharing and compiling still work without it.
+    // Storage is optional for the playground.
   }
 };
 
@@ -114,6 +124,16 @@ const setDataset = (id: string, key: string, value: string): void => {
   if (element) element.dataset[key] = value;
 };
 
+const setButtonDisabled = (id: string, disabled: boolean): void => {
+  const element = document.getElementById(id) as HTMLButtonElement | null;
+  if (element) element.disabled = disabled;
+};
+
+const setInputValue = (id: string, value: string): void => {
+  const element = document.getElementById(id) as HTMLInputElement | null;
+  if (element) element.value = value;
+};
+
 const showToast = (message: string): void => {
   const toast = document.getElementById('toast-root');
   if (!toast) return;
@@ -124,10 +144,12 @@ const showToast = (message: string): void => {
   }, 1800);
 };
 
-const updateSourceStats = (source: string): void => {
-  const lines = source.trim().length === 0 ? 0 : source.replace(/\n$/g, '').split('\n').length;
-  setText('source-size', `${lines} ${lines === 1 ? 'line' : 'lines'}`);
-};
+const countProjectLines = (files: PlaygroundProjectFile[]): number =>
+  files.reduce((count, file) => {
+    const normalized = file.text.replace(/\r\n?/g, '\n').trim();
+    if (normalized.length === 0) return count;
+    return count + normalized.replace(/\n$/g, '').split('\n').length;
+  }, 0);
 
 const updateLinks = (): void => {
   const home = document.getElementById('home-link') as HTMLAnchorElement | null;
@@ -147,12 +169,13 @@ const renderDiagnostics = (element: HTMLElement, diagnostics: CompileDiagnostic[
   element.innerHTML = diagnostics
     .map((diagnostic) => {
       const locationParts = [
+        diagnostic.fileUri ?? '',
         diagnostic.line ? `line ${diagnostic.line}` : '',
         diagnostic.column ? `col ${diagnostic.column}` : '',
       ].filter(Boolean);
       const location =
         locationParts.length > 0
-          ? `<span class="diagnostic-line">${escapeHtml(locationParts.join(', '))}</span>`
+          ? `<span class="diagnostic-line">${escapeHtml(locationParts.join(' • '))}</span>`
           : '';
       const code = diagnostic.code
         ? `<span class="diagnostic-code">${escapeHtml(diagnostic.code)}</span>`
@@ -179,10 +202,41 @@ const renderOutput = (element: HTMLElement, result: CompileResult): void => {
 
   element.textContent = result.diagnostics
     .map((diagnostic) => {
-      const prefix = diagnostic.line ? `line ${diagnostic.line}: ` : '';
-      return `${prefix}${diagnostic.message}`;
+      const prefix = diagnostic.fileUri ? `${diagnostic.fileUri}: ` : '';
+      const line = diagnostic.line ? `line ${diagnostic.line}: ` : '';
+      return `${prefix}${line}${diagnostic.message}`;
     })
     .join('\n');
+};
+
+const renderModuleGraph = (element: HTMLElement, result: CompileResult | null): void => {
+  if (!result || result.runnableModules.length === 0) {
+    element.innerHTML = '<p class="empty-state">Compile a project to inspect its module graph.</p>';
+    return;
+  }
+
+  element.innerHTML = result.runnableModules
+    .map((module) => {
+      const imports =
+        module.sourceImports.length > 0
+          ? `<ul class="module-import-list">${module.sourceImports
+              .map(
+                (sourceImport) =>
+                  `<li><code>${escapeHtml(sourceImport.resolvedUri)}</code></li>`
+              )
+              .join('')}</ul>`
+          : '<p class="module-empty">No source-backed imports.</p>';
+      return `
+        <article class="module-card">
+          <div class="module-card-top">
+            <strong>${escapeHtml(module.uri)}</strong>
+            <span class="small-pill">${module.sourceImports.length} imports</span>
+          </div>
+          ${imports}
+        </article>
+      `;
+    })
+    .join('');
 };
 
 const copyText = async (value: string, successMessage: string): Promise<void> => {
@@ -199,25 +253,89 @@ const copyText = async (value: string, successMessage: string): Promise<void> =>
   }
 };
 
-const createShareUrl = (source: string): string => {
-  const url = new URL(window.location.href);
-  url.searchParams.set('code', toBase64Url(source));
-  url.searchParams.delete('preset');
-  return url.toString();
+const persistedStateFromUi = (state: PlaygroundUiState): PersistedPlaygroundState => ({
+  version: 2,
+  project: cloneProject(state.project),
+  routePreview: {
+    entries: state.routePreview.entries.map((entry) => ({ ...entry })),
+    index: state.routePreview.index,
+  },
+  consoleOutput: state.consoleOutput,
+});
+
+const routeHrefForPreset = (preset: PlaygroundPreset, baseHref: string): string =>
+  preset.routeHref ? new URL(preset.routeHref, baseHref).toString() : new URL('/', baseHref).toString();
+
+const stateFromPreset = (preset: PlaygroundPreset, baseHref: string): PlaygroundUiState => ({
+  project: projectFromPreset(preset),
+  routePreview: createRoutePreview(routeHrefForPreset(preset, baseHref), baseHref),
+  consoleOutput: 'Run the program to see output.',
+});
+
+const stateFromLegacySource = (source: string, baseHref: string): PlaygroundUiState => ({
+  project: {
+    presetId: null,
+    entryUri: 'main.lm',
+    activeFileUri: 'main.lm',
+    files: [{ uri: 'main.lm', text: source }],
+  },
+  routePreview: createRoutePreview(new URL('/', baseHref).toString(), baseHref),
+  consoleOutput: 'Run the program to see output.',
+});
+
+const resolveInitialState = (baseHref: string): PlaygroundUiState => {
+  const sharedState = readSharedState();
+  if (sharedState) {
+    return {
+      project: sharedState.project,
+      routePreview: sharedState.routePreview,
+      consoleOutput: sharedState.consoleOutput || 'Run the program to see output.',
+    };
+  }
+
+  const sharedSource = readLegacySharedSource();
+  if (sharedSource) return stateFromLegacySource(sharedSource, baseHref);
+
+  const locationPreset = readPresetFromLocation();
+  if (locationPreset) return stateFromPreset(locationPreset, baseHref);
+
+  const storedState = readStoredState();
+  if (storedState) {
+    return {
+      project: storedState.project,
+      routePreview: storedState.routePreview,
+      consoleOutput: storedState.consoleOutput || 'Run the program to see output.',
+    };
+  }
+
+  return stateFromPreset(defaultPlaygroundPreset, baseHref);
 };
 
 const writePresetUrl = (presetId: string): void => {
   const url = new URL(window.location.href);
   url.searchParams.set('preset', presetId);
+  url.searchParams.delete('project');
   url.searchParams.delete('code');
   window.history.replaceState(null, '', url.toString());
 };
 
 const clearPresetUrl = (): void => {
   const url = new URL(window.location.href);
-  if (!url.searchParams.has('preset')) return;
+  if (!url.searchParams.has('preset') && !url.searchParams.has('project') && !url.searchParams.has('code')) {
+    return;
+  }
   url.searchParams.delete('preset');
+  url.searchParams.delete('project');
+  url.searchParams.delete('code');
   window.history.replaceState(null, '', url.toString());
+};
+
+const createShareUrl = (state: PlaygroundUiState): string => {
+  const url = new URL(window.location.href);
+  url.searchParams.set('project', encodeSharedState(persistedStateFromUi(state)));
+  url.searchParams.delete('preset');
+  url.searchParams.delete('code');
+  return url.toString();
 };
 
 const setActivePreset = (presetId: string | null): void => {
@@ -230,7 +348,10 @@ const setActivePreset = (presetId: string | null): void => {
 const rewriteModuleImportSource = (statement: string, nextSpecifier: string): string =>
   statement.replace(/\bfrom\s+["'][^"']+["']/, `from ${JSON.stringify(nextSpecifier)}`);
 
-const runCompiledModule = async (result: CompileResult): Promise<RunResult> => {
+const runCompiledModule = async (
+  result: CompileResult,
+  options: { href: string; signal: AbortSignal }
+): Promise<RunResult> => {
   if (!result.hasMain) {
     return { output: 'No main() function found.', status: 'error' };
   }
@@ -244,9 +365,7 @@ const runCompiledModule = async (result: CompileResult): Promise<RunResult> => {
     const existing = moduleUrls.get(uri);
     if (existing) return existing;
     const module = runnableModules.get(uri);
-    if (!module) {
-      throw new Error(`Missing runnable module ${uri}`);
-    }
+    if (!module) throw new Error(`Missing runnable module ${uri}`);
     const importLines = module.sourceImports.map((sourceImport) =>
       rewriteModuleImportSource(sourceImport.statement, materializeModule(sourceImport.resolvedUri))
     );
@@ -261,11 +380,14 @@ const runCompiledModule = async (result: CompileResult): Promise<RunResult> => {
   const entryModuleUrl =
     result.runnableEntryUri && result.runnableModules.length > 0
       ? materializeModule(result.runnableEntryUri)
-      : URL.createObjectURL(new Blob([`${result.runnableJs}\nexport { main as __luminaMain };\n`], { type: 'text/javascript' }));
-  const routerSandboxHref = new URL('/', window.location.href).toString();
+      : URL.createObjectURL(
+          new Blob([`${result.runnableJs}\nexport { main as __luminaMain };\n`], {
+            type: 'text/javascript',
+          })
+        );
   const runnerSource = `
 const moduleUrl = ${JSON.stringify(entryModuleUrl)};
-const routerSandboxHref = ${JSON.stringify(routerSandboxHref)};
+const routerSandboxHref = ${JSON.stringify(options.href)};
 const logs = [];
 const routerUrl = new URL(routerSandboxHref);
 const routerListeners = new Set();
@@ -372,26 +494,44 @@ console.error = (...args) => { logs.push(args.map(formatValue).join(' ')); };
       const timeout = window.setTimeout(() => {
         worker.terminate();
         resolve({
-          output: 'Execution timed out after 5 seconds. Stop the program or simplify the workload and try again.',
+          output:
+            'Execution timed out after 5 seconds. Stop the program or simplify the workload and try again.',
           status: 'timeout',
         });
       }, 5000);
 
-      worker.onmessage = (event: MessageEvent<{
-        type?: string;
-        logs?: string[];
-        hasReturn?: boolean;
-        returned?: string | null;
-        error?: string | null;
-      }>) => {
+      const abort = () => {
+        window.clearTimeout(timeout);
+        worker.terminate();
+        resolve({
+          output: options.signal.reason ? String(options.signal.reason) : 'Execution cancelled.',
+          status: 'cancelled',
+        });
+      };
+
+      if (options.signal.aborted) {
+        abort();
+        return;
+      }
+
+      options.signal.addEventListener('abort', abort, { once: true });
+
+      worker.onmessage = (
+        event: MessageEvent<{
+          type?: string;
+          logs?: string[];
+          hasReturn?: boolean;
+          returned?: string | null;
+          error?: string | null;
+        }>
+      ) => {
         if (event.data?.type !== 'done') return;
+        options.signal.removeEventListener('abort', abort);
         window.clearTimeout(timeout);
         worker.terminate();
 
         const lines = [...(event.data.logs ?? [])];
-        if (event.data.error) {
-          lines.push(event.data.error);
-        }
+        if (event.data.error) lines.push(event.data.error);
         if (event.data.hasReturn && event.data.returned) {
           lines.push(`return ${event.data.returned}`);
         }
@@ -403,6 +543,7 @@ console.error = (...args) => { logs.push(args.map(formatValue).join(' ')); };
       };
 
       worker.onerror = (event) => {
+        options.signal.removeEventListener('abort', abort);
         window.clearTimeout(timeout);
         worker.terminate();
         reject(new Error(event.message || 'Worker execution failed.'));
@@ -419,9 +560,15 @@ console.error = (...args) => { logs.push(args.map(formatValue).join(' ')); };
   }
 };
 
+const readRouteInputs = (): PlaygroundRouteLocation => ({
+  pathname: (document.getElementById('route-path-input') as HTMLInputElement | null)?.value || '/',
+  search: (document.getElementById('route-search-input') as HTMLInputElement | null)?.value || '',
+  hash: (document.getElementById('route-hash-input') as HTMLInputElement | null)?.value || '',
+});
+
 const startPlayground = async (): Promise<void> => {
   updateLinks();
-
+  const playgroundBaseHref = new URL('/', window.location.href).toString();
   const bridge = globalThis as Record<string, unknown>;
   await import('./codemirror-bridge');
 
@@ -436,34 +583,125 @@ const startPlayground = async (): Promise<void> => {
   const diagnosticsRoot = document.getElementById('diagnostics-root');
   const outputRoot = document.getElementById('output-root');
   const consoleRoot = document.getElementById('console-root');
-  if (!diagnosticsRoot || !outputRoot || !consoleRoot) {
+  const moduleGraphRoot = document.getElementById('module-graph-root');
+  if (!diagnosticsRoot || !outputRoot || !consoleRoot || !moduleGraphRoot) {
     throw new Error('Playground panels did not mount.');
   }
 
+  let state = resolveInitialState(playgroundBaseHref);
   let lastResult: CompileResult | null = null;
   let compilerBridge: PlaygroundBridge | null = null;
   let compilerLoadPromise: Promise<boolean> | null = null;
-  const sharedSource = readSharedSource();
-  const locationPreset = sharedSource ? null : readPresetFromLocation();
-  const initialSource =
-    sharedSource ?? locationPreset?.source ?? readStoredSource() ?? defaultPlaygroundPreset.source;
-  const initialPreset =
-    locationPreset?.id ??
-    (initialSource === defaultPlaygroundPreset.source ? defaultPlaygroundPreset.id : null);
+  let compileTimer: number | undefined;
+  let suppressNextScheduledCompile = false;
+  let activeRun:
+    | {
+        controller: AbortController;
+      }
+    | null = null;
+
+  const persist = (): void => {
+    writeStoredState(persistedStateFromUi(state));
+  };
+
+  const updateRouteUi = (): void => {
+    const location = currentRouteLocation(state.routePreview);
+    setInputValue('route-path-input', location.pathname);
+    setInputValue('route-search-input', location.search);
+    setInputValue('route-hash-input', location.hash);
+    setText('route-preview-url', routeHrefFromLocation(location, playgroundBaseHref));
+    setButtonDisabled('route-back-button', !routePreviewCanGoBack(state.routePreview));
+    setButtonDisabled('route-forward-button', !routePreviewCanGoForward(state.routePreview));
+  };
+
+  const renderFileList = (): void => {
+    const fileList = document.getElementById('file-list-root');
+    if (!fileList) return;
+    fileList.innerHTML = state.project.files
+      .map((file) => {
+        const isActive = file.uri === state.project.activeFileUri;
+        const isEntry = file.uri === state.project.entryUri;
+        return `
+          <button class="file-item"${isActive ? ' data-active="true"' : ''} data-file-uri="${escapeHtml(file.uri)}">
+            <span class="file-item-name">${escapeHtml(file.uri)}</span>
+            ${isEntry ? '<span class="file-item-badge">entry</span>' : ''}
+          </button>
+        `;
+      })
+      .join('');
+    setText('active-file-label', state.project.activeFileUri);
+    setText('active-file-stat', state.project.activeFileUri);
+  };
+
+  const syncProjectStats = (): void => {
+    const totalLines = countProjectLines(state.project.files);
+    setText('source-size', `${state.project.files.length} files • ${totalLines} lines`);
+    setText('output-mode', lastResult ? `JS • ${lastResult.graphNodes} modules` : 'JS');
+    setActivePreset(state.project.presetId);
+    renderFileList();
+    updateRouteUi();
+  };
+
+  const setConsoleOutput = (value: string): void => {
+    state = { ...state, consoleOutput: value };
+    consoleRoot.textContent = value;
+    persist();
+  };
+
+  const cancelActiveRun = (message: string): void => {
+    if (!activeRun) return;
+    activeRun.controller.abort(message);
+    activeRun = null;
+    setButtonDisabled('stop-run-button', true);
+  };
+
+  const syncProjectFromEditor = (): void => {
+    const activeFile = getProjectFile(state.project, state.project.activeFileUri);
+    if (!activeFile) return;
+    const nextText = getEditorText('editor-root');
+    if (nextText === activeFile.text) return;
+    state = {
+      ...state,
+      project: updateProjectFileText({ ...state.project, presetId: null }, state.project.activeFileUri, nextText),
+    };
+    syncProjectStats();
+    persist();
+  };
+
+  const mountActiveFile = (uri: string): void => {
+    const activeFile = getProjectFile(state.project, uri);
+    if (!activeFile) return;
+    suppressNextScheduledCompile = true;
+    setEditorText('editor-root', activeFile.text);
+    state = { ...state, project: setActiveProjectFile(state.project, uri) };
+    syncProjectStats();
+    persist();
+  };
 
   const renderLoadFailure = (message: string): void => {
-    const diagnostic = [{ severity: 'error', message, code: 'PLAYGROUND-LOAD' }];
+    const diagnostic = [{ severity: 'error', message, code: 'PLAYGROUND-LOAD' } satisfies CompileDiagnostic];
     setText('compile-status', 'Load failed');
     setDataset('compile-status', 'status', 'error');
     setText('run-status', 'Blocked');
     setDataset('run-status', 'status', 'error');
-    diagnosticsRoot.innerHTML = '';
     renderDiagnostics(diagnosticsRoot, diagnostic);
-    outputRoot.textContent = message;
-    consoleRoot.textContent = message;
+    renderOutput(outputRoot, {
+      ok: false,
+      js: '',
+      runnableJs: '',
+      runnableEntryUri: null,
+      runnableModules: [],
+      hasMain: false,
+      diagnostics: diagnostic,
+      entryUri: state.project.entryUri,
+      graphEdges: 0,
+      graphNodes: 0,
+    });
+    renderModuleGraph(moduleGraphRoot, null);
+    setConsoleOutput(message);
   };
 
-  const compileAndRender = (): CompileResult | null => {
+  const compileProject = (): CompileResult | null => {
     if (!compilerBridge) {
       setText('compile-status', 'Loading compiler');
       setDataset('compile-status', 'status', 'running');
@@ -471,25 +709,34 @@ const startPlayground = async (): Promise<void> => {
       return null;
     }
 
-    const source = getEditorText('editor-root');
-    updateSourceStats(source);
-    writeStoredSource(source);
-    const result = compilerBridge.compileLuminaSource(source);
+    syncProjectFromEditor();
+    cancelActiveRun('Execution cancelled after a project change.');
+
+    const result = compilerBridge.compileLuminaProject({
+      entryUri: state.project.entryUri,
+      files: state.project.files,
+    });
     lastResult = result;
     setText('compile-status', result.ok ? 'Compiled' : 'Needs attention');
     setDataset('compile-status', 'status', result.ok ? 'ok' : 'error');
-    setText('output-mode', 'JS');
+    setText('output-mode', `JS • ${result.graphNodes} modules`);
     renderDiagnostics(diagnosticsRoot, result.diagnostics);
     renderOutput(outputRoot, result);
+    renderModuleGraph(moduleGraphRoot, result);
     if (result.ok) {
-      setText('run-status', 'Not run');
+      setText('run-status', 'Ready');
       setDataset('run-status', 'status', 'idle');
-      consoleRoot.textContent = 'Run the program to see output.';
+      if (!state.consoleOutput.trim()) {
+        setConsoleOutput('Run the program to see output.');
+      } else {
+        consoleRoot.textContent = state.consoleOutput;
+      }
     } else {
       setText('run-status', 'Blocked');
       setDataset('run-status', 'status', 'error');
-      consoleRoot.textContent = 'Fix diagnostics before running.';
+      setConsoleOutput('Fix diagnostics before running.');
     }
+    syncProjectStats();
     return result;
   };
 
@@ -503,14 +750,14 @@ const startPlayground = async (): Promise<void> => {
         window.setTimeout(async () => {
           try {
             await import('./compiler-bridge');
-            const compileLuminaSource = bridge.compileLuminaSource as CompileLuminaSource | undefined;
+            const compileLuminaProject = bridge.compileLuminaProject as CompileLuminaProject | undefined;
             const formatLuminaSource = bridge.formatLuminaSource as FormatLuminaSource | undefined;
-            if (!compileLuminaSource || !formatLuminaSource) {
+            if (!compileLuminaProject || !formatLuminaSource) {
               throw new Error('Compiler tools did not register.');
             }
 
             compilerBridge = {
-              compileLuminaSource,
+              compileLuminaProject,
               formatLuminaSource,
             };
             resolve(true);
@@ -532,53 +779,85 @@ const startPlayground = async (): Promise<void> => {
   const runSource = async (): Promise<void> => {
     const ready = await ensureCompilerBridge();
     if (!ready) return;
-    const result = compileAndRender();
+    const result = compileProject();
     if (!result || !result.ok) {
       setText('run-status', 'Blocked');
       setDataset('run-status', 'status', 'error');
-      consoleRoot.textContent = 'Fix diagnostics before running.';
+      setConsoleOutput('Fix diagnostics before running.');
       return;
     }
 
+    cancelActiveRun('Execution cancelled by a new run.');
+    const controller = new AbortController();
+    activeRun = { controller };
+    setButtonDisabled('stop-run-button', false);
     setText('run-status', 'Running');
     setDataset('run-status', 'status', 'running');
+
     try {
-      const runResult = await runCompiledModule(result);
-      consoleRoot.textContent = runResult.output;
+      const routeHref = routeHrefFromLocation(currentRouteLocation(state.routePreview), playgroundBaseHref);
+      const runResult = await runCompiledModule(result, { href: routeHref, signal: controller.signal });
+      if (activeRun?.controller === controller) {
+        activeRun = null;
+        setButtonDisabled('stop-run-button', true);
+      }
+      setConsoleOutput(runResult.output);
       if (runResult.status === 'timeout') {
         setText('run-status', 'Timed out');
         setDataset('run-status', 'status', 'error');
       } else if (runResult.status === 'error') {
         setText('run-status', 'Error');
         setDataset('run-status', 'status', 'error');
+      } else if (runResult.status === 'cancelled') {
+        setText('run-status', 'Stopped');
+        setDataset('run-status', 'status', 'error');
       } else {
         setText('run-status', 'Done');
         setDataset('run-status', 'status', 'ok');
       }
     } catch (error) {
-      consoleRoot.textContent = error instanceof Error ? error.message : String(error);
+      if (activeRun?.controller === controller) {
+        activeRun = null;
+        setButtonDisabled('stop-run-button', true);
+      }
+      setConsoleOutput(error instanceof Error ? error.message : String(error));
       setText('run-status', 'Error');
       setDataset('run-status', 'status', 'error');
     }
   };
 
+  const applyRoutePreview = (
+    nextPreview: PlaygroundRoutePreview,
+    options: { rerun?: boolean; toast?: string } = {}
+  ): void => {
+    state = { ...state, routePreview: nextPreview };
+    updateRouteUi();
+    persist();
+    setText('run-status', 'Ready');
+    setDataset('run-status', 'status', 'idle');
+    if (options.toast) showToast(options.toast);
+    if (options.rerun && lastResult?.ok) {
+      void runSource();
+    }
+  };
+
   mountEditor({
     elementId: 'editor-root',
-    initialValue: initialSource,
+    initialValue: getProjectFile(state.project, state.project.activeFileUri)?.text ?? '',
   });
-  setActivePreset(initialPreset);
-  updateSourceStats(initialSource);
+  syncProjectStats();
   setText('compile-status', 'Loading compiler');
   setDataset('compile-status', 'status', 'running');
   outputRoot.textContent = 'Loading compiler bridge...';
+  consoleRoot.textContent = state.consoleOutput;
 
-  let compileTimer: number | undefined;
-  let suppressNextScheduledCompile = false;
-  onEditorChange('editor-root', (value) => {
-    setActivePreset(null);
+  onEditorChange('editor-root', () => {
+    state = {
+      ...state,
+      project: { ...state.project, presetId: null },
+    };
     clearPresetUrl();
-    updateSourceStats(value);
-    writeStoredSource(value);
+    syncProjectFromEditor();
     if (suppressNextScheduledCompile) {
       suppressNextScheduledCompile = false;
       return;
@@ -586,7 +865,7 @@ const startPlayground = async (): Promise<void> => {
     if (compileTimer) window.clearTimeout(compileTimer);
     compileTimer = window.setTimeout(() => {
       void ensureCompilerBridge().then((ready) => {
-        if (ready) compileAndRender();
+        if (ready) compileProject();
       });
     }, 220);
   });
@@ -594,13 +873,20 @@ const startPlayground = async (): Promise<void> => {
   document.getElementById('check-button')?.addEventListener('click', () => {
     void ensureCompilerBridge().then((ready) => {
       if (!ready) return;
-      compileAndRender();
+      compileProject();
       showToast('Checked.');
     });
   });
 
   document.getElementById('run-button')?.addEventListener('click', () => {
     void runSource();
+  });
+
+  document.getElementById('stop-run-button')?.addEventListener('click', () => {
+    cancelActiveRun('Execution stopped by the playground.');
+    setConsoleOutput('Execution stopped by the playground.');
+    setText('run-status', 'Stopped');
+    setDataset('run-status', 'status', 'error');
   });
 
   document.getElementById('format-button')?.addEventListener('click', () => {
@@ -610,23 +896,81 @@ const startPlayground = async (): Promise<void> => {
       suppressNextScheduledCompile = true;
       const formatted = compilerBridge.formatLuminaSource(getEditorText('editor-root'));
       setEditorText('editor-root', formatted);
-      compileAndRender();
+      syncProjectFromEditor();
+      compileProject();
       showToast('Formatted.');
     });
   });
 
   document.getElementById('share-button')?.addEventListener('click', () => {
-    const shareUrl = createShareUrl(getEditorText('editor-root'));
+    syncProjectFromEditor();
+    const shareUrl = createShareUrl(state);
     window.history.replaceState(null, '', shareUrl);
-    void copyText(shareUrl, 'Share link copied.');
+    void copyText(shareUrl, 'Project link copied.');
   });
 
   document.getElementById('copy-js-button')?.addEventListener('click', () => {
     void ensureCompilerBridge().then((ready) => {
       if (!ready) return;
-      const result = lastResult ?? compileAndRender();
+      const result = lastResult ?? compileProject();
       if (!result) return;
       void copyText(result.js, 'JavaScript copied.');
+    });
+  });
+
+  document.getElementById('new-file-button')?.addEventListener('click', () => {
+    syncProjectFromEditor();
+    const suggested = nextUntitledFileUri(state.project);
+    const requested = window.prompt('New file path', suggested)?.trim();
+    if (!requested) return;
+    if (getProjectFile(state.project, requested)) {
+      showToast('That file already exists.');
+      return;
+    }
+    state = {
+      ...state,
+      project: addProjectFile(state.project, requested, requested.endsWith('.lm') ? 'fn main() -> int {\n  return 0\n}\n' : ''),
+    };
+    clearPresetUrl();
+    syncProjectStats();
+    suppressNextScheduledCompile = true;
+    setEditorText('editor-root', getProjectFile(state.project, requested)?.text ?? '');
+    persist();
+    void ensureCompilerBridge().then((ready) => {
+      if (ready) compileProject();
+    });
+  });
+
+  document.getElementById('delete-file-button')?.addEventListener('click', () => {
+    syncProjectFromEditor();
+    if (state.project.activeFileUri === state.project.entryUri) {
+      showToast('Entry files stay protected.');
+      return;
+    }
+    if (!window.confirm(`Delete ${state.project.activeFileUri}?`)) return;
+    const nextProject = removeProjectFile(state.project, state.project.activeFileUri);
+    if (nextProject === state.project) return;
+    state = { ...state, project: nextProject };
+    clearPresetUrl();
+    const nextFile = getProjectFile(state.project, state.project.activeFileUri);
+    suppressNextScheduledCompile = true;
+    setEditorText('editor-root', nextFile?.text ?? '');
+    syncProjectStats();
+    persist();
+    void ensureCompilerBridge().then((ready) => {
+      if (ready) compileProject();
+    });
+  });
+
+  document.getElementById('file-list-root')?.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const button = target?.closest<HTMLElement>('[data-file-uri]');
+    const nextUri = button?.dataset.fileUri;
+    if (!nextUri || nextUri === state.project.activeFileUri) return;
+    syncProjectFromEditor();
+    mountActiveFile(nextUri);
+    void ensureCompilerBridge().then((ready) => {
+      if (ready) compileProject();
     });
   });
 
@@ -639,18 +983,64 @@ const startPlayground = async (): Promise<void> => {
       if (!selectedPreset) return;
 
       if (compileTimer) window.clearTimeout(compileTimer);
+      cancelActiveRun('Execution cancelled after switching presets.');
+      state = stateFromPreset(selectedPreset, playgroundBaseHref);
       suppressNextScheduledCompile = true;
-      setEditorText('editor-root', selectedPreset.source);
-      setActivePreset(selectedPreset.id);
+      setEditorText('editor-root', getProjectFile(state.project, state.project.activeFileUri)?.text ?? '');
       writePresetUrl(selectedPreset.id);
+      syncProjectStats();
+      setConsoleOutput(state.consoleOutput);
       void ensureCompilerBridge().then((ready) => {
-        if (ready) compileAndRender();
+        if (ready) compileProject();
       });
     });
   });
 
+  document.getElementById('route-apply-button')?.addEventListener('click', () => {
+    applyRoutePreview(replaceRouteLocation(state.routePreview, readRouteInputs()), {
+      rerun: true,
+      toast: 'Preview route updated.',
+    });
+  });
+
+  document.getElementById('route-push-button')?.addEventListener('click', () => {
+    const next = replaceRouteLocation(state.routePreview, currentRouteLocation(state.routePreview));
+    applyRoutePreview(
+      {
+        entries: [...next.entries.slice(0, next.index + 1), readRouteInputs()],
+        index: next.index + 1,
+      },
+      { rerun: true, toast: 'Preview history pushed.' }
+    );
+  });
+
+  document.getElementById('route-replace-button')?.addEventListener('click', () => {
+    applyRoutePreview(replaceRouteLocation(state.routePreview, readRouteInputs()), {
+      rerun: false,
+      toast: 'Preview history replaced.',
+    });
+  });
+
+  document.getElementById('route-back-button')?.addEventListener('click', () => {
+    applyRoutePreview(stepRoutePreview(state.routePreview, -1), { rerun: true });
+  });
+
+  document.getElementById('route-forward-button')?.addEventListener('click', () => {
+    applyRoutePreview(stepRoutePreview(state.routePreview, 1), { rerun: true });
+  });
+
+  document.getElementById('route-reset-button')?.addEventListener('click', () => {
+    const preset = state.project.presetId
+      ? playgroundPresets.find((entry) => entry.id === state.project.presetId) ?? defaultPlaygroundPreset
+      : defaultPlaygroundPreset;
+    applyRoutePreview(createRoutePreview(routeHrefForPreset(preset, playgroundBaseHref), playgroundBaseHref), {
+      rerun: true,
+      toast: 'Preview route reset.',
+    });
+  });
+
   void ensureCompilerBridge().then((ready) => {
-    if (ready) compileAndRender();
+    if (ready) compileProject();
   });
 };
 

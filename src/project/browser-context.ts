@@ -66,6 +66,30 @@ const isLuminaVirtualSource = (spec: string): boolean => {
   return !ext || ext === '.lm' || ext === '.lumina' || ext === '.lum';
 };
 
+const normalizeVirtualPath = (spec: string): string => {
+  const normalized = spec.replace(/\\/g, '/');
+  const cleaned = normalized.startsWith('virtual://') ? normalized.slice('virtual://'.length) : normalized;
+  const collapsed = cleaned
+    .split('/')
+    .reduce<string[]>((parts, part) => {
+      if (!part || part === '.') {
+        return parts;
+      }
+      if (part === '..') {
+        if (parts.length > 0 && parts[parts.length - 1] !== '..') {
+          parts.pop();
+        } else {
+          parts.push(part);
+        }
+        return parts;
+      }
+      parts.push(part);
+      return parts;
+    }, [])
+    .join('/');
+  return cleaned.startsWith('/') ? `/${collapsed}` : collapsed;
+};
+
 export class BrowserProjectContext {
   private documents = new Map<string, BrowserSourceDocument>();
   private parser: CompiledGrammar<unknown> | null = null;
@@ -550,7 +574,7 @@ export class BrowserProjectContext {
   }
 
   private normalizeVirtualSpec(spec: string): string {
-    return spec.startsWith('virtual://') ? spec.slice('virtual://'.length) : spec;
+    return normalizeVirtualPath(spec);
   }
 
   private virtualUriFor(spec: string): string {

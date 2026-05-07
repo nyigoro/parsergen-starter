@@ -20,9 +20,12 @@ describe('demo vite plugin', () => {
     expect(examplesSource).toContain('./playground/?preset=basics');
     expect(examplesSource).toContain('./playground/?preset=results');
     expect(examplesSource).toContain('./playground/?preset=view-basic');
-    expect(playgroundPresetsSource).toContain("id: 'view-basic'");
-    expect(playgroundPresetsSource).toContain("id: 'starter-app'");
+    expect(playgroundPresetsSource).toContain("'view-basic'");
+    expect(playgroundPresetsSource).toContain("'starter-app'");
+    expect(playgroundPresetsSource).toContain("'forms-resource'");
+    expect(playgroundPresetsSource).toContain("'package-import'");
     expect(playgroundAppSource).toContain('preset_button("view-basic"');
+    expect(playgroundAppSource).toContain('preset_button("package-import"');
     expect(playgroundSource).toContain('readPresetFromLocation');
     expect(playgroundSource).toContain("searchParams.get('preset')");
     expect(styleSource).toContain("@import 'tailwindcss' source(none);");

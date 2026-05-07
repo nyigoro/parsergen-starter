@@ -4,7 +4,11 @@ import {
   props_class,
   props_id,
   props_href,
-  props_merge
+  props_merge,
+  props_type,
+  props_value,
+  props_placeholder,
+  props_disabled
 } from "@std/render";
 
 fn attrs2(left: any, right: any) -> any {
@@ -17,6 +21,10 @@ fn attrs3(first: any, second: any, third: any) -> any {
 
 fn attrs4(first: any, second: any, third: any, fourth: any) -> any {
   props_merge(props_merge(props_merge(first, second), third), fourth)
+}
+
+fn attrs5(first: any, second: any, third: any, fourth: any, fifth: any) -> any {
+  props_merge(props_merge(props_merge(props_merge(first, second), third), fourth), fifth)
 }
 
 fn div_node(cls: string, children: any) -> VNode {
@@ -35,6 +43,18 @@ fn tool_button(id: string, label: string, tone: string) -> VNode {
     attrs2(
       props_class("tool-button " + tone),
       props_id(id)
+    ),
+    [text(label)]
+  )
+}
+
+fn disabled_tool_button(id: string, label: string, tone: string) -> VNode {
+  vnode(
+    "button",
+    attrs3(
+      props_class("tool-button " + tone),
+      props_id(id),
+      props_disabled(true)
     ),
     [text(label)]
   )
@@ -69,6 +89,24 @@ fn insight_row(label: string, value: string) -> VNode {
   div_node("insight-row", [keyNode, valueNode])
 }
 
+fn field_label(label: string) -> VNode {
+  vnode("span", props_class("route-field-label"), [text(label)])
+}
+
+fn text_input(id: string, placeholder: string) -> VNode {
+  vnode(
+    "input",
+    attrs5(
+      props_class("route-input"),
+      props_id(id),
+      props_type("text"),
+      props_value(""),
+      props_placeholder(placeholder)
+    ),
+    []
+  )
+}
+
 pub fn app() -> VNode {
   let brandMark = vnode("span", props_class("brand-mark"), [text("L")]);
   let brandTitle = vnode("strong", props_class("brand-title"), [text("Lumina Playground")]);
@@ -91,25 +129,29 @@ pub fn app() -> VNode {
   let header = vnode("header", props_class("topbar"), [brand, nav]);
 
   let runButton = tool_button("run-button", "Run", "primary");
+  let stopButton = disabled_tool_button("stop-run-button", "Stop", "secondary");
   let checkButton = tool_button("check-button", "Check", "secondary");
   let formatButton = tool_button("format-button", "Format", "secondary");
   let shareButton = tool_button("share-button", "Share", "secondary");
   let copyButton = tool_button("copy-js-button", "Copy JS", "secondary");
   let toolRow = div_node("tool-row", [
     runButton,
+    stopButton,
     checkButton,
     formatButton,
     shareButton,
     copyButton
   ]);
 
-  let statusStat = stat("Status", "Waiting", "compile-status");
+  let statusStat = stat("Compile", "Waiting", "compile-status");
   let diagnosticStat = stat("Diagnostics", "0", "diagnostic-count");
   let outputStat = stat("Output", "JS", "output-mode");
+  let activeFileStat = stat("Active File", "main.lm", "active-file-stat");
   let status = div_node("status-strip", [
     statusStat,
     diagnosticStat,
-    outputStat
+    outputStat,
+    activeFileStat
   ]);
 
   let toolbar = div_node("workspace-toolbar", [toolRow, status]);
@@ -121,7 +163,9 @@ pub fn app() -> VNode {
   let viewPreset = preset_button("view-basic", "View", "DOM-shaped render output");
   let keyedPreset = preset_button("keyed-ui", "Keyed UI", "Stable list identity and SSR keys");
   let genericKeyedPreset = preset_button("generic-keyed-ui", "Generic Keys", "Manual panel and branch identity");
-  let starterPreset = preset_button("starter-app", "Starter App", "Router, loader, and SSR-ready shell");
+  let starterPreset = preset_button("starter-app", "Starter App", "Router, loader, and multi-file shell");
+  let formsPreset = preset_button("forms-resource", "Forms + Resource", "Validation and optimistic actions");
+  let packagePreset = preset_button("package-import", "Package Import", "Bare package resolution");
   let presets = div_node("preset-grid", [
     basicsPreset,
     indexingPreset,
@@ -130,20 +174,66 @@ pub fn app() -> VNode {
     viewPreset,
     keyedPreset,
     genericKeyedPreset,
-    starterPreset
+    starterPreset,
+    formsPreset,
+    packagePreset
   ]);
 
-  let sourceTitle = vnode("div", props_class("panel-title"), [text("Source")]);
+  let sourceTitle = vnode("div", props_class("panel-title"), [text("Project")]);
   let sourceSize = vnode("span", attrs2(props_class("small-pill"), props_id("source-size")), [text("0 lines")]);
   let editorTop = div_node("panel-heading-row", [
     sourceTitle,
     sourceSize
   ]);
+
+  let fileHeader = div_node("panel-heading-row file-heading-row", [
+    vnode("div", props_class("panel-title"), [text("Files")]),
+    div_node("tool-row compact-tools", [
+      tool_button("new-file-button", "New File", "secondary"),
+      tool_button("delete-file-button", "Delete File", "secondary")
+    ])
+  ]);
+  let fileList = vnode("div", attrs2(props_class("file-list"), props_id("file-list-root")), []);
+  let fileSidebar = vnode("aside", props_class("file-sidebar"), [fileHeader, fileList]);
+
+  let activeFile = vnode("span", attrs2(props_class("small-pill"), props_id("active-file-label")), [text("main.lm")]);
+  let editorHeader = div_node("panel-heading-row", [
+    vnode("div", props_class("panel-title"), [text("Editor")]),
+    activeFile
+  ]);
   let editorMount = vnode("div", props_id("editor-root"), []);
+  let editorStack = div_node("editor-stack", [
+    presets,
+    editorHeader,
+    editorMount
+  ]);
+  let editorWorkbench = div_node("editor-workbench", [fileSidebar, editorStack]);
   let editorPanel = vnode("section", props_class("editor-panel"), [
     editorTop,
-    presets,
-    editorMount
+    editorWorkbench
+  ]);
+
+  let routeHeader = div_node("panel-heading-row", [
+    vnode("div", props_class("panel-title"), [text("Route Preview")]),
+    vnode("span", attrs2(props_class("small-pill"), props_id("route-preview-url")), [text("/")])
+  ]);
+  let routeFields = div_node("route-field-grid", [
+    div_node("route-field", [field_label("Path"), text_input("route-path-input", "/dashboard")]),
+    div_node("route-field", [field_label("Search"), text_input("route-search-input", "?tab=team")]),
+    div_node("route-field", [field_label("Hash"), text_input("route-hash-input", "#activity")])
+  ]);
+  let routeButtons = div_node("tool-row compact-tools", [
+    tool_button("route-apply-button", "Apply", "secondary"),
+    tool_button("route-push-button", "Push", "secondary"),
+    tool_button("route-replace-button", "Replace", "secondary"),
+    tool_button("route-back-button", "Back", "secondary"),
+    tool_button("route-forward-button", "Forward", "secondary"),
+    tool_button("route-reset-button", "Reset", "secondary")
+  ]);
+  let routePanel = vnode("section", props_class("panel route-panel"), [
+    routeHeader,
+    routeFields,
+    routeButtons
   ]);
 
   let consoleHeading = vnode("div", props_class("panel-title"), [text("Console")]);
@@ -156,6 +246,7 @@ pub fn app() -> VNode {
   let consolePanel = vnode("section", props_class("panel"), [consoleTitle, consoleOutput]);
 
   let diagnosticsPanel = panel("Diagnostics", "diagnostics-root", "diagnostics-list");
+  let debugPanel = panel("Import Graph", "module-graph-root", "debug-list");
   let jsTitle = vnode("div", props_class("panel-title"), [text("Generated JavaScript")]);
   let jsBadge = vnode("span", props_class("small-pill"), [text("ES module")]);
   let jsHeader = div_node("panel-heading-row", [jsTitle, jsBadge]);
@@ -168,17 +259,19 @@ pub fn app() -> VNode {
   let insightTitle = vnode("div", props_class("insight-title"), [text("Workbench")]);
   let compileRow = insight_row("Compile", "Browser");
   let runRow = insight_row("Run", "main()");
-  let shareRow = insight_row("Share", "URL");
-  let targetRow = insight_row("Target", "JavaScript");
+  let shareRow = insight_row("Share", "Project URL");
+  let targetRow = insight_row("Modules", "0");
+  let debugRow = insight_row("Graph", "0 edges");
   let insightPanel = vnode("aside", props_class("insight-panel"), [
     insightTitle,
     compileRow,
     runRow,
     shareRow,
-    targetRow
+    targetRow,
+    debugRow
   ]);
 
-  let rightColumn = div_node("result-column", [consolePanel, diagnosticsPanel, jsPanel]);
+  let rightColumn = div_node("result-column", [routePanel, consolePanel, diagnosticsPanel, debugPanel, jsPanel]);
   let workspace = div_node("workspace-grid", [editorPanel, rightColumn]);
 
   let toast = vnode("div", attrs2(props_class("toast"), props_id("toast-root")), [text("")]);

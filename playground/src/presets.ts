@@ -1,12 +1,38 @@
-export type PlaygroundPreset = {
-  id: string;
+export type PlaygroundPresetFile = {
+  uri: string;
   source: string;
 };
 
+export type PlaygroundPreset = {
+  id: string;
+  label: string;
+  detail: string;
+  entryUri: string;
+  files: PlaygroundPresetFile[];
+  routeHref?: string;
+};
+
+const singleFilePreset = (
+  id: string,
+  label: string,
+  detail: string,
+  source: string,
+  routeHref?: string
+): PlaygroundPreset => ({
+  id,
+  label,
+  detail,
+  entryUri: 'main.lm',
+  files: [{ uri: 'main.lm', source }],
+  routeHref,
+});
+
 export const playgroundPresets: PlaygroundPreset[] = [
-  {
-    id: 'basics',
-    source: `import { io } from "@std";
+  singleFilePreset(
+    'basics',
+    'Basics',
+    'Functions and return values',
+    `import { io } from "@std";
 
 fn square(x: int) -> int {
   return x * x
@@ -16,11 +42,13 @@ fn main() -> int {
   let answer = square(12);
   io.println("square={answer}");
   return answer
-}`,
-  },
-  {
-    id: 'safe-index',
-    source: `import { io, vec } from "@std";
+}`
+  ),
+  singleFilePreset(
+    'safe-index',
+    'Safe Indexing',
+    'Option instead of undefined',
+    `import { io, vec } from "@std";
 
 fn main() -> int {
   let nums = [10, 20, 30];
@@ -38,11 +66,13 @@ fn main() -> int {
   }
 
   return 0
-}`,
-  },
-  {
-    id: 'iterators',
-    source: `import { io, vec } from "@std";
+}`
+  ),
+  singleFilePreset(
+    'iterators',
+    'Iterators',
+    'Vec map, fold, and match',
+    `import { io, vec } from "@std";
 
 fn main() -> int {
   let nums = [1, 2, 3, 4];
@@ -59,11 +89,13 @@ fn main() -> int {
   }
 
   return doubled[0] + doubled[1] + doubled[2] + doubled[3]
-}`,
-  },
-  {
-    id: 'results',
-    source: `import { io } from "@std";
+}`
+  ),
+  singleFilePreset(
+    'results',
+    'Results',
+    'Error flow with Result',
+    `import { io } from "@std";
 
 fn read_config(name: string) -> Result<string, string> {
   if (name == "lumina") {
@@ -88,21 +120,25 @@ fn main() -> int {
   }
 
   return 0
-}`,
-  },
-  {
-    id: 'view-basic',
-    source: `import { io } from "@std";
+}`
+  ),
+  singleFilePreset(
+    'view-basic',
+    'View',
+    'DOM-shaped render output',
+    `import { io } from "@std";
 
 fn main() -> int {
   let view = "<main class=\\"app-shell\\">web native systems</main>";
   io.println(view);
   return 0
-}`,
-  },
-  {
-    id: 'keyed-ui',
-    source: `import { io, render } from "@std";
+}`
+  ),
+  singleFilePreset(
+    'keyed-ui',
+    'Keyed UI',
+    'Stable list identity and SSR keys',
+    `import { io, render } from "@std";
 
 fn main() -> int {
   let rows = render.signal(["draft", "review", "ship"]);
@@ -117,11 +153,13 @@ fn main() -> int {
 
   io.println(render.render_to_string(view));
   return 0
-}`,
-  },
-  {
-    id: 'generic-keyed-ui',
-    source: `import { io, render } from "@std";
+}`
+  ),
+  singleFilePreset(
+    'generic-keyed-ui',
+    'Generic Keys',
+    'Manual panel and branch identity',
+    `import { io, render } from "@std";
 
 fn main() -> int {
   let active = render.signal("profile");
@@ -139,11 +177,18 @@ fn main() -> int {
 
   io.println(render.render_to_string(view));
   return 0
-}`,
-  },
+}`
+  ),
   {
     id: 'starter-app',
-    source: `import { io, render } from "@std";
+    label: 'Starter App',
+    detail: 'Router, loader, and multi-file shell',
+    entryUri: 'main.lm',
+    routeHref: '/dashboard?tab=team#activity',
+    files: [
+      {
+        uri: 'main.lm',
+        source: `import { io, render } from "@std";
 import {
   createRouter,
   linkWithProps,
@@ -152,6 +197,7 @@ import {
   routeResourceKey,
   routeStatus
 } from "@std/router";
+import { settingsSummary } from "./routes/settings.lm";
 
 async fn loadDashboard() -> string {
   "ready"
@@ -169,6 +215,9 @@ fn main() -> int {
     render.element("p", props { class: "status" }, [
       render.text("Loader: "),
       render.text(routeStatus(dashboard))
+    ]),
+    render.element("p", props { class: "status" }, [
+      render.text(settingsSummary())
     ])
   ]);
 
@@ -176,6 +225,98 @@ fn main() -> int {
   io.println(render.render_to_string(view));
   return 0
 }`,
+      },
+      {
+        uri: 'routes/settings.lm',
+        source: `pub fn settingsSummary() -> string {
+  "Settings module ready"
+}`,
+      },
+    ],
+  },
+  {
+    id: 'forms-resource',
+    label: 'Forms + Resource',
+    detail: 'Field state, validation, and optimistic actions',
+    entryUri: 'main.lm',
+    routeHref: '/profile?mode=edit',
+    files: [
+      {
+        uri: 'main.lm',
+        source: `import { screen } from "./profile-workspace.lm";
+
+fn main() -> VNode {
+  screen()
+}`,
+      },
+      {
+        uri: 'profile-workspace.lm',
+        source: `import { render } from "@std";
+import { checkbox, textInput } from "@std/forms";
+import { createResource, read, status } from "@std/resource";
+import { loadName } from "./validators.lm";
+
+pub fn screen() -> VNode {
+  let name = render.signal("donald");
+  let accepted = render.signal(false);
+  let resource = createResource<string>("name", || loadName());
+
+  render.fragment([
+    render.element("p", render.props_class("resource-status"), [render.text(status(resource))]),
+    render.element("input", textInput(name, render.props_class("profile-input")), []),
+    render.element("input", checkbox(accepted, render.props_class("accepted")), []),
+    render.element("p", render.props_class("resource-value"), [render.text(read(resource))])
+  ])
+}`,
+      },
+      {
+        uri: 'validators.lm',
+        source: `pub async fn loadName() -> string {
+  "donald"
+}`,
+      },
+    ],
+  },
+  {
+    id: 'package-import',
+    label: 'Package Import',
+    detail: 'Bare package resolution through lumina.lock',
+    entryUri: 'main.lm',
+    files: [
+      {
+        uri: 'main.lm',
+        source: `import { io } from "@std";
+import { parse } from "json-utils";
+
+fn main() -> int {
+  io.println(parse());
+  return 0
+}`,
+      },
+      {
+        uri: 'lumina.lock',
+        source: `{
+  "version": 1,
+  "packages": {
+    "json-utils@1.2.3": {
+      "name": "json-utils",
+      "version": "1.2.3",
+      "resolved": "https://registry.example.dev/json-utils-1.2.3.tgz",
+      "path": "./.lumina/packages/json-utils@1.2.3",
+      "integrity": "sha256:test",
+      "lumina": "./src/lib.lm",
+      "deps": {}
+    }
+  }
+}`,
+      },
+      {
+        uri: '.lumina/packages/json-utils@1.2.3/src/lib.lm',
+        source: `pub fn parse() -> string {
+  "package:ok"
+}`,
+      },
+    ],
   },
 ];
 
