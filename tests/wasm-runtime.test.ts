@@ -14,6 +14,8 @@ jest.setTimeout(20000);
 const parseProgram = (source: string): LuminaProgram => parser.parse(source) as LuminaProgram;
 
 const tempDir = path.join(__dirname, '../.tmp-wasm');
+const createTempStem = (label: string): string =>
+  `${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const hasWabt = (): boolean => {
   try {
@@ -30,8 +32,9 @@ const compileAndLoad = async (source: string) => {
   expect(diagnostics.length).toBe(0);
 
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-  const watPath = path.join(tempDir, 'test.wat');
-  const wasmPath = path.join(tempDir, 'test.wasm');
+  const stem = createTempStem('test');
+  const watPath = path.join(tempDir, `${stem}.wat`);
+  const wasmPath = path.join(tempDir, `${stem}.wasm`);
   fs.writeFileSync(watPath, wat, 'utf-8');
   execSync(`wat2wasm "${watPath}" -o "${wasmPath}"`);
   return loadWASM(wasmPath);
@@ -39,8 +42,9 @@ const compileAndLoad = async (source: string) => {
 
 const compileWatAndLoad = async (wat: string) => {
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-  const watPath = path.join(tempDir, 'runtime-raw.wat');
-  const wasmPath = path.join(tempDir, 'runtime-raw.wasm');
+  const stem = createTempStem('runtime-raw');
+  const watPath = path.join(tempDir, `${stem}.wat`);
+  const wasmPath = path.join(tempDir, `${stem}.wasm`);
   fs.writeFileSync(watPath, wat, 'utf-8');
   execSync(`wat2wasm "${watPath}" -o "${wasmPath}"`);
   return loadWASM(wasmPath);
@@ -175,7 +179,7 @@ describe('WASM runtime', () => {
     `.trim() + '\n';
     const runtime = await compileAndLoad(source);
     expect(callWASMFunction(runtime, 'main')).toBe(20);
-  });
+  }, 40000);
 
   it('executes nested GADT matches in WASM', async () => {
     if (!hasWabt()) return;

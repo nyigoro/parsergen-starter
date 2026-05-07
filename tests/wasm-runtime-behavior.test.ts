@@ -14,6 +14,8 @@ const parser = compileGrammar(luminaGrammar);
 
 const parseProgram = (source: string): LuminaProgram => parser.parse(source) as LuminaProgram;
 const tempDir = path.join(__dirname, '../.tmp-wasm');
+const createTempStem = (label: string): string =>
+  `${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const hasWabt = (): boolean => {
   try {
@@ -30,8 +32,9 @@ const compileAndRunMain = async (source: string): Promise<number> => {
   const errors = diagnostics.filter((d) => d.severity === 'error');
   expect(errors).toHaveLength(0);
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-  const watPath = path.join(tempDir, 'runtime-behavior.wat');
-  const wasmPath = path.join(tempDir, 'runtime-behavior.wasm');
+  const stem = createTempStem('runtime-behavior');
+  const watPath = path.join(tempDir, `${stem}.wat`);
+  const wasmPath = path.join(tempDir, `${stem}.wasm`);
   fs.writeFileSync(watPath, wat, 'utf-8');
   execSync(`wat2wasm "${watPath}" -o "${wasmPath}"`);
   const runtime = await loadWASM(wasmPath);

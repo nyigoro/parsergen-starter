@@ -13,6 +13,8 @@ type ExplorerNode = {
 };
 
 const tempDir = path.join(__dirname, '../.tmp-wasm');
+const createTempStem = (label: string): string =>
+  `${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const hasWabt = (): boolean => {
   try {
@@ -25,8 +27,9 @@ const hasWabt = (): boolean => {
 
 const compileWatAndLoad = async (wat: string) => {
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-  const watPath = path.join(tempDir, 'reactive-tree.wat');
-  const wasmPath = path.join(tempDir, 'reactive-tree.wasm');
+  const stem = createTempStem('reactive-tree');
+  const watPath = path.join(tempDir, `${stem}.wat`);
+  const wasmPath = path.join(tempDir, `${stem}.wasm`);
   fs.writeFileSync(watPath, wat, 'utf-8');
   execSync(`wat2wasm "${watPath}" -o "${wasmPath}"`);
   return loadWASM(wasmPath);

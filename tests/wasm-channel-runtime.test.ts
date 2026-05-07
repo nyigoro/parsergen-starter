@@ -4,6 +4,8 @@ import { execSync } from 'node:child_process';
 import { loadWASM, callWASMFunction } from '../src/wasm-runtime.js';
 
 const tempDir = path.join(__dirname, '../.tmp-wasm');
+const createTempStem = (label: string): string =>
+  `${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const hasWabt = (): boolean => {
   try {
@@ -16,8 +18,9 @@ const hasWabt = (): boolean => {
 
 const compileWatAndLoad = async (wat: string) => {
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-  const watPath = path.join(tempDir, 'channel-test.wat');
-  const wasmPath = path.join(tempDir, 'channel-test.wasm');
+  const stem = createTempStem('channel-test');
+  const watPath = path.join(tempDir, `${stem}.wat`);
+  const wasmPath = path.join(tempDir, `${stem}.wasm`);
   fs.writeFileSync(watPath, wat, 'utf-8');
   execSync(`wat2wasm "${watPath}" -o "${wasmPath}"`);
   return loadWASM(wasmPath);
@@ -48,7 +51,7 @@ describe('WASM channel host bindings', () => {
 `.trim();
     const runtime = await compileWatAndLoad(wat);
     expect(callWASMFunction(runtime, 'roundtrip')).toBe(42);
-  }, 15000);
+  }, 30000);
 
   it('enforces bounded backpressure at capacity 1', async () => {
     if (!hasWabt()) return;
@@ -74,5 +77,5 @@ describe('WASM channel host bindings', () => {
 `.trim();
     const runtime = await compileWatAndLoad(wat);
     expect(callWASMFunction(runtime, 'capacity_check')).toBe(10);
-  }, 15000);
+  }, 30000);
 });

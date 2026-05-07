@@ -1,4 +1,4 @@
-import{c as u,B as p}from"./compiler-analysis-fjHScViP.js";import{I as _,J as y}from"./compiler-core-Bu_R4ek3.js";import{g as f,a as x}from"./compiler-js-CewKDTmu.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-BPutdx6R.js";const h=`{\r
+import{c as y,B as f}from"./compiler-analysis-BfSonOcz.js";import{I as _,J as h}from"./compiler-core-Bu_R4ek3.js";import{g,a as b}from"./compiler-js-BJsNnWtF.js";import"./compiler-parser-D1zSBUbP.js";import"./compiler-stdlib-BPutdx6R.js";const x=`{\r
   let nodeId = 0;\r
   function createNode(type, data, loc) {\r
     const resolvedLoc = data && data.location ? data.location : loc();\r
@@ -1675,7 +1675,7 @@ AwaitExpr\r
   = "await" __ value:PrimaryNoAwait {\r
       return createNode("Await", { value }, location);\r
     }\r
-`,b=`extern fn print(message: string) -> void from "console";\r
+`,N=`extern fn print(message: string) -> void from "console";\r
 extern fn abs(value: int) -> int from "math";\r
 extern fn max(a: int, b: int) -> int from "math";\r
 extern fn min(a: int, b: int) -> int from "math";\r
@@ -1764,10 +1764,823 @@ extern fn count_q<T>(q: Query<T>) -> int from "@std/query";\r
 extern fn first_q<T>(q: Query<T>) -> Option<T> from "@std/query";\r
 extern fn to_vec_q<T>(q: Query<T>) -> Vec<T> from "@std/query";\r
 extern fn join_q<T, U, K>(left: Query<T>, right: Query<U>, left_key: fn(T) -> K, right_key: fn(U) -> K) -> Query<Tuple<T, U>> from "@std/query";\r
-`,N=""+new URL("lumina-runtime-0gbd7SGy.js",import.meta.url).href,g=1,v=new URL(N,import.meta.url).href;let d=null;const T=()=>{if(!d){const n=u(h,{cache:!0});d={parser:n,project:new p(n,{preludeText:b}),version:0}}return d},A=n=>{const a=n.replace(/^\uFEFF/,"").replace(/\r\n?/g,`
+`,v=`import { router, reactive, render, str } from "@std"
+
+pub struct Router {
+  path: Signal<string>,
+  search: Signal<string>,
+  base: string
+}
+
+pub struct RouteResource<T> {
+  raw: any
+}
+
+pub struct RouteMatch {
+  pattern: string,
+  path: string,
+  matched: bool,
+  params: any,
+  search: any
+}
+
+pub struct RouteModule {
+  id: string,
+  pattern: string,
+  title: string
+}
+
+pub struct RouteNode {
+  id: string,
+  pattern: string,
+  title: string,
+  module: RouteModule,
+  children: any
+}
+
+pub struct RouteTree {
+  root: RouteNode,
+  loading: any,
+  error: any,
+  meta: any
+}
+
+pub struct RouteBoundary {
+  node: RouteNode,
+  loading: any,
+  error: any,
+  meta: any
+}
+
+pub struct RouteLayout {
+  node: RouteNode,
+  shell: fn(any, any) -> VNode,
+  loading: any,
+  error: any,
+  meta: any
+}
+
+pub struct RouteHref {
+  path: string,
+  search: string
+}
+
+pub struct RoutePrefetchPolicy {
+  intent: string,
+  ttlMs: int,
+  transition: bool
+}
+
+pub struct RouteAction<T> {
+  resource: RouteResource<T>,
+  submitting: Signal<bool>
+}
+
+fn starts_with(value: string, prefix: string) -> bool {
+  if (str.length(prefix) > str.length(value)) {
+    return false
+  }
+  return str.substring(value, 0, str.length(prefix)) == prefix
+}
+
+fn char_at_or_empty(value: string, index: int) -> string {
+  if (index < 0) {
+    return ""
+  }
+  if (index >= str.length(value)) {
+    return ""
+  }
+  return str.substring(value, index, index + 1)
+}
+
+fn find_char(value: string, needle: string, index: int) -> int {
+  if (index >= str.length(value)) {
+    return 0 - 1
+  }
+  if (char_at_or_empty(value, index) == needle) {
+    return index
+  }
+  return find_char(value, needle, index + 1)
+}
+
+fn strip_hash_fragment(value: string) -> string {
+  let hash_index = find_char(value, "#", 0)
+  if (hash_index < 0) {
+    return value
+  }
+  return str.substring(value, 0, hash_index)
+}
+
+fn bool_string(value: bool) -> string {
+  if (value) {
+    return "true"
+  }
+  return "false"
+}
+
+fn ensure_leading_slash(value: string) -> string {
+  if (str.length(value) == 0) {
+    return "/"
+  }
+  if (char_at_or_empty(value, 0) == "/") {
+    return value
+  }
+  return str.concat("/", value)
+}
+
+fn trim_trailing_slash(value: string) -> string {
+  if (str.length(value) <= 1) {
+    return value
+  }
+  if (char_at_or_empty(value, str.length(value) - 1) == "/") {
+    return str.substring(value, 0, str.length(value) - 1)
+  }
+  return value
+}
+
+fn normalize_path(value: string) -> string {
+  return trim_trailing_slash(ensure_leading_slash(value))
+}
+
+fn split_href(value: string) -> RouteHref {
+  let clean = strip_hash_fragment(value)
+  let query_index = find_char(clean, "?", 0)
+  if (query_index < 0) {
+    return RouteHref { path: normalize_path(clean), search: "" }
+  }
+  return RouteHref {
+    path: normalize_path(str.substring(clean, 0, query_index)),
+    search: str.substring(clean, query_index, str.length(clean))
+  }
+}
+
+fn normalize_base(base: string) -> string {
+  if (str.length(base) == 0) {
+    return "/"
+  }
+  return trim_trailing_slash(ensure_leading_slash(base))
+}
+
+fn strip_hash_prefix(value: string) -> string {
+  if (str.length(value) == 0) {
+    return ""
+  }
+  if (char_at_or_empty(value, 0) == "#") {
+    if (str.length(value) == 1) {
+      return ""
+    }
+    return str.substring(value, 1, str.length(value))
+  }
+  return value
+}
+
+fn legacy_hash_path(hash: string) -> string {
+  let raw = strip_hash_prefix(hash)
+  if (str.length(raw) == 0) {
+    return ""
+  }
+  if (raw == "home") {
+    return "/"
+  }
+  if (raw == "lumina") {
+    return "/lumina"
+  }
+  if (raw == "playground") {
+    return "/playground"
+  }
+  if (char_at_or_empty(raw, 0) == "/") {
+    return normalize_path(raw)
+  }
+  return ""
+}
+
+fn strip_base_path(path: string, base: string) -> string {
+  let normalized_path = normalize_path(path)
+  let normalized_base = normalize_base(base)
+  if (normalized_base == "/") {
+    return normalized_path
+  }
+  if (normalized_path == normalized_base) {
+    return "/"
+  }
+  let prefix = str.concat(normalized_base, "/")
+  if (starts_with(normalized_path, prefix)) {
+    return normalize_path(str.substring(normalized_path, str.length(normalized_base), str.length(normalized_path)))
+  }
+  return normalized_path
+}
+
+fn resolve_href(base: string, path: string) -> string {
+  let normalized_path = normalize_path(path)
+  let normalized_base = normalize_base(base)
+  if (normalized_base == "/") {
+    return normalized_path
+  }
+  if (normalized_path == "/") {
+    return normalized_base
+  }
+  return str.concat(normalized_base, normalized_path)
+}
+
+fn normalize_prefetch_href(base: string, path: string) -> RouteHref {
+  let href = split_href(path)
+  return RouteHref { path: strip_base_path(href.path, base), search: href.search }
+}
+
+fn initial_router_path(normalized_base: string) -> string {
+  let hash_path = legacy_hash_path(router.getCurrentHash())
+  if (str.length(hash_path) > 0) {
+    router.replace(resolve_href(normalized_base, hash_path))
+    return hash_path
+  }
+  return strip_base_path(router.getCurrentPath(), normalized_base)
+}
+
+pub fn createRouter(base: string) -> Router {
+  let normalized_base = normalize_base(base)
+  let initial_path = initial_router_path(normalized_base)
+  let path_signal = reactive.createSignal(initial_path)
+  let search_signal = reactive.createSignal(router.getCurrentSearch())
+  router.onPopState(fn(pathname: string) -> void {
+    let normalized_path = normalize_path(pathname)
+    let stripped_path = strip_base_path(normalized_path, normalized_base)
+    let _synced = reactive.set(path_signal, stripped_path)
+    let current_search = router.getCurrentSearch()
+    let _search = reactive.set(search_signal, current_search)
+  })
+  return Router { path: path_signal, search: search_signal, base: normalized_base }
+}
+
+pub fn navigate(routerValue: Router, path: string) -> void {
+  router.push(resolve_href(routerValue.base, path))
+}
+
+pub fn replace(routerValue: Router, path: string) -> void {
+  router.replace(resolve_href(routerValue.base, path))
+}
+
+pub fn getScrollRestoration() -> string {
+  router.getScrollRestoration()
+}
+
+pub fn setScrollRestoration(mode: string) -> void {
+  router.setScrollRestoration(mode)
+}
+
+pub fn scrollToTop() -> void {
+  router.scrollToTop()
+}
+
+pub fn supportsNavigationApi() -> bool {
+  router.supportsNavigationApi()
+}
+
+pub fn supportsViewTransition() -> bool {
+  router.supportsViewTransition()
+}
+
+pub fn supportsUrlPattern() -> bool {
+  router.supportsUrlPattern()
+}
+
+pub fn startViewTransition(update: fn() -> void) -> bool {
+  router.startViewTransition(update)
+}
+
+pub fn currentPath(routerValue: Router) -> Signal<string> {
+  return routerValue.path
+}
+
+pub fn currentParams(_routerValue: Router) -> any {
+  return router.parseSearchParams(reactive.get(_routerValue.search))
+}
+
+pub fn currentSearchParams(routerValue: Router) -> any {
+  return currentParams(routerValue)
+}
+
+fn route_key(path: string, search: string, name: string) -> string {
+  if (str.length(search) > 0) {
+    return str.concat(str.concat(str.concat("route:", path), search), str.concat(":", name))
+  }
+  return str.concat(str.concat("route:", path), str.concat(":", name))
+}
+
+fn route_scoped_key(routeId: string, path: string, search: string, name: string) -> string {
+  if (str.length(search) > 0) {
+    return str.concat(str.concat(str.concat(str.concat("route:", routeId), ":"), path), str.concat(search, str.concat(":", name)))
+  }
+  return str.concat(str.concat(str.concat(str.concat("route:", routeId), ":"), path), str.concat(":", name))
+}
+
+pub fn routeResourceKey(routerValue: Router, name: string) -> string {
+  let path = reactive.get(routerValue.path)
+  let search = reactive.get(routerValue.search)
+  return route_key(path, search, name)
+}
+
+pub fn routeScopedKey(routerValue: Router, routeId: string, name: string) -> string {
+  return route_scoped_key(routeId, reactive.get(routerValue.path), reactive.get(routerValue.search), name)
+}
+
+pub fn routeModule(id: string, pattern: string, title: string) -> RouteModule {
+  RouteModule { id: id, pattern: pattern, title: title }
+}
+
+pub fn routeModuleMatch(routerValue: Router, module: RouteModule) -> RouteMatch {
+  routeMatch(routerValue, module.pattern)
+}
+
+pub fn routeModuleKey(routerValue: Router, module: RouteModule, name: string) -> string {
+  routeScopedKey(routerValue, module.id, name)
+}
+
+pub fn routeModuleOptions(module: RouteModule, options: any) -> any {
+  render.props_merge(
+    options,
+    render.props_merge(
+      render.props_attr("scope", module.id),
+      render.props_merge(
+        render.props_attr("routeId", module.id),
+        render.props_merge(
+          render.props_attr("routePattern", module.pattern),
+          render.props_attr("routeTitle", module.title)
+        )
+      )
+    )
+  )
+}
+
+pub fn routeIdOptions(routeId: string, options: any) -> any {
+  render.props_merge(
+    options,
+    render.props_merge(
+      render.props_attr("scope", routeId),
+      render.props_attr("routeId", routeId)
+    )
+  )
+}
+
+pub fn routeNode(id: string, pattern: string, title: string) -> RouteNode {
+  let module = routeModule(id, pattern, title)
+  RouteNode { id: id, pattern: pattern, title: title, module: module, children: render.props_empty() }
+}
+
+pub fn routeNodeWithChildren(id: string, pattern: string, title: string, children: any) -> RouteNode {
+  let module = routeModule(id, pattern, title)
+  RouteNode { id: id, pattern: pattern, title: title, module: module, children: children }
+}
+
+pub fn routeNodeModule(node: RouteNode) -> RouteModule {
+  node.module
+}
+
+pub fn routeNodeChildren(node: RouteNode) -> any {
+  node.children
+}
+
+pub fn routeNodeMatch(routerValue: Router, node: RouteNode) -> RouteMatch {
+  routeModuleMatch(routerValue, node.module)
+}
+
+pub fn routeNodeKey(routerValue: Router, node: RouteNode, name: string) -> string {
+  routeModuleKey(routerValue, node.module, name)
+}
+
+pub fn routeNodeOptions(node: RouteNode, options: any) -> any {
+  routeModuleOptions(node.module, options)
+}
+
+pub fn routeNodeMeta(node: RouteNode, meta: any) -> any {
+  render.props_merge(
+    meta,
+    render.props_merge(
+      render.props_attr("routeId", node.id),
+      render.props_merge(
+        render.props_attr("routePattern", node.pattern),
+        render.props_attr("routeTitle", node.title)
+      )
+    )
+  )
+}
+
+pub fn routeOwnershipProps(node: RouteNode, props: any) -> any {
+  render.props_merge(
+    routeNodeMeta(node, props),
+    render.props_attr("data-lumina-route-owner", node.id)
+  )
+}
+
+pub fn routeRequestPolicy(node: RouteNode, requestId: string, ttlMs: int, props: any) -> any {
+  routeNodeMeta(
+    node,
+    render.props_merge(
+      props,
+      render.props_merge(
+        render.props_attr("scope", node.id),
+        render.props_merge(
+          render.props_attr("requestId", requestId),
+          render.props_merge(
+            render.props_attr("ttlMs", ttlMs),
+            render.props_merge(
+              render.props_attr("staleWhileRevalidate", true),
+              render.props_merge(
+                render.props_attr("abortOnRefresh", true),
+                render.props_merge(
+                  render.props_attr("tags", node.id),
+                  render.props_attr("dependencies", node.id)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+pub fn routeBoundary(node: RouteNode, loading: any, error: any, meta: any) -> RouteBoundary {
+  RouteBoundary { node: node, loading: loading, error: error, meta: routeOwnershipProps(node, meta) }
+}
+
+pub fn routeBoundaryMeta(boundary: RouteBoundary) -> any {
+  boundary.meta
+}
+
+pub fn routeBoundaryView(routerValue: Router, boundary: RouteBoundary, renderChildren: fn(any) -> any, fallback: any) -> VNode {
+  routeErrorBoundary(boundary.error, fn() -> any {
+    render.suspense(boundary.loading, fn() -> any {
+      routeNodeView(routerValue, boundary.node, renderChildren, fallback)
+    })
+  })
+}
+
+pub fn routeTreeFromBoundary(boundary: RouteBoundary) -> RouteTree {
+  RouteTree { root: boundary.node, loading: boundary.loading, error: boundary.error, meta: boundary.meta }
+}
+
+pub fn routeLayout(node: RouteNode, shell: fn(any, any) -> VNode, loading: any, error: any, meta: any) -> RouteLayout {
+  RouteLayout { node: node, shell: shell, loading: loading, error: error, meta: routeOwnershipProps(node, meta) }
+}
+
+pub fn routeLayoutMeta(layout: RouteLayout) -> any {
+  layout.meta
+}
+
+pub fn routeLayoutView(routerValue: Router, layout: RouteLayout, child: any, fallback: any) -> VNode {
+  routeErrorBoundary(layout.error, fn() -> any {
+    render.suspense(layout.loading, fn() -> any {
+      routeNodeLayout(routerValue, layout.node, layout.shell, child, fallback)
+    })
+  })
+}
+
+pub fn routeTreeFromLayout(layout: RouteLayout) -> RouteTree {
+  RouteTree { root: layout.node, loading: layout.loading, error: layout.error, meta: layout.meta }
+}
+
+pub fn routeTree(root: RouteNode, loading: any, error: any, meta: any) -> RouteTree {
+  RouteTree { root: root, loading: loading, error: error, meta: routeNodeMeta(root, meta) }
+}
+
+pub fn routeTreeView(routerValue: Router, tree: RouteTree, renderChildren: fn(any) -> any) -> VNode {
+  routeNodeView(routerValue, tree.root, renderChildren, tree.loading)
+}
+
+pub fn routeTreeBoundary(tree: RouteTree, renderChildren: fn() -> any) -> VNode {
+  routeErrorBoundary(tree.error, fn() -> any {
+    render.suspense(tree.loading, renderChildren)
+  })
+}
+
+pub fn routeTreeMeta(tree: RouteTree) -> any {
+  tree.meta
+}
+
+pub fn cancelRouteTree(tree: RouteTree) -> int {
+  cancelRouteNode(tree.root)
+}
+
+pub fn revalidateRouteTree(tree: RouteTree) -> int {
+  revalidateRouteNode(tree.root)
+}
+
+pub fn routeNodeLoader(routerValue: Router, node: RouteNode, name: string, loader: any) -> RouteResource<any> {
+  let matchValue = routeNodeMatch(routerValue, node)
+  RouteResource<any> { raw: render.createResource(routeNodeKey(routerValue, node, name), fn() -> Promise<any> { loader(matchValue) }, routeNodeOptions(node, render.props_empty())) }
+}
+
+pub fn routeNodeLoaderWithOptions(routerValue: Router, node: RouteNode, name: string, loader: any, options: any) -> RouteResource<any> {
+  let matchValue = routeNodeMatch(routerValue, node)
+  RouteResource<any> { raw: render.createResource(routeNodeKey(routerValue, node, name), fn() -> Promise<any> { loader(matchValue) }, routeNodeOptions(node, options)) }
+}
+
+pub fn routeNodeAction(routerValue: Router, node: RouteNode, name: string, action: any) -> RouteAction<any> {
+  let options = routeNodeOptions(node, render.props_attr("enabled", false))
+  let matchValue = routeNodeMatch(routerValue, node)
+  let actionResource = RouteResource<any> { raw: render.createResource(str.concat(routeNodeKey(routerValue, node, name), ":action"), fn() -> Promise<any> { action(matchValue) }, options) }
+  return RouteAction<any> { resource: actionResource, submitting: reactive.createSignal(false) }
+}
+
+pub fn routeNodeView(routerValue: Router, node: RouteNode, renderChildren: fn(any) -> any, fallback: any) -> VNode {
+  routeModuleView(routerValue, node.module, renderChildren, fallback)
+}
+
+pub fn routeNodeLayout(routerValue: Router, node: RouteNode, shell: fn(any, any) -> VNode, child: any, fallback: any) -> VNode {
+  let matchValue = routeNodeMatch(routerValue, node)
+  render.show(matchValue.matched, fn() -> any { shell(matchValue, child) }, fallback)
+}
+
+pub fn prefetchRouteNode(routerValue: Router, node: RouteNode, path: string, name: string, loader: any) -> RouteResource<any> {
+  let href = normalize_prefetch_href(routerValue.base, path)
+  RouteResource<any> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, render.props_empty())) }
+}
+
+pub fn prefetchRouteNodeWithOptions(routerValue: Router, node: RouteNode, path: string, name: string, loader: any, options: any) -> RouteResource<any> {
+  let href = normalize_prefetch_href(routerValue.base, path)
+  RouteResource<any> { raw: render.createResource(route_scoped_key(node.id, href.path, href.search, name), fn() -> Promise<any> { loader() }, routeNodeOptions(node, options)) }
+}
+
+pub fn cancelRouteNode(node: RouteNode) -> int {
+  render.resourceClearScope(node.id)
+}
+
+pub fn revalidateRouteNode(node: RouteNode) -> int {
+  render.resourceInvalidateScope(node.id)
+}
+
+pub fn prefetchPolicy(intent: string, ttlMs: int, transition: bool) -> RoutePrefetchPolicy {
+  RoutePrefetchPolicy { intent: intent, ttlMs: ttlMs, transition: transition }
+}
+
+pub fn prefetchPolicyProps(policy: RoutePrefetchPolicy, props: any) -> any {
+  render.props_merge(
+    props,
+    render.props_merge(
+        render.props_attr("data-lumina-prefetch", policy.intent),
+        render.props_merge(
+          render.props_attr("ttlMs", policy.ttlMs),
+        render.props_attr("data-lumina-transition", bool_string(policy.transition))
+      )
+    )
+  )
+}
+
+pub fn lazyRouteModule(id: string, pattern: string, title: string, modulePath: string) -> RouteNode {
+  routeNodeWithChildren(id, pattern, title, render.props_attr("modulePath", modulePath))
+}
+
+pub fn navigationIntentProps(intent: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("data-lumina-navigation-intent", intent))
+}
+
+pub fn viewTransitionProps(name: string, props: any) -> any {
+  render.props_merge(props, render.props_attr("style", str.concat("view-transition-name:", name)))
+}
+
+pub fn navigateWithTransition(routerValue: Router, path: string) -> void {
+  let _ = startViewTransition(fn() -> void {
+    navigate(routerValue, path)
+  })
+}
+
+pub fn navigateRouteNode(routerValue: Router, node: RouteNode, path: string) -> void {
+  let _ = cancelRouteNode(node)
+  navigate(routerValue, path)
+}
+
+pub fn navigateRouteNodeWithTransition(routerValue: Router, node: RouteNode, path: string) -> void {
+  let _ = cancelRouteNode(node)
+  navigateWithTransition(routerValue, path)
+}
+
+pub fn routeLinkProps(routerValue: Router, node: RouteNode, href: string, props: any) -> any {
+  render.props_merge(
+    routeOwnershipProps(node, props),
+    render.props_merge(
+      render.props_href(resolve_href(routerValue.base, href)),
+      render.props_attr("data-lumina-route-link", node.id)
+    )
+  )
+}
+
+pub fn prefetchLinkProps(routerValue: Router, node: RouteNode, href: string, policy: RoutePrefetchPolicy, props: any) -> any {
+  prefetchPolicyProps(policy, routeLinkProps(routerValue, node, href, props))
+}
+
+pub fn matchUrlPattern(pattern: string, path: string) -> bool {
+  router.matchUrlPattern(pattern, path)
+}
+
+pub fn routeModuleLoader(routerValue: Router, module: RouteModule, name: string, loader: any) -> RouteResource<any> {
+  let matchValue = routeModuleMatch(routerValue, module)
+  RouteResource<any> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, render.props_empty())) }
+}
+
+pub fn routeModuleLoaderWithOptions(routerValue: Router, module: RouteModule, name: string, loader: any, options: any) -> RouteResource<any> {
+  let matchValue = routeModuleMatch(routerValue, module)
+  RouteResource<any> { raw: render.createResource(routeModuleKey(routerValue, module, name), fn() -> Promise<any> { loader(matchValue) }, routeModuleOptions(module, options)) }
+}
+
+pub fn routeModuleAction(routerValue: Router, module: RouteModule, name: string, action: any) -> RouteAction<any> {
+  let options = routeModuleOptions(module, render.props_attr("enabled", false))
+  let matchValue = routeModuleMatch(routerValue, module)
+  let actionResource = RouteResource<any> { raw: render.createResource(str.concat(routeModuleKey(routerValue, module, name), ":action"), fn() -> Promise<any> { action(matchValue) }, options) }
+  return RouteAction<any> { resource: actionResource, submitting: reactive.createSignal(false) }
+}
+
+pub fn routeModuleView(routerValue: Router, module: RouteModule, renderChildren: fn(any) -> any, fallback: any) -> VNode {
+  let matchValue = routeModuleMatch(routerValue, module)
+  render.show(matchValue.matched, fn() -> any { renderChildren(matchValue) }, fallback)
+}
+
+pub fn routeLoader(routerValue: Router, name: string, loader: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+}
+
+pub fn routeLoaderWithOptions(routerValue: Router, name: string, loader: any, options: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeResourceKey(routerValue, name), fn() -> Promise<any> { loader() }, options) }
+}
+
+pub fn routeLoaderFor(routerValue: Router, routeId: string, name: string, loader: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, render.props_empty())) }
+}
+
+pub fn routeLoaderForWithOptions(routerValue: Router, routeId: string, name: string, loader: any, options: any) -> RouteResource<any> {
+  RouteResource<any> { raw: render.createResource(routeScopedKey(routerValue, routeId, name), fn() -> Promise<any> { loader() }, routeIdOptions(routeId, options)) }
+}
+
+pub fn prefetchRoute(routerValue: Router, path: string, name: string, loader: any) -> RouteResource<any> {
+  let href = normalize_prefetch_href(routerValue.base, path)
+  RouteResource<any> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, render.props_empty()) }
+}
+
+pub fn prefetchRouteWithOptions(routerValue: Router, path: string, name: string, loader: any, options: any) -> RouteResource<any> {
+  let href = normalize_prefetch_href(routerValue.base, path)
+  RouteResource<any> { raw: render.createResource(route_key(href.path, href.search, name), fn() -> Promise<any> { loader() }, options) }
+}
+
+pub fn routeStatus(resource: RouteResource<any>) -> string {
+  render.resourceStatus(resource.raw)
+}
+
+pub fn routeData(resource: RouteResource<any>) -> any {
+  render.resourceData(resource.raw)
+}
+
+pub fn routeError(resource: RouteResource<any>) -> any {
+  render.resourceError(resource.raw)
+}
+
+pub fn routeRead(resource: RouteResource<any>) -> any {
+  render.resourceRead(resource.raw)
+}
+
+pub fn refreshRoute(resource: RouteResource<any>) -> Promise<any> {
+  render.resourceRefresh(resource.raw)
+}
+
+pub fn invalidateRoute(resource: RouteResource<any>) -> void {
+  render.resourceInvalidate(resource.raw)
+}
+
+pub fn optimisticRouteMutate(resource: RouteResource<any>, value: any) -> any {
+  render.resourceMutate(resource.raw, value)
+}
+
+pub fn invalidateRouteKey(key: any) -> bool {
+  render.resourceInvalidateKey(key)
+}
+
+pub fn invalidateRoutePrefix(prefix: string) -> int {
+  render.resourceInvalidatePrefix(prefix)
+}
+
+pub fn invalidateRouteTag(tag: string) -> int {
+  render.resourceInvalidateTag(tag)
+}
+
+pub fn invalidateRouteDependency(dependency: string) -> int {
+  render.resourceInvalidateDependency(dependency)
+}
+
+pub fn invalidateRouteScope(scope: string) -> int {
+  render.resourceInvalidateScope(scope)
+}
+
+pub fn routeAction(routerValue: Router, name: string, action: any) -> RouteAction<any> {
+  let options = render.props_attr("enabled", false)
+  let actionResource = RouteResource<any> { raw: render.createResource(str.concat(routeResourceKey(routerValue, name), ":action"), fn() -> Promise<any> { action() }, options) }
+  return RouteAction<any> { resource: actionResource, submitting: reactive.createSignal(false) }
+}
+
+pub async fn submitRouteAction(action: RouteAction<any>) -> any {
+  let value = await render.resourceSubmit(action.resource.raw, action.submitting)
+  return value
+}
+
+pub fn routeActionStatus(action: RouteAction<any>) -> string {
+  render.resourceStatus(action.resource.raw)
+}
+
+pub fn routeActionData(action: RouteAction<any>) -> any {
+  render.resourceData(action.resource.raw)
+}
+
+pub fn routeActionError(action: RouteAction<any>) -> any {
+  render.resourceError(action.resource.raw)
+}
+
+pub fn routeActionSubmitting(action: RouteAction<any>) -> Signal<bool> {
+  return action.submitting
+}
+
+pub fn matchRoute(pattern: string, path: string) -> bool {
+  return router.matchRoute(pattern, path)
+}
+
+pub fn isActive(routerValue: Router, pattern: string) -> bool {
+  return matchRoute(pattern, reactive.get(routerValue.path))
+}
+
+pub fn routeMatch(routerValue: Router, pattern: string) -> RouteMatch {
+  let path = reactive.get(routerValue.path)
+  return RouteMatch {
+    pattern: pattern,
+    path: path,
+    matched: matchRoute(pattern, path),
+    params: router.extractParams(pattern, path),
+    search: currentSearchParams(routerValue)
+  }
+}
+
+pub fn routeParams(matchValue: RouteMatch) -> any {
+  return matchValue.params
+}
+
+pub fn routeView(routerValue: Router, pattern: string, renderChildren: fn() -> any, fallback: any) -> VNode {
+  render.show(isActive(routerValue, pattern), renderChildren, fallback)
+}
+
+pub fn outlet(condition: bool, renderChildren: fn() -> any, fallback: any) -> VNode {
+  render.show(condition, renderChildren, fallback)
+}
+
+pub fn layout(shell: fn(any) -> VNode, child: any) -> VNode {
+  shell(child)
+}
+
+pub fn routeLoading<T>(_resource: RouteResource<T>, fallback: any, renderChildren: fn() -> any) -> VNode {
+  render.suspense(fallback, renderChildren)
+}
+
+pub fn routeErrorBoundary(fallback: any, renderChildren: fn() -> any) -> VNode {
+  render.errorBoundary(fallback, renderChildren)
+}
+
+pub fn extractParams(pattern: string, path: string) -> any {
+  return router.extractParams(pattern, path)
+}
+
+pub fn onRouteChange(routerValue: Router, handler: fn(string) -> void) -> Effect {
+  return reactive.createEffect(fn() -> void {
+    handler(reactive.get(routerValue.path))
+  })
+}
+
+pub fn link(routerValue: Router, href: string, label: string) -> VNode {
+  let attrs = render.props_merge(
+    render.props_class("inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-gray-400 transition-colors hover:text-white"),
+    render.props_merge(
+      render.props_href(resolve_href(routerValue.base, href)),
+      render.props_on_click(fn() -> bool {
+        navigate(routerValue, href)
+        return false
+      })
+    )
+  )
+  return render.element("a", attrs, [render.text(label)])
+}
+
+pub fn linkWithProps(routerValue: Router, href: string, props: any, children: any) -> VNode {
+  let attrs = render.props_merge(
+    props,
+    render.props_merge(
+      render.props_href(resolve_href(routerValue.base, href)),
+      render.props_on_click(fn() -> bool {
+        navigate(routerValue, href)
+        return false
+      })
+    )
+  )
+  return render.element("a", attrs, children)
+}
+`,R=""+new URL("lumina-runtime-0gbd7SGy.js",import.meta.url).href,p=/(^\s*import\b[\s\S]*?\bfrom\s+["']([^"']+)["'];?\s*)/gm,T=r=>{const n=[/^\s*pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)/gm,/^\s*pub\s+let\s+([A-Za-z_][A-Za-z0-9_]*)/gm,/^\s*pub\s+struct\s+([A-Za-z_][A-Za-z0-9_]*)/gm,/^\s*pub\s+enum\s+([A-Za-z_][A-Za-z0-9_]*)/gm],t=new Set;for(const a of n)for(const e of r.matchAll(a))e[1]&&t.add(e[1]);return Array.from(t)},A=r=>{const n=new Set,t=/\bexport\s*\{([^}]*)\}/gm;for(const a of r.matchAll(t)){const e=a[1]?.split(",")??[];for(const i of e){const o=i.trim();if(!o)continue;const[,l=o]=o.split(/\s+as\s+/),s=l.trim();s&&n.add(s)}}return n},I=(r,n)=>{if(n.length===0)return r;const t=A(r),a=Array.from(new Set(n)).filter(e=>!t.has(e));return a.length===0?r:`${r.trimEnd()}
+export { ${a.join(", ")} };
+`},E=r=>{const n=new Set,t=/\bimport\s*\{([^}]*)\}\s*from\s+["'][^"']*lumina-runtime\.js["']/gm;for(const a of r.matchAll(t)){const e=a[1]?.split(",")??[];for(const i of e){const o=i.trim();if(!o)continue;const[,l=o]=o.split(/\s+as\s+/),s=l.trim();s&&n.add(s)}}return n},P=(r,n)=>{if(n.size===0)return r;const t=r.match(/^(\s*import\s*\{)([^}]*)(\}\s*from\s+["'][^"']+["'];?\s*)$/s);if(!t)return r;const a=t[2].split(",").map(e=>e.trim()).filter(e=>{if(!e)return!1;const[,i]=e.split(/\s+as\s+/),o=(i??e).trim();return!n.has(o)});return a.length===0?null:`${t[1]} ${a.join(", ")} ${t[3]}`.trim()},S=(r,n,t,a)=>{const e=[];let i;for(p.lastIndex=0;(i=p.exec(t))!==null;){const o=i[1],l=i[2],s=r.resolveImportUri(n,l);if(!r.getDocumentText(s))continue;const u=P(o.trim(),l.startsWith("@std/")?a:new Set);u&&e.push({resolvedUri:s,statement:u})}return e},V=r=>{const n=new Map,t=new Set,a=e=>{if(n.has(e))return;if(t.has(e))throw new Error(`Circular runnable module dependency detected for ${e}`);const i=r.project.getDocumentText(e),o=r.project.getDocumentAst(e);if(!i||!o)throw new Error(`Missing runnable module source for ${e}`);t.add(e);const l=g(o,{target:"esm",includeRuntime:!0,sourceMap:!1,sourceFile:e,sourceContent:i}).code.replace(/from\s+["']\.\/lumina-runtime\.js["']/g,`from ${JSON.stringify(r.runtimeUrl)}`),s=S(r.project,e,i,E(l));for(const u of s)a(u.resolvedUri);n.set(e,{uri:e,code:I(l,T(i)),sourceImports:s}),t.delete(e)};return a(r.entryUri),{entryUri:r.entryUri,modules:Array.from(n.values())}},k=1,M=new URL(R,import.meta.url).href,w={"@std/router":v};let d=null;const C=()=>{if(!d){const r=y(x,{cache:!0});d={parser:r,project:new f(r,{preludeText:N,virtualFiles:w}),version:0}}return d},L=r=>{const t=r.replace(/^\uFEFF/,"").replace(/\r\n?/g,`
 `).split(`
-`),t=[];let r=0;for(const i of a){const o=i.replace(/[ \t]+$/g,"");if(o.length===0){r+=1,r<=g&&t.push("");continue}r=0,t.push(o)}for(;t.length>0&&t[t.length-1]==="";)t.pop();return`${t.join(`
+`),a=[];let e=0;for(const i of t){const o=i.replace(/[ \t]+$/g,"");if(o.length===0){e+=1,e<=k&&a.push("");continue}e=0,a.push(o)}for(;a.length>0&&a[a.length-1]==="";)a.pop();return`${a.join(`
 `)}
-`},I=(n,e=120)=>{const t=n.replace(/\r\n?/g,`
+`},B=(r,n=120)=>{const a=r.replace(/\r\n?/g,`
 `).split(`
-`),r=[];for(let i=0;i<t.length;i+=1){const o=t[i],l=i+1,s=o.match(/[ \t]+$/);s&&r.push({severity:"warning",message:"Trailing whitespace",line:l,column:s.index+1,code:"LINT-TRAILING-WS"});const c=o.indexOf("	");c>=0&&r.push({severity:"warning",message:"Tab indentation found; use spaces",line:l,column:c+1,code:"LINT-TAB-INDENT"}),o.length>e&&r.push({severity:"warning",message:`Line exceeds ${e} characters`,line:l,column:e+1,code:"LINT-LINE-LENGTH"})}return r},E=(n,e)=>{const a=e.map(r=>({severity:r.severity,message:r.message,line:r.location?.start?.line,column:r.location?.start?.column,code:r.code})),t=I(n);return[...a,...t]},P=n=>!!(n&&typeof n=="object"&&Array.isArray(n.body)&&n.body.some(e=>e.type==="FnDecl"&&e.name==="main")),S=n=>{try{const e=T();e.version+=1,e.project.addOrUpdateDocument("main.lm",n,e.version);const a=E(n,e.project.getDiagnostics("main.lm"));if(a.some(c=>c.severity==="error"))return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:a};const r=e.project.getDocumentAst("main.lm");if(!r)return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:[{severity:"error",message:"No AST produced for main.lm"}]};const i=_(r),o=y(i),l=o?f(o).code:"// No JavaScript output generated.",s=x(r,{target:"esm",includeRuntime:!0,sourceMap:!1,sourceFile:"main.lm",sourceContent:n}).code.replace(/from\s+["']\.\/lumina-runtime\.js["']/g,`from ${JSON.stringify(v)}`);return{ok:!0,js:l,runnableJs:s,hasMain:P(r),diagnostics:a}}catch(e){return{ok:!1,js:"",runnableJs:"",hasMain:!1,diagnostics:[{severity:"error",message:e instanceof Error?e.message:String(e)}]}}},m=globalThis;m.compileLuminaSource=S;m.formatLuminaSource=A;export{S as compileLuminaSource,A as formatLuminaSource};
+`),e=[];for(let i=0;i<a.length;i+=1){const o=a[i],l=i+1,s=o.match(/[ \t]+$/);s&&e.push({severity:"warning",message:"Trailing whitespace",line:l,column:s.index+1,code:"LINT-TRAILING-WS"});const u=o.indexOf("	");u>=0&&e.push({severity:"warning",message:"Tab indentation found; use spaces",line:l,column:u+1,code:"LINT-TAB-INDENT"}),o.length>n&&e.push({severity:"warning",message:`Line exceeds ${n} characters`,line:l,column:n+1,code:"LINT-LINE-LENGTH"})}return e},z=(r,n)=>{const t=n.map(e=>({severity:e.severity,message:e.message,line:e.location?.start?.line,column:e.location?.start?.column,code:e.code})),a=B(r);return[...t,...a]},U=r=>!!(r&&typeof r=="object"&&Array.isArray(r.body)&&r.body.some(n=>n.type==="FnDecl"&&n.name==="main")),F=r=>{try{const n=C();n.version+=1,n.project.addOrUpdateDocument("main.lm",r,n.version);const t=z(r,n.project.getDiagnostics("main.lm"));if(t.some(c=>c.severity==="error"))return{ok:!1,js:"",runnableJs:"",runnableEntryUri:null,runnableModules:[],hasMain:!1,diagnostics:t};const e=n.project.getDocumentAst("main.lm");if(!e)return{ok:!1,js:"",runnableJs:"",runnableEntryUri:null,runnableModules:[],hasMain:!1,diagnostics:[{severity:"error",message:"No AST produced for main.lm"}]};const i=_(e),o=h(i),l=o?b(o).code:"// No JavaScript output generated.",s=V({project:n.project,entryUri:"main.lm",runtimeUrl:M}),u=s.modules.find(c=>c.uri===s.entryUri);return u?{ok:!0,js:l,runnableJs:u.code,runnableEntryUri:s.entryUri,runnableModules:s.modules,hasMain:U(e),diagnostics:t}:{ok:!1,js:"",runnableJs:"",runnableEntryUri:null,runnableModules:[],hasMain:!1,diagnostics:[{severity:"error",message:"No runnable entry module produced for main.lm"}]}}catch(n){const t=n instanceof Error?n.message:String(n);return{ok:!1,js:"",runnableJs:"",runnableEntryUri:null,runnableModules:[],hasMain:!1,diagnostics:[{severity:"error",message:t}]}}},m=globalThis;m.compileLuminaSource=F;m.formatLuminaSource=L;export{F as compileLuminaSource,L as formatLuminaSource};

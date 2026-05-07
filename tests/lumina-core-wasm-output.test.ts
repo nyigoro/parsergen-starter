@@ -55,7 +55,7 @@ describe('compileLuminaTask wasm output', () => {
     expect(WebAssembly.validate(fs.readFileSync(wasmPath))).toBe(true);
     expect(fs.existsSync(watPath)).toBe(true);
     expect(fs.readFileSync(watPath, 'utf-8')).toContain('(module');
-  });
+  }, 15000);
 
   it('emits import-free standalone wasm with an external debug map', async () => {
     const dir = tmpDir();

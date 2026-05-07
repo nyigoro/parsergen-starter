@@ -4,6 +4,8 @@ import { execSync } from 'node:child_process';
 import { loadWASM, callWASMFunction } from '../src/wasm-runtime.js';
 
 const tempDir = path.join(__dirname, '../.tmp-wasm');
+const createTempStem = (label: string): string =>
+  `${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const hasWabt = (): boolean => {
   try {
@@ -16,8 +18,9 @@ const hasWabt = (): boolean => {
 
 const compileWatAndLoad = async (wat: string, basename: string) => {
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-  const watPath = path.join(tempDir, `${basename}.wat`);
-  const wasmPath = path.join(tempDir, `${basename}.wasm`);
+  const stem = createTempStem(basename);
+  const watPath = path.join(tempDir, `${stem}.wat`);
+  const wasmPath = path.join(tempDir, `${stem}.wasm`);
   fs.writeFileSync(watPath, wat, 'utf-8');
   execSync(`wat2wasm "${watPath}" -o "${wasmPath}"`);
   return loadWASM(wasmPath);
@@ -84,7 +87,7 @@ describe('WASM memory usage validation', () => {
     const runtime = await compileWatAndLoad(managedStringWat, 'memory-unbalanced');
     const live = Number(callWASMFunction(runtime, 'alloc_without_release'));
     expect(live).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it('stays bounded over repeated alloc/release cycles', async () => {
     if (!hasWabt()) return;

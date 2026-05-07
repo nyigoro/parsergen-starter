@@ -1,5 +1,6 @@
 import './style.css';
 import './main.lm';
+import { defaultPlaygroundPreset, playgroundPresets, type PlaygroundPreset } from './presets';
 
 type MountEditor = (options: { elementId: string; initialValue: string }) => void;
 type GetEditorText = (elementId: string) => string;
@@ -18,6 +19,15 @@ type CompileResult = {
   ok: boolean;
   js: string;
   runnableJs: string;
+  runnableEntryUri: string | null;
+  runnableModules: Array<{
+    uri: string;
+    code: string;
+    sourceImports: Array<{
+      resolvedUri: string;
+      statement: string;
+    }>;
+  }>;
   hasMain: boolean;
   diagnostics: CompileDiagnostic[];
 };
@@ -33,188 +43,6 @@ type RunResult = {
   status: 'ok' | 'timeout' | 'error';
 };
 
-type PlaygroundPreset = {
-  id: string;
-  source: string;
-};
-
-const presets: PlaygroundPreset[] = [
-  {
-    id: 'basics',
-    source: `import { io } from "@std";
-
-fn square(x: int) -> int {
-  return x * x
-}
-
-fn main() -> int {
-  let answer = square(12);
-  io.println("square={answer}");
-  return answer
-}`,
-  },
-  {
-    id: 'safe-index',
-    source: `import { io, vec } from "@std";
-
-fn main() -> int {
-  let nums = [10, 20, 30];
-  let index = 5;
-  let found = vec.get(nums, index);
-
-  match found {
-    Some(value) => {
-      return value
-    },
-    None => {
-      io.println("missing index {index}");
-      return 0
-    }
-  }
-
-  return 0
-}`,
-  },
-  {
-    id: 'iterators',
-    source: `import { io, vec } from "@std";
-
-fn main() -> int {
-  let nums = [1, 2, 3, 4];
-  let doubled = map_vec(nums, |x| x * 2);
-  let second = vec.get(doubled, 1);
-
-  match second {
-    Some(value) => {
-      io.println("second={value}");
-    },
-    None => {
-      io.println("missing");
-    }
-  }
-
-  return doubled[0] + doubled[1] + doubled[2] + doubled[3]
-}`,
-  },
-  {
-    id: 'results',
-    source: `import { io } from "@std";
-
-fn read_config(name: string) -> Result<string, string> {
-  if (name == "lumina") {
-    return Result.Ok("ready")
-  }
-
-  return Result.Err("missing")
-}
-
-fn main() -> int {
-  let config = read_config("lumina");
-
-  match config {
-    Ok(value) => {
-      io.println(value);
-      return 1
-    },
-    Err(message) => {
-      io.println(message);
-      return 0
-    }
-  }
-
-  return 0
-}`,
-  },
-  {
-    id: 'view-basic',
-    source: `import { io } from "@std";
-
-fn main() -> int {
-  let view = "<main class=\\"app-shell\\">web native systems</main>";
-  io.println(view);
-  return 0
-}`,
-  },
-  {
-    id: 'keyed-ui',
-    source: `import { io, render } from "@std";
-
-fn main() -> int {
-  let rows = render.signal(["draft", "review", "ship"]);
-
-  let view = render.element("ol", render.props_class("task-list"), [
-    for (row, index in rows key row) => render.element("li", props { class: "task-row" }, [
-      render.text(row),
-      render.text(":"),
-      render.text(index)
-    ])
-  ]);
-
-  io.println(render.render_to_string(view));
-  return 0
-}`,
-  },
-  {
-    id: 'generic-keyed-ui',
-    source: `import { io, render } from "@std";
-
-fn main() -> int {
-  let active = render.signal("profile");
-  let first = render.get(active);
-  let second = "settings";
-
-  let view = render.element("section", props { class: "panels" }, [
-    key(first) => render.element("article", props { class: "panel" }, [
-      render.text("Profile")
-    ]),
-    key(second) => render.element("article", props { class: "panel" }, [
-      render.text("Settings")
-    ])
-  ]);
-
-  io.println(render.render_to_string(view));
-  return 0
-}`,
-  },
-  {
-    id: 'starter-app',
-    source: `import { io, render } from "@std";
-import {
-  createRouter,
-  linkWithProps,
-  prefetchRoute,
-  routeLoader,
-  routeResourceKey,
-  routeStatus
-} from "@std/router";
-
-async fn loadDashboard() -> string {
-  "ready"
-}
-
-fn main() -> int {
-  let appRouter = createRouter("/");
-  let dashboard = routeLoader(appRouter, "dashboard", || loadDashboard());
-  let _settingsPrefetch = prefetchRoute(appRouter, "/settings", "dashboard", || loadDashboard());
-  let view = render.element("main", props { class: "app-shell" }, [
-    render.element("nav", props { class: "nav-row" }, [
-      linkWithProps(appRouter, "/", props { class: "nav-link" }, [render.text("Home")]),
-      linkWithProps(appRouter, "/settings", props { class: "nav-link" }, [render.text("Settings")])
-    ]),
-    render.element("p", props { class: "status" }, [
-      render.text("Loader: "),
-      render.text(routeStatus(dashboard))
-    ])
-  ]);
-
-  io.println(routeResourceKey(appRouter, "dashboard"));
-  io.println(render.render_to_string(view));
-  return 0
-}`,
-  },
-];
-
-const defaultPreset = presets[0];
 const storageKey = 'lumina-playground-source';
 const isDirectPlaygroundDev = import.meta.env.DEV && window.location.port === '5175';
 const devAppUrl = (port: string, path: string): string =>
@@ -257,7 +85,7 @@ const readSharedSource = (): string | null => {
 const readPresetFromLocation = (): PlaygroundPreset | null => {
   const presetId = new URL(window.location.href).searchParams.get('preset');
   if (!presetId) return null;
-  return presets.find((preset) => preset.id === presetId) ?? null;
+  return playgroundPresets.find((preset) => preset.id === presetId) ?? null;
 };
 
 const readStoredSource = (): string | null => {
@@ -399,6 +227,9 @@ const setActivePreset = (presetId: string | null): void => {
   });
 };
 
+const rewriteModuleImportSource = (statement: string, nextSpecifier: string): string =>
+  statement.replace(/\bfrom\s+["'][^"']+["']/, `from ${JSON.stringify(nextSpecifier)}`);
+
 const runCompiledModule = async (result: CompileResult): Promise<RunResult> => {
   if (!result.hasMain) {
     return { output: 'No main() function found.', status: 'error' };
@@ -407,11 +238,92 @@ const runCompiledModule = async (result: CompileResult): Promise<RunResult> => {
     return { output: 'Worker execution is unavailable in this browser.', status: 'error' };
   }
 
-  const moduleSource = `${result.runnableJs}\nexport { main as __luminaMain };\n`;
-  const moduleUrl = URL.createObjectURL(new Blob([moduleSource], { type: 'text/javascript' }));
+  const moduleUrls = new Map<string, string>();
+  const runnableModules = new Map(result.runnableModules.map((module) => [module.uri, module]));
+  const materializeModule = (uri: string): string => {
+    const existing = moduleUrls.get(uri);
+    if (existing) return existing;
+    const module = runnableModules.get(uri);
+    if (!module) {
+      throw new Error(`Missing runnable module ${uri}`);
+    }
+    const importLines = module.sourceImports.map((sourceImport) =>
+      rewriteModuleImportSource(sourceImport.statement, materializeModule(sourceImport.resolvedUri))
+    );
+    const needsEntryExport = uri === result.runnableEntryUri;
+    const moduleSource = `${importLines.length > 0 ? `${importLines.join('\n')}\n` : ''}${module.code}${
+      needsEntryExport ? '\nexport { main as __luminaMain };\n' : ''
+    }`;
+    const moduleUrl = URL.createObjectURL(new Blob([moduleSource], { type: 'text/javascript' }));
+    moduleUrls.set(uri, moduleUrl);
+    return moduleUrl;
+  };
+  const entryModuleUrl =
+    result.runnableEntryUri && result.runnableModules.length > 0
+      ? materializeModule(result.runnableEntryUri)
+      : URL.createObjectURL(new Blob([`${result.runnableJs}\nexport { main as __luminaMain };\n`], { type: 'text/javascript' }));
+  const routerSandboxHref = new URL('/', window.location.href).toString();
   const runnerSource = `
-const moduleUrl = ${JSON.stringify(moduleUrl)};
+const moduleUrl = ${JSON.stringify(entryModuleUrl)};
+const routerSandboxHref = ${JSON.stringify(routerSandboxHref)};
 const logs = [];
+const routerUrl = new URL(routerSandboxHref);
+const routerListeners = new Set();
+const routerLocation = {
+  pathname: routerUrl.pathname,
+  search: routerUrl.search,
+  hash: routerUrl.hash,
+};
+const updateRouterLocation = (nextUrl) => {
+  const next = new URL(String(nextUrl ?? '/'), routerUrl);
+  routerLocation.pathname = next.pathname;
+  routerLocation.search = next.search;
+  routerLocation.hash = next.hash;
+};
+const dispatchRouterEvent = () => {
+  const event = { type: 'popstate' };
+  for (const listener of Array.from(routerListeners)) {
+    try {
+      if (typeof listener === 'function') listener(event);
+      else if (listener && typeof listener.handleEvent === 'function') listener.handleEvent(event);
+    } catch {
+      // Keep the playground runner resilient.
+    }
+  }
+  return true;
+};
+const routerHistory = {
+  state: null,
+  scrollRestoration: 'auto',
+  pushState(data, _unused, nextUrl) {
+    this.state = data ?? null;
+    if (nextUrl != null) updateRouterLocation(nextUrl);
+    dispatchRouterEvent();
+  },
+  replaceState(data, _unused, nextUrl) {
+    this.state = data ?? null;
+    if (nextUrl != null) updateRouterLocation(nextUrl);
+  }
+};
+const routerWindow = {
+  location: routerLocation,
+  history: routerHistory,
+  addEventListener(type, listener) {
+    if (type === 'popstate') routerListeners.add(listener);
+  },
+  removeEventListener(type, listener) {
+    if (type === 'popstate') routerListeners.delete(listener);
+  },
+  dispatchEvent(event) {
+    return event && event.type === 'popstate' ? dispatchRouterEvent() : true;
+  },
+  scrollTo() {}
+};
+const routerDocument = { baseURI: routerUrl.toString() };
+try { Object.defineProperty(globalThis, 'window', { value: routerWindow, configurable: true }); } catch { globalThis.window = routerWindow; }
+try { Object.defineProperty(globalThis, 'location', { value: routerLocation, configurable: true }); } catch { globalThis.location = routerLocation; }
+try { Object.defineProperty(globalThis, 'history', { value: routerHistory, configurable: true }); } catch { globalThis.history = routerHistory; }
+try { Object.defineProperty(globalThis, 'document', { value: routerDocument, configurable: true }); } catch { globalThis.document = routerDocument; }
 const formatValue = (value) => {
   if (value === undefined) return 'void';
   if (typeof value === 'string') return value;
@@ -498,7 +410,12 @@ console.error = (...args) => { logs.push(args.map(formatValue).join(' ')); };
     });
   } finally {
     URL.revokeObjectURL(runnerUrl);
-    URL.revokeObjectURL(moduleUrl);
+    for (const moduleUrl of moduleUrls.values()) {
+      URL.revokeObjectURL(moduleUrl);
+    }
+    if (!result.runnableEntryUri || result.runnableModules.length === 0) {
+      URL.revokeObjectURL(entryModuleUrl);
+    }
   }
 };
 
@@ -528,8 +445,11 @@ const startPlayground = async (): Promise<void> => {
   let compilerLoadPromise: Promise<boolean> | null = null;
   const sharedSource = readSharedSource();
   const locationPreset = sharedSource ? null : readPresetFromLocation();
-  const initialSource = sharedSource ?? locationPreset?.source ?? readStoredSource() ?? defaultPreset.source;
-  const initialPreset = locationPreset?.id ?? (initialSource === defaultPreset.source ? defaultPreset.id : null);
+  const initialSource =
+    sharedSource ?? locationPreset?.source ?? readStoredSource() ?? defaultPlaygroundPreset.source;
+  const initialPreset =
+    locationPreset?.id ??
+    (initialSource === defaultPlaygroundPreset.source ? defaultPlaygroundPreset.id : null);
 
   const renderLoadFailure = (message: string): void => {
     const diagnostic = [{ severity: 'error', message, code: 'PLAYGROUND-LOAD' }];
@@ -561,6 +481,15 @@ const startPlayground = async (): Promise<void> => {
     setText('output-mode', 'JS');
     renderDiagnostics(diagnosticsRoot, result.diagnostics);
     renderOutput(outputRoot, result);
+    if (result.ok) {
+      setText('run-status', 'Not run');
+      setDataset('run-status', 'status', 'idle');
+      consoleRoot.textContent = 'Run the program to see output.';
+    } else {
+      setText('run-status', 'Blocked');
+      setDataset('run-status', 'status', 'error');
+      consoleRoot.textContent = 'Fix diagnostics before running.';
+    }
     return result;
   };
 
@@ -706,7 +635,7 @@ const startPlayground = async (): Promise<void> => {
       const selectedPresetId = button.id.startsWith('preset-')
         ? button.id.slice('preset-'.length)
         : '';
-      const selectedPreset = presets.find((preset) => preset.id === selectedPresetId);
+      const selectedPreset = playgroundPresets.find((preset) => preset.id === selectedPresetId);
       if (!selectedPreset) return;
 
       if (compileTimer) window.clearTimeout(compileTimer);

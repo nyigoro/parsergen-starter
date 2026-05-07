@@ -230,7 +230,7 @@ export async function initProject(options: { yes?: boolean; template?: string; v
     dependencies: {},
     devDependencies: {
       vite: '^7.2.6',
-      ...(useVitePlugin ? { 'lumina-lang': luminaPackageVersion } : {}),
+      'lumina-lang': luminaPackageVersion,
     },
   };
   await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
@@ -487,10 +487,10 @@ pub fn anonymous() -> Session {
 `);
   }
   if (template === 'testing') {
-    await writeFileIfMissing(path.join(cwd, 'src', 'app.test.lm'), `import { testing } from "@std";
+    await writeFileIfMissing(path.join(cwd, 'src', 'app.test.lm'), `import { flush } from "@std/testing";
 
 pub async fn smoke() -> void {
-  await testing.flush()
+  await flush()
 }
 `);
   }

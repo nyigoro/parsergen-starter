@@ -81,7 +81,11 @@ export class BrowserProjectContext {
 
   constructor(
     parser?: CompiledGrammar<unknown>,
-    options: { preludeText?: string; recoveryOptions?: PanicRecoveryOptions } = {}
+    options: {
+      preludeText?: string;
+      recoveryOptions?: PanicRecoveryOptions;
+      virtualFiles?: Record<string, string> | Map<string, string>;
+    } = {}
   ) {
     this.parser = parser ?? null;
     this.preludeText = options.preludeText ?? null;
@@ -101,6 +105,15 @@ export class BrowserProjectContext {
       },
       ...(options.recoveryOptions ?? {}),
     };
+    if (options.virtualFiles) {
+      const entries =
+        options.virtualFiles instanceof Map
+          ? options.virtualFiles.entries()
+          : Object.entries(options.virtualFiles);
+      for (const [spec, text] of entries) {
+        this.virtualFiles.set(this.normalizeVirtualSpec(spec), text);
+      }
+    }
     this.ensurePreludeLoaded();
   }
 
@@ -153,6 +166,14 @@ export class BrowserProjectContext {
     return this.documents.get(this.toVirtualUri(uri))?.ast;
   }
 
+  getDocumentText(uri: string): string | undefined {
+    return this.documents.get(this.toVirtualUri(uri))?.text;
+  }
+
+  resolveImportUri(fromUri: string, source: string): string {
+    return this.resolveImport(this.toVirtualUri(fromUri), source);
+  }
+
   private parseDocument(uri: string) {
     const doc = this.documents.get(this.toVirtualUri(uri));
     if (!doc || !this.parser) return;
@@ -182,7 +203,7 @@ export class BrowserProjectContext {
         doc.importedNames = importedNames;
         doc.importAliases = importInfo.aliases;
         doc.importNameMap = importInfo.map;
-        const moduleBindings = this.buildModuleBindings(importInfo.bindings, payload as never);
+        const moduleBindings = this.buildModuleBindings(importInfo.bindings, payload as never, uri);
         doc.moduleBindings = moduleBindings;
 
         const analysis = analyzeLumina(payload as never, {
@@ -244,6 +265,10 @@ export class BrowserProjectContext {
       return this.virtualUriFor(this.ensureVirtualExtension(resolved));
     }
     if (imp.startsWith('@std/')) {
+      const normalized = this.normalizeVirtualSpec(imp);
+      if (this.virtualFiles.has(normalized)) return this.virtualUriFor(normalized);
+      const withExt = this.ensureVirtualExtension(normalized);
+      if (this.virtualFiles.has(withExt)) return this.virtualUriFor(withExt);
       return imp;
     }
     const normalized = this.normalizeVirtualSpec(imp);
@@ -257,7 +282,8 @@ export class BrowserProjectContext {
 
   private buildModuleBindings(
     bindings: ImportBinding[],
-    program: { type: string; body?: unknown[] }
+    program: { type: string; body?: unknown[] },
+    currentUri: string
   ): Map<string, ModuleExport> {
     const bindingsMap = resolveModuleBindings(program as never, this.moduleRegistry);
     const modulesBySource = new Map<string, ModuleNamespace>();
@@ -265,6 +291,30 @@ export class BrowserProjectContext {
       mod.name === alias ? mod : { ...mod, name: alias };
     for (const binding of bindings) {
       if (bindingsMap.has(binding.local)) continue;
+      const resolved = this.resolveImport(currentUri, binding.source);
+      let module = modulesBySource.get(resolved);
+      if (!module) {
+        this.ensureDocumentLoaded(resolved);
+        const doc = this.documents.get(this.toVirtualUri(resolved));
+        if (doc?.symbols) {
+          module = buildModuleNamespaceFromSymbols(binding.source, doc.symbols.list(), this.toVirtualUri(resolved));
+          modulesBySource.set(resolved, module);
+        }
+      }
+      if (module) {
+        if (binding.namespace) {
+          bindingsMap.set(binding.local, aliasModule(module, binding.local));
+        } else {
+          const exp = module.exports.get(binding.original);
+          if (exp) {
+            bindingsMap.set(
+              binding.local,
+              exp.kind === 'function' && exp.name !== binding.local ? { ...exp, name: binding.local } : exp
+            );
+          }
+        }
+        continue;
+      }
       const registryModule = this.moduleRegistry.get(binding.source);
       if (registryModule) {
         if (binding.namespace) {
@@ -279,26 +329,6 @@ export class BrowserProjectContext {
           }
         }
         continue;
-      }
-      const resolved = this.resolveImport('', binding.source);
-      let module = modulesBySource.get(resolved);
-      if (!module) {
-        this.ensureDocumentLoaded(resolved);
-        const doc = this.documents.get(this.toVirtualUri(resolved));
-        if (!doc?.symbols) continue;
-        module = buildModuleNamespaceFromSymbols(binding.source, doc.symbols.list(), this.toVirtualUri(resolved));
-        modulesBySource.set(resolved, module);
-      }
-      if (binding.namespace) {
-        bindingsMap.set(binding.local, aliasModule(module, binding.local));
-      } else {
-        const exp = module.exports.get(binding.original);
-        if (exp) {
-          bindingsMap.set(
-            binding.local,
-            exp.kind === 'function' && exp.name !== binding.local ? { ...exp, name: binding.local } : exp
-          );
-        }
       }
     }
     return bindingsMap;

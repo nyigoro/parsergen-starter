@@ -1,12 +1,14 @@
 import luminaGrammarRaw from '../../src/grammar/lumina.peg?raw';
 import preludeRaw from '../../std/prelude.lm?raw';
+import routerStdRaw from '../../std/router.lm?raw';
 import luminaRuntimeUrl from '../../dist/lumina-runtime.js?url';
 import { compileGrammar as compileLuminaGrammar } from '../../src/grammar/index';
 import { BrowserProjectContext } from '../../src/project/browser-context';
 import { lowerLumina } from '../../src/lumina/lower';
 import { optimizeIR } from '../../src/lumina/optimize';
 import { generateJS } from '../../src/lumina/codegen';
-import { generateJSFromAst } from '../../src/lumina/codegen-js';
+import type { RunnableModuleArtifact } from './runnable-module-graph';
+import { buildRunnableModuleGraph } from './runnable-module-graph';
 
 export type CompileDiagnostic = {
   severity: string;
@@ -20,6 +22,8 @@ export type CompileResult = {
   ok: boolean;
   js: string;
   runnableJs: string;
+  runnableEntryUri: string | null;
+  runnableModules: RunnableModuleArtifact[];
   hasMain: boolean;
   diagnostics: CompileDiagnostic[];
 };
@@ -33,6 +37,10 @@ type PlaygroundCompilerRuntime = {
   version: number;
 };
 
+const playgroundVirtualStdFiles = {
+  '@std/router': routerStdRaw,
+};
+
 let compilerRuntime: PlaygroundCompilerRuntime | null = null;
 
 const getCompilerRuntime = (): PlaygroundCompilerRuntime => {
@@ -40,7 +48,10 @@ const getCompilerRuntime = (): PlaygroundCompilerRuntime => {
     const parser = compileLuminaGrammar(luminaGrammarRaw, { cache: true });
     compilerRuntime = {
       parser,
-      project: new BrowserProjectContext(parser, { preludeText: preludeRaw }),
+      project: new BrowserProjectContext(parser, {
+        preludeText: preludeRaw,
+        virtualFiles: playgroundVirtualStdFiles,
+      }),
       version: 0,
     };
   }
@@ -150,6 +161,8 @@ export const compileLuminaSource = (source: string): CompileResult => {
         ok: false,
         js: '',
         runnableJs: '',
+        runnableEntryUri: null,
+        runnableModules: [],
         hasMain: false,
         diagnostics,
       };
@@ -161,6 +174,8 @@ export const compileLuminaSource = (source: string): CompileResult => {
         ok: false,
         js: '',
         runnableJs: '',
+        runnableEntryUri: null,
+        runnableModules: [],
         hasMain: false,
         diagnostics: [{ severity: 'error', message: 'No AST produced for main.lm' }],
       };
@@ -169,18 +184,30 @@ export const compileLuminaSource = (source: string): CompileResult => {
     const lowered = lowerLumina(ast as never);
     const optimized = optimizeIR(lowered);
     const js = optimized ? generateJS(optimized as never).code : '// No JavaScript output generated.';
-    const runnableJs = generateJSFromAst(ast as never, {
-      target: 'esm',
-      includeRuntime: true,
-      sourceMap: false,
-      sourceFile: 'main.lm',
-      sourceContent: source,
-    }).code.replace(/from\s+["']\.\/lumina-runtime\.js["']/g, `from ${JSON.stringify(resolvedRuntimeUrl)}`);
+    const runnableGraph = buildRunnableModuleGraph({
+      project: runtime.project,
+      entryUri: 'main.lm',
+      runtimeUrl: resolvedRuntimeUrl,
+    });
+    const entryModule = runnableGraph.modules.find((module) => module.uri === runnableGraph.entryUri);
+    if (!entryModule) {
+      return {
+        ok: false,
+        js: '',
+        runnableJs: '',
+        runnableEntryUri: null,
+        runnableModules: [],
+        hasMain: false,
+        diagnostics: [{ severity: 'error', message: 'No runnable entry module produced for main.lm' }],
+      };
+    }
 
     return {
       ok: true,
       js,
-      runnableJs,
+      runnableJs: entryModule.code,
+      runnableEntryUri: runnableGraph.entryUri,
+      runnableModules: runnableGraph.modules,
       hasMain: hasMainFunction(ast),
       diagnostics,
     };
@@ -190,6 +217,8 @@ export const compileLuminaSource = (source: string): CompileResult => {
       ok: false,
       js: '',
       runnableJs: '',
+      runnableEntryUri: null,
+      runnableModules: [],
       hasMain: false,
       diagnostics: [{ severity: 'error', message }],
     };

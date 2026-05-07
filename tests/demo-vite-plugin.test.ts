@@ -9,6 +9,7 @@ describe('demo vite plugin', () => {
     const examplesSource = fs.readFileSync(path.resolve(__dirname, '../demo/home-examples.lm'), 'utf-8');
     const playgroundAppSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/app.lm'), 'utf-8');
     const playgroundSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/index.ts'), 'utf-8');
+    const playgroundPresetsSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/presets.ts'), 'utf-8');
     const styleSource = fs.readFileSync(path.resolve(__dirname, '../demo/style.css'), 'utf-8');
 
     expect(componentsSource).not.toContain('@std/router');
@@ -19,7 +20,8 @@ describe('demo vite plugin', () => {
     expect(examplesSource).toContain('./playground/?preset=basics');
     expect(examplesSource).toContain('./playground/?preset=results');
     expect(examplesSource).toContain('./playground/?preset=view-basic');
-    expect(playgroundSource).toContain("id: 'view-basic'");
+    expect(playgroundPresetsSource).toContain("id: 'view-basic'");
+    expect(playgroundPresetsSource).toContain("id: 'starter-app'");
     expect(playgroundAppSource).toContain('preset_button("view-basic"');
     expect(playgroundSource).toContain('readPresetFromLocation');
     expect(playgroundSource).toContain("searchParams.get('preset')");

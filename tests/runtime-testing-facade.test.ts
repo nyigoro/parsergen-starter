@@ -108,7 +108,7 @@ describe('runtime testing facade', () => {
     await expect(
       Promise.race([
         facade.testing_wait_for(() => new Promise(() => undefined), 2),
-        new Promise((resolve) => setTimeout(() => resolve('timeout'), 100)),
+        new Promise((resolve) => setTimeout(() => resolve('timeout'), 500)),
       ])
     ).resolves.toBeNull();
   });

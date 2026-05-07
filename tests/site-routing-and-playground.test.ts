@@ -91,5 +91,7 @@ describe('site routing and playground integration', () => {
       "Promise.all([import('./codemirror-bridge'), import('./compiler-bridge')])"
     );
     expect(compilerBridge).toContain('compileLuminaGrammar(luminaGrammarRaw, { cache: true })');
+    expect(compilerBridge).toContain("import routerStdRaw from '../../std/router.lm?raw';");
+    expect(compilerBridge).toContain("'@std/router': routerStdRaw");
   });
 });

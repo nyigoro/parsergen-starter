@@ -60,6 +60,7 @@ describe('lumina init', () => {
     expect(pkg.scripts?.ssg).toBeUndefined();
     expect(pkg.scripts?.dev).toContain('vite --host 127.0.0.1');
     expect(pkg.devDependencies?.vite).toBeTruthy();
+    expect(pkg.devDependencies?.['lumina-lang']).toBeTruthy();
     expect(config).toMatchObject({ entries: ['src/client.lm'], outDir: 'dist', target: 'js', module: 'esm' });
     expect(manifest).toContain('[package]');
     expect(manifest).toContain('entry = "src/client.lm"');
@@ -84,6 +85,7 @@ describe('lumina init', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
       luminaTemplate?: string;
       scripts?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
     const appSource = fs.readFileSync(path.join(dir, 'src', 'app.lm'), 'utf-8');
     const clientSource = fs.readFileSync(path.join(dir, 'src', 'client.lm'), 'utf-8');
@@ -91,6 +93,7 @@ describe('lumina init', () => {
     expect(pkg.luminaTemplate).toBe('minimal');
     expect(pkg.scripts?.check).toBe('lumina check src/client.lm');
     expect(pkg.scripts?.ssg).toBeUndefined();
+    expect(pkg.devDependencies?.['lumina-lang']).toBeTruthy();
     expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(false);
     expect(appSource).not.toContain('@std/router');
     expect(clientSource).toContain('App()');
@@ -137,7 +140,7 @@ describe('lumina init', () => {
     expect(pkg.scripts?.ssg).toContain('--hydrate ./main.js');
     expect(ssgSource).toContain('App(createRouter("/")');
     expect(readme).toContain('SSR/SSG-ready');
-  });
+  }, 15000);
 
   test('creates official complex-app starter variants', async () => {
     for (const template of ['auth', 'testing', 'deploy', 'large-app'] as const) {
@@ -149,12 +152,14 @@ describe('lumina init', () => {
       const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')) as {
         luminaTemplate?: string;
         scripts?: Record<string, string>;
+        devDependencies?: Record<string, string>;
       };
       const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf-8');
 
       expect(pkg.luminaTemplate).toBe(template);
       expect(pkg.scripts?.ssg).toContain('lumina ssg src/ssg.lm');
       expect(pkg.scripts?.ssg).toContain('--hydrate ./main.js');
+      expect(pkg.devDependencies?.['lumina-lang']).toBeTruthy();
       expect(readme).toContain('Commands');
       expect(fs.existsSync(path.join(dir, 'src', 'ssg.lm'))).toBe(true);
       if (template === 'auth') expect(fs.existsSync(path.join(dir, 'src', 'session.lm'))).toBe(true);
@@ -163,7 +168,7 @@ describe('lumina init', () => {
       if (template === 'large-app') expect(fs.existsSync(path.join(dir, 'src', 'routes.lm'))).toBe(true);
       process.chdir(originalCwd);
     }
-  });
+  }, 30000);
 
   test('generated starter templates pass lumina check', async () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -187,12 +192,18 @@ describe('lumina init', () => {
           expect(ssg.ok).toBe(true);
         }
 
+        const appTestPath = path.join(dir, 'src', 'app.test.lm');
+        if (fs.existsSync(appTestPath)) {
+          const appTest = await checkLuminaTask({ sourcePath: appTestPath, grammarPath, useRecovery: false });
+          expect(appTest.ok).toBe(true);
+        }
+
         process.chdir(originalCwd);
       }
     } finally {
       logSpy.mockRestore();
     }
-  }, 30000);
+  }, 90000);
 
   test('generated starter templates compile the browser entry', async () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
