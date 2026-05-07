@@ -19,6 +19,10 @@ type CompileWorkerRequest =
 
 type CompileWorkerResponse =
   | {
+      type: 'ready';
+      bootMs: number;
+    }
+  | {
       id: number;
       type: 'compile-result';
       result: CompileResult;
@@ -35,6 +39,18 @@ type CompileWorkerResponse =
     };
 
 const workerScope = self as DedicatedWorkerGlobalScope;
+const bootStartedAt =
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+
+workerScope.postMessage({
+  type: 'ready',
+  bootMs:
+    (typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now()) - bootStartedAt,
+} satisfies CompileWorkerResponse);
 
 workerScope.onmessage = (event: MessageEvent<CompileWorkerRequest>) => {
   const request = event.data;

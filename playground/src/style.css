@@ -765,6 +765,129 @@ button {
   font-weight: 750;
 }
 
+.small-pill[data-active='true'] {
+  border-color: #0f766e;
+  color: #d1fae5;
+  background: #10211d;
+}
+
+.file-item-dirty {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+
+.diagnostic-filter-row,
+.pill-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.diagnostic {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.diagnostic:hover {
+  border-color: #0f766e;
+}
+
+.diagnostic-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.package-actions {
+  margin-top: 0.2rem;
+}
+
+.route-history-row[data-active='true'] {
+  border-left-color: #0f766e;
+}
+
+.route-history-value {
+  overflow-wrap: anywhere;
+}
+
+.dialog-root {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.72);
+  z-index: 40;
+}
+
+.dialog-root[data-open='true'] {
+  display: flex;
+}
+
+.dialog-card {
+  width: min(34rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid #303641;
+  border-radius: 14px;
+  background: #0f1318;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.45);
+}
+
+.dialog-title {
+  color: #f8fafc;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.dialog-body,
+.dialog-help,
+.dialog-error {
+  margin: 0;
+}
+
+.dialog-body,
+.dialog-help {
+  color: #9aa4b2;
+  line-height: 1.5;
+}
+
+.dialog-form,
+.dialog-fields,
+.dialog-field {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.dialog-help {
+  font-size: 0.78rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.dialog-error {
+  min-height: 1rem;
+  color: #fca5a5;
+  font-size: 0.82rem;
+}
+
+.tool-button[data-tone='danger'] {
+  border-color: #be123c;
+  background: #3a1520;
+  color: #ffe4e6;
+}
+
 .toast {
   position: fixed;
   right: 1rem;
@@ -839,6 +962,10 @@ button {
 
   .route-field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dialog-actions {
+    flex-direction: column-reverse;
   }
 
   #editor-root .cm-editor {

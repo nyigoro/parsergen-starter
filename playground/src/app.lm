@@ -40,9 +40,10 @@ fn panel(title: string, bodyId: string, bodyClass: string) -> VNode {
 fn tool_button(id: string, label: string, tone: string) -> VNode {
   vnode(
     "button",
-    attrs2(
+    attrs3(
       props_class("tool-button " + tone),
-      props_id(id)
+      props_id(id),
+      props_type("button")
     ),
     [text(label)]
   )
@@ -51,9 +52,10 @@ fn tool_button(id: string, label: string, tone: string) -> VNode {
 fn disabled_tool_button(id: string, label: string, tone: string) -> VNode {
   vnode(
     "button",
-    attrs3(
+    attrs4(
       props_class("tool-button " + tone),
       props_id(id),
+      props_type("button"),
       props_disabled(true)
     ),
     [text(label)]
@@ -200,6 +202,7 @@ pub fn app() -> VNode {
   let workspaceControls = div_node("tool-row compact-tools", [
     tool_button("save-workspace-button", "Save", "secondary"),
     tool_button("save-workspace-as-button", "Save As", "secondary"),
+    tool_button("rename-workspace-button", "Rename", "secondary"),
     tool_button("delete-workspace-button", "Delete", "secondary"),
     tool_button("export-workspace-button", "Export", "secondary"),
     tool_button("import-workspace-button", "Import", "secondary"),
@@ -277,6 +280,7 @@ pub fn app() -> VNode {
     routeFields,
     routeButtons
   ]);
+  let routeInspectorPanel = panel("Route Inspector", "route-details-root", "debug-list");
   let routeEventsPanel = panel("Route Events", "route-events-root", "route-events-list");
 
   let consoleHeading = vnode("div", props_class("panel-title"), [text("Console")]);
@@ -291,6 +295,7 @@ pub fn app() -> VNode {
   let diagnosticsPanel = panel("Diagnostics", "diagnostics-root", "diagnostics-list");
   let debugPanel = panel("Import Graph", "module-graph-root", "debug-list");
   let compilePanel = panel("Compile Details", "compile-details-root", "debug-list");
+  let packagePanel = panel("Packages", "package-details-root", "debug-list");
   let jsTitle = vnode("div", props_class("panel-title"), [text("Generated JavaScript")]);
   let jsBadge = vnode("span", props_class("small-pill"), [text("ES module")]);
   let jsHeader = div_node("panel-heading-row", [jsTitle, jsBadge]);
@@ -302,25 +307,45 @@ pub fn app() -> VNode {
 
   let insightTitle = vnode("div", props_class("insight-title"), [text("Workbench")]);
   let compileRow = insight_row("Compile", "Browser", "insight-compile");
+  let startupRow = insight_row("Startup", "warming", "insight-startup");
+  let workerRow = insight_row("Worker", "booting", "insight-worker");
   let runRow = insight_row("Run", "main()", "insight-run");
   let shareRow = insight_row("Share", "Project URL", "insight-share");
   let targetRow = insight_row("Modules", "0", "insight-modules");
   let debugRow = insight_row("Graph", "0 edges", "insight-graph");
+  let bundleRow = insight_row("Bundle", "0 KB", "insight-bundle");
   let workspaceRow = insight_row("Workspace", "ephemeral", "insight-workspace");
   let insightPanel = vnode("aside", props_class("insight-panel"), [
     insightTitle,
     compileRow,
+    startupRow,
+    workerRow,
     runRow,
     shareRow,
     targetRow,
     debugRow,
+    bundleRow,
     workspaceRow
   ]);
 
-  let rightColumn = div_node("result-column", [routePanel, routeEventsPanel, consolePanel, diagnosticsPanel, debugPanel, compilePanel, jsPanel]);
+  let rightColumn = div_node("result-column", [routePanel, routeInspectorPanel, routeEventsPanel, consolePanel, diagnosticsPanel, debugPanel, compilePanel, packagePanel, jsPanel]);
   let workspace = div_node("workspace-grid", [editorPanel, rightColumn]);
 
   let toast = vnode("div", attrs2(props_class("toast"), props_id("toast-root")), [text("")]);
-  let body = div_node("playground-body", [header, toolbar, workspace, insightPanel, toast]);
+  let dialogRoot = vnode("div", attrs2(props_class("dialog-root"), props_id("dialog-root")), [
+    vnode("section", props_class("dialog-card"), [
+      vnode("div", attrs2(props_class("dialog-title"), props_id("dialog-title")), [text("Action")]),
+      vnode("p", attrs2(props_class("dialog-body"), props_id("dialog-body")), [text("")]),
+      vnode("form", attrs2(props_class("dialog-form"), props_id("dialog-form")), [
+        vnode("div", attrs2(props_class("dialog-fields"), props_id("dialog-fields-root")), []),
+        vnode("p", attrs2(props_class("dialog-error"), props_id("dialog-error")), [text("")]),
+        div_node("dialog-actions", [
+          tool_button("dialog-cancel-button", "Cancel", "secondary"),
+          tool_button("dialog-submit-button", "Confirm", "primary")
+        ])
+      ])
+    ])
+  ]);
+  let body = div_node("playground-body", [header, toolbar, workspace, insightPanel, toast, dialogRoot]);
   return div_node("playground-shell", [body]);
 }

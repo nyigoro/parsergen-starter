@@ -1,6 +1,10 @@
 import './style.css';
 import './main.lm';
-import { compileProjectInWorker, formatSourceInWorker } from './compile-client';
+import {
+  compileProjectInWorker,
+  formatSourceInWorker,
+  getCompileWorkerTelemetry,
+} from './compile-client';
 import type {
   CompileDiagnostic,
   CompileImportResolution,
@@ -54,6 +58,8 @@ import {
 type MountEditor = (options: { elementId: string; initialValue: string }) => void;
 type GetEditorText = (elementId: string) => string;
 type SetEditorText = (elementId: string, value: string) => void;
+type FocusEditorLocation = (elementId: string, line: number, column?: number) => void;
+type GetEditorCursor = (elementId: string) => { line: number; column: number } | null;
 type OnEditorChange = (elementId: string, handler: (value: string) => void) => () => void;
 
 type RunResult = {
@@ -65,6 +71,37 @@ type RouteEventEntry = {
   kind: string;
   href: string;
   at: number;
+};
+
+type DialogFieldSpec = {
+  key: string;
+  label: string;
+  value: string;
+  placeholder?: string;
+  description?: string;
+};
+
+type DialogRequest = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  tone?: 'primary' | 'danger';
+  fields?: DialogFieldSpec[];
+};
+
+type RouteMatchSummary = {
+  current: string | null;
+  knownPaths: string[];
+};
+
+type PackageSummary = {
+  id: string;
+  path: string;
+  luminaPath: string | null;
+  fileCount: number;
+  inLockfile: boolean;
+  status: 'ok' | 'warning' | 'error';
+  message: string;
 };
 
 type PlaygroundUiState = {
@@ -215,6 +252,145 @@ const formatTimestamp = (value: number): string => {
   ).padStart(2, '0')}`;
 };
 
+const now = (): number =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+
+const formatBytes = (value: number): string => `${(value / 1024).toFixed(1)} KB`;
+
+const collectDirtyFileUris = (
+  project: PlaygroundProject,
+  baselineProject: PlaygroundProject | null
+): Set<string> => {
+  if (!baselineProject) return new Set();
+  const baselineFiles = new Map(baselineProject.files.map((file) => [file.uri, file.text]));
+  const dirty = new Set<string>();
+  for (const file of project.files) {
+    if (!baselineFiles.has(file.uri) || baselineFiles.get(file.uri) !== file.text) {
+      dirty.add(file.uri);
+    }
+  }
+  for (const file of baselineProject.files) {
+    if (!getProjectFile(project, file.uri)) dirty.add(file.uri);
+  }
+  return dirty;
+};
+
+const parseSearchParams = (search: string): Array<{ key: string; value: string }> => {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  return Array.from(params.entries()).map(([key, value]) => ({ key, value }));
+};
+
+const routeSourcePattern =
+  /\b(?:linkWithProps|navigate|prefetchRoute|routeView|routeNode|routeNodeWithChildren|lazyRouteModule)\([^,]+,\s*"([^"]+)"/g;
+
+const collectKnownRoutePaths = (project: PlaygroundProject): string[] => {
+  const known = new Set<string>();
+  for (const file of project.files) {
+    if (!file.uri.endsWith('.lm')) continue;
+    for (const match of file.text.matchAll(routeSourcePattern)) {
+      const path = match[1]?.trim();
+      if (path && path.startsWith('/')) known.add(path);
+    }
+  }
+  known.add('/');
+  return Array.from(known).sort();
+};
+
+const buildRouteMatchSummary = (
+  project: PlaygroundProject,
+  pathname: string
+): RouteMatchSummary => {
+  const knownPaths = collectKnownRoutePaths(project);
+  const current =
+    knownPaths.find((candidate) => candidate === pathname) ??
+    knownPaths.find((candidate) => candidate !== '/' && pathname.startsWith(candidate));
+  return {
+    current: current ?? null,
+    knownPaths,
+  };
+};
+
+const parsePackageSummaries = (project: PlaygroundProject): { packages: PackageSummary[]; warnings: string[] } => {
+  const warnings: string[] = [];
+  const lockfile = getProjectFile(project, 'lumina.lock');
+  let lockPackages = new Map<
+    string,
+    {
+      path?: string;
+      lumina?: string;
+    }
+  >();
+
+  if (lockfile) {
+    try {
+      const parsed = JSON.parse(lockfile.text) as {
+        packages?: Record<string, { path?: string; lumina?: string }>;
+      };
+      lockPackages = new Map(Object.entries(parsed.packages ?? {}));
+    } catch {
+      warnings.push('lumina.lock is not valid JSON.');
+    }
+  } else {
+    warnings.push('No lumina.lock file found.');
+  }
+
+  const packageRoots = new Map<string, PlaygroundProjectFile[]>();
+  for (const file of project.files) {
+    const match = file.uri.match(/^\.lumina\/packages\/([^/]+)\/(.+)$/);
+    if (!match) continue;
+    const root = match[1];
+    const bucket = packageRoots.get(root);
+    if (bucket) bucket.push(file);
+    else packageRoots.set(root, [file]);
+  }
+
+  const packageIds = new Set([...packageRoots.keys(), ...lockPackages.keys()]);
+  const packages = Array.from(packageIds)
+    .sort()
+    .map((id) => {
+      const files = packageRoots.get(id) ?? [];
+      const lock = lockPackages.get(id);
+      const path = lock?.path ?? (files[0]?.uri.split('/').slice(0, 3).join('/') ?? `.lumina/packages/${id}`);
+      const luminaPath = lock?.lumina ?? null;
+      const fileCount = files.length;
+      if (!lock) {
+        return {
+          id,
+          path,
+          luminaPath,
+          fileCount,
+          inLockfile: false,
+          status: 'warning',
+          message: 'Package files exist without a lockfile entry.',
+        } satisfies PackageSummary;
+      }
+      if (fileCount === 0) {
+        return {
+          id,
+          path,
+          luminaPath,
+          fileCount,
+          inLockfile: true,
+          status: 'warning',
+          message: 'Lockfile entry exists, but package files are missing.',
+        } satisfies PackageSummary;
+      }
+      return {
+        id,
+        path,
+        luminaPath,
+        fileCount,
+        inLockfile: true,
+        status: 'ok',
+        message: `Resolved ${fileCount} file${fileCount === 1 ? '' : 's'}.`,
+      } satisfies PackageSummary;
+    });
+
+  return { packages, warnings };
+};
+
 const cloneRoutePreview = (preview: PlaygroundRoutePreview): PlaygroundRoutePreview => ({
   entries: preview.entries.map((entry) => ({ ...entry })),
   index: preview.index,
@@ -229,7 +405,100 @@ const createRouteEvent = (kind: string, href: string): RouteEventEntry => ({
 const appendRouteEvent = (events: RouteEventEntry[], event: RouteEventEntry): RouteEventEntry[] =>
   [...events.slice(-23), event];
 
-const renderDiagnostics = (element: HTMLElement, diagnostics: CompileDiagnostic[]): void => {
+const renderDiagnostics = (
+  element: HTMLElement,
+  diagnostics: CompileDiagnostic[],
+  filter: 'all' | 'error' | 'warning'
+): void => {
+  const counts = {
+    all: diagnostics.length,
+    error: diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length,
+    warning: diagnostics.filter((diagnostic) => diagnostic.severity === 'warning').length,
+  };
+  const visibleDiagnostics =
+    filter === 'all'
+      ? diagnostics
+      : diagnostics.filter((diagnostic) => diagnostic.severity === filter);
+  const filters = `
+    <div class="diagnostic-filter-row">
+      <button class="small-pill"${
+        filter === 'all' ? ' data-active="true"' : ''
+      } data-diagnostic-filter="all" type="button">All (${counts.all})</button>
+      <button class="small-pill"${
+        filter === 'error' ? ' data-active="true"' : ''
+      } data-diagnostic-filter="error" type="button">Errors (${counts.error})</button>
+      <button class="small-pill"${
+        filter === 'warning' ? ' data-active="true"' : ''
+      } data-diagnostic-filter="warning" type="button">Warnings (${counts.warning})</button>
+    </div>
+  `;
+
+  if (diagnostics.length === 0) {
+    element.innerHTML = `${filters}<p class="empty-state">No diagnostics.</p>`;
+    setText('diagnostic-count', '0');
+    return;
+  }
+
+  setText('diagnostic-count', String(counts.all));
+  const grouped = new Map<string, CompileDiagnostic[]>();
+  for (const diagnostic of visibleDiagnostics) {
+    const key = diagnostic.fileUri ?? 'project';
+    const bucket = grouped.get(key);
+    if (bucket) bucket.push(diagnostic);
+    else grouped.set(key, [diagnostic]);
+  }
+
+  const body =
+    grouped.size === 0
+      ? '<p class="empty-state">No diagnostics match the current filter.</p>'
+      : Array.from(grouped.entries())
+          .map(([fileUri, items]) => {
+            const itemsBody = items
+              .map((diagnostic, index) => {
+                const locationParts = [
+                  diagnostic.line ? `line ${diagnostic.line}` : '',
+                  diagnostic.column ? `col ${diagnostic.column}` : '',
+                ].filter(Boolean);
+                const location =
+                  locationParts.length > 0
+                    ? `<span class="diagnostic-line">${escapeHtml(locationParts.join(' &middot; '))}</span>`
+                    : '';
+                const code = diagnostic.code
+                  ? `<span class="diagnostic-code">${escapeHtml(diagnostic.code)}</span>`
+                  : '';
+                const fileAttr = diagnostic.fileUri
+                  ? ` data-file-uri="${escapeHtml(diagnostic.fileUri)}"`
+                  : '';
+                const lineAttr = diagnostic.line ? ` data-line="${diagnostic.line}"` : '';
+                const columnAttr = diagnostic.column ? ` data-column="${diagnostic.column}"` : '';
+                return `
+                  <button class="diagnostic ${escapeHtml(
+                    diagnostic.severity
+                  )}" type="button" data-diagnostic-index="${index}"${fileAttr}${lineAttr}${columnAttr}>
+                    <div class="diagnostic-meta">
+                      <span class="diagnostic-severity">${escapeHtml(diagnostic.severity)}</span>
+                      ${code}
+                      ${location}
+                    </div>
+                    <p class="diagnostic-message">${escapeHtml(diagnostic.message)}</p>
+                  </button>
+                `;
+              })
+              .join('');
+            return `
+              <section class="diagnostic-group">
+                <div class="diagnostic-group-heading">
+                  <span>${escapeHtml(fileUri)}</span>
+                  <span class="small-pill">${items.length} ${items.length === 1 ? 'issue' : 'issues'}</span>
+                </div>
+                ${itemsBody}
+              </section>
+            `;
+          })
+          .join('');
+
+  element.innerHTML = `${filters}${body}`;
+  /*
   if (diagnostics.length === 0) {
     element.innerHTML = '<p class="empty-state">No diagnostics.</p>';
     setText('diagnostic-count', '0');
@@ -280,6 +549,7 @@ const renderDiagnostics = (element: HTMLElement, diagnostics: CompileDiagnostic[
       `;
     })
     .join('');
+  */
 };
 
 const renderOutput = (element: HTMLElement, result: CompileResult): void => {
@@ -340,6 +610,7 @@ const renderCompileDetails = (element: HTMLElement, result: CompileResult | null
     ['graph', result.timings.moduleGraphMs],
     ['total', result.timings.totalMs],
   ];
+  const workerTelemetry = getCompileWorkerTelemetry();
   const importRows =
     result.importResolutions.length > 0
       ? `<div class="compile-detail-block">
@@ -379,6 +650,23 @@ const renderCompileDetails = (element: HTMLElement, result: CompileResult | null
         )
         .join('')}
     </div>
+    <div class="compile-detail-block">
+      <div class="compile-detail-heading">Worker and bundle</div>
+      <div class="insight-row">
+        <span class="insight-key">worker boot</span>
+        <span class="insight-value">${
+          workerTelemetry.bootMs != null ? `${workerTelemetry.bootMs.toFixed(1)}ms` : 'warming'
+        }</span>
+      </div>
+      <div class="insight-row">
+        <span class="insight-key">worker tasks</span>
+        <span class="insight-value">${workerTelemetry.completedTaskCount}</span>
+      </div>
+      <div class="insight-row">
+        <span class="insight-key">bundle</span>
+        <span class="insight-value">${formatBytes(result.js.length)} / ${result.runnableModules.length} chunks</span>
+      </div>
+    </div>
     ${importRows}
   `;
 };
@@ -404,6 +692,150 @@ const renderRouteEvents = (element: HTMLElement, events: RouteEventEntry[]): voi
       `
     )
     .join('');
+};
+
+const renderRouteDetails = (
+  element: HTMLElement,
+  project: PlaygroundProject,
+  preview: PlaygroundRoutePreview,
+  baseHref: string
+): void => {
+  const current = currentRouteLocation(preview);
+  const currentHref = routeHrefFromLocation(current, baseHref);
+  const matchSummary = buildRouteMatchSummary(project, current.pathname);
+  const searchParams = parseSearchParams(current.search);
+  const routeHelperCounts = {
+    loaders: project.files.reduce(
+      (count, file) => count + (file.text.match(/\brouteLoader\b/g)?.length ?? 0),
+      0
+    ),
+    prefetches: project.files.reduce(
+      (count, file) => count + (file.text.match(/\bprefetchRoute\b/g)?.length ?? 0),
+      0
+    ),
+    navigations: project.files.reduce(
+      (count, file) => count + (file.text.match(/\bnavigate\b/g)?.length ?? 0),
+      0
+    ),
+  };
+
+  const historyRows = preview.entries
+    .map((entry, index) => {
+      const href = routeHrefFromLocation(entry, baseHref);
+      return `
+        <div class="insight-row route-history-row"${index === preview.index ? ' data-active="true"' : ''}>
+          <span class="insight-key">${index === preview.index ? 'current' : `entry ${index + 1}`}</span>
+          <span class="insight-value route-history-value">${escapeHtml(href)}</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  const knownPaths =
+    matchSummary.knownPaths.length > 0
+      ? matchSummary.knownPaths
+          .map((path) => `<span class="small-pill">${escapeHtml(path)}</span>`)
+          .join('')
+      : '<p class="module-empty">No route-like paths detected.</p>';
+
+  const searchRows =
+    searchParams.length > 0
+      ? searchParams
+          .map(
+            (entry) => `
+              <div class="insight-row">
+                <span class="insight-key">${escapeHtml(entry.key)}</span>
+                <span class="insight-value">${escapeHtml(entry.value)}</span>
+              </div>
+            `
+          )
+          .join('')
+      : '<p class="module-empty">No search params.</p>';
+
+  element.innerHTML = `
+    <div class="compile-detail-block">
+      <div class="compile-detail-heading">Current route</div>
+      <div class="insight-row">
+        <span class="insight-key">href</span>
+        <span class="insight-value route-history-value">${escapeHtml(currentHref)}</span>
+      </div>
+      <div class="insight-row">
+        <span class="insight-key">match</span>
+        <span class="insight-value">${escapeHtml(matchSummary.current ?? 'no exact match')}</span>
+      </div>
+      <div class="insight-row">
+        <span class="insight-key">helpers</span>
+        <span class="insight-value">${routeHelperCounts.loaders} loaders / ${routeHelperCounts.prefetches} prefetch / ${routeHelperCounts.navigations} nav</span>
+      </div>
+    </div>
+    <div class="compile-detail-block">
+      <div class="compile-detail-heading">Search params</div>
+      ${searchRows}
+    </div>
+    <div class="compile-detail-block">
+      <div class="compile-detail-heading">Known app paths</div>
+      <div class="pill-wrap">${knownPaths}</div>
+    </div>
+    <div class="compile-detail-block">
+      <div class="compile-detail-heading">History stack</div>
+      ${historyRows}
+    </div>
+  `;
+};
+
+const renderPackageDetails = (element: HTMLElement, project: PlaygroundProject): void => {
+  const summary = parsePackageSummaries(project);
+  if (summary.packages.length === 0) {
+    element.innerHTML = `
+      ${
+        summary.warnings.length > 0
+          ? `<div class="compile-detail-block">${summary.warnings
+              .map((warning) => `<p class="module-empty">${escapeHtml(warning)}</p>`)
+              .join('')}</div>`
+          : ''
+      }
+      <p class="empty-state">No package files are in this project yet.</p>
+    `;
+    return;
+  }
+
+  element.innerHTML = `
+    ${
+      summary.warnings.length > 0
+        ? `<div class="compile-detail-block">${summary.warnings
+            .map((warning) => `<p class="module-empty">${escapeHtml(warning)}</p>`)
+            .join('')}</div>`
+        : ''
+    }
+    ${summary.packages
+      .map(
+        (pkg) => `
+          <article class="module-card package-card" data-package-id="${escapeHtml(pkg.id)}">
+            <div class="module-card-top">
+              <strong>${escapeHtml(pkg.id)}</strong>
+              <span class="small-pill"${pkg.status === 'warning' ? ' data-active="true"' : ''}>${escapeHtml(
+                pkg.status
+              )}</span>
+            </div>
+            <div class="compile-resolution-meta">${escapeHtml(pkg.message)}</div>
+            <code>${escapeHtml(pkg.path)}</code>
+            ${pkg.luminaPath ? `<code>${escapeHtml(pkg.luminaPath)}</code>` : ''}
+            <div class="tool-row compact-tools package-actions">
+              <button class="tool-button secondary" type="button" data-package-action="focus" data-package-id="${escapeHtml(
+                pkg.id
+              )}">Focus</button>
+              <button class="tool-button secondary" type="button" data-package-action="export" data-package-id="${escapeHtml(
+                pkg.id
+              )}">Export</button>
+              <button class="tool-button secondary" type="button" data-package-action="remove" data-package-id="${escapeHtml(
+                pkg.id
+              )}">Remove</button>
+            </div>
+          </article>
+        `
+      )
+      .join('')}
+  `;
 };
 
 const renderWorkspaceList = (
@@ -854,6 +1286,7 @@ const downloadTextFile = (filename: string, text: string): void => {
 };
 
 const startPlayground = async (): Promise<void> => {
+  const startedAt = now();
   updateLinks();
   const playgroundBaseHref = new URL('/', window.location.href).toString();
   const bridge = globalThis as Record<string, unknown>;
@@ -862,8 +1295,17 @@ const startPlayground = async (): Promise<void> => {
   const mountEditor = bridge.mountEditor as MountEditor | undefined;
   const getEditorText = bridge.getEditorText as GetEditorText | undefined;
   const setEditorText = bridge.setEditorText as SetEditorText | undefined;
+  const focusEditorLocation = bridge.focusEditorLocation as FocusEditorLocation | undefined;
+  const getEditorCursor = bridge.getEditorCursor as GetEditorCursor | undefined;
   const onEditorChange = bridge.onEditorChange as OnEditorChange | undefined;
-  if (!mountEditor || !getEditorText || !setEditorText || !onEditorChange) {
+  if (
+    !mountEditor ||
+    !getEditorText ||
+    !setEditorText ||
+    !focusEditorLocation ||
+    !getEditorCursor ||
+    !onEditorChange
+  ) {
     throw new Error('Editor tools did not load.');
   }
 
@@ -872,15 +1314,46 @@ const startPlayground = async (): Promise<void> => {
   const consoleRoot = document.getElementById('console-root');
   const moduleGraphRoot = document.getElementById('module-graph-root');
   const compileDetailsRoot = document.getElementById('compile-details-root');
+  const packageDetailsRoot = document.getElementById('package-details-root');
+  const routeDetailsRoot = document.getElementById('route-details-root');
   const routeEventsRoot = document.getElementById('route-events-root');
-  if (!diagnosticsRoot || !outputRoot || !consoleRoot || !moduleGraphRoot || !compileDetailsRoot || !routeEventsRoot) {
+  const dialogRoot = document.getElementById('dialog-root');
+  const dialogTitle = document.getElementById('dialog-title');
+  const dialogBody = document.getElementById('dialog-body');
+  const dialogFieldsRoot = document.getElementById('dialog-fields-root');
+  const dialogError = document.getElementById('dialog-error');
+  const dialogForm = document.getElementById('dialog-form') as HTMLFormElement | null;
+  const dialogCancelButton = document.getElementById('dialog-cancel-button') as HTMLButtonElement | null;
+  const dialogSubmitButton = document.getElementById('dialog-submit-button') as HTMLButtonElement | null;
+  if (
+    !diagnosticsRoot ||
+    !outputRoot ||
+    !consoleRoot ||
+    !moduleGraphRoot ||
+    !compileDetailsRoot ||
+    !packageDetailsRoot ||
+    !routeDetailsRoot ||
+    !routeEventsRoot ||
+    !dialogRoot ||
+    !dialogTitle ||
+    !dialogBody ||
+    !dialogFieldsRoot ||
+    !dialogError ||
+    !dialogForm ||
+    !dialogCancelButton ||
+    !dialogSubmitButton
+  ) {
     throw new Error('Playground panels did not mount.');
   }
 
   let workspaceStore = readWorkspaceStore();
   let state = resolveInitialState(playgroundBaseHref, workspaceStore);
+  let baselineProject = cloneProject(state.project);
+  let baselineWorkspaceName = state.workspaceName;
   let lastResult: CompileResult | null = null;
+  let lastDiagnostics: CompileDiagnostic[] = [];
   let compileTimer: number | undefined;
+  let autosaveTimer: number | undefined;
   let suppressNextScheduledCompile = false;
   let activeCompileController: AbortController | null = null;
   let activeRun:
@@ -888,6 +1361,8 @@ const startPlayground = async (): Promise<void> => {
         controller: AbortController;
       }
     | null = null;
+  let diagnosticsFilter: 'all' | 'error' | 'warning' = 'all';
+  let editorReadyMs = now() - startedAt;
 
   const importWorkspaceInput = createImportInput();
 
@@ -903,6 +1378,75 @@ const startPlayground = async (): Promise<void> => {
   const setRunStatus = (label: string, status: 'idle' | 'running' | 'ok' | 'error'): void => {
     setText('run-status', label);
     setDataset('run-status', 'status', status);
+  };
+
+  let activeDialogResolver:
+    | ((value: Record<string, string> | null) => void)
+    | null = null;
+
+  const closeDialog = (value: Record<string, string> | null): void => {
+    if (!activeDialogResolver) return;
+    const resolve = activeDialogResolver;
+    activeDialogResolver = null;
+    delete dialogRoot.dataset.open;
+    dialogFieldsRoot.innerHTML = '';
+    dialogError.textContent = '';
+    resolve(value);
+  };
+
+  const openDialog = (request: DialogRequest): Promise<Record<string, string> | null> => {
+    if (activeDialogResolver) {
+      activeDialogResolver(null);
+      activeDialogResolver = null;
+    }
+
+    dialogTitle.textContent = request.title;
+    dialogBody.textContent = request.message;
+    dialogError.textContent = '';
+    dialogSubmitButton.textContent = request.confirmLabel;
+    dialogSubmitButton.dataset.tone = request.tone ?? 'primary';
+    dialogFieldsRoot.innerHTML = (request.fields ?? [])
+      .map(
+        (field) => `
+          <label class="dialog-field">
+            <span class="route-field-label">${escapeHtml(field.label)}</span>
+            <input
+              class="route-input dialog-input"
+              type="text"
+              data-dialog-field="${escapeHtml(field.key)}"
+              value="${escapeHtml(field.value)}"
+              placeholder="${escapeHtml(field.placeholder ?? '')}"
+            />
+            ${
+              field.description
+                ? `<span class="dialog-help">${escapeHtml(field.description)}</span>`
+                : ''
+            }
+          </label>
+        `
+      )
+      .join('');
+    dialogRoot.dataset.open = 'true';
+
+    window.setTimeout(() => {
+      const firstField = dialogFieldsRoot.querySelector<HTMLInputElement>('[data-dialog-field]');
+      if (firstField) firstField.focus();
+      else dialogSubmitButton.focus();
+    }, 0);
+
+    return new Promise((resolve) => {
+      activeDialogResolver = resolve;
+    });
+  };
+
+  const confirmDialog = async (
+    title: string,
+    message: string,
+    confirmLabel: string,
+    tone: 'primary' | 'danger' = 'primary'
+  ): Promise<boolean> => {
+    const result = await openDialog({ title, message, confirmLabel, tone });
+    return Boolean(result);
   };
 
   const markDirty = (): void => {
@@ -922,14 +1466,17 @@ const startPlayground = async (): Promise<void> => {
   const renderFileTabs = (): void => {
     const fileTabs = document.getElementById('file-tabs-root');
     if (!fileTabs) return;
+    const dirtyFileUris = collectDirtyFileUris(state.project, baselineProject);
     fileTabs.innerHTML = state.project.openFileUris
       .map((uri) => {
         const isActive = uri === state.project.activeFileUri;
         const isEntry = uri === state.project.entryUri;
+        const isDirty = dirtyFileUris.has(uri);
         return `
           <div class="file-tab"${isActive ? ' data-active="true"' : ''}>
             <button class="file-tab-button" data-file-uri="${escapeHtml(uri)}">
               <span>${escapeHtml(basename(uri))}</span>
+              ${isDirty ? '<span class="file-item-dirty" aria-hidden="true"></span>' : ''}
               ${isEntry ? '<span class="file-item-badge">entry</span>' : ''}
             </button>
             <button class="file-tab-close" data-close-file-uri="${escapeHtml(uri)}" aria-label="Close ${escapeHtml(
@@ -944,33 +1491,48 @@ const startPlayground = async (): Promise<void> => {
   const renderFileList = (): void => {
     const fileList = document.getElementById('file-list-root');
     if (!fileList) return;
+    const dirtyFileUris = collectDirtyFileUris(state.project, baselineProject);
     fileList.innerHTML = state.project.files
       .map((file) => {
         const isActive = file.uri === state.project.activeFileUri;
         const isEntry = file.uri === state.project.entryUri;
+        const isDirty = dirtyFileUris.has(file.uri);
         const depth = file.uri.split('/').length - 1;
         return `
           <button class="file-item"${isActive ? ' data-active="true"' : ''} data-file-uri="${escapeHtml(
             file.uri
           )}" style="padding-left:${12 + depth * 14}px">
             <span class="file-item-name">${escapeHtml(file.uri)}</span>
+            ${isDirty ? '<span class="file-item-dirty" aria-hidden="true"></span>' : ''}
             ${isEntry ? '<span class="file-item-badge">entry</span>' : ''}
           </button>
         `;
       })
       .join('');
+    const cursor = getEditorCursor('editor-root');
     setText('active-file-label', state.project.activeFileUri);
-    setText('active-file-stat', state.project.activeFileUri);
+    setText(
+      'active-file-stat',
+      cursor ? `${state.project.activeFileUri}:${cursor.line}:${cursor.column}` : state.project.activeFileUri
+    );
     setText('entry-file-label', `entry: ${state.project.entryUri}`);
   };
 
   const syncProjectStats = (): void => {
     const totalLines = countProjectLines(state.project.files);
+    const workerTelemetry = getCompileWorkerTelemetry();
     setText('source-size', `${state.project.files.length} files • ${totalLines} lines`);
     setText('output-mode', lastResult ? `JS • ${lastResult.graphNodes} modules` : 'JS');
     setText(
       'insight-compile',
       lastResult ? `${lastResult.timings.totalMs.toFixed(1)}ms total` : 'Browser worker'
+    );
+    setText('insight-startup', `${editorReadyMs.toFixed(1)}ms editor`);
+    setText(
+      'insight-worker',
+      workerTelemetry.bootMs != null
+        ? `${workerTelemetry.bootMs.toFixed(1)}ms boot / ${workerTelemetry.restartCount} restarts`
+        : 'warming'
     );
     setText(
       'insight-run',
@@ -979,6 +1541,10 @@ const startPlayground = async (): Promise<void> => {
     setText('insight-share', 'Project URL + local');
     setText('insight-modules', lastResult ? String(lastResult.graphNodes) : '0');
     setText('insight-graph', lastResult ? `${lastResult.graphEdges} edges` : '0 edges');
+    setText(
+      'insight-bundle',
+      lastResult ? `${formatBytes(lastResult.js.length)} / ${lastResult.runnableModules.length} chunks` : '0 KB'
+    );
     setText('insight-workspace', state.workspaceId ? state.workspaceName : 'ephemeral');
     setText('workspace-status-pill', state.dirty ? 'dirty' : state.workspaceId ? 'saved' : 'local');
     setDataset('workspace-status-pill', 'status', state.dirty ? 'error' : 'ok');
@@ -986,7 +1552,9 @@ const startPlayground = async (): Promise<void> => {
     setActivePreset(state.project.presetId);
     renderFileTabs();
     renderFileList();
+    renderRouteDetails(routeDetailsRoot, state.project, state.routePreview, playgroundBaseHref);
     renderRouteEvents(routeEventsRoot, state.routeEvents);
+    renderPackageDetails(packageDetailsRoot, state.project);
     renderWorkspaceList(
       document.getElementById('recent-workspaces-root') as HTMLElement,
       workspaceStore,
@@ -994,12 +1562,14 @@ const startPlayground = async (): Promise<void> => {
     );
     updateRouteUi();
     setButtonDisabled('delete-workspace-button', !state.workspaceId);
+    setButtonDisabled('rename-workspace-button', !state.workspaceId);
   };
 
   const setConsoleOutput = (value: string): void => {
     state = { ...state, consoleOutput: value };
     consoleRoot.textContent = value;
     persist();
+    scheduleAutosave();
   };
 
   const cancelActiveRun = (message: string): void => {
@@ -1033,6 +1603,7 @@ const startPlayground = async (): Promise<void> => {
     markDirty();
     syncProjectStats();
     persist();
+    scheduleAutosave();
   };
 
   const mountActiveFile = (uri: string): void => {
@@ -1043,6 +1614,7 @@ const startPlayground = async (): Promise<void> => {
     state = { ...state, project: setActiveProjectFile(state.project, uri) };
     syncProjectStats();
     persist();
+    scheduleAutosave();
   };
 
   const applyLoadedState = (
@@ -1050,10 +1622,15 @@ const startPlayground = async (): Promise<void> => {
     options: { updateUrl?: 'preset' | 'clear' | 'share'; compile?: boolean } = {}
   ): void => {
     if (compileTimer) window.clearTimeout(compileTimer);
+    if (autosaveTimer) window.clearTimeout(autosaveTimer);
     cancelActiveCompile('Superseded by a new project load.');
     cancelActiveRun('Execution cancelled after loading a new project.');
     state = nextState;
+    baselineProject = cloneProject(nextState.project);
+    baselineWorkspaceName = nextState.workspaceName;
+    diagnosticsFilter = 'all';
     lastResult = null;
+    lastDiagnostics = [];
     suppressNextScheduledCompile = true;
     setEditorText('editor-root', getProjectFile(state.project, state.project.activeFileUri)?.text ?? '');
     if (options.updateUrl === 'preset' && state.project.presetId) writePresetUrl(state.project.presetId);
@@ -1068,9 +1645,10 @@ const startPlayground = async (): Promise<void> => {
 
   const renderLoadFailure = (message: string): void => {
     const diagnostic = [{ severity: 'error', message, code: 'PLAYGROUND-LOAD' } satisfies CompileDiagnostic];
+    lastDiagnostics = diagnostic;
     setCompileStatus('Load failed', 'error');
     setRunStatus('Blocked', 'error');
-    renderDiagnostics(diagnosticsRoot, diagnostic);
+    renderDiagnostics(diagnosticsRoot, diagnostic, diagnosticsFilter);
     renderOutput(outputRoot, {
       ok: false,
       js: '',
@@ -1097,6 +1675,10 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const compileProject = async (): Promise<CompileResult | null> => {
+    if (compileTimer) {
+      window.clearTimeout(compileTimer);
+      compileTimer = undefined;
+    }
     syncProjectFromEditor();
     cancelActiveRun('Execution cancelled after a project change.');
     cancelActiveCompile('Superseded by a new compile.');
@@ -1119,9 +1701,10 @@ const startPlayground = async (): Promise<void> => {
       activeCompileController = null;
       setButtonDisabled('stop-compile-button', true);
       lastResult = result;
+      lastDiagnostics = result.diagnostics;
       setCompileStatus(result.ok ? `Compiled • ${result.timings.totalMs.toFixed(1)}ms` : 'Needs attention', result.ok ? 'ok' : 'error');
       setText('output-mode', `JS • ${result.graphNodes} modules`);
-      renderDiagnostics(diagnosticsRoot, result.diagnostics);
+      renderDiagnostics(diagnosticsRoot, result.diagnostics, diagnosticsFilter);
       renderOutput(outputRoot, result);
       renderModuleGraph(moduleGraphRoot, result);
       renderCompileDetails(compileDetailsRoot, result);
@@ -1156,6 +1739,7 @@ const startPlayground = async (): Promise<void> => {
   const scheduleCompile = (delay = 220): void => {
     if (compileTimer) window.clearTimeout(compileTimer);
     compileTimer = window.setTimeout(() => {
+      compileTimer = undefined;
       void compileProject();
     }, delay);
   };
@@ -1174,6 +1758,8 @@ const startPlayground = async (): Promise<void> => {
     updateRouteUi();
     renderRouteEvents(routeEventsRoot, state.routeEvents);
     persist();
+    scheduleAutosave();
+    syncProjectStats();
   };
 
   const runSource = async (): Promise<void> => {
@@ -1235,6 +1821,8 @@ const startPlayground = async (): Promise<void> => {
     updateRouteUi();
     renderRouteEvents(routeEventsRoot, state.routeEvents);
     persist();
+    scheduleAutosave();
+    syncProjectStats();
     setRunStatus('Ready', 'idle');
     if (options.toast) showToast(options.toast);
     if (options.rerun && lastResult?.ok) {
@@ -1245,21 +1833,21 @@ const startPlayground = async (): Promise<void> => {
   const suggestWorkspaceFilename = (): string =>
     `${(state.workspaceName || 'workspace').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'workspace'}.json`;
 
-  const saveWorkspace = (forceNewId: boolean): void => {
-    syncProjectFromEditor();
-    const requestedName =
-      forceNewId || !state.workspaceName.trim()
-        ? window.prompt('Workspace name', state.workspaceName || 'workspace')?.trim() ?? ''
-        : state.workspaceName.trim();
-    if (!requestedName) {
+  const persistWorkspaceSnapshot = (
+    requestedName: string,
+    options: { forceNewId?: boolean; silent?: boolean } = {}
+  ): PlaygroundWorkspaceSnapshot | null => {
+    if (autosaveTimer) window.clearTimeout(autosaveTimer);
+    const trimmedName = requestedName.trim();
+    if (!trimmedName) {
       showToast('Workspace name is required.');
-      return;
+      return null;
     }
 
     const snapshot = createWorkspaceSnapshot(
-      requestedName,
+      trimmedName,
       persistedStateFromPlayground(state),
-      forceNewId || !state.workspaceId ? undefined : state.workspaceId
+      options.forceNewId || !state.workspaceId ? undefined : state.workspaceId
     );
     workspaceStore = upsertWorkspaceSnapshot(workspaceStore, snapshot);
     writeWorkspaceStore(workspaceStore);
@@ -1269,9 +1857,47 @@ const startPlayground = async (): Promise<void> => {
       workspaceName: snapshot.name,
       dirty: false,
     };
+    baselineProject = cloneProject(state.project);
+    baselineWorkspaceName = snapshot.name;
     persist();
     syncProjectStats();
-    showToast(forceNewId ? 'Workspace saved as new.' : 'Workspace saved.');
+    if (!options.silent) {
+      showToast(options.forceNewId ? 'Workspace saved as new.' : 'Workspace saved.');
+    }
+    return snapshot;
+  };
+
+  const scheduleAutosave = (): void => {
+    if (autosaveTimer) window.clearTimeout(autosaveTimer);
+    if (!state.workspaceId || !state.workspaceName.trim()) return;
+    autosaveTimer = window.setTimeout(() => {
+      syncProjectFromEditor();
+      persistWorkspaceSnapshot(state.workspaceName, { silent: true });
+    }, 900);
+  };
+
+  const saveWorkspace = async (forceNewId: boolean): Promise<void> => {
+    syncProjectFromEditor();
+    let requestedName = state.workspaceName.trim();
+    if (forceNewId || !requestedName) {
+      const dialogResult = await openDialog({
+        title: forceNewId ? 'Save Workspace As' : 'Save Workspace',
+        message: 'Give this workspace a name so it can be reused locally.',
+        confirmLabel: forceNewId ? 'Save As' : 'Save',
+        fields: [
+          {
+            key: 'name',
+            label: 'Workspace name',
+            value: state.workspaceName || 'workspace',
+            placeholder: 'workspace',
+          },
+        ],
+      });
+      if (!dialogResult) return;
+      requestedName = dialogResult.name?.trim() ?? '';
+    }
+
+    persistWorkspaceSnapshot(requestedName, { forceNewId });
   };
 
   const loadWorkspace = (workspaceId: string): void => {
@@ -1290,22 +1916,97 @@ const startPlayground = async (): Promise<void> => {
     );
   };
 
-  const scaffoldPackageFiles = (): void => {
+  const renameWorkspace = async (): Promise<void> => {
+    if (!state.workspaceId) {
+      showToast('Save the workspace first.');
+      return;
+    }
+    const dialogResult = await openDialog({
+      title: 'Rename Workspace',
+      message: 'Update the saved workspace name.',
+      confirmLabel: 'Rename',
+      fields: [
+        {
+          key: 'name',
+          label: 'Workspace name',
+          value: state.workspaceName,
+          placeholder: 'workspace',
+        },
+      ],
+    });
+    if (!dialogResult) return;
+    persistWorkspaceSnapshot(dialogResult.name ?? state.workspaceName, { forceNewId: false });
+    showToast('Workspace renamed.');
+  };
+
+  const scaffoldPackageFiles = async (): Promise<void> => {
     syncProjectFromEditor();
-    const packageName = window.prompt('Package name', 'demo-utils')?.trim();
-    if (!packageName) return;
-    const version = window.prompt('Package version', '0.1.0')?.trim() || '0.1.0';
+    const dialogResult = await openDialog({
+      title: 'Scaffold Package',
+      message: 'Create a package entry and a source-backed Lumina module inside the playground.',
+      confirmLabel: 'Scaffold',
+      fields: [
+        {
+          key: 'packageName',
+          label: 'Package name',
+          value: 'demo-utils',
+          placeholder: 'demo-utils',
+        },
+        {
+          key: 'version',
+          label: 'Version',
+          value: '0.1.0',
+          placeholder: '0.1.0',
+        },
+      ],
+    });
+    if (!dialogResult) return;
+    const packageName = dialogResult.packageName?.trim();
+    if (!packageName) {
+      showToast('Package name is required.');
+      return;
+    }
+    const version = dialogResult.version?.trim() || '0.1.0';
     const lockUri = 'lumina.lock';
     const packageRoot = `.lumina/packages/${packageName}@${version}`;
     const libraryUri = `${packageRoot}/src/lib.lm`;
     let nextProject = cloneProject(state.project);
-    if (!getProjectFile(nextProject, lockUri)) {
-      nextProject = addProjectFile(
-        nextProject,
-        lockUri,
-        `{\n  "version": 1,\n  "packages": {\n    "${packageName}@${version}": {\n      "name": "${packageName}",\n      "version": "${version}",\n      "resolved": "https://registry.example.dev/${packageName}-${version}.tgz",\n      "path": "./${packageRoot}",\n      "integrity": "sha256:todo",\n      "lumina": "./src/lib.lm",\n      "deps": {}\n    }\n  }\n}\n`
-      );
+    const existingLockfile = getProjectFile(nextProject, lockUri);
+    let nextLockfileText = `{\n  "version": 1,\n  "packages": {\n    "${packageName}@${version}": {\n      "name": "${packageName}",\n      "version": "${version}",\n      "resolved": "https://registry.example.dev/${packageName}-${version}.tgz",\n      "path": "./${packageRoot}",\n      "integrity": "sha256:todo",\n      "lumina": "./src/lib.lm",\n      "deps": {}\n    }\n  }\n}\n`;
+    if (existingLockfile) {
+      try {
+        const parsed = JSON.parse(existingLockfile.text) as {
+          version?: number;
+          packages?: Record<string, unknown>;
+        };
+        const nextPackages = {
+          ...(parsed.packages ?? {}),
+          [`${packageName}@${version}`]: {
+            name: packageName,
+            version,
+            resolved: `https://registry.example.dev/${packageName}-${version}.tgz`,
+            path: `./${packageRoot}`,
+            integrity: 'sha256:todo',
+            lumina: './src/lib.lm',
+            deps: {},
+          },
+        };
+        nextLockfileText = `${JSON.stringify(
+          {
+            version: parsed.version ?? 1,
+            packages: nextPackages,
+          },
+          null,
+          2
+        )}\n`;
+      } catch {
+        showToast('Fix lumina.lock JSON before scaffolding a package.');
+        return;
+      }
     }
+    nextProject = existingLockfile
+      ? updateProjectFileText(nextProject, lockUri, nextLockfileText)
+      : addProjectFile(nextProject, lockUri, nextLockfileText);
     if (!getProjectFile(nextProject, libraryUri)) {
       nextProject = addProjectFile(
         nextProject,
@@ -1324,6 +2025,100 @@ const startPlayground = async (): Promise<void> => {
     showToast('Package scaffold added.');
   };
 
+  const packageRootForId = (packageId: string): string => `.lumina/packages/${packageId}`;
+
+  const focusPackage = (packageId: string): void => {
+    const root = packageRootForId(packageId);
+    const packageFile =
+      state.project.files.find((file) => file.uri === `${root}/src/lib.lm`) ??
+      state.project.files.find((file) => file.uri.startsWith(`${root}/`));
+    if (!packageFile) {
+      showToast('Package files were not found.');
+      return;
+    }
+    syncProjectFromEditor();
+    mountActiveFile(packageFile.uri);
+  };
+
+  const exportPackage = (packageId: string): void => {
+    const root = packageRootForId(packageId);
+    const packageFiles = state.project.files
+      .filter((file) => file.uri.startsWith(`${root}/`))
+      .map((file) => ({ uri: file.uri, text: file.text }));
+    if (packageFiles.length === 0) {
+      showToast('Nothing to export for that package.');
+      return;
+    }
+    downloadTextFile(
+      `${packageId.replace(/[^a-z0-9@._-]+/gi, '-')}.package.json`,
+      JSON.stringify(
+        {
+          packageId,
+          files: packageFiles,
+        },
+        null,
+        2
+      )
+    );
+    showToast('Package exported.');
+  };
+
+  const removePackage = async (packageId: string): Promise<void> => {
+    const confirmed = await confirmDialog(
+      'Remove Package',
+      `Remove ${packageId} from this workspace?`,
+      'Remove',
+      'danger'
+    );
+    if (!confirmed) return;
+
+    syncProjectFromEditor();
+    const root = packageRootForId(packageId);
+    let nextProject = cloneProject(state.project);
+    const packageUris = nextProject.files
+      .map((file) => file.uri)
+      .filter((uri) => uri.startsWith(`${root}/`));
+    for (const uri of packageUris) {
+      nextProject = removeProjectFile(nextProject, uri);
+    }
+    const lockfile = getProjectFile(nextProject, 'lumina.lock');
+    if (lockfile) {
+      try {
+        const parsed = JSON.parse(lockfile.text) as {
+          version?: number;
+          packages?: Record<string, unknown>;
+        };
+        const nextPackages = { ...(parsed.packages ?? {}) };
+        delete nextPackages[packageId];
+        nextProject = updateProjectFileText(
+          nextProject,
+          'lumina.lock',
+          `${JSON.stringify(
+            {
+              version: parsed.version ?? 1,
+              packages: nextPackages,
+            },
+            null,
+            2
+          )}\n`
+        );
+      } catch {
+        showToast('Package files removed, but lumina.lock still needs manual cleanup.');
+      }
+    }
+
+    state = { ...state, project: nextProject };
+    clearPresetUrl();
+    markDirty();
+    suppressNextScheduledCompile = true;
+    setEditorText('editor-root', getProjectFile(state.project, state.project.activeFileUri)?.text ?? '');
+    syncProjectStats();
+    persist();
+    scheduleAutosave();
+    scheduleCompile(0);
+    showToast('Package removed.');
+  };
+
   mountEditor({
     elementId: 'editor-root',
     initialValue: getProjectFile(state.project, state.project.activeFileUri)?.text ?? '',
@@ -1335,6 +2130,34 @@ const startPlayground = async (): Promise<void> => {
   consoleRoot.textContent = state.consoleOutput;
   renderModuleGraph(moduleGraphRoot, null);
   renderCompileDetails(compileDetailsRoot, null);
+  editorReadyMs = now() - startedAt;
+
+  dialogForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(
+      Array.from(dialogFieldsRoot.querySelectorAll<HTMLInputElement>('[data-dialog-field]')).map(
+        (field) => [field.dataset.dialogField ?? '', field.value]
+      )
+    );
+    closeDialog(values);
+  });
+
+  dialogSubmitButton.addEventListener('click', () => {
+    const values = Object.fromEntries(
+      Array.from(dialogFieldsRoot.querySelectorAll<HTMLInputElement>('[data-dialog-field]')).map(
+        (field) => [field.dataset.dialogField ?? '', field.value]
+      )
+    );
+    closeDialog(values);
+  });
+
+  dialogCancelButton.addEventListener('click', () => {
+    closeDialog(null);
+  });
+
+  dialogRoot.addEventListener('click', (event) => {
+    if (event.target === dialogRoot) closeDialog(null);
+  });
 
   onEditorChange('editor-root', () => {
     state = {
@@ -1352,10 +2175,11 @@ const startPlayground = async (): Promise<void> => {
 
   document.getElementById('workspace-name-input')?.addEventListener('input', (event) => {
     const next = (event.target as HTMLInputElement).value;
-    state = { ...state, workspaceName: next };
-    markDirty();
+    const renamed = next.trim() !== baselineWorkspaceName.trim();
+    state = { ...state, workspaceName: next, dirty: state.dirty || renamed };
     syncProjectStats();
     persist();
+    scheduleAutosave();
   });
 
   document.getElementById('check-button')?.addEventListener('click', () => {
@@ -1405,22 +2229,33 @@ const startPlayground = async (): Promise<void> => {
   });
 
   document.getElementById('save-workspace-button')?.addEventListener('click', () => {
-    saveWorkspace(false);
+    void saveWorkspace(false);
   });
 
   document.getElementById('save-workspace-as-button')?.addEventListener('click', () => {
-    saveWorkspace(true);
+    void saveWorkspace(true);
   });
 
-  document.getElementById('delete-workspace-button')?.addEventListener('click', () => {
+  document.getElementById('rename-workspace-button')?.addEventListener('click', () => {
+    void renameWorkspace();
+  });
+
+  document.getElementById('delete-workspace-button')?.addEventListener('click', async () => {
     if (!state.workspaceId) {
       showToast('Nothing saved yet.');
       return;
     }
-    if (!window.confirm(`Delete workspace ${state.workspaceName}?`)) return;
+    const confirmed = await confirmDialog(
+      'Delete Workspace',
+      `Delete workspace ${state.workspaceName}?`,
+      'Delete',
+      'danger'
+    );
+    if (!confirmed) return;
     workspaceStore = removeWorkspaceSnapshot(workspaceStore, state.workspaceId);
     writeWorkspaceStore(workspaceStore);
     state = { ...state, workspaceId: null, dirty: true };
+    baselineWorkspaceName = state.workspaceName;
     syncProjectStats();
     persist();
     showToast('Workspace deleted.');
@@ -1460,7 +2295,7 @@ const startPlayground = async (): Promise<void> => {
     importWorkspaceInput.click();
   });
 
-  document.getElementById('reset-workspace-button')?.addEventListener('click', () => {
+  document.getElementById('reset-workspace-button')?.addEventListener('click', async () => {
     const presetId = state.project.sourcePresetId;
     const preset = presetId
       ? playgroundPresets.find((entry) => entry.id === presetId)
@@ -1469,7 +2304,13 @@ const startPlayground = async (): Promise<void> => {
       showToast('No source preset is available for reset.');
       return;
     }
-    if (!window.confirm(`Reset this workspace back to ${preset.label}?`)) return;
+    const confirmed = await confirmDialog(
+      'Reset Workspace',
+      `Reset this workspace back to ${preset.label}?`,
+      'Reset',
+      'danger'
+    );
+    if (!confirmed) return;
     const next = stateFromPreset(preset, playgroundBaseHref);
     applyLoadedState(
       {
@@ -1484,13 +2325,27 @@ const startPlayground = async (): Promise<void> => {
   });
 
   document.getElementById('scaffold-package-button')?.addEventListener('click', () => {
-    scaffoldPackageFiles();
+    void scaffoldPackageFiles();
   });
 
-  document.getElementById('new-file-button')?.addEventListener('click', () => {
+  document.getElementById('new-file-button')?.addEventListener('click', async () => {
     syncProjectFromEditor();
     const suggested = nextUntitledFileUri(state.project);
-    const requested = normalizeProjectUri(window.prompt('New file path', suggested)?.trim() ?? '');
+    const dialogResult = await openDialog({
+      title: 'Create File',
+      message: 'Add a new source or support file to this playground project.',
+      confirmLabel: 'Create',
+      fields: [
+        {
+          key: 'path',
+          label: 'File path',
+          value: suggested,
+          placeholder: 'notes.lm',
+        },
+      ],
+    });
+    if (!dialogResult) return;
+    const requested = normalizeProjectUri(dialogResult.path?.trim() ?? '');
     if (!requested) return;
     if (getProjectFile(state.project, requested)) {
       showToast('That file already exists.');
@@ -1510,14 +2365,27 @@ const startPlayground = async (): Promise<void> => {
     suppressNextScheduledCompile = true;
     setEditorText('editor-root', getProjectFile(state.project, requested)?.text ?? '');
     persist();
+    scheduleAutosave();
     scheduleCompile(0);
   });
 
-  document.getElementById('rename-file-button')?.addEventListener('click', () => {
+  document.getElementById('rename-file-button')?.addEventListener('click', async () => {
     syncProjectFromEditor();
-    const requested = normalizeProjectUri(
-      window.prompt('Rename or move file', state.project.activeFileUri)?.trim() ?? ''
-    );
+    const dialogResult = await openDialog({
+      title: 'Rename or Move File',
+      message: 'Change the path for the active file.',
+      confirmLabel: 'Apply',
+      fields: [
+        {
+          key: 'path',
+          label: 'File path',
+          value: state.project.activeFileUri,
+          placeholder: state.project.activeFileUri,
+        },
+      ],
+    });
+    if (!dialogResult) return;
+    const requested = normalizeProjectUri(dialogResult.path?.trim() ?? '');
     if (!requested || requested === state.project.activeFileUri) return;
     if (getProjectFile(state.project, requested)) {
       showToast('That file already exists.');
@@ -1533,15 +2401,28 @@ const startPlayground = async (): Promise<void> => {
     setEditorText('editor-root', getProjectFile(state.project, requested)?.text ?? '');
     syncProjectStats();
     persist();
+    scheduleAutosave();
     scheduleCompile(0);
   });
 
-  document.getElementById('duplicate-file-button')?.addEventListener('click', () => {
+  document.getElementById('duplicate-file-button')?.addEventListener('click', async () => {
     syncProjectFromEditor();
     const suggested = nextDuplicateFileUri(state.project, state.project.activeFileUri);
-    const requested = normalizeProjectUri(
-      window.prompt('Duplicate file as', suggested)?.trim() ?? ''
-    );
+    const dialogResult = await openDialog({
+      title: 'Duplicate File',
+      message: 'Create a copy of the active file.',
+      confirmLabel: 'Duplicate',
+      fields: [
+        {
+          key: 'path',
+          label: 'New file path',
+          value: suggested,
+          placeholder: suggested,
+        },
+      ],
+    });
+    if (!dialogResult) return;
+    const requested = normalizeProjectUri(dialogResult.path?.trim() ?? '');
     if (!requested) return;
     if (getProjectFile(state.project, requested)) {
       showToast('That file already exists.');
@@ -1557,6 +2438,7 @@ const startPlayground = async (): Promise<void> => {
     setEditorText('editor-root', getProjectFile(state.project, requested)?.text ?? '');
     syncProjectStats();
     persist();
+    scheduleAutosave();
     scheduleCompile(0);
   });
 
@@ -1570,17 +2452,24 @@ const startPlayground = async (): Promise<void> => {
     markDirty();
     syncProjectStats();
     persist();
+    scheduleAutosave();
     scheduleCompile(0);
     showToast('Entry file updated.');
   });
 
-  document.getElementById('delete-file-button')?.addEventListener('click', () => {
+  document.getElementById('delete-file-button')?.addEventListener('click', async () => {
     syncProjectFromEditor();
     if (state.project.activeFileUri === state.project.entryUri) {
       showToast('Entry files stay protected.');
       return;
     }
-    if (!window.confirm(`Delete ${state.project.activeFileUri}?`)) return;
+    const confirmed = await confirmDialog(
+      'Delete File',
+      `Delete ${state.project.activeFileUri}?`,
+      'Delete',
+      'danger'
+    );
+    if (!confirmed) return;
     const nextProject = removeProjectFile(state.project, state.project.activeFileUri);
     state = { ...state, project: nextProject };
     clearPresetUrl();
@@ -1590,6 +2479,7 @@ const startPlayground = async (): Promise<void> => {
     setEditorText('editor-root', nextFile?.text ?? '');
     syncProjectStats();
     persist();
+    scheduleAutosave();
     scheduleCompile(0);
   });
 
@@ -1614,6 +2504,7 @@ const startPlayground = async (): Promise<void> => {
       setEditorText('editor-root', getProjectFile(state.project, state.project.activeFileUri)?.text ?? '');
       syncProjectStats();
       persist();
+      scheduleAutosave();
       return;
     }
 
@@ -1630,6 +2521,71 @@ const startPlayground = async (): Promise<void> => {
     const workspaceId = button?.dataset.workspaceId;
     if (!workspaceId) return;
     loadWorkspace(workspaceId);
+  });
+
+  window.addEventListener('storage', (event) => {
+    if (event.key !== workspaceStorageKey) return;
+    const previousSavedAt = state.workspaceId
+      ? getWorkspaceSnapshot(workspaceStore, state.workspaceId)?.savedAt ?? null
+      : null;
+    workspaceStore = readWorkspaceStore();
+    const incomingSavedAt = state.workspaceId
+      ? getWorkspaceSnapshot(workspaceStore, state.workspaceId)?.savedAt ?? null
+      : null;
+    syncProjectStats();
+    if (!state.workspaceId || incomingSavedAt == null || incomingSavedAt === previousSavedAt) {
+      return;
+    }
+    if (state.dirty) {
+      showToast('This workspace changed in another tab.');
+      return;
+    }
+    loadWorkspace(state.workspaceId);
+    showToast('Workspace refreshed from another tab.');
+  });
+
+  diagnosticsRoot.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const filterButton = target?.closest<HTMLElement>('[data-diagnostic-filter]');
+    if (filterButton?.dataset.diagnosticFilter) {
+      const nextFilter = filterButton.dataset.diagnosticFilter as 'all' | 'error' | 'warning';
+      diagnosticsFilter = nextFilter;
+      renderDiagnostics(diagnosticsRoot, lastDiagnostics, diagnosticsFilter);
+      return;
+    }
+
+    const diagnosticButton = target?.closest<HTMLElement>('[data-file-uri]');
+    const fileUri = diagnosticButton?.dataset.fileUri;
+    if (!fileUri) return;
+    const line = Number(diagnosticButton.dataset.line ?? '1');
+    const column = Number(diagnosticButton.dataset.column ?? '1');
+    syncProjectFromEditor();
+    if (!getProjectFile(state.project, fileUri)) {
+      showToast(`Diagnostic target ${fileUri} is not in the current project.`);
+      return;
+    }
+    mountActiveFile(fileUri);
+    focusEditorLocation('editor-root', Number.isFinite(line) ? line : 1, Number.isFinite(column) ? column : 1);
+    syncProjectStats();
+  });
+
+  packageDetailsRoot.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const actionButton = target?.closest<HTMLElement>('[data-package-action]');
+    const action = actionButton?.dataset.packageAction;
+    const packageId = actionButton?.dataset.packageId;
+    if (!action || !packageId) return;
+    if (action === 'focus') {
+      focusPackage(packageId);
+      return;
+    }
+    if (action === 'export') {
+      exportPackage(packageId);
+      return;
+    }
+    if (action === 'remove') {
+      void removePackage(packageId);
+    }
   });
 
   document.querySelectorAll<HTMLElement>('.preset-button').forEach((button) => {
@@ -1691,10 +2647,25 @@ const startPlayground = async (): Promise<void> => {
   });
 
   document.addEventListener('keydown', (event) => {
-    const meta = event.metaKey || event.ctrlKey;
-    if (meta && event.key.toLowerCase() === 's') {
+    if (event.key === 'Escape' && dialogRoot.dataset.open === 'true') {
       event.preventDefault();
-      saveWorkspace(false);
+      closeDialog(null);
+      return;
+    }
+    const meta = event.metaKey || event.ctrlKey;
+    if (meta && event.shiftKey && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      void saveWorkspace(true);
+      return;
+    }
+    if (meta && !event.shiftKey && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      void saveWorkspace(false);
+      return;
+    }
+    if (meta && event.shiftKey && event.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      (document.getElementById('new-file-button') as HTMLButtonElement | null)?.click();
       return;
     }
     if (meta && event.key === 'Enter') {

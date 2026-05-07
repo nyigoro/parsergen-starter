@@ -1,4 +1,5 @@
 import { EditorView, basicSetup } from 'codemirror';
+import { EditorSelection } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { luminaLanguage } from './lumina-language';
 
@@ -8,6 +9,10 @@ export type EditorMountOptions = {
 };
 
 type ChangeHandler = (value: string) => void;
+type EditorCursor = {
+  line: number;
+  column: number;
+};
 
 const editors = new Map<string, EditorView>();
 const changeHandlers = new Map<string, Set<ChangeHandler>>();
@@ -75,6 +80,14 @@ const getEditorText = (elementId: string): string => {
   return view ? view.state.doc.toString() : '';
 };
 
+const resolvePosition = (view: EditorView, line: number, column: number): number => {
+  const totalLines = view.state.doc.lines;
+  const targetLine = Math.max(1, Math.min(totalLines, line));
+  const lineInfo = view.state.doc.line(targetLine);
+  const clampedColumn = Math.max(1, column);
+  return Math.min(lineInfo.to, lineInfo.from + clampedColumn - 1);
+};
+
 const setEditorText = (elementId: string, value: string): void => {
   const view = editors.get(elementId);
   if (!view) return;
@@ -86,6 +99,32 @@ const setEditorText = (elementId: string, value: string): void => {
       insert: value,
     },
   });
+};
+
+const focusEditorLocation = (elementId: string, line: number, column: number = 1): void => {
+  const view = editors.get(elementId);
+  if (!view) return;
+
+  const position = resolvePosition(view, line, column);
+  view.focus();
+  view.dispatch({
+    selection: EditorSelection.cursor(position),
+    effects: EditorView.scrollIntoView(position, {
+      y: 'center',
+    }),
+  });
+};
+
+const getEditorCursor = (elementId: string): EditorCursor | null => {
+  const view = editors.get(elementId);
+  if (!view) return null;
+
+  const head = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(head);
+  return {
+    line: line.number,
+    column: head - line.from + 1,
+  };
 };
 
 const onEditorChange = (elementId: string, handler: ChangeHandler): (() => void) => {
@@ -104,4 +143,6 @@ const onEditorChange = (elementId: string, handler: ChangeHandler): (() => void)
 (globalThis as Record<string, unknown>).mountEditor = mountEditor;
 (globalThis as Record<string, unknown>).getEditorText = getEditorText;
 (globalThis as Record<string, unknown>).setEditorText = setEditorText;
+(globalThis as Record<string, unknown>).focusEditorLocation = focusEditorLocation;
+(globalThis as Record<string, unknown>).getEditorCursor = getEditorCursor;
 (globalThis as Record<string, unknown>).onEditorChange = onEditorChange;
