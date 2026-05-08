@@ -8,7 +8,8 @@ import {
   props_type,
   props_value,
   props_placeholder,
-  props_disabled
+  props_disabled,
+  props_attr
 } from "@std/render";
 
 fn attrs2(left: any, right: any) -> any {
@@ -123,6 +124,21 @@ fn plain_input(id: string, value: string, placeholder: string, cls: string) -> V
   )
 }
 
+fn dock_summary(label: string, detail: string) -> VNode {
+  vnode("summary", props_class("dock-summary"), [
+    vnode("span", props_class("dock-summary-label"), [text(label)]),
+    vnode("span", props_class("dock-summary-detail"), [text(detail)])
+  ])
+}
+
+fn open_dock(label: string, detail: string, cls: string, children: any) -> VNode {
+  vnode(
+    "details",
+    attrs2(props_class("dock-section " + cls), props_attr("open", true)),
+    [dock_summary(label, detail), div_node("dock-section-body", children)]
+  )
+}
+
 pub fn app() -> VNode {
   let brandMark = vnode("span", props_class("brand-mark"), [text("L")]);
   let brandTitle = vnode("strong", props_class("brand-title"), [text("Lumina Playground")]);
@@ -196,6 +212,13 @@ pub fn app() -> VNode {
     formsPreset,
     packagePreset
   ]);
+  let presetPanel = vnode("section", props_class("panel rail-card preset-panel"), [
+    div_node("panel-heading-row", [
+      vnode("div", props_class("panel-title"), [text("Presets")]),
+      vnode("span", props_class("small-pill"), [text("examples")])
+    ]),
+    presets
+  ]);
 
   let workspaceHeading = vnode("div", props_class("panel-title"), [text("Workspace")]);
   let workspaceInput = plain_input("workspace-name-input", "", "starter-app", "workspace-input");
@@ -236,6 +259,11 @@ pub fn app() -> VNode {
   ]);
   let fileList = vnode("div", attrs2(props_class("file-list"), props_id("file-list-root")), []);
   let fileSidebar = vnode("aside", props_class("file-sidebar"), [fileHeader, fileList]);
+  let leftRail = vnode("aside", props_class("left-rail"), [
+    workspacePanel,
+    fileSidebar,
+    presetPanel
+  ]);
 
   let activeFile = vnode("span", attrs2(props_class("small-pill"), props_id("active-file-label")), [text("main.lm")]);
   let entryFile = vnode("span", attrs2(props_class("small-pill"), props_id("entry-file-label")), [text("entry: main.lm")]);
@@ -245,18 +273,13 @@ pub fn app() -> VNode {
   ]);
   let fileTabs = vnode("div", attrs2(props_class("file-tabs"), props_id("file-tabs-root")), []);
   let editorMount = vnode("div", props_id("editor-root"), []);
-  let editorStack = div_node("editor-stack", [
-    presets,
-    workspacePanel,
+  let editorPanel = vnode("section", props_class("editor-panel main-editor-panel"), [
+    editorTop,
     editorHeader,
     fileTabs,
     editorMount
   ]);
-  let editorWorkbench = div_node("editor-workbench", [fileSidebar, editorStack]);
-  let editorPanel = vnode("section", props_class("editor-panel"), [
-    editorTop,
-    editorWorkbench
-  ]);
+  let centerColumn = div_node("center-editor", [toolbar, editorPanel]);
 
   let routeHeader = div_node("panel-heading-row", [
     vnode("div", props_class("panel-title"), [text("Route Preview")]),
@@ -328,8 +351,32 @@ pub fn app() -> VNode {
     workspaceRow
   ]);
 
-  let rightColumn = div_node("result-column", [routePanel, routeInspectorPanel, routeEventsPanel, consolePanel, diagnosticsPanel, debugPanel, compilePanel, packagePanel, jsPanel]);
-  let workspace = div_node("workspace-grid", [editorPanel, rightColumn]);
+  let dockTabs = div_node("dock-tabs", [
+    vnode("span", props_class("small-pill"), [text("Preview")]),
+    vnode("span", props_class("small-pill"), [text("Diagnostics")]),
+    vnode("span", props_class("small-pill"), [text("Route")]),
+    vnode("span", props_class("small-pill"), [text("Packages")]),
+    vnode("span", props_class("small-pill"), [text("Inspector")])
+  ]);
+  let previewDock = open_dock("Preview", "route sandbox", "preview-dock", [routePanel]);
+  let diagnosticsDock = open_dock("Diagnostics", "compile feedback", "diagnostics-dock", [diagnosticsPanel]);
+  let routeDock = open_dock("Route", "state and matches", "route-dock", [routeInspectorPanel]);
+  let packageDock = open_dock("Packages", "imports and locks", "packages-dock", [packagePanel]);
+  let inspectorDock = open_dock("Inspector", "compile graph", "inspector-dock", [debugPanel, compilePanel, insightPanel]);
+  let rightDock = vnode("aside", props_class("right-dock"), [
+    dockTabs,
+    previewDock,
+    diagnosticsDock,
+    routeDock,
+    packageDock,
+    inspectorDock
+  ]);
+  let bottomDrawer = open_dock("Output", "console, route events, generated JS", "bottom-drawer", [
+    consolePanel,
+    routeEventsPanel,
+    jsPanel
+  ]);
+  let workspace = div_node("ide-workbench", [leftRail, centerColumn, rightDock]);
 
   let toast = vnode("div", attrs2(props_class("toast"), props_id("toast-root")), [text("")]);
   let dialogRoot = vnode("div", attrs2(props_class("dialog-root"), props_id("dialog-root")), [
@@ -346,6 +393,6 @@ pub fn app() -> VNode {
       ])
     ])
   ]);
-  let body = div_node("playground-body", [header, toolbar, workspace, insightPanel, toast, dialogRoot]);
+  let body = div_node("playground-body", [header, workspace, bottomDrawer, toast, dialogRoot]);
   return div_node("playground-shell", [body]);
 }

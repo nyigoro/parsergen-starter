@@ -110,4 +110,28 @@ describe('site routing and playground integration', () => {
     expect(compilerWorker).toContain("type: 'compile-result'");
     expect(compileClient).toContain("new URL('./compiler-worker.ts', import.meta.url)");
   });
+
+  test('playground shell uses an editor-first docked layout', () => {
+    const playgroundApp = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/app.lm'),
+      'utf-8'
+    );
+    const playgroundStyle = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/style.css'),
+      'utf-8'
+    );
+
+    expect(playgroundApp).toContain('props_class("left-rail")');
+    expect(playgroundApp).toContain('props_class("right-dock")');
+    expect(playgroundApp).toContain('div_node("center-editor"');
+    expect(playgroundApp).toContain('"bottom-drawer"');
+    expect(playgroundApp).toContain('workspace-toolbar');
+    expect(playgroundApp).toContain('console-root');
+    expect(playgroundApp).toContain('diagnostics-root');
+    expect(playgroundApp).toContain('route-details-root');
+    expect(playgroundStyle).toContain('.ide-workbench');
+    expect(playgroundStyle).toContain('grid-template-columns: minmax(15rem, 18rem) minmax(30rem, 1fr) minmax(21rem, 25rem);');
+    expect(playgroundStyle).toContain('.bottom-drawer > .dock-section-body');
+    expect(playgroundStyle).toContain('@media (max-width: 1180px)');
+  });
 });
