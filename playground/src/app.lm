@@ -35,7 +35,7 @@ fn div_node(cls: string, children: any) -> VNode {
 fn panel(title: string, bodyId: string, bodyClass: string) -> VNode {
   let heading = vnode("div", props_class("panel-title"), [text(title)]);
   let body = vnode("div", attrs2(props_class(bodyClass), props_id(bodyId)), []);
-  vnode("section", props_class("panel"), [heading, body])
+  vnode("section", props_class("panel stack-sm"), [heading, body])
 }
 
 fn tool_button(id: string, label: string, tone: string) -> VNode {
@@ -183,7 +183,7 @@ pub fn app() -> VNode {
   let toggleExplorerButton = tool_button("toggle-left-rail-toolbar-button", "Explorer", "secondary");
   let toggleDockButton = tool_button("toggle-right-dock-toolbar-button", "Dock", "secondary");
   let toggleOutputButton = tool_button("toggle-bottom-drawer-toolbar-button", "Output", "secondary");
-  let toolRow = div_node("tool-row", [
+  let toolRow = div_node("tool-row toolbar-row toolbar-row-primary", [
     runButton,
     stopButton,
     stopCompileButton,
@@ -200,7 +200,7 @@ pub fn app() -> VNode {
   let diagnosticStat = stat("Diagnostics", "0", "diagnostic-count");
   let outputStat = stat("Output", "JS", "output-mode");
   let activeFileStat = stat("Active File", "main.lm", "active-file-stat");
-  let status = div_node("status-strip", [
+  let status = div_node("status-strip stack-sm", [
     statusStat,
     diagnosticStat,
     outputStat,
@@ -252,32 +252,32 @@ pub fn app() -> VNode {
     tool_button("reset-workspace-button", "Reset", "secondary")
   ]);
   let workspaceRecent = vnode("div", attrs2(props_class("workspace-recent-list"), props_id("recent-workspaces-root")), []);
-  let workspacePanel = vnode("section", attrs2(props_class("workspace-manager panel rail-panel"), props_id("rail-workspace-panel")), [
+  let workspacePanel = vnode("section", attrs2(props_class("workspace-manager panel rail-panel stack-sm"), props_id("rail-workspace-panel")), [
     div_node("panel-heading-row", [workspaceHeading, vnode("span", attrs2(props_class("small-pill"), props_id("workspace-status-pill")), [text("local")])]),
     workspaceInput,
     workspaceControls,
     workspaceRecent
   ]);
 
-  let sourceTitle = vnode("div", props_class("panel-title"), [text("Project")]);
+  let sourceTitle = vnode("div", props_class("panel-title"), [text("Editor")]);
   let sourceSize = vnode("span", attrs2(props_class("small-pill"), props_id("source-size")), [text("0 lines")]);
   let editorTop = div_node("panel-heading-row", [
     sourceTitle,
-    sourceSize
+    div_node("panel-heading-row editor-pill-row", [sourceSize])
   ]);
 
   let fileHeader = div_node("panel-heading-row file-heading-row", [
     vnode("div", props_class("panel-title"), [text("Files")]),
     div_node("tool-row compact-tools", [
-      tool_button("new-file-button", "New File", "secondary"),
+      tool_button("new-file-button", "New", "secondary"),
       tool_button("rename-file-button", "Rename", "secondary"),
       tool_button("duplicate-file-button", "Duplicate", "secondary"),
-      tool_button("set-entry-button", "Set Entry", "secondary"),
-      tool_button("delete-file-button", "Delete File", "secondary")
+      tool_button("set-entry-button", "Entry", "secondary"),
+      tool_button("delete-file-button", "Delete", "secondary")
     ])
   ]);
   let fileList = vnode("div", attrs2(props_class("file-list"), props_id("file-list-root")), []);
-  let fileSidebar = vnode("aside", attrs2(props_class("file-sidebar panel rail-panel"), props_id("rail-files-panel")), [fileHeader, fileList]);
+  let fileSidebar = vnode("aside", attrs2(props_class("file-sidebar panel rail-panel stack-sm"), props_id("rail-files-panel")), [fileHeader, fileList]);
   let leftRailHeader = div_node("dock-group-header", [
     div_node("dock-group-heading", [
       vnode("div", props_class("panel-title"), [text("Explorer")]),
@@ -307,15 +307,12 @@ pub fn app() -> VNode {
 
   let activeFile = vnode("span", attrs2(props_class("small-pill"), props_id("active-file-label")), [text("main.lm")]);
   let entryFile = vnode("span", attrs2(props_class("small-pill"), props_id("entry-file-label")), [text("entry: main.lm")]);
-  let editorHeader = div_node("panel-heading-row", [
-    vnode("div", props_class("panel-title"), [text("Editor")]),
-    div_node("panel-heading-row editor-pill-row", [entryFile, activeFile])
-  ]);
+  let editorMeta = div_node("editor-meta-row", [entryFile, activeFile]);
   let fileTabs = vnode("div", attrs2(props_class("file-tabs"), props_id("file-tabs-root")), []);
   let editorMount = vnode("div", props_id("editor-root"), []);
-  let editorPanel = vnode("section", props_class("editor-panel main-editor-panel"), [
+  let editorPanel = vnode("section", props_class("editor-panel main-editor-panel stack-sm"), [
     editorTop,
-    editorHeader,
+    editorMeta,
     fileTabs,
     editorMount
   ]);
@@ -338,7 +335,7 @@ pub fn app() -> VNode {
     tool_button("route-forward-button", "Forward", "secondary"),
     tool_button("route-reset-button", "Reset", "secondary")
   ]);
-  let routePanel = vnode("section", props_class("panel route-panel"), [
+  let routePanel = vnode("section", props_class("panel route-panel stack-sm"), [
     routeHeader,
     routeFields,
     routeButtons
@@ -353,7 +350,7 @@ pub fn app() -> VNode {
     consoleStatus
   ]);
   let consoleOutput = vnode("pre", attrs2(props_class("console-output"), props_id("console-root")), [text("")]);
-  let consolePanel = vnode("section", props_class("panel"), [consoleTitle, consoleOutput]);
+  let consolePanel = vnode("section", props_class("panel stack-sm"), [consoleTitle, consoleOutput]);
 
   let diagnosticsPanel = panel("Diagnostics", "diagnostics-root", "diagnostics-list");
   let debugPanel = panel("Import Graph", "module-graph-root", "debug-list");
@@ -363,7 +360,7 @@ pub fn app() -> VNode {
   let jsBadge = vnode("span", props_class("small-pill"), [text("ES module")]);
   let jsHeader = div_node("panel-heading-row", [jsTitle, jsBadge]);
   let jsOutput = vnode("pre", attrs2(props_class("js-output"), props_id("output-root")), [text("")]);
-  let jsPanel = vnode("section", props_class("panel js-panel"), [
+  let jsPanel = vnode("section", props_class("panel js-panel stack-sm"), [
     jsHeader,
     jsOutput
   ]);
@@ -402,30 +399,38 @@ pub fn app() -> VNode {
   ]);
   let dockTabs = div_node("dock-tabs", [
     tab_button("dock-tab-preview", "Preview", "dock", "preview"),
-    tab_button("dock-tab-diagnostics", "Diagnostics", "dock", "diagnostics"),
+    tab_button("dock-tab-problems", "Problems", "dock", "problems"),
     tab_button("dock-tab-route", "Route", "dock", "route"),
     tab_button("dock-tab-packages", "Packages", "dock", "packages"),
+    tab_button("dock-tab-graph", "Graph", "dock", "graph"),
+    tab_button("dock-tab-compile", "Compile", "dock", "compile"),
     tab_button("dock-tab-inspector", "Inspector", "dock", "inspector")
   ]);
   let previewDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-preview")), [routePanel]);
-  let diagnosticsDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-diagnostics")), [diagnosticsPanel]);
+  let problemsDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-problems")), [diagnosticsPanel]);
   let routeDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-route")), [routeInspectorPanel]);
   let packageDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-packages")), [packagePanel]);
-  let inspectorDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-inspector")), [debugPanel, compilePanel, insightPanel]);
+  let graphDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-graph")), [debugPanel]);
+  let compileDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-compile")), [compilePanel]);
+  let inspectorDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-inspector")), [insightPanel]);
   let rightDock = vnode("aside", attrs2(props_class("right-dock dock-group dock-shell"), props_id("right-dock-shell")), [
     rightDockHeader,
     dockTabs,
     previewDock,
-    diagnosticsDock,
+    problemsDock,
     routeDock,
     packageDock,
+    graphDock,
+    compileDock,
     inspectorDock
   ]);
   let rightEdgeStrip = vnode("aside", attrs2(props_class("edge-strip right-edge-strip"), props_id("right-edge-strip")), [
     edge_tab_button("edge-dock-tab-preview", "Preview", "dock", "preview", "right"),
-    edge_tab_button("edge-dock-tab-diagnostics", "Diagnostics", "dock", "diagnostics", "right"),
+    edge_tab_button("edge-dock-tab-problems", "Problems", "dock", "problems", "right"),
     edge_tab_button("edge-dock-tab-route", "Route", "dock", "route", "right"),
     edge_tab_button("edge-dock-tab-packages", "Packages", "dock", "packages", "right"),
+    edge_tab_button("edge-dock-tab-graph", "Graph", "dock", "graph", "right"),
+    edge_tab_button("edge-dock-tab-compile", "Compile", "dock", "compile", "right"),
     edge_tab_button("edge-dock-tab-inspector", "Inspector", "dock", "inspector", "right")
   ]);
   let bottomDrawerHeader = div_node("dock-group-header bottom-dock-header", [

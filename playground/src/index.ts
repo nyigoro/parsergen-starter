@@ -115,7 +115,7 @@ type PlaygroundUiState = {
 };
 
 type LeftRailTab = 'workspace' | 'files' | 'presets';
-type RightDockTab = 'preview' | 'diagnostics' | 'route' | 'packages' | 'inspector';
+type RightDockTab = 'preview' | 'problems' | 'route' | 'packages' | 'graph' | 'compile' | 'inspector';
 type BottomDrawerTab = 'console' | 'events' | 'js';
 type DockMode = 'pinned' | 'auto-hide';
 
@@ -136,7 +136,7 @@ type PlaygroundLayoutState = {
 
 const storageKey = 'lumina-playground-state-v3';
 const workspaceStorageKey = 'lumina-playground-workspaces-v1';
-const layoutStorageKey = 'lumina-playground-layout-v1';
+const layoutStorageKey = 'lumina-playground-layout-v3';
 const isDirectPlaygroundDev = import.meta.env.DEV && window.location.port === '5175';
 const devAppUrl = (port: string, pathname: string): string =>
   `${window.location.protocol}//${window.location.hostname}:${port}${pathname}`;
@@ -220,9 +220,6 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const persistedLayoutState = (state: PlaygroundLayoutState): PlaygroundLayoutState => ({
   ...state,
-  leftRailVisible: state.leftRailMode === 'pinned',
-  rightDockVisible: state.rightDockMode === 'pinned',
-  bottomDrawerVisible: state.bottomDrawerMode === 'pinned',
 });
 
 const sanitizeLayoutState = (value: unknown): PlaygroundLayoutState => {
@@ -231,10 +228,15 @@ const sanitizeLayoutState = (value: unknown): PlaygroundLayoutState => {
     source.leftRailTab === 'workspace' || source.leftRailTab === 'presets' ? source.leftRailTab : 'files';
   const rightDockTab =
     source.rightDockTab === 'diagnostics' ||
+    source.rightDockTab === 'problems' ||
     source.rightDockTab === 'route' ||
     source.rightDockTab === 'packages' ||
+    source.rightDockTab === 'graph' ||
+    source.rightDockTab === 'compile' ||
     source.rightDockTab === 'inspector'
-      ? source.rightDockTab
+      ? source.rightDockTab === 'diagnostics'
+        ? 'problems'
+        : source.rightDockTab
       : 'preview';
   const bottomDrawerTab =
     source.bottomDrawerTab === 'events' || source.bottomDrawerTab === 'js'
@@ -1532,7 +1534,7 @@ const startPlayground = async (): Promise<void> => {
       layoutState = {
         ...layoutState,
         leftRailMode: mode,
-        leftRailVisible: options.visible ?? (mode === 'pinned'),
+        leftRailVisible: options.visible ?? layoutState.leftRailVisible,
       };
       persistLayoutState();
       return;
@@ -1541,7 +1543,7 @@ const startPlayground = async (): Promise<void> => {
       layoutState = {
         ...layoutState,
         rightDockMode: mode,
-        rightDockVisible: options.visible ?? (mode === 'pinned'),
+        rightDockVisible: options.visible ?? layoutState.rightDockVisible,
       };
       persistLayoutState();
       return;
@@ -1549,7 +1551,7 @@ const startPlayground = async (): Promise<void> => {
     layoutState = {
       ...layoutState,
       bottomDrawerMode: mode,
-      bottomDrawerVisible: options.visible ?? (mode === 'pinned'),
+      bottomDrawerVisible: options.visible ?? layoutState.bottomDrawerVisible,
     };
     persistLayoutState();
   };
@@ -1557,9 +1559,10 @@ const startPlayground = async (): Promise<void> => {
   const hideAutoHideOverlays = (): void => {
     const nextState: PlaygroundLayoutState = {
       ...layoutState,
-      leftRailVisible: layoutState.leftRailMode === 'pinned',
-      rightDockVisible: layoutState.rightDockMode === 'pinned',
-      bottomDrawerVisible: layoutState.bottomDrawerMode === 'pinned',
+      leftRailVisible: layoutState.leftRailMode === 'auto-hide' ? false : layoutState.leftRailVisible,
+      rightDockVisible: layoutState.rightDockMode === 'auto-hide' ? false : layoutState.rightDockVisible,
+      bottomDrawerVisible:
+        layoutState.bottomDrawerMode === 'auto-hide' ? false : layoutState.bottomDrawerVisible,
     };
     const changed =
       nextState.leftRailVisible !== layoutState.leftRailVisible ||
@@ -1591,7 +1594,7 @@ const startPlayground = async (): Promise<void> => {
     }
     setTabButtonsActive('rail', layoutState.leftRailTab);
 
-    const dockTabs: RightDockTab[] = ['preview', 'diagnostics', 'route', 'packages', 'inspector'];
+    const dockTabs: RightDockTab[] = ['preview', 'problems', 'route', 'packages', 'graph', 'compile', 'inspector'];
     for (const tab of dockTabs) {
       setHidden(`dock-panel-${tab}`, layoutState.rightDockTab !== tab);
     }
@@ -1686,29 +1689,23 @@ const startPlayground = async (): Promise<void> => {
     setGroupMode('bottom', layoutState.bottomDrawerMode === 'pinned' ? 'auto-hide' : 'pinned');
 
   const toggleLeftRailToolbar = (): void => {
-    if (layoutState.leftRailMode === 'pinned') {
-      setGroupMode('left', 'auto-hide', { visible: false });
-      return;
-    }
-    layoutState = { ...layoutState, leftRailVisible: !layoutState.leftRailVisible };
+    layoutState = layoutState.leftRailVisible
+      ? { ...layoutState, leftRailVisible: false }
+      : { ...layoutState, leftRailMode: 'pinned', leftRailVisible: true };
     persistLayoutState();
   };
 
   const toggleRightDockToolbar = (): void => {
-    if (layoutState.rightDockMode === 'pinned') {
-      setGroupMode('right', 'auto-hide', { visible: false });
-      return;
-    }
-    layoutState = { ...layoutState, rightDockVisible: !layoutState.rightDockVisible };
+    layoutState = layoutState.rightDockVisible
+      ? { ...layoutState, rightDockVisible: false }
+      : { ...layoutState, rightDockMode: 'pinned', rightDockVisible: true };
     persistLayoutState();
   };
 
   const toggleBottomDrawerToolbar = (): void => {
-    if (layoutState.bottomDrawerMode === 'pinned') {
-      setGroupMode('bottom', 'auto-hide', { visible: false });
-      return;
-    }
-    layoutState = { ...layoutState, bottomDrawerVisible: !layoutState.bottomDrawerVisible };
+    layoutState = layoutState.bottomDrawerVisible
+      ? { ...layoutState, bottomDrawerVisible: false }
+      : { ...layoutState, bottomDrawerMode: 'pinned', bottomDrawerVisible: true };
     persistLayoutState();
   };
 
@@ -2056,7 +2053,7 @@ const startPlayground = async (): Promise<void> => {
     lastDiagnostics = diagnostic;
     layoutState = {
       ...layoutState,
-      rightDockTab: 'diagnostics',
+      rightDockTab: 'problems',
       rightDockVisible: true,
       bottomDrawerTab: 'console',
       bottomDrawerVisible: true,
@@ -2121,7 +2118,7 @@ const startPlayground = async (): Promise<void> => {
       if (!result.ok) {
         layoutState = {
           ...layoutState,
-          rightDockTab: 'diagnostics',
+          rightDockTab: 'problems',
           rightDockVisible: true,
           bottomDrawerTab: 'console',
           bottomDrawerVisible: true,
