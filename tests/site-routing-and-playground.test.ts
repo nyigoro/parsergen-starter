@@ -157,6 +157,6 @@ describe('site routing and playground integration', () => {
     expect(playgroundStyle).toContain('var(--left-rail-width)');
     expect(playgroundStyle).toContain('.layout-splitter');
     expect(playgroundStyle).toContain('.bottom-drawer-body');
-    expect(playgroundStyle).toContain('@media (max-width: 1180px)');
+    expect(playgroundStyle).toContain('@media (max-width: 960px)');
   });
 });

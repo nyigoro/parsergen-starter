@@ -320,7 +320,7 @@ test.describe('playground browser smoke', () => {
     }
   });
 
-  test('keeps a single-column workbench when collapsing panels in a narrow viewport', async ({
+  test('keeps a compact docked workbench when collapsing panels in a narrow viewport', async ({
     page,
   }) => {
     const server = await startSmokeServer();
@@ -337,6 +337,8 @@ test.describe('playground browser smoke', () => {
         const body = document.querySelector('.playground-body');
         const workbench = document.querySelector('.ide-workbench');
         const center = document.querySelector('.center-editor');
+        const leftEdge = document.getElementById('left-edge-strip');
+        const rightEdge = document.getElementById('right-edge-strip');
         return {
           leftMode: body?.getAttribute('data-left-rail-mode'),
           leftVisible: body?.getAttribute('data-left-rail-visible'),
@@ -347,6 +349,9 @@ test.describe('playground browser smoke', () => {
           gridTemplateColumns: workbench ? getComputedStyle(workbench).gridTemplateColumns : '',
           workbenchWidth: workbench?.getBoundingClientRect().width ?? 0,
           centerWidth: center?.getBoundingClientRect().width ?? 0,
+          leftEdgeDisplay: leftEdge ? getComputedStyle(leftEdge).display : '',
+          rightEdgeDisplay: rightEdge ? getComputedStyle(rightEdge).display : '',
+          hasVerticalScroll: document.documentElement.scrollHeight > window.innerHeight + 6,
         };
       });
 
@@ -356,8 +361,11 @@ test.describe('playground browser smoke', () => {
       expect(layout.rightVisible).toBe('false');
       expect(layout.bottomMode).toBe('auto-hide');
       expect(layout.bottomVisible).toBe('false');
-      expect(layout.gridTemplateColumns.trim().split(/\s+/)).toHaveLength(1);
-      expect(layout.centerWidth).toBeGreaterThan(layout.workbenchWidth - 8);
+      expect(layout.leftEdgeDisplay).toBe('flex');
+      expect(layout.rightEdgeDisplay).toBe('flex');
+      expect(layout.gridTemplateColumns.trim().split(/\s+/).length).toBeGreaterThanOrEqual(3);
+      expect(layout.centerWidth).toBeGreaterThan(layout.workbenchWidth * 0.7);
+      expect(layout.hasVerticalScroll).toBe(false);
 
       await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
       await selectRailTab(page, 'files');
