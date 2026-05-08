@@ -121,8 +121,18 @@ describe('site routing and playground integration', () => {
       'utf-8'
     );
 
-    expect(playgroundApp).toContain('props_class("left-rail dock-shell")');
-    expect(playgroundApp).toContain('props_class("right-dock dock-shell")');
+    expect(playgroundApp).toContain('workspace-shell');
+    expect(playgroundApp).toContain('dock-layout');
+    expect(playgroundApp).toContain('center-dock-stack');
+    expect(playgroundApp).toContain('props_class("left-rail dock-group dock-shell")');
+    expect(playgroundApp).toContain('props_class("right-dock dock-group dock-shell")');
+    expect(playgroundApp).toContain('props_class("bottom-drawer dock-group")');
+    expect(playgroundApp).toContain('props_id("left-edge-strip")');
+    expect(playgroundApp).toContain('props_id("right-edge-strip")');
+    expect(playgroundApp).toContain('props_id("bottom-edge-strip")');
+    expect(playgroundApp).toContain('edge-rail-tab-workspace');
+    expect(playgroundApp).toContain('edge-dock-tab-preview');
+    expect(playgroundApp).toContain('edge-drawer-tab-console');
     expect(playgroundApp).toContain('div_node("center-editor"');
     expect(playgroundApp).toContain('props_id("left-rail-splitter")');
     expect(playgroundApp).toContain('props_id("right-dock-splitter")');
@@ -133,12 +143,20 @@ describe('site routing and playground integration', () => {
     expect(playgroundApp).toContain('diagnostics-root');
     expect(playgroundApp).toContain('route-details-root');
     expect(playgroundApp).toContain('data-tab-group');
+    expect(playgroundStyle).toContain('.workspace-shell');
+    expect(playgroundStyle).toContain('.dock-group');
+    expect(playgroundStyle).toContain('.center-dock-stack');
+    expect(playgroundStyle).toContain('.edge-strip');
+    expect(playgroundStyle).toContain('--edge-strip-size');
+    expect(playgroundStyle).toContain('height: 100dvh');
+    expect(playgroundStyle).toContain("data-left-rail-mode='auto-hide'");
+    expect(playgroundStyle).toContain("data-left-rail-visible='true'");
+    expect(playgroundStyle).toContain("data-bottom-drawer-mode='auto-hide'");
+    expect(playgroundStyle).toContain('position: absolute');
     expect(playgroundStyle).toContain('.ide-workbench');
     expect(playgroundStyle).toContain('var(--left-rail-width)');
     expect(playgroundStyle).toContain('.layout-splitter');
     expect(playgroundStyle).toContain('.bottom-drawer-body');
-    expect(playgroundStyle).toContain("data-left-rail-collapsed");
-    expect(playgroundStyle).toContain('@media (min-width: 1181px)');
     expect(playgroundStyle).toContain('@media (max-width: 1180px)');
   });
 });

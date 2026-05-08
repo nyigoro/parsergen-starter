@@ -117,13 +117,17 @@ type PlaygroundUiState = {
 type LeftRailTab = 'workspace' | 'files' | 'presets';
 type RightDockTab = 'preview' | 'diagnostics' | 'route' | 'packages' | 'inspector';
 type BottomDrawerTab = 'console' | 'events' | 'js';
+type DockMode = 'pinned' | 'auto-hide';
 
 type PlaygroundLayoutState = {
-  leftRailCollapsed: boolean;
+  leftRailMode: DockMode;
+  leftRailVisible: boolean;
   leftRailTab: LeftRailTab;
-  rightDockCollapsed: boolean;
+  rightDockMode: DockMode;
+  rightDockVisible: boolean;
   rightDockTab: RightDockTab;
-  bottomDrawerCollapsed: boolean;
+  bottomDrawerMode: DockMode;
+  bottomDrawerVisible: boolean;
   bottomDrawerTab: BottomDrawerTab;
   leftRailWidth: number;
   rightDockWidth: number;
@@ -214,6 +218,13 @@ const writeWorkspaceStore = (store: PlaygroundWorkspaceCollection): void => {
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+const persistedLayoutState = (state: PlaygroundLayoutState): PlaygroundLayoutState => ({
+  ...state,
+  leftRailVisible: state.leftRailMode === 'pinned',
+  rightDockVisible: state.rightDockMode === 'pinned',
+  bottomDrawerVisible: state.bottomDrawerMode === 'pinned',
+});
+
 const sanitizeLayoutState = (value: unknown): PlaygroundLayoutState => {
   const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   const leftRailTab =
@@ -229,13 +240,29 @@ const sanitizeLayoutState = (value: unknown): PlaygroundLayoutState => {
     source.bottomDrawerTab === 'events' || source.bottomDrawerTab === 'js'
       ? source.bottomDrawerTab
       : 'console';
+  const leftRailMode: DockMode =
+    source.leftRailMode === 'auto-hide' || source.leftRailCollapsed === true ? 'auto-hide' : 'pinned';
+  const rightDockMode: DockMode =
+    source.rightDockMode === 'auto-hide' || source.rightDockCollapsed === true ? 'auto-hide' : 'pinned';
+  const bottomDrawerMode: DockMode =
+    source.bottomDrawerMode === 'auto-hide' || source.bottomDrawerCollapsed === true
+      ? 'auto-hide'
+      : 'pinned';
 
   return {
-    leftRailCollapsed: source.leftRailCollapsed === true,
+    leftRailMode,
+    leftRailVisible:
+      typeof source.leftRailVisible === 'boolean' ? source.leftRailVisible : leftRailMode === 'pinned',
     leftRailTab,
-    rightDockCollapsed: source.rightDockCollapsed === true,
+    rightDockMode,
+    rightDockVisible:
+      typeof source.rightDockVisible === 'boolean' ? source.rightDockVisible : rightDockMode === 'pinned',
     rightDockTab,
-    bottomDrawerCollapsed: source.bottomDrawerCollapsed === true,
+    bottomDrawerMode,
+    bottomDrawerVisible:
+      typeof source.bottomDrawerVisible === 'boolean'
+        ? source.bottomDrawerVisible
+        : bottomDrawerMode === 'pinned',
     bottomDrawerTab,
     leftRailWidth: clamp(
       typeof source.leftRailWidth === 'number' && Number.isFinite(source.leftRailWidth)
@@ -272,7 +299,7 @@ const readLayoutState = (): PlaygroundLayoutState => {
 
 const writeLayoutState = (state: PlaygroundLayoutState): void => {
   try {
-    window.localStorage.setItem(layoutStorageKey, JSON.stringify(state));
+    window.localStorage.setItem(layoutStorageKey, JSON.stringify(persistedLayoutState(state)));
   } catch {
     // Layout state is optional.
   }
@@ -1485,71 +1512,136 @@ const startPlayground = async (): Promise<void> => {
     else element.removeAttribute('hidden');
   };
 
+  const setTabButtonsActive = <T extends string>(group: string, active: T): void => {
+    document.querySelectorAll<HTMLElement>(`[data-tab-group="${group}"]`).forEach((button) => {
+      button.dataset.active = String(button.dataset.tabValue === active);
+    });
+  };
+
+  const updateModePill = (id: string, mode: DockMode): void => {
+    setText(id, mode === 'pinned' ? 'pinned' : 'auto-hide');
+    setDataset(id, 'status', mode === 'pinned' ? 'ok' : 'idle');
+  };
+
+  const setGroupMode = (
+    group: 'left' | 'right' | 'bottom',
+    mode: DockMode,
+    options: { visible?: boolean } = {}
+  ): void => {
+    if (group === 'left') {
+      layoutState = {
+        ...layoutState,
+        leftRailMode: mode,
+        leftRailVisible: options.visible ?? (mode === 'pinned'),
+      };
+      persistLayoutState();
+      return;
+    }
+    if (group === 'right') {
+      layoutState = {
+        ...layoutState,
+        rightDockMode: mode,
+        rightDockVisible: options.visible ?? (mode === 'pinned'),
+      };
+      persistLayoutState();
+      return;
+    }
+    layoutState = {
+      ...layoutState,
+      bottomDrawerMode: mode,
+      bottomDrawerVisible: options.visible ?? (mode === 'pinned'),
+    };
+    persistLayoutState();
+  };
+
+  const hideAutoHideOverlays = (): void => {
+    const nextState: PlaygroundLayoutState = {
+      ...layoutState,
+      leftRailVisible: layoutState.leftRailMode === 'pinned',
+      rightDockVisible: layoutState.rightDockMode === 'pinned',
+      bottomDrawerVisible: layoutState.bottomDrawerMode === 'pinned',
+    };
+    const changed =
+      nextState.leftRailVisible !== layoutState.leftRailVisible ||
+      nextState.rightDockVisible !== layoutState.rightDockVisible ||
+      nextState.bottomDrawerVisible !== layoutState.bottomDrawerVisible;
+    if (!changed) return;
+    layoutState = nextState;
+    persistLayoutState();
+  };
+
   const syncLayoutState = (): void => {
-    playgroundBody.dataset.leftRailCollapsed = layoutState.leftRailCollapsed ? 'true' : 'false';
-    playgroundBody.dataset.rightDockCollapsed = layoutState.rightDockCollapsed ? 'true' : 'false';
-    playgroundBody.dataset.bottomDrawerCollapsed = layoutState.bottomDrawerCollapsed ? 'true' : 'false';
+    playgroundBody.dataset.leftRailMode = layoutState.leftRailMode;
+    playgroundBody.dataset.leftRailVisible = layoutState.leftRailVisible ? 'true' : 'false';
+    playgroundBody.dataset.rightDockMode = layoutState.rightDockMode;
+    playgroundBody.dataset.rightDockVisible = layoutState.rightDockVisible ? 'true' : 'false';
+    playgroundBody.dataset.bottomDrawerMode = layoutState.bottomDrawerMode;
+    playgroundBody.dataset.bottomDrawerVisible = layoutState.bottomDrawerVisible ? 'true' : 'false';
+    playgroundBody.dataset.leftRailCollapsed = layoutState.leftRailMode === 'auto-hide' ? 'true' : 'false';
+    playgroundBody.dataset.rightDockCollapsed = layoutState.rightDockMode === 'auto-hide' ? 'true' : 'false';
+    playgroundBody.dataset.bottomDrawerCollapsed =
+      layoutState.bottomDrawerMode === 'auto-hide' ? 'true' : 'false';
     playgroundBody.style.setProperty('--left-rail-width', `${layoutState.leftRailWidth}px`);
     playgroundBody.style.setProperty('--right-dock-width', `${layoutState.rightDockWidth}px`);
     playgroundBody.style.setProperty('--bottom-drawer-height', `${layoutState.bottomDrawerHeight}px`);
 
     const railTabs: LeftRailTab[] = ['workspace', 'files', 'presets'];
     for (const tab of railTabs) {
-      const button = document.getElementById(`rail-tab-${tab}`);
-      if (button) button.dataset.active = String(layoutState.leftRailTab === tab);
-      setHidden(`rail-${tab}-panel`, layoutState.leftRailCollapsed || layoutState.leftRailTab !== tab);
+      setHidden(`rail-${tab}-panel`, layoutState.leftRailTab !== tab);
     }
+    setTabButtonsActive('rail', layoutState.leftRailTab);
 
     const dockTabs: RightDockTab[] = ['preview', 'diagnostics', 'route', 'packages', 'inspector'];
     for (const tab of dockTabs) {
-      const button = document.getElementById(`dock-tab-${tab}`);
-      if (button) button.dataset.active = String(layoutState.rightDockTab === tab);
-      setHidden(`dock-panel-${tab}`, layoutState.rightDockCollapsed || layoutState.rightDockTab !== tab);
+      setHidden(`dock-panel-${tab}`, layoutState.rightDockTab !== tab);
     }
+    setTabButtonsActive('dock', layoutState.rightDockTab);
 
     const drawerTabs: BottomDrawerTab[] = ['console', 'events', 'js'];
     for (const tab of drawerTabs) {
-      const button = document.getElementById(`drawer-tab-${tab}`);
-      if (button) button.dataset.active = String(layoutState.bottomDrawerTab === tab);
-      setHidden(
-        `drawer-panel-${tab}`,
-        layoutState.bottomDrawerCollapsed || layoutState.bottomDrawerTab !== tab
-      );
+      setHidden(`drawer-panel-${tab}`, layoutState.bottomDrawerTab !== tab);
     }
+    setTabButtonsActive('drawer', layoutState.bottomDrawerTab);
 
-    const leftRailLabel = layoutState.leftRailCollapsed ? 'Show' : 'Collapse';
-    const rightDockLabel = layoutState.rightDockCollapsed ? 'Show' : 'Collapse';
-    const bottomDrawerLabel = layoutState.bottomDrawerCollapsed ? 'Show' : 'Collapse';
-    setButtonLabel('toggle-left-rail-button', leftRailLabel);
-    setButtonLabel('toggle-right-dock-button', rightDockLabel);
-    setButtonLabel('toggle-bottom-drawer-button', bottomDrawerLabel);
+    const leftToolbarLabel = layoutState.leftRailVisible ? 'Hide Explorer' : 'Explorer';
+    const rightToolbarLabel = layoutState.rightDockVisible ? 'Hide Dock' : 'Dock';
+    const bottomToolbarLabel = layoutState.bottomDrawerVisible ? 'Hide Output' : 'Output';
+    setButtonLabel('toggle-left-rail-button', layoutState.leftRailMode === 'pinned' ? 'Auto-hide' : 'Pin');
+    setButtonLabel('toggle-right-dock-button', layoutState.rightDockMode === 'pinned' ? 'Auto-hide' : 'Pin');
+    setButtonLabel(
+      'toggle-bottom-drawer-button',
+      layoutState.bottomDrawerMode === 'pinned' ? 'Auto-hide' : 'Pin'
+    );
     setButtonLabel(
       'toggle-left-rail-toolbar-button',
-      layoutState.leftRailCollapsed ? 'Explorer Off' : 'Explorer'
+      leftToolbarLabel
     );
     setButtonLabel(
       'toggle-right-dock-toolbar-button',
-      layoutState.rightDockCollapsed ? 'Dock Off' : 'Dock'
+      rightToolbarLabel
     );
     setButtonLabel(
       'toggle-bottom-drawer-toolbar-button',
-      layoutState.bottomDrawerCollapsed ? 'Output Off' : 'Output'
+      bottomToolbarLabel
     );
     setDataset(
       'toggle-left-rail-toolbar-button',
       'active',
-      layoutState.leftRailCollapsed ? 'false' : 'true'
+      layoutState.leftRailVisible ? 'true' : 'false'
     );
     setDataset(
       'toggle-right-dock-toolbar-button',
       'active',
-      layoutState.rightDockCollapsed ? 'false' : 'true'
+      layoutState.rightDockVisible ? 'true' : 'false'
     );
     setDataset(
       'toggle-bottom-drawer-toolbar-button',
       'active',
-      layoutState.bottomDrawerCollapsed ? 'false' : 'true'
+      layoutState.bottomDrawerVisible ? 'true' : 'false'
     );
+    updateModePill('left-rail-mode-pill', layoutState.leftRailMode);
+    updateModePill('right-dock-mode-pill', layoutState.rightDockMode);
+    updateModePill('bottom-drawer-mode-pill', layoutState.bottomDrawerMode);
   };
 
   const persistLayoutState = (): void => {
@@ -1558,32 +1650,113 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const selectLeftRailTab = (tab: LeftRailTab): void => {
-    layoutState = { ...layoutState, leftRailCollapsed: false, leftRailTab: tab };
+    layoutState = {
+      ...layoutState,
+      leftRailTab: tab,
+      leftRailVisible: true,
+    };
     persistLayoutState();
   };
 
   const selectRightDockTab = (tab: RightDockTab): void => {
-    layoutState = { ...layoutState, rightDockCollapsed: false, rightDockTab: tab };
+    layoutState = {
+      ...layoutState,
+      rightDockTab: tab,
+      rightDockVisible: true,
+    };
     persistLayoutState();
   };
 
   const selectBottomDrawerTab = (tab: BottomDrawerTab): void => {
-    layoutState = { ...layoutState, bottomDrawerCollapsed: false, bottomDrawerTab: tab };
+    layoutState = {
+      ...layoutState,
+      bottomDrawerTab: tab,
+      bottomDrawerVisible: true,
+    };
     persistLayoutState();
   };
 
-  const toggleLeftRail = (): void => {
-    layoutState = { ...layoutState, leftRailCollapsed: !layoutState.leftRailCollapsed };
+  const toggleLeftRailMode = (): void =>
+    setGroupMode('left', layoutState.leftRailMode === 'pinned' ? 'auto-hide' : 'pinned');
+
+  const toggleRightDockMode = (): void =>
+    setGroupMode('right', layoutState.rightDockMode === 'pinned' ? 'auto-hide' : 'pinned');
+
+  const toggleBottomDrawerMode = (): void =>
+    setGroupMode('bottom', layoutState.bottomDrawerMode === 'pinned' ? 'auto-hide' : 'pinned');
+
+  const toggleLeftRailToolbar = (): void => {
+    if (layoutState.leftRailMode === 'pinned') {
+      setGroupMode('left', 'auto-hide', { visible: false });
+      return;
+    }
+    layoutState = { ...layoutState, leftRailVisible: !layoutState.leftRailVisible };
     persistLayoutState();
   };
 
-  const toggleRightDock = (): void => {
-    layoutState = { ...layoutState, rightDockCollapsed: !layoutState.rightDockCollapsed };
+  const toggleRightDockToolbar = (): void => {
+    if (layoutState.rightDockMode === 'pinned') {
+      setGroupMode('right', 'auto-hide', { visible: false });
+      return;
+    }
+    layoutState = { ...layoutState, rightDockVisible: !layoutState.rightDockVisible };
     persistLayoutState();
   };
 
-  const toggleBottomDrawer = (): void => {
-    layoutState = { ...layoutState, bottomDrawerCollapsed: !layoutState.bottomDrawerCollapsed };
+  const toggleBottomDrawerToolbar = (): void => {
+    if (layoutState.bottomDrawerMode === 'pinned') {
+      setGroupMode('bottom', 'auto-hide', { visible: false });
+      return;
+    }
+    layoutState = { ...layoutState, bottomDrawerVisible: !layoutState.bottomDrawerVisible };
+    persistLayoutState();
+  };
+
+  const containsEventTarget = (
+    target: EventTarget | null,
+    selector: string
+  ): boolean => {
+    if (!(target instanceof Node)) return false;
+    const element = document.querySelector(selector);
+    return element instanceof HTMLElement ? element.contains(target) : false;
+  };
+
+  const eventTargetsAnyControl = (target: EventTarget | null, ids: string[]): boolean => {
+    if (!(target instanceof Element)) return false;
+    return ids.some((id) => target.closest(`#${id}`) !== null);
+  };
+
+  const dismissAutoHideOverlaysFromTarget = (target: EventTarget | null): void => {
+    let nextState = layoutState;
+    if (
+      nextState.leftRailMode === 'auto-hide' &&
+      nextState.leftRailVisible &&
+      !containsEventTarget(target, '#left-dock-group') &&
+      !containsEventTarget(target, '#left-edge-strip') &&
+      !eventTargetsAnyControl(target, ['toggle-left-rail-button', 'toggle-left-rail-toolbar-button'])
+    ) {
+      nextState = { ...nextState, leftRailVisible: false };
+    }
+    if (
+      nextState.rightDockMode === 'auto-hide' &&
+      nextState.rightDockVisible &&
+      !containsEventTarget(target, '.right-dock') &&
+      !containsEventTarget(target, '#right-edge-strip') &&
+      !eventTargetsAnyControl(target, ['toggle-right-dock-button', 'toggle-right-dock-toolbar-button'])
+    ) {
+      nextState = { ...nextState, rightDockVisible: false };
+    }
+    if (
+      nextState.bottomDrawerMode === 'auto-hide' &&
+      nextState.bottomDrawerVisible &&
+      !containsEventTarget(target, '#bottom-drawer-shell') &&
+      !containsEventTarget(target, '#bottom-edge-strip') &&
+      !eventTargetsAnyControl(target, ['toggle-bottom-drawer-button', 'toggle-bottom-drawer-toolbar-button'])
+    ) {
+      nextState = { ...nextState, bottomDrawerVisible: false };
+    }
+    if (nextState === layoutState) return;
+    layoutState = nextState;
     persistLayoutState();
   };
 
@@ -1883,10 +2056,10 @@ const startPlayground = async (): Promise<void> => {
     lastDiagnostics = diagnostic;
     layoutState = {
       ...layoutState,
-      rightDockCollapsed: false,
       rightDockTab: 'diagnostics',
-      bottomDrawerCollapsed: false,
+      rightDockVisible: true,
       bottomDrawerTab: 'console',
+      bottomDrawerVisible: true,
     };
     syncLayoutState();
     setCompileStatus('Load failed', 'error');
@@ -1948,10 +2121,10 @@ const startPlayground = async (): Promise<void> => {
       if (!result.ok) {
         layoutState = {
           ...layoutState,
-          rightDockCollapsed: false,
           rightDockTab: 'diagnostics',
-          bottomDrawerCollapsed: false,
+          rightDockVisible: true,
           bottomDrawerTab: 'console',
+          bottomDrawerVisible: true,
         };
         syncLayoutState();
       }
@@ -2030,8 +2203,8 @@ const startPlayground = async (): Promise<void> => {
     setRunStatus('Running', 'running');
     layoutState = {
       ...layoutState,
-      bottomDrawerCollapsed: false,
       bottomDrawerTab: 'console',
+      bottomDrawerVisible: true,
     };
     syncLayoutState();
 
@@ -2395,21 +2568,21 @@ const startPlayground = async (): Promise<void> => {
   editorReadyMs = now() - startedAt;
 
   bindResizeHandle(leftRailSplitter, (deltaX) => {
-    if (layoutState.leftRailCollapsed) return;
+    if (layoutState.leftRailMode === 'auto-hide' || !layoutState.leftRailVisible) return;
     layoutState = {
       ...layoutState,
       leftRailWidth: clamp(layoutState.leftRailWidth + deltaX, 224, 420),
     };
   });
   bindResizeHandle(rightDockSplitter, (deltaX) => {
-    if (layoutState.rightDockCollapsed) return;
+    if (layoutState.rightDockMode === 'auto-hide' || !layoutState.rightDockVisible) return;
     layoutState = {
       ...layoutState,
       rightDockWidth: clamp(layoutState.rightDockWidth - deltaX, 280, 560),
     };
   });
   bindResizeHandle(bottomDrawerSplitter, (_deltaX, deltaY) => {
-    if (layoutState.bottomDrawerCollapsed) return;
+    if (layoutState.bottomDrawerMode === 'auto-hide' || !layoutState.bottomDrawerVisible) return;
     layoutState = {
       ...layoutState,
       bottomDrawerHeight: clamp(layoutState.bottomDrawerHeight - deltaY, 176, 420),
@@ -2443,20 +2616,31 @@ const startPlayground = async (): Promise<void> => {
     if (event.target === dialogRoot) closeDialog(null);
   });
 
-  ['toggle-left-rail-button', 'toggle-left-rail-toolbar-button'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('click', () => {
-      toggleLeftRail();
-    });
+  document.getElementById('toggle-left-rail-button')?.addEventListener('click', () => {
+    toggleLeftRailMode();
   });
-  ['toggle-right-dock-button', 'toggle-right-dock-toolbar-button'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('click', () => {
-      toggleRightDock();
-    });
+  document.getElementById('toggle-left-rail-toolbar-button')?.addEventListener('click', () => {
+    toggleLeftRailToolbar();
   });
-  ['toggle-bottom-drawer-button', 'toggle-bottom-drawer-toolbar-button'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('click', () => {
-      toggleBottomDrawer();
-    });
+  document.getElementById('toggle-right-dock-button')?.addEventListener('click', () => {
+    toggleRightDockMode();
+  });
+  document.getElementById('toggle-right-dock-toolbar-button')?.addEventListener('click', () => {
+    toggleRightDockToolbar();
+  });
+  document.getElementById('toggle-bottom-drawer-button')?.addEventListener('click', () => {
+    toggleBottomDrawerMode();
+  });
+  document.getElementById('toggle-bottom-drawer-toolbar-button')?.addEventListener('click', () => {
+    toggleBottomDrawerToolbar();
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    dismissAutoHideOverlaysFromTarget(event.target);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') hideAutoHideOverlays();
   });
 
   document.querySelectorAll<HTMLElement>('[data-tab-group="rail"]').forEach((button) => {

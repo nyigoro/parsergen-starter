@@ -273,30 +273,48 @@ test.describe('playground browser smoke', () => {
     }
   });
 
-  test('collapses and restores the docked workbench panels', async ({ page }) => {
+  test('supports pinned and auto-hide dock groups across the workbench', async ({ page }) => {
     const server = await startSmokeServer();
     try {
       await page.goto(`${server.baseUrl}/playground/?preset=starter-app`);
       await waitForCompile(page);
 
       await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
-      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-collapsed', 'true');
-      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
-      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-collapsed', 'false');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'false');
+      await page.locator('#edge-dock-tab-diagnostics').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'true');
+      await expect(page.locator('#dock-tab-diagnostics')).toHaveAttribute('data-active', 'true');
+      const centerEditorBox = await page.locator('.center-editor').boundingBox();
+      expect(centerEditorBox).not.toBeNull();
+      await page.mouse.click((centerEditorBox?.x ?? 0) + 40, (centerEditorBox?.y ?? 0) + 40);
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'false');
+      await page.locator('#edge-dock-tab-preview').click({ force: true });
+      await page.locator('#toggle-right-dock-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-mode', 'pinned');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'true');
 
       await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
-      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-collapsed', 'true');
-      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
-      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-collapsed', 'false');
-      await selectDrawerTab(page, 'js');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'false');
+      await page.locator('#edge-drawer-tab-js').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'true');
+      await expect(page.locator('#drawer-tab-js')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#output-root')).toContainText('createRouter("/")');
+      await page.locator('#toggle-bottom-drawer-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-mode', 'pinned');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'true');
 
       await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
-      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-collapsed', 'true');
-      await page.locator('#toggle-left-rail-toolbar-button').dispatchEvent('click');
-      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-collapsed', 'false');
-      await selectRailTab(page, 'files');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'false');
+      await page.locator('#edge-rail-tab-files').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'true');
+      await expect(page.locator('#rail-tab-files')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#file-list-root')).toContainText('main.lm');
+      await page.locator('#toggle-left-rail-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-mode', 'pinned');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'true');
     } finally {
       await server.close();
     }
@@ -312,7 +330,7 @@ test.describe('playground browser smoke', () => {
       await waitForCompile(page);
 
       await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
-      await page.locator('#toggle-bottom-drawer-button').click({ force: true });
+      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
       await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
 
       const layout = await page.evaluate(() => {
@@ -320,20 +338,33 @@ test.describe('playground browser smoke', () => {
         const workbench = document.querySelector('.ide-workbench');
         const center = document.querySelector('.center-editor');
         return {
-          leftCollapsed: body?.getAttribute('data-left-rail-collapsed'),
-          rightCollapsed: body?.getAttribute('data-right-dock-collapsed'),
-          bottomCollapsed: body?.getAttribute('data-bottom-drawer-collapsed'),
+          leftMode: body?.getAttribute('data-left-rail-mode'),
+          leftVisible: body?.getAttribute('data-left-rail-visible'),
+          rightMode: body?.getAttribute('data-right-dock-mode'),
+          rightVisible: body?.getAttribute('data-right-dock-visible'),
+          bottomMode: body?.getAttribute('data-bottom-drawer-mode'),
+          bottomVisible: body?.getAttribute('data-bottom-drawer-visible'),
           gridTemplateColumns: workbench ? getComputedStyle(workbench).gridTemplateColumns : '',
           workbenchWidth: workbench?.getBoundingClientRect().width ?? 0,
           centerWidth: center?.getBoundingClientRect().width ?? 0,
         };
       });
 
-      expect(layout.leftCollapsed).toBe('true');
-      expect(layout.rightCollapsed).toBe('true');
-      expect(layout.bottomCollapsed).toBe('true');
+      expect(layout.leftMode).toBe('auto-hide');
+      expect(layout.leftVisible).toBe('false');
+      expect(layout.rightMode).toBe('auto-hide');
+      expect(layout.rightVisible).toBe('false');
+      expect(layout.bottomMode).toBe('auto-hide');
+      expect(layout.bottomVisible).toBe('false');
       expect(layout.gridTemplateColumns.trim().split(/\s+/)).toHaveLength(1);
       expect(layout.centerWidth).toBeGreaterThan(layout.workbenchWidth - 8);
+
+      await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
+      await selectRailTab(page, 'files');
+      await expect(page.locator('#file-list-root')).toContainText('main.lm');
+      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
+      await selectDrawerTab(page, 'console');
+      await expect(page.locator('#console-root')).toContainText('Run the program to see output.');
     } finally {
       await server.close();
     }
