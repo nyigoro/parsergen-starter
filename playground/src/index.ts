@@ -114,8 +114,25 @@ type PlaygroundUiState = {
   dirty: boolean;
 };
 
+type LeftRailTab = 'workspace' | 'files' | 'presets';
+type RightDockTab = 'preview' | 'diagnostics' | 'route' | 'packages' | 'inspector';
+type BottomDrawerTab = 'console' | 'events' | 'js';
+
+type PlaygroundLayoutState = {
+  leftRailCollapsed: boolean;
+  leftRailTab: LeftRailTab;
+  rightDockCollapsed: boolean;
+  rightDockTab: RightDockTab;
+  bottomDrawerCollapsed: boolean;
+  bottomDrawerTab: BottomDrawerTab;
+  leftRailWidth: number;
+  rightDockWidth: number;
+  bottomDrawerHeight: number;
+};
+
 const storageKey = 'lumina-playground-state-v3';
 const workspaceStorageKey = 'lumina-playground-workspaces-v1';
+const layoutStorageKey = 'lumina-playground-layout-v1';
 const isDirectPlaygroundDev = import.meta.env.DEV && window.location.port === '5175';
 const devAppUrl = (port: string, pathname: string): string =>
   `${window.location.protocol}//${window.location.hostname}:${port}${pathname}`;
@@ -191,6 +208,73 @@ const writeWorkspaceStore = (store: PlaygroundWorkspaceCollection): void => {
     window.localStorage.setItem(workspaceStorageKey, JSON.stringify(store));
   } catch {
     // Workspace snapshots are optional.
+  }
+};
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
+
+const sanitizeLayoutState = (value: unknown): PlaygroundLayoutState => {
+  const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const leftRailTab =
+    source.leftRailTab === 'workspace' || source.leftRailTab === 'presets' ? source.leftRailTab : 'files';
+  const rightDockTab =
+    source.rightDockTab === 'diagnostics' ||
+    source.rightDockTab === 'route' ||
+    source.rightDockTab === 'packages' ||
+    source.rightDockTab === 'inspector'
+      ? source.rightDockTab
+      : 'preview';
+  const bottomDrawerTab =
+    source.bottomDrawerTab === 'events' || source.bottomDrawerTab === 'js'
+      ? source.bottomDrawerTab
+      : 'console';
+
+  return {
+    leftRailCollapsed: source.leftRailCollapsed === true,
+    leftRailTab,
+    rightDockCollapsed: source.rightDockCollapsed === true,
+    rightDockTab,
+    bottomDrawerCollapsed: source.bottomDrawerCollapsed === true,
+    bottomDrawerTab,
+    leftRailWidth: clamp(
+      typeof source.leftRailWidth === 'number' && Number.isFinite(source.leftRailWidth)
+        ? source.leftRailWidth
+        : 288,
+      224,
+      420
+    ),
+    rightDockWidth: clamp(
+      typeof source.rightDockWidth === 'number' && Number.isFinite(source.rightDockWidth)
+        ? source.rightDockWidth
+        : 384,
+      280,
+      560
+    ),
+    bottomDrawerHeight: clamp(
+      typeof source.bottomDrawerHeight === 'number' && Number.isFinite(source.bottomDrawerHeight)
+        ? source.bottomDrawerHeight
+        : 272,
+      176,
+      420
+    ),
+  };
+};
+
+const readLayoutState = (): PlaygroundLayoutState => {
+  try {
+    const raw = window.localStorage.getItem(layoutStorageKey);
+    return sanitizeLayoutState(raw ? JSON.parse(raw) : null);
+  } catch {
+    return sanitizeLayoutState(null);
+  }
+};
+
+const writeLayoutState = (state: PlaygroundLayoutState): void => {
+  try {
+    window.localStorage.setItem(layoutStorageKey, JSON.stringify(state));
+  } catch {
+    // Layout state is optional.
   }
 };
 
@@ -1325,6 +1409,10 @@ const startPlayground = async (): Promise<void> => {
   const dialogForm = document.getElementById('dialog-form') as HTMLFormElement | null;
   const dialogCancelButton = document.getElementById('dialog-cancel-button') as HTMLButtonElement | null;
   const dialogSubmitButton = document.getElementById('dialog-submit-button') as HTMLButtonElement | null;
+  const playgroundBody = document.querySelector<HTMLElement>('.playground-body');
+  const leftRailSplitter = document.getElementById('left-rail-splitter');
+  const rightDockSplitter = document.getElementById('right-dock-splitter');
+  const bottomDrawerSplitter = document.getElementById('bottom-drawer-splitter');
   if (
     !diagnosticsRoot ||
     !outputRoot ||
@@ -1341,7 +1429,11 @@ const startPlayground = async (): Promise<void> => {
     !dialogError ||
     !dialogForm ||
     !dialogCancelButton ||
-    !dialogSubmitButton
+    !dialogSubmitButton ||
+    !playgroundBody ||
+    !leftRailSplitter ||
+    !rightDockSplitter ||
+    !bottomDrawerSplitter
   ) {
     throw new Error('Playground panels did not mount.');
   }
@@ -1363,6 +1455,7 @@ const startPlayground = async (): Promise<void> => {
     | null = null;
   let diagnosticsFilter: 'all' | 'error' | 'warning' = 'all';
   let editorReadyMs = now() - startedAt;
+  let layoutState = readLayoutState();
 
   const importWorkspaceInput = createImportInput();
 
@@ -1378,6 +1471,148 @@ const startPlayground = async (): Promise<void> => {
   const setRunStatus = (label: string, status: 'idle' | 'running' | 'ok' | 'error'): void => {
     setText('run-status', label);
     setDataset('run-status', 'status', status);
+  };
+
+  const setButtonLabel = (id: string, label: string): void => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = label;
+  };
+
+  const setHidden = (id: string, hidden: boolean): void => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    if (hidden) element.setAttribute('hidden', 'true');
+    else element.removeAttribute('hidden');
+  };
+
+  const syncLayoutState = (): void => {
+    playgroundBody.dataset.leftRailCollapsed = layoutState.leftRailCollapsed ? 'true' : 'false';
+    playgroundBody.dataset.rightDockCollapsed = layoutState.rightDockCollapsed ? 'true' : 'false';
+    playgroundBody.dataset.bottomDrawerCollapsed = layoutState.bottomDrawerCollapsed ? 'true' : 'false';
+    playgroundBody.style.setProperty('--left-rail-width', `${layoutState.leftRailWidth}px`);
+    playgroundBody.style.setProperty('--right-dock-width', `${layoutState.rightDockWidth}px`);
+    playgroundBody.style.setProperty('--bottom-drawer-height', `${layoutState.bottomDrawerHeight}px`);
+
+    const railTabs: LeftRailTab[] = ['workspace', 'files', 'presets'];
+    for (const tab of railTabs) {
+      const button = document.getElementById(`rail-tab-${tab}`);
+      if (button) button.dataset.active = String(layoutState.leftRailTab === tab);
+      setHidden(`rail-${tab}-panel`, layoutState.leftRailCollapsed || layoutState.leftRailTab !== tab);
+    }
+
+    const dockTabs: RightDockTab[] = ['preview', 'diagnostics', 'route', 'packages', 'inspector'];
+    for (const tab of dockTabs) {
+      const button = document.getElementById(`dock-tab-${tab}`);
+      if (button) button.dataset.active = String(layoutState.rightDockTab === tab);
+      setHidden(`dock-panel-${tab}`, layoutState.rightDockCollapsed || layoutState.rightDockTab !== tab);
+    }
+
+    const drawerTabs: BottomDrawerTab[] = ['console', 'events', 'js'];
+    for (const tab of drawerTabs) {
+      const button = document.getElementById(`drawer-tab-${tab}`);
+      if (button) button.dataset.active = String(layoutState.bottomDrawerTab === tab);
+      setHidden(
+        `drawer-panel-${tab}`,
+        layoutState.bottomDrawerCollapsed || layoutState.bottomDrawerTab !== tab
+      );
+    }
+
+    const leftRailLabel = layoutState.leftRailCollapsed ? 'Show' : 'Collapse';
+    const rightDockLabel = layoutState.rightDockCollapsed ? 'Show' : 'Collapse';
+    const bottomDrawerLabel = layoutState.bottomDrawerCollapsed ? 'Show' : 'Collapse';
+    setButtonLabel('toggle-left-rail-button', leftRailLabel);
+    setButtonLabel('toggle-right-dock-button', rightDockLabel);
+    setButtonLabel('toggle-bottom-drawer-button', bottomDrawerLabel);
+    setButtonLabel(
+      'toggle-left-rail-toolbar-button',
+      layoutState.leftRailCollapsed ? 'Explorer Off' : 'Explorer'
+    );
+    setButtonLabel(
+      'toggle-right-dock-toolbar-button',
+      layoutState.rightDockCollapsed ? 'Dock Off' : 'Dock'
+    );
+    setButtonLabel(
+      'toggle-bottom-drawer-toolbar-button',
+      layoutState.bottomDrawerCollapsed ? 'Output Off' : 'Output'
+    );
+    setDataset(
+      'toggle-left-rail-toolbar-button',
+      'active',
+      layoutState.leftRailCollapsed ? 'false' : 'true'
+    );
+    setDataset(
+      'toggle-right-dock-toolbar-button',
+      'active',
+      layoutState.rightDockCollapsed ? 'false' : 'true'
+    );
+    setDataset(
+      'toggle-bottom-drawer-toolbar-button',
+      'active',
+      layoutState.bottomDrawerCollapsed ? 'false' : 'true'
+    );
+  };
+
+  const persistLayoutState = (): void => {
+    syncLayoutState();
+    writeLayoutState(layoutState);
+  };
+
+  const selectLeftRailTab = (tab: LeftRailTab): void => {
+    layoutState = { ...layoutState, leftRailCollapsed: false, leftRailTab: tab };
+    persistLayoutState();
+  };
+
+  const selectRightDockTab = (tab: RightDockTab): void => {
+    layoutState = { ...layoutState, rightDockCollapsed: false, rightDockTab: tab };
+    persistLayoutState();
+  };
+
+  const selectBottomDrawerTab = (tab: BottomDrawerTab): void => {
+    layoutState = { ...layoutState, bottomDrawerCollapsed: false, bottomDrawerTab: tab };
+    persistLayoutState();
+  };
+
+  const toggleLeftRail = (): void => {
+    layoutState = { ...layoutState, leftRailCollapsed: !layoutState.leftRailCollapsed };
+    persistLayoutState();
+  };
+
+  const toggleRightDock = (): void => {
+    layoutState = { ...layoutState, rightDockCollapsed: !layoutState.rightDockCollapsed };
+    persistLayoutState();
+  };
+
+  const toggleBottomDrawer = (): void => {
+    layoutState = { ...layoutState, bottomDrawerCollapsed: !layoutState.bottomDrawerCollapsed };
+    persistLayoutState();
+  };
+
+  const bindResizeHandle = (
+    handle: HTMLElement,
+    update: (deltaX: number, deltaY: number) => void
+  ): void => {
+    handle.addEventListener('pointerdown', (event) => {
+      if (window.matchMedia('(max-width: 1180px)').matches) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      handle.setPointerCapture(event.pointerId);
+
+      const move = (moveEvent: PointerEvent): void => {
+        update(moveEvent.clientX - startX, moveEvent.clientY - startY);
+        syncLayoutState();
+      };
+
+      const finish = (): void => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', finish);
+        handle.removeEventListener('pointercancel', finish);
+        writeLayoutState(layoutState);
+      };
+
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', finish);
+      handle.addEventListener('pointercancel', finish);
+    });
   };
 
   let activeDialogResolver:
@@ -1646,6 +1881,14 @@ const startPlayground = async (): Promise<void> => {
   const renderLoadFailure = (message: string): void => {
     const diagnostic = [{ severity: 'error', message, code: 'PLAYGROUND-LOAD' } satisfies CompileDiagnostic];
     lastDiagnostics = diagnostic;
+    layoutState = {
+      ...layoutState,
+      rightDockCollapsed: false,
+      rightDockTab: 'diagnostics',
+      bottomDrawerCollapsed: false,
+      bottomDrawerTab: 'console',
+    };
+    syncLayoutState();
     setCompileStatus('Load failed', 'error');
     setRunStatus('Blocked', 'error');
     renderDiagnostics(diagnosticsRoot, diagnostic, diagnosticsFilter);
@@ -1702,6 +1945,16 @@ const startPlayground = async (): Promise<void> => {
       setButtonDisabled('stop-compile-button', true);
       lastResult = result;
       lastDiagnostics = result.diagnostics;
+      if (!result.ok) {
+        layoutState = {
+          ...layoutState,
+          rightDockCollapsed: false,
+          rightDockTab: 'diagnostics',
+          bottomDrawerCollapsed: false,
+          bottomDrawerTab: 'console',
+        };
+        syncLayoutState();
+      }
       setCompileStatus(result.ok ? `Compiled • ${result.timings.totalMs.toFixed(1)}ms` : 'Needs attention', result.ok ? 'ok' : 'error');
       setText('output-mode', `JS • ${result.graphNodes} modules`);
       renderDiagnostics(diagnosticsRoot, result.diagnostics, diagnosticsFilter);
@@ -1775,6 +2028,12 @@ const startPlayground = async (): Promise<void> => {
     activeRun = { controller };
     setButtonDisabled('stop-run-button', false);
     setRunStatus('Running', 'running');
+    layoutState = {
+      ...layoutState,
+      bottomDrawerCollapsed: false,
+      bottomDrawerTab: 'console',
+    };
+    syncLayoutState();
 
     try {
       const routeHref = routeHrefFromLocation(currentRouteLocation(state.routePreview), playgroundBaseHref);
@@ -2037,6 +2296,8 @@ const startPlayground = async (): Promise<void> => {
       return;
     }
     syncProjectFromEditor();
+    selectRightDockTab('packages');
+    selectLeftRailTab('files');
     mountActiveFile(packageFile.uri);
   };
 
@@ -2123,6 +2384,7 @@ const startPlayground = async (): Promise<void> => {
     elementId: 'editor-root',
     initialValue: getProjectFile(state.project, state.project.activeFileUri)?.text ?? '',
   });
+  syncLayoutState();
   syncProjectStats();
   setCompileStatus('Idle', 'idle');
   setRunStatus('Not run', 'idle');
@@ -2131,6 +2393,28 @@ const startPlayground = async (): Promise<void> => {
   renderModuleGraph(moduleGraphRoot, null);
   renderCompileDetails(compileDetailsRoot, null);
   editorReadyMs = now() - startedAt;
+
+  bindResizeHandle(leftRailSplitter, (deltaX) => {
+    if (layoutState.leftRailCollapsed) return;
+    layoutState = {
+      ...layoutState,
+      leftRailWidth: clamp(layoutState.leftRailWidth + deltaX, 224, 420),
+    };
+  });
+  bindResizeHandle(rightDockSplitter, (deltaX) => {
+    if (layoutState.rightDockCollapsed) return;
+    layoutState = {
+      ...layoutState,
+      rightDockWidth: clamp(layoutState.rightDockWidth - deltaX, 280, 560),
+    };
+  });
+  bindResizeHandle(bottomDrawerSplitter, (_deltaX, deltaY) => {
+    if (layoutState.bottomDrawerCollapsed) return;
+    layoutState = {
+      ...layoutState,
+      bottomDrawerHeight: clamp(layoutState.bottomDrawerHeight - deltaY, 176, 420),
+    };
+  });
 
   dialogForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -2157,6 +2441,46 @@ const startPlayground = async (): Promise<void> => {
 
   dialogRoot.addEventListener('click', (event) => {
     if (event.target === dialogRoot) closeDialog(null);
+  });
+
+  ['toggle-left-rail-button', 'toggle-left-rail-toolbar-button'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      toggleLeftRail();
+    });
+  });
+  ['toggle-right-dock-button', 'toggle-right-dock-toolbar-button'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      toggleRightDock();
+    });
+  });
+  ['toggle-bottom-drawer-button', 'toggle-bottom-drawer-toolbar-button'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      toggleBottomDrawer();
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>('[data-tab-group="rail"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const tab = button.dataset.tabValue as LeftRailTab | undefined;
+      if (!tab) return;
+      selectLeftRailTab(tab);
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>('[data-tab-group="dock"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const tab = button.dataset.tabValue as RightDockTab | undefined;
+      if (!tab) return;
+      selectRightDockTab(tab);
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>('[data-tab-group="drawer"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const tab = button.dataset.tabValue as BottomDrawerTab | undefined;
+      if (!tab) return;
+      selectBottomDrawerTab(tab);
+    });
   });
 
   onEditorChange('editor-root', () => {

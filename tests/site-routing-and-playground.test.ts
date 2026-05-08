@@ -121,17 +121,24 @@ describe('site routing and playground integration', () => {
       'utf-8'
     );
 
-    expect(playgroundApp).toContain('props_class("left-rail")');
-    expect(playgroundApp).toContain('props_class("right-dock")');
+    expect(playgroundApp).toContain('props_class("left-rail dock-shell")');
+    expect(playgroundApp).toContain('props_class("right-dock dock-shell")');
     expect(playgroundApp).toContain('div_node("center-editor"');
-    expect(playgroundApp).toContain('"bottom-drawer"');
+    expect(playgroundApp).toContain('props_id("left-rail-splitter")');
+    expect(playgroundApp).toContain('props_id("right-dock-splitter")');
+    expect(playgroundApp).toContain('props_id("bottom-drawer-splitter")');
+    expect(playgroundApp).toContain('props_id("bottom-drawer-shell")');
     expect(playgroundApp).toContain('workspace-toolbar');
     expect(playgroundApp).toContain('console-root');
     expect(playgroundApp).toContain('diagnostics-root');
     expect(playgroundApp).toContain('route-details-root');
+    expect(playgroundApp).toContain('data-tab-group');
     expect(playgroundStyle).toContain('.ide-workbench');
-    expect(playgroundStyle).toContain('grid-template-columns: minmax(15rem, 18rem) minmax(30rem, 1fr) minmax(21rem, 25rem);');
-    expect(playgroundStyle).toContain('.bottom-drawer > .dock-section-body');
+    expect(playgroundStyle).toContain('var(--left-rail-width)');
+    expect(playgroundStyle).toContain('.layout-splitter');
+    expect(playgroundStyle).toContain('.bottom-drawer-body');
+    expect(playgroundStyle).toContain("data-left-rail-collapsed");
+    expect(playgroundStyle).toContain('@media (min-width: 1181px)');
     expect(playgroundStyle).toContain('@media (max-width: 1180px)');
   });
 });

@@ -124,18 +124,17 @@ fn plain_input(id: string, value: string, placeholder: string, cls: string) -> V
   )
 }
 
-fn dock_summary(label: string, detail: string) -> VNode {
-  vnode("summary", props_class("dock-summary"), [
-    vnode("span", props_class("dock-summary-label"), [text(label)]),
-    vnode("span", props_class("dock-summary-detail"), [text(detail)])
-  ])
-}
-
-fn open_dock(label: string, detail: string, cls: string, children: any) -> VNode {
+fn tab_button(id: string, label: string, tabGroup: string, value: string) -> VNode {
   vnode(
-    "details",
-    attrs2(props_class("dock-section " + cls), props_attr("open", true)),
-    [dock_summary(label, detail), div_node("dock-section-body", children)]
+    "button",
+    attrs5(
+      props_class("tool-button secondary layout-tab-button"),
+      props_id(id),
+      props_type("button"),
+      props_attr("data-tab-group", tabGroup),
+      props_attr("data-tab-value", value)
+    ),
+    [text(label)]
   )
 }
 
@@ -167,6 +166,9 @@ pub fn app() -> VNode {
   let formatButton = tool_button("format-button", "Format", "secondary");
   let shareButton = tool_button("share-button", "Share", "secondary");
   let copyButton = tool_button("copy-js-button", "Copy JS", "secondary");
+  let toggleExplorerButton = tool_button("toggle-left-rail-toolbar-button", "Explorer", "secondary");
+  let toggleDockButton = tool_button("toggle-right-dock-toolbar-button", "Dock", "secondary");
+  let toggleOutputButton = tool_button("toggle-bottom-drawer-toolbar-button", "Output", "secondary");
   let toolRow = div_node("tool-row", [
     runButton,
     stopButton,
@@ -174,7 +176,10 @@ pub fn app() -> VNode {
     checkButton,
     formatButton,
     shareButton,
-    copyButton
+    copyButton,
+    toggleExplorerButton,
+    toggleDockButton,
+    toggleOutputButton
   ]);
 
   let statusStat = stat("Compile", "Waiting", "compile-status");
@@ -212,7 +217,7 @@ pub fn app() -> VNode {
     formsPreset,
     packagePreset
   ]);
-  let presetPanel = vnode("section", props_class("panel rail-card preset-panel"), [
+  let presetPanel = vnode("section", attrs2(props_class("panel rail-card preset-panel rail-panel"), props_id("rail-presets-panel")), [
     div_node("panel-heading-row", [
       vnode("div", props_class("panel-title"), [text("Presets")]),
       vnode("span", props_class("small-pill"), [text("examples")])
@@ -233,7 +238,7 @@ pub fn app() -> VNode {
     tool_button("reset-workspace-button", "Reset", "secondary")
   ]);
   let workspaceRecent = vnode("div", attrs2(props_class("workspace-recent-list"), props_id("recent-workspaces-root")), []);
-  let workspacePanel = vnode("section", props_class("workspace-manager panel"), [
+  let workspacePanel = vnode("section", attrs2(props_class("workspace-manager panel rail-panel"), props_id("rail-workspace-panel")), [
     div_node("panel-heading-row", [workspaceHeading, vnode("span", attrs2(props_class("small-pill"), props_id("workspace-status-pill")), [text("local")])]),
     workspaceInput,
     workspaceControls,
@@ -258,8 +263,19 @@ pub fn app() -> VNode {
     ])
   ]);
   let fileList = vnode("div", attrs2(props_class("file-list"), props_id("file-list-root")), []);
-  let fileSidebar = vnode("aside", props_class("file-sidebar"), [fileHeader, fileList]);
-  let leftRail = vnode("aside", props_class("left-rail"), [
+  let fileSidebar = vnode("aside", attrs2(props_class("file-sidebar panel rail-panel"), props_id("rail-files-panel")), [fileHeader, fileList]);
+  let leftRailHeader = div_node("dock-header", [
+    vnode("div", props_class("panel-title"), [text("Explorer")]),
+    tool_button("toggle-left-rail-button", "Collapse", "secondary")
+  ]);
+  let leftRailTabs = div_node("dock-tabs rail-tabs", [
+    tab_button("rail-tab-workspace", "Workspace", "rail", "workspace"),
+    tab_button("rail-tab-files", "Files", "rail", "files"),
+    tab_button("rail-tab-presets", "Presets", "rail", "presets")
+  ]);
+  let leftRail = vnode("aside", props_class("left-rail dock-shell"), [
+    leftRailHeader,
+    leftRailTabs,
     workspacePanel,
     fileSidebar,
     presetPanel
@@ -351,19 +367,24 @@ pub fn app() -> VNode {
     workspaceRow
   ]);
 
-  let dockTabs = div_node("dock-tabs", [
-    vnode("span", props_class("small-pill"), [text("Preview")]),
-    vnode("span", props_class("small-pill"), [text("Diagnostics")]),
-    vnode("span", props_class("small-pill"), [text("Route")]),
-    vnode("span", props_class("small-pill"), [text("Packages")]),
-    vnode("span", props_class("small-pill"), [text("Inspector")])
+  let rightDockHeader = div_node("dock-header", [
+    vnode("div", props_class("panel-title"), [text("Dock")]),
+    tool_button("toggle-right-dock-button", "Collapse", "secondary")
   ]);
-  let previewDock = open_dock("Preview", "route sandbox", "preview-dock", [routePanel]);
-  let diagnosticsDock = open_dock("Diagnostics", "compile feedback", "diagnostics-dock", [diagnosticsPanel]);
-  let routeDock = open_dock("Route", "state and matches", "route-dock", [routeInspectorPanel]);
-  let packageDock = open_dock("Packages", "imports and locks", "packages-dock", [packagePanel]);
-  let inspectorDock = open_dock("Inspector", "compile graph", "inspector-dock", [debugPanel, compilePanel, insightPanel]);
-  let rightDock = vnode("aside", props_class("right-dock"), [
+  let dockTabs = div_node("dock-tabs", [
+    tab_button("dock-tab-preview", "Preview", "dock", "preview"),
+    tab_button("dock-tab-diagnostics", "Diagnostics", "dock", "diagnostics"),
+    tab_button("dock-tab-route", "Route", "dock", "route"),
+    tab_button("dock-tab-packages", "Packages", "dock", "packages"),
+    tab_button("dock-tab-inspector", "Inspector", "dock", "inspector")
+  ]);
+  let previewDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-preview")), [routePanel]);
+  let diagnosticsDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-diagnostics")), [diagnosticsPanel]);
+  let routeDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-route")), [routeInspectorPanel]);
+  let packageDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-packages")), [packagePanel]);
+  let inspectorDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-inspector")), [debugPanel, compilePanel, insightPanel]);
+  let rightDock = vnode("aside", attrs2(props_class("right-dock dock-shell"), props_id("right-dock-shell")), [
+    rightDockHeader,
     dockTabs,
     previewDock,
     diagnosticsDock,
@@ -371,12 +392,35 @@ pub fn app() -> VNode {
     packageDock,
     inspectorDock
   ]);
-  let bottomDrawer = open_dock("Output", "console, route events, generated JS", "bottom-drawer", [
-    consolePanel,
-    routeEventsPanel,
-    jsPanel
+  let bottomDrawerHeader = div_node("dock-header bottom-drawer-header", [
+    div_node("bottom-drawer-heading", [
+      vnode("div", props_class("panel-title"), [text("Output")]),
+      vnode("span", props_class("small-pill"), [text("console, route events, generated JS")])
+    ]),
+    tool_button("toggle-bottom-drawer-button", "Collapse", "secondary")
   ]);
-  let workspace = div_node("ide-workbench", [leftRail, centerColumn, rightDock]);
+  let bottomTabs = div_node("dock-tabs bottom-drawer-tabs", [
+    tab_button("drawer-tab-console", "Console", "drawer", "console"),
+    tab_button("drawer-tab-events", "Route Events", "drawer", "events"),
+    tab_button("drawer-tab-js", "Generated JS", "drawer", "js")
+  ]);
+  let bottomDrawerBody = div_node("bottom-drawer-body", [
+    vnode("section", attrs2(props_class("drawer-panel"), props_id("drawer-panel-console")), [consolePanel]),
+    vnode("section", attrs2(props_class("drawer-panel"), props_id("drawer-panel-events")), [routeEventsPanel]),
+    vnode("section", attrs2(props_class("drawer-panel"), props_id("drawer-panel-js")), [jsPanel])
+  ]);
+  let bottomDrawer = vnode("section", attrs2(props_class("bottom-drawer"), props_id("bottom-drawer-shell")), [
+    bottomDrawerHeader,
+    bottomTabs,
+    bottomDrawerBody
+  ]);
+  let workspace = div_node("ide-workbench", [
+    leftRail,
+    vnode("div", attrs2(props_class("layout-splitter vertical"), props_id("left-rail-splitter")), []),
+    centerColumn,
+    vnode("div", attrs2(props_class("layout-splitter vertical"), props_id("right-dock-splitter")), []),
+    rightDock
+  ]);
 
   let toast = vnode("div", attrs2(props_class("toast"), props_id("toast-root")), [text("")]);
   let dialogRoot = vnode("div", attrs2(props_class("dialog-root"), props_id("dialog-root")), [
@@ -393,6 +437,13 @@ pub fn app() -> VNode {
       ])
     ])
   ]);
-  let body = div_node("playground-body", [header, workspace, bottomDrawer, toast, dialogRoot]);
+  let body = div_node("playground-body", [
+    header,
+    workspace,
+    vnode("div", attrs2(props_class("layout-splitter horizontal"), props_id("bottom-drawer-splitter")), []),
+    bottomDrawer,
+    toast,
+    dialogRoot
+  ]);
   return div_node("playground-shell", [body]);
 }

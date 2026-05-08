@@ -56,8 +56,27 @@ const checkAfterEdit = async (page: Page): Promise<void> => {
 };
 
 const openFile = async (page: Page, uri: string): Promise<void> => {
+  await selectRailTab(page, 'files');
   await page.locator(`#file-list-root [data-file-uri="${uri}"]`).click();
   await expect(page.locator('#active-file-label')).toContainText(uri);
+};
+
+const selectRailTab = async (page: Page, tab: 'workspace' | 'files' | 'presets'): Promise<void> => {
+  await page.locator(`#rail-tab-${tab}`).click();
+  await expect(page.locator(`#rail-tab-${tab}`)).toHaveAttribute('data-active', 'true');
+};
+
+const selectDockTab = async (
+  page: Page,
+  tab: 'preview' | 'diagnostics' | 'route' | 'packages' | 'inspector'
+): Promise<void> => {
+  await page.locator(`#dock-tab-${tab}`).click();
+  await expect(page.locator(`#dock-tab-${tab}`)).toHaveAttribute('data-active', 'true');
+};
+
+const selectDrawerTab = async (page: Page, tab: 'console' | 'events' | 'js'): Promise<void> => {
+  await page.locator(`#drawer-tab-${tab}`).click();
+  await expect(page.locator(`#drawer-tab-${tab}`)).toHaveAttribute('data-active', 'true');
 };
 
 test.describe('playground browser smoke', () => {
@@ -171,16 +190,19 @@ test.describe('playground browser smoke', () => {
       await page.goto(`${server.baseUrl}/playground/?preset=starter-app`);
       await waitForCompile(page);
 
+      await selectRailTab(page, 'workspace');
       await page.locator('#save-workspace-as-button').click();
       await fillDialog(page, { name: 'Starter QA' });
       await expect(page.locator('#workspace-status-pill')).toContainText('saved');
       await expect(page.locator('#recent-workspaces-root')).toContainText('Starter QA');
 
+      await selectRailTab(page, 'files');
       await openFile(page, 'routes/settings.lm');
       await setEditorText(page, 'pub fn settingsSummary() -> string {\n  "Edited from smoke"\n}\n');
       await checkAfterEdit(page);
       await expect(page.locator('#workspace-status-pill')).toContainText('saved');
 
+      await selectRailTab(page, 'workspace');
       await page.locator('#rename-workspace-button').click();
       await fillDialog(page, { name: 'Starter QA Renamed' });
       await expect(page.locator('#recent-workspaces-root')).toContainText('Starter QA Renamed');
@@ -232,11 +254,13 @@ test.describe('playground browser smoke', () => {
     try {
       await page.goto(`${server.baseUrl}/playground/?preset=starter-app`);
       await waitForCompile(page);
+      await selectDockTab(page, 'route');
       await expect(page.locator('#route-details-root')).toContainText('/dashboard');
       await expect(page.locator('#route-details-root')).toContainText('/settings');
 
       await page.goto(`${server.baseUrl}/playground/?preset=package-import`);
       await waitForCompile(page);
+      await selectDockTab(page, 'packages');
       await expect(page.locator('#package-details-root')).toContainText('json-utils@1.2.3');
       await page.locator('#package-details-root [data-package-action="focus"]').click();
       await expect(page.locator('#active-file-label')).toContainText('.lumina/packages/json-utils@1.2.3/src/lib.lm');
@@ -244,6 +268,72 @@ test.describe('playground browser smoke', () => {
       await setEditorText(page, packageSource.replace('package:ok', 'package:changed'));
       await checkAfterEdit(page);
       await expect(page.locator('#diagnostics-root')).toContainText('No diagnostics.');
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('collapses and restores the docked workbench panels', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?preset=starter-app`);
+      await waitForCompile(page);
+
+      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-collapsed', 'true');
+      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-collapsed', 'false');
+
+      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-collapsed', 'true');
+      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-collapsed', 'false');
+      await selectDrawerTab(page, 'js');
+      await expect(page.locator('#output-root')).toContainText('createRouter("/")');
+
+      await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-collapsed', 'true');
+      await page.locator('#toggle-left-rail-toolbar-button').dispatchEvent('click');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-collapsed', 'false');
+      await selectRailTab(page, 'files');
+      await expect(page.locator('#file-list-root')).toContainText('main.lm');
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('keeps a single-column workbench when collapsing panels in a narrow viewport', async ({
+    page,
+  }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.setViewportSize({ width: 625, height: 1200 });
+      await page.goto(`${server.baseUrl}/playground/?preset=starter-app`);
+      await waitForCompile(page);
+
+      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
+      await page.locator('#toggle-bottom-drawer-button').click({ force: true });
+      await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
+
+      const layout = await page.evaluate(() => {
+        const body = document.querySelector('.playground-body');
+        const workbench = document.querySelector('.ide-workbench');
+        const center = document.querySelector('.center-editor');
+        return {
+          leftCollapsed: body?.getAttribute('data-left-rail-collapsed'),
+          rightCollapsed: body?.getAttribute('data-right-dock-collapsed'),
+          bottomCollapsed: body?.getAttribute('data-bottom-drawer-collapsed'),
+          gridTemplateColumns: workbench ? getComputedStyle(workbench).gridTemplateColumns : '',
+          workbenchWidth: workbench?.getBoundingClientRect().width ?? 0,
+          centerWidth: center?.getBoundingClientRect().width ?? 0,
+        };
+      });
+
+      expect(layout.leftCollapsed).toBe('true');
+      expect(layout.rightCollapsed).toBe('true');
+      expect(layout.bottomCollapsed).toBe('true');
+      expect(layout.gridTemplateColumns.trim().split(/\s+/)).toHaveLength(1);
+      expect(layout.centerWidth).toBeGreaterThan(layout.workbenchWidth - 8);
     } finally {
       await server.close();
     }
