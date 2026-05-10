@@ -317,6 +317,19 @@ const setDataset = (id: string, key: string, value: string): void => {
   if (element) element.dataset[key] = value;
 };
 
+const setButtonExpanded = (id: string, expanded: boolean): void => {
+  const element = document.getElementById(id);
+  if (element) element.setAttribute('aria-expanded', String(expanded));
+};
+
+const setSplitterValue = (id: string, value: number, min: number, max: number): void => {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.setAttribute('aria-valuemin', String(min));
+  element.setAttribute('aria-valuemax', String(max));
+  element.setAttribute('aria-valuenow', String(Math.round(value)));
+};
+
 const setButtonDisabled = (id: string, disabled: boolean): void => {
   const element = document.getElementById(id) as HTMLButtonElement | null;
   if (element) element.disabled = disabled;
@@ -969,12 +982,14 @@ const renderWorkspaceList = (
   element.innerHTML = recent
     .map(
       (workspace) => `
-        <button class="workspace-chip"${
-          workspace.id === activeWorkspaceId ? ' data-active="true"' : ''
-        } data-workspace-id="${escapeHtml(workspace.id)}">
-          <span class="workspace-chip-name">${escapeHtml(workspace.name)}</span>
-          <span class="workspace-chip-meta">${escapeHtml(formatTimestamp(workspace.savedAt))}</span>
-        </button>
+        <div class="workspace-list-row" role="listitem">
+          <button class="workspace-chip"${
+            workspace.id === activeWorkspaceId ? ' data-active="true"' : ''
+          } data-workspace-id="${escapeHtml(workspace.id)}">
+            <span class="workspace-chip-name">${escapeHtml(workspace.name)}</span>
+            <span class="workspace-chip-meta">${escapeHtml(formatTimestamp(workspace.savedAt))}</span>
+          </button>
+        </div>
       `
     )
     .join('');
@@ -1485,6 +1500,25 @@ const startPlayground = async (): Promise<void> => {
   let diagnosticsFilter: 'all' | 'error' | 'warning' = 'all';
   let editorReadyMs = now() - startedAt;
   let layoutState = readLayoutState();
+  const isCompactWorkbench = (): boolean => window.matchMedia('(max-width: 760px)').matches;
+  let isCompactOverride = false;
+  const collapseWorkbenchForCompact = (): void => {
+    if (!isCompactWorkbench()) {
+      isCompactOverride = false;
+      return;
+    }
+    isCompactOverride = true;
+  };
+  collapseWorkbenchForCompact();
+  let wasCompactWorkbench = isCompactWorkbench();
+  window.addEventListener('resize', () => {
+    const compact = isCompactWorkbench();
+    if (compact !== wasCompactWorkbench) {
+      wasCompactWorkbench = compact;
+      isCompactOverride = compact;
+      syncLayoutState();
+    }
+  });
 
   const importWorkspaceInput = createImportInput();
 
@@ -1510,13 +1544,21 @@ const startPlayground = async (): Promise<void> => {
   const setHidden = (id: string, hidden: boolean): void => {
     const element = document.getElementById(id);
     if (!element) return;
-    if (hidden) element.setAttribute('hidden', 'true');
-    else element.removeAttribute('hidden');
+    if (hidden) {
+      element.setAttribute('hidden', 'true');
+      element.setAttribute('aria-hidden', 'true');
+    } else {
+      element.removeAttribute('hidden');
+      element.setAttribute('aria-hidden', 'false');
+    }
   };
 
   const setTabButtonsActive = <T extends string>(group: string, active: T): void => {
     document.querySelectorAll<HTMLElement>(`[data-tab-group="${group}"]`).forEach((button) => {
-      button.dataset.active = String(button.dataset.tabValue === active);
+      const isActive = button.dataset.tabValue === active;
+      button.dataset.active = String(isActive);
+      button.setAttribute('aria-selected', String(isActive));
+      button.tabIndex = isActive ? 0 : -1;
     });
   };
 
@@ -1574,12 +1616,16 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const syncLayoutState = (): void => {
+    const effectiveLeftRailVisible = layoutState.leftRailVisible && !isCompactOverride;
+    const effectiveRightDockVisible = layoutState.rightDockVisible && !isCompactOverride;
+    const effectiveBottomDrawerVisible = layoutState.bottomDrawerVisible && !isCompactOverride;
+
     playgroundBody.dataset.leftRailMode = layoutState.leftRailMode;
-    playgroundBody.dataset.leftRailVisible = layoutState.leftRailVisible ? 'true' : 'false';
+    playgroundBody.dataset.leftRailVisible = effectiveLeftRailVisible ? 'true' : 'false';
     playgroundBody.dataset.rightDockMode = layoutState.rightDockMode;
-    playgroundBody.dataset.rightDockVisible = layoutState.rightDockVisible ? 'true' : 'false';
+    playgroundBody.dataset.rightDockVisible = effectiveRightDockVisible ? 'true' : 'false';
     playgroundBody.dataset.bottomDrawerMode = layoutState.bottomDrawerMode;
-    playgroundBody.dataset.bottomDrawerVisible = layoutState.bottomDrawerVisible ? 'true' : 'false';
+    playgroundBody.dataset.bottomDrawerVisible = effectiveBottomDrawerVisible ? 'true' : 'false';
     playgroundBody.dataset.leftRailCollapsed = layoutState.leftRailMode === 'auto-hide' ? 'true' : 'false';
     playgroundBody.dataset.rightDockCollapsed = layoutState.rightDockMode === 'auto-hide' ? 'true' : 'false';
     playgroundBody.dataset.bottomDrawerCollapsed =
@@ -1587,6 +1633,9 @@ const startPlayground = async (): Promise<void> => {
     playgroundBody.style.setProperty('--left-rail-width', `${layoutState.leftRailWidth}px`);
     playgroundBody.style.setProperty('--right-dock-width', `${layoutState.rightDockWidth}px`);
     playgroundBody.style.setProperty('--bottom-drawer-height', `${layoutState.bottomDrawerHeight}px`);
+    setSplitterValue('left-rail-splitter', layoutState.leftRailWidth, 224, 420);
+    setSplitterValue('right-dock-splitter', layoutState.rightDockWidth, 280, 560);
+    setSplitterValue('bottom-drawer-splitter', layoutState.bottomDrawerHeight, 176, 420);
 
     const railTabs: LeftRailTab[] = ['workspace', 'files', 'presets'];
     for (const tab of railTabs) {
@@ -1606,9 +1655,9 @@ const startPlayground = async (): Promise<void> => {
     }
     setTabButtonsActive('drawer', layoutState.bottomDrawerTab);
 
-    const leftToolbarLabel = layoutState.leftRailVisible ? 'Hide Explorer' : 'Explorer';
-    const rightToolbarLabel = layoutState.rightDockVisible ? 'Hide Dock' : 'Dock';
-    const bottomToolbarLabel = layoutState.bottomDrawerVisible ? 'Hide Output' : 'Output';
+    const leftToolbarLabel = effectiveLeftRailVisible ? 'Hide Explorer' : 'Explorer';
+    const rightToolbarLabel = effectiveRightDockVisible ? 'Hide Dock' : 'Dock';
+    const bottomToolbarLabel = effectiveBottomDrawerVisible ? 'Hide Output' : 'Output';
     setButtonLabel('toggle-left-rail-button', layoutState.leftRailMode === 'pinned' ? 'Auto-hide' : 'Pin');
     setButtonLabel('toggle-right-dock-button', layoutState.rightDockMode === 'pinned' ? 'Auto-hide' : 'Pin');
     setButtonLabel(
@@ -1630,18 +1679,24 @@ const startPlayground = async (): Promise<void> => {
     setDataset(
       'toggle-left-rail-toolbar-button',
       'active',
-      layoutState.leftRailVisible ? 'true' : 'false'
+      effectiveLeftRailVisible ? 'true' : 'false'
     );
+    setButtonExpanded('toggle-left-rail-button', effectiveLeftRailVisible);
+    setButtonExpanded('toggle-left-rail-toolbar-button', effectiveLeftRailVisible);
     setDataset(
       'toggle-right-dock-toolbar-button',
       'active',
-      layoutState.rightDockVisible ? 'true' : 'false'
+      effectiveRightDockVisible ? 'true' : 'false'
     );
+    setButtonExpanded('toggle-right-dock-button', effectiveRightDockVisible);
+    setButtonExpanded('toggle-right-dock-toolbar-button', effectiveRightDockVisible);
     setDataset(
       'toggle-bottom-drawer-toolbar-button',
       'active',
-      layoutState.bottomDrawerVisible ? 'true' : 'false'
+      effectiveBottomDrawerVisible ? 'true' : 'false'
     );
+    setButtonExpanded('toggle-bottom-drawer-button', effectiveBottomDrawerVisible);
+    setButtonExpanded('toggle-bottom-drawer-toolbar-button', effectiveBottomDrawerVisible);
     updateModePill('left-rail-mode-pill', layoutState.leftRailMode);
     updateModePill('right-dock-mode-pill', layoutState.rightDockMode);
     updateModePill('bottom-drawer-mode-pill', layoutState.bottomDrawerMode);
@@ -1689,6 +1744,10 @@ const startPlayground = async (): Promise<void> => {
     setGroupMode('bottom', layoutState.bottomDrawerMode === 'pinned' ? 'auto-hide' : 'pinned');
 
   const toggleLeftRailToolbar = (): void => {
+    const willBeVisible = !layoutState.leftRailVisible;
+    if (willBeVisible && isCompactOverride) {
+      isCompactOverride = false;
+    }
     layoutState = layoutState.leftRailVisible
       ? { ...layoutState, leftRailVisible: false }
       : { ...layoutState, leftRailMode: 'pinned', leftRailVisible: true };
@@ -1696,6 +1755,10 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const toggleRightDockToolbar = (): void => {
+    const willBeVisible = !layoutState.rightDockVisible;
+    if (willBeVisible && isCompactOverride) {
+      isCompactOverride = false;
+    }
     layoutState = layoutState.rightDockVisible
       ? { ...layoutState, rightDockVisible: false }
       : { ...layoutState, rightDockMode: 'pinned', rightDockVisible: true };
@@ -1703,6 +1766,10 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const toggleBottomDrawerToolbar = (): void => {
+    const willBeVisible = !layoutState.bottomDrawerVisible;
+    if (willBeVisible && isCompactOverride) {
+      isCompactOverride = false;
+    }
     layoutState = layoutState.bottomDrawerVisible
       ? { ...layoutState, bottomDrawerVisible: false }
       : { ...layoutState, bottomDrawerMode: 'pinned', bottomDrawerVisible: true };
@@ -1761,6 +1828,36 @@ const startPlayground = async (): Promise<void> => {
     handle: HTMLElement,
     update: (deltaX: number, deltaY: number) => void
   ): void => {
+    const commitResize = (deltaX: number, deltaY: number): void => {
+      if (window.matchMedia('(max-width: 1180px)').matches) return;
+      update(deltaX, deltaY);
+      syncLayoutState();
+      writeLayoutState(layoutState);
+    };
+
+    handle.addEventListener('keydown', (event) => {
+      const step = event.shiftKey ? 48 : 16;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        commitResize(-step, 0);
+        return;
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        commitResize(step, 0);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        commitResize(0, -step);
+        return;
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        commitResize(0, step);
+      }
+    });
+
     handle.addEventListener('pointerdown', (event) => {
       if (window.matchMedia('(max-width: 1180px)').matches) return;
       const startX = event.clientX;
@@ -1904,13 +2001,15 @@ const startPlayground = async (): Promise<void> => {
         const isDirty = dirtyFileUris.has(file.uri);
         const depth = file.uri.split('/').length - 1;
         return `
-          <button class="file-item"${isActive ? ' data-active="true"' : ''} data-file-uri="${escapeHtml(
-            file.uri
-          )}" style="padding-left:${12 + depth * 14}px">
-            <span class="file-item-name">${escapeHtml(file.uri)}</span>
-            ${isDirty ? '<span class="file-item-dirty" aria-hidden="true"></span>' : ''}
-            ${isEntry ? '<span class="file-item-badge">entry</span>' : ''}
-          </button>
+          <div class="file-list-row" role="listitem">
+            <button class="file-item"${isActive ? ' data-active="true"' : ''} data-file-uri="${escapeHtml(
+              file.uri
+            )}" style="padding-left:${12 + depth * 14}px">
+              <span class="file-item-name">${escapeHtml(file.uri)}</span>
+              ${isDirty ? '<span class="file-item-dirty" aria-hidden="true"></span>' : ''}
+              ${isEntry ? '<span class="file-item-badge">entry</span>' : ''}
+            </button>
+          </div>
         `;
       })
       .join('');

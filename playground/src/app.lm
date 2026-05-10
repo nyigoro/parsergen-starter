@@ -28,6 +28,18 @@ fn attrs5(first: any, second: any, third: any, fourth: any, fifth: any) -> any {
   props_merge(props_merge(props_merge(props_merge(first, second), third), fourth), fifth)
 }
 
+fn attrs6(first: any, second: any, third: any, fourth: any, fifth: any, sixth: any) -> any {
+  props_merge(attrs5(first, second, third, fourth, fifth), sixth)
+}
+
+fn attrs7(first: any, second: any, third: any, fourth: any, fifth: any, sixth: any, seventh: any) -> any {
+  props_merge(attrs6(first, second, third, fourth, fifth, sixth), seventh)
+}
+
+fn attrs8(first: any, second: any, third: any, fourth: any, fifth: any, sixth: any, seventh: any, eighth: any) -> any {
+  props_merge(attrs7(first, second, third, fourth, fifth, sixth, seventh), eighth)
+}
+
 fn div_node(cls: string, children: any) -> VNode {
   vnode("div", props_class(cls), children)
 }
@@ -124,29 +136,76 @@ fn plain_input(id: string, value: string, placeholder: string, cls: string) -> V
   )
 }
 
-fn tab_button(id: string, label: string, tabGroup: string, value: string) -> VNode {
+fn tab_list(cls: string, label: string, children: any) -> VNode {
+  vnode(
+    "div",
+    attrs3(
+      props_class(cls),
+      props_attr("role", "tablist"),
+      props_attr("aria-label", label)
+    ),
+    children
+  )
+}
+
+fn tab_panel(id: string, labelledBy: string, cls: string, children: any) -> VNode {
+  vnode(
+    "section",
+    attrs4(
+      props_class(cls),
+      props_id(id),
+      props_attr("role", "tabpanel"),
+      props_attr("aria-labelledby", labelledBy)
+    ),
+    children
+  )
+}
+
+fn splitter(id: string, orientation: string, controls: string, cls: string, label: string) -> VNode {
+  vnode(
+    "div",
+    attrs7(
+      props_class("layout-splitter " + cls),
+      props_id(id),
+      props_attr("role", "separator"),
+      props_attr("aria-orientation", orientation),
+      props_attr("aria-controls", controls),
+      props_attr("aria-label", label),
+      props_attr("tabindex", "0")
+    ),
+    []
+  )
+}
+
+fn tab_button(id: string, label: string, tabGroup: string, value: string, controls: string) -> VNode {
   vnode(
     "button",
-    attrs5(
+    attrs8(
       props_class("tool-button secondary layout-tab-button"),
       props_id(id),
       props_type("button"),
       props_attr("data-tab-group", tabGroup),
-      props_attr("data-tab-value", value)
+      props_attr("data-tab-value", value),
+      props_attr("role", "tab"),
+      props_attr("aria-selected", "false"),
+      props_attr("aria-controls", controls)
     ),
     [text(label)]
   )
 }
 
-fn edge_tab_button(id: string, label: string, tabGroup: string, value: string, edge: string) -> VNode {
+fn edge_tab_button(id: string, label: string, tabGroup: string, value: string, edge: string, controls: string) -> VNode {
   vnode(
     "button",
-    attrs5(
+    attrs8(
       props_class("edge-tab-button edge-tab-button-" + edge),
       props_id(id),
       props_type("button"),
       props_attr("data-tab-group", tabGroup),
-      props_attr("data-tab-value", value)
+      props_attr("data-tab-value", value),
+      props_attr("role", "tab"),
+      props_attr("aria-selected", "false"),
+      props_attr("aria-controls", controls)
     ),
     [text(label)]
   )
@@ -183,14 +242,19 @@ pub fn app() -> VNode {
   let toggleExplorerButton = tool_button("toggle-left-rail-toolbar-button", "Explorer", "secondary");
   let toggleDockButton = tool_button("toggle-right-dock-toolbar-button", "Dock", "secondary");
   let toggleOutputButton = tool_button("toggle-bottom-drawer-toolbar-button", "Output", "secondary");
-  let toolRow = div_node("tool-row toolbar-row toolbar-row-primary", [
+  let actionRow = div_node("tool-row toolbar-row toolbar-row-primary", [
     runButton,
     stopButton,
     stopCompileButton,
     checkButton,
     formatButton,
     shareButton,
-    copyButton,
+    copyButton
+  ]);
+
+  let layoutLabel = vnode("span", props_class("toolbar-label"), [text("Panels")]);
+  let layoutRow = div_node("tool-row toolbar-row toolbar-row-secondary", [
+    layoutLabel,
     toggleExplorerButton,
     toggleDockButton,
     toggleOutputButton
@@ -207,7 +271,7 @@ pub fn app() -> VNode {
     activeFileStat
   ]);
 
-  let toolbar = div_node("workspace-toolbar", [toolRow, status]);
+  let toolbar = div_node("workspace-toolbar", [actionRow, layoutRow, status]);
 
   let basicsPreset = preset_button("basics", "Basics", "Functions and return values");
   let indexingPreset = preset_button("safe-index", "Safe Indexing", "Option instead of undefined");
@@ -231,7 +295,7 @@ pub fn app() -> VNode {
     formsPreset,
     packagePreset
   ]);
-  let presetPanel = vnode("section", attrs2(props_class("panel rail-card preset-panel rail-panel"), props_id("rail-presets-panel")), [
+  let presetPanel = tab_panel("rail-presets-panel", "rail-tab-presets", "panel rail-card preset-panel rail-panel", [
     div_node("panel-heading-row", [
       vnode("div", props_class("panel-title"), [text("Presets")]),
       vnode("span", props_class("small-pill"), [text("examples")])
@@ -251,8 +315,8 @@ pub fn app() -> VNode {
     tool_button("scaffold-package-button", "Scaffold Package", "secondary"),
     tool_button("reset-workspace-button", "Reset", "secondary")
   ]);
-  let workspaceRecent = vnode("div", attrs2(props_class("workspace-recent-list"), props_id("recent-workspaces-root")), []);
-  let workspacePanel = vnode("section", attrs2(props_class("workspace-manager panel rail-panel stack-sm"), props_id("rail-workspace-panel")), [
+  let workspaceRecent = vnode("div", attrs3(props_class("workspace-recent-list"), props_id("recent-workspaces-root"), props_attr("role", "list")), []);
+  let workspacePanel = tab_panel("rail-workspace-panel", "rail-tab-workspace", "workspace-manager panel rail-panel stack-sm", [
     div_node("panel-heading-row", [workspaceHeading, vnode("span", attrs2(props_class("small-pill"), props_id("workspace-status-pill")), [text("local")])]),
     workspaceInput,
     workspaceControls,
@@ -276,8 +340,8 @@ pub fn app() -> VNode {
       tool_button("delete-file-button", "Delete", "secondary")
     ])
   ]);
-  let fileList = vnode("div", attrs2(props_class("file-list"), props_id("file-list-root")), []);
-  let fileSidebar = vnode("aside", attrs2(props_class("file-sidebar panel rail-panel stack-sm"), props_id("rail-files-panel")), [fileHeader, fileList]);
+  let fileList = vnode("div", attrs3(props_class("file-list"), props_id("file-list-root"), props_attr("role", "list")), []);
+  let fileSidebar = tab_panel("rail-files-panel", "rail-tab-files", "file-sidebar panel rail-panel stack-sm", [fileHeader, fileList]);
   let leftRailHeader = div_node("dock-group-header", [
     div_node("dock-group-heading", [
       vnode("div", props_class("panel-title"), [text("Explorer")]),
@@ -287,10 +351,10 @@ pub fn app() -> VNode {
       tool_button("toggle-left-rail-button", "Auto-hide", "secondary")
     ])
   ]);
-  let leftRailTabs = div_node("dock-tabs rail-tabs", [
-    tab_button("rail-tab-workspace", "Workspace", "rail", "workspace"),
-    tab_button("rail-tab-files", "Files", "rail", "files"),
-    tab_button("rail-tab-presets", "Presets", "rail", "presets")
+  let leftRailTabs = tab_list("dock-tabs rail-tabs", "Explorer panes", [
+    tab_button("rail-tab-workspace", "Workspace", "rail", "workspace", "rail-workspace-panel"),
+    tab_button("rail-tab-files", "Files", "rail", "files", "rail-files-panel"),
+    tab_button("rail-tab-presets", "Presets", "rail", "presets", "rail-presets-panel")
   ]);
   let leftRail = vnode("aside", attrs2(props_class("left-rail dock-group dock-shell"), props_id("left-dock-group")), [
     leftRailHeader,
@@ -299,10 +363,10 @@ pub fn app() -> VNode {
     fileSidebar,
     presetPanel
   ]);
-  let leftEdgeStrip = vnode("aside", attrs2(props_class("edge-strip left-edge-strip"), props_id("left-edge-strip")), [
-    edge_tab_button("edge-rail-tab-workspace", "Workspace", "rail", "workspace", "left"),
-    edge_tab_button("edge-rail-tab-files", "Files", "rail", "files", "left"),
-    edge_tab_button("edge-rail-tab-presets", "Presets", "rail", "presets", "left")
+  let leftEdgeStrip = vnode("aside", attrs4(props_class("edge-strip left-edge-strip"), props_id("left-edge-strip"), props_attr("role", "tablist"), props_attr("aria-label", "Explorer edge panes")), [
+    edge_tab_button("edge-rail-tab-workspace", "Workspace", "rail", "workspace", "left", "rail-workspace-panel"),
+    edge_tab_button("edge-rail-tab-files", "Files", "rail", "files", "left", "rail-files-panel"),
+    edge_tab_button("edge-rail-tab-presets", "Presets", "rail", "presets", "left", "rail-presets-panel")
   ]);
 
   let activeFile = vnode("span", attrs2(props_class("small-pill"), props_id("active-file-label")), [text("main.lm")]);
@@ -397,22 +461,22 @@ pub fn app() -> VNode {
       tool_button("toggle-right-dock-button", "Auto-hide", "secondary")
     ])
   ]);
-  let dockTabs = div_node("dock-tabs", [
-    tab_button("dock-tab-preview", "Preview", "dock", "preview"),
-    tab_button("dock-tab-problems", "Problems", "dock", "problems"),
-    tab_button("dock-tab-route", "Route", "dock", "route"),
-    tab_button("dock-tab-packages", "Packages", "dock", "packages"),
-    tab_button("dock-tab-graph", "Graph", "dock", "graph"),
-    tab_button("dock-tab-compile", "Compile", "dock", "compile"),
-    tab_button("dock-tab-inspector", "Inspector", "dock", "inspector")
+  let dockTabs = tab_list("dock-tabs", "Dock panes", [
+    tab_button("dock-tab-preview", "Preview", "dock", "preview", "dock-panel-preview"),
+    tab_button("dock-tab-problems", "Problems", "dock", "problems", "dock-panel-problems"),
+    tab_button("dock-tab-route", "Route", "dock", "route", "dock-panel-route"),
+    tab_button("dock-tab-packages", "Packages", "dock", "packages", "dock-panel-packages"),
+    tab_button("dock-tab-graph", "Graph", "dock", "graph", "dock-panel-graph"),
+    tab_button("dock-tab-compile", "Compile", "dock", "compile", "dock-panel-compile"),
+    tab_button("dock-tab-inspector", "Inspector", "dock", "inspector", "dock-panel-inspector")
   ]);
-  let previewDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-preview")), [routePanel]);
-  let problemsDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-problems")), [diagnosticsPanel]);
-  let routeDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-route")), [routeInspectorPanel]);
-  let packageDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-packages")), [packagePanel]);
-  let graphDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-graph")), [debugPanel]);
-  let compileDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-compile")), [compilePanel]);
-  let inspectorDock = vnode("section", attrs2(props_class("dock-panel"), props_id("dock-panel-inspector")), [insightPanel]);
+  let previewDock = tab_panel("dock-panel-preview", "dock-tab-preview", "dock-panel", [routePanel]);
+  let problemsDock = tab_panel("dock-panel-problems", "dock-tab-problems", "dock-panel", [diagnosticsPanel]);
+  let routeDock = tab_panel("dock-panel-route", "dock-tab-route", "dock-panel", [routeInspectorPanel]);
+  let packageDock = tab_panel("dock-panel-packages", "dock-tab-packages", "dock-panel", [packagePanel]);
+  let graphDock = tab_panel("dock-panel-graph", "dock-tab-graph", "dock-panel", [debugPanel]);
+  let compileDock = tab_panel("dock-panel-compile", "dock-tab-compile", "dock-panel", [compilePanel]);
+  let inspectorDock = tab_panel("dock-panel-inspector", "dock-tab-inspector", "dock-panel", [insightPanel]);
   let rightDock = vnode("aside", attrs2(props_class("right-dock dock-group dock-shell"), props_id("right-dock-shell")), [
     rightDockHeader,
     dockTabs,
@@ -424,14 +488,14 @@ pub fn app() -> VNode {
     compileDock,
     inspectorDock
   ]);
-  let rightEdgeStrip = vnode("aside", attrs2(props_class("edge-strip right-edge-strip"), props_id("right-edge-strip")), [
-    edge_tab_button("edge-dock-tab-preview", "Preview", "dock", "preview", "right"),
-    edge_tab_button("edge-dock-tab-problems", "Problems", "dock", "problems", "right"),
-    edge_tab_button("edge-dock-tab-route", "Route", "dock", "route", "right"),
-    edge_tab_button("edge-dock-tab-packages", "Packages", "dock", "packages", "right"),
-    edge_tab_button("edge-dock-tab-graph", "Graph", "dock", "graph", "right"),
-    edge_tab_button("edge-dock-tab-compile", "Compile", "dock", "compile", "right"),
-    edge_tab_button("edge-dock-tab-inspector", "Inspector", "dock", "inspector", "right")
+  let rightEdgeStrip = vnode("aside", attrs4(props_class("edge-strip right-edge-strip"), props_id("right-edge-strip"), props_attr("role", "tablist"), props_attr("aria-label", "Dock edge panes")), [
+    edge_tab_button("edge-dock-tab-preview", "Preview", "dock", "preview", "right", "dock-panel-preview"),
+    edge_tab_button("edge-dock-tab-problems", "Problems", "dock", "problems", "right", "dock-panel-problems"),
+    edge_tab_button("edge-dock-tab-route", "Route", "dock", "route", "right", "dock-panel-route"),
+    edge_tab_button("edge-dock-tab-packages", "Packages", "dock", "packages", "right", "dock-panel-packages"),
+    edge_tab_button("edge-dock-tab-graph", "Graph", "dock", "graph", "right", "dock-panel-graph"),
+    edge_tab_button("edge-dock-tab-compile", "Compile", "dock", "compile", "right", "dock-panel-compile"),
+    edge_tab_button("edge-dock-tab-inspector", "Inspector", "dock", "inspector", "right", "dock-panel-inspector")
   ]);
   let bottomDrawerHeader = div_node("dock-group-header bottom-dock-header", [
     div_node("dock-group-heading", [
@@ -442,38 +506,38 @@ pub fn app() -> VNode {
       tool_button("toggle-bottom-drawer-button", "Auto-hide", "secondary")
     ])
   ]);
-  let bottomTabs = div_node("dock-tabs bottom-drawer-tabs", [
-    tab_button("drawer-tab-console", "Console", "drawer", "console"),
-    tab_button("drawer-tab-events", "Route Events", "drawer", "events"),
-    tab_button("drawer-tab-js", "Generated JS", "drawer", "js")
+  let bottomTabs = tab_list("dock-tabs bottom-drawer-tabs", "Output panes", [
+    tab_button("drawer-tab-console", "Console", "drawer", "console", "drawer-panel-console"),
+    tab_button("drawer-tab-events", "Route Events", "drawer", "events", "drawer-panel-events"),
+    tab_button("drawer-tab-js", "Generated JS", "drawer", "js", "drawer-panel-js")
   ]);
   let bottomDrawerBody = div_node("bottom-drawer-body", [
-    vnode("section", attrs2(props_class("drawer-panel"), props_id("drawer-panel-console")), [consolePanel]),
-    vnode("section", attrs2(props_class("drawer-panel"), props_id("drawer-panel-events")), [routeEventsPanel]),
-    vnode("section", attrs2(props_class("drawer-panel"), props_id("drawer-panel-js")), [jsPanel])
+    tab_panel("drawer-panel-console", "drawer-tab-console", "drawer-panel", [consolePanel]),
+    tab_panel("drawer-panel-events", "drawer-tab-events", "drawer-panel", [routeEventsPanel]),
+    tab_panel("drawer-panel-js", "drawer-tab-js", "drawer-panel", [jsPanel])
   ]);
   let bottomDrawer = vnode("section", attrs2(props_class("bottom-drawer dock-group"), props_id("bottom-drawer-shell")), [
     bottomDrawerHeader,
     bottomTabs,
     bottomDrawerBody
   ]);
-  let bottomEdgeStrip = vnode("aside", attrs2(props_class("edge-strip bottom-edge-strip"), props_id("bottom-edge-strip")), [
-    edge_tab_button("edge-drawer-tab-console", "Console", "drawer", "console", "bottom"),
-    edge_tab_button("edge-drawer-tab-events", "Events", "drawer", "events", "bottom"),
-    edge_tab_button("edge-drawer-tab-js", "Generated JS", "drawer", "js", "bottom")
+  let bottomEdgeStrip = vnode("aside", attrs4(props_class("edge-strip bottom-edge-strip"), props_id("bottom-edge-strip"), props_attr("role", "tablist"), props_attr("aria-label", "Output edge panes")), [
+    edge_tab_button("edge-drawer-tab-console", "Console", "drawer", "console", "bottom", "drawer-panel-console"),
+    edge_tab_button("edge-drawer-tab-events", "Events", "drawer", "events", "bottom", "drawer-panel-events"),
+    edge_tab_button("edge-drawer-tab-js", "Generated JS", "drawer", "js", "bottom", "drawer-panel-js")
   ]);
   let centerDockStack = div_node("center-dock-stack", [
     centerColumn,
-    vnode("div", attrs2(props_class("layout-splitter horizontal"), props_id("bottom-drawer-splitter")), []),
+    splitter("bottom-drawer-splitter", "horizontal", "bottom-drawer-shell", "horizontal", "Resize output pane"),
     bottomDrawer,
     bottomEdgeStrip
   ]);
   let workspace = div_node("ide-workbench dock-layout", [
     leftEdgeStrip,
     leftRail,
-    vnode("div", attrs2(props_class("layout-splitter vertical"), props_id("left-rail-splitter")), []),
+    splitter("left-rail-splitter", "vertical", "left-dock-group", "vertical", "Resize explorer pane"),
     centerDockStack,
-    vnode("div", attrs2(props_class("layout-splitter vertical"), props_id("right-dock-splitter")), []),
+    splitter("right-dock-splitter", "vertical", "right-dock-shell", "vertical", "Resize dock pane"),
     rightDock,
     rightEdgeStrip
   ]);

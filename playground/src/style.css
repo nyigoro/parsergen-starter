@@ -12,10 +12,10 @@
   box-sizing: border-box;
 }
 
-.stack > * + *,
-.stack-sm > * + *,
-.stack-md > * + *,
-.stack-lg > * + * {
+.stack>*+*,
+.stack-sm>*+*,
+.stack-md>*+*,
+.stack-lg>*+* {
   margin-block-start: var(--stack-space, 0.75rem);
 }
 
@@ -176,6 +176,22 @@ button {
   gap: 0.5rem;
 }
 
+.toolbar-row-secondary {
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.toolbar-label {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #2f3745;
+  background: #111419;
+}
+
 .top-link,
 .tool-button,
 .small-pill {
@@ -231,6 +247,17 @@ button {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+}
+
+.toolbar-row-secondary .tool-button {
+  border-color: #2c3340;
+  background: #171b21;
+  color: #cbd3df;
+}
+
+.toolbar-row-secondary .tool-button:hover {
+  border-color: #4f5f78;
+  background: #1f242c;
 }
 
 .workspace-toolbar .status-strip {
@@ -363,19 +390,13 @@ button {
   min-height: 0;
   display: grid;
   grid-template-columns:
-    var(--left-edge-track)
-    var(--left-layout-track)
-    var(--left-splitter-track)
-    minmax(0, 1fr)
-    var(--right-splitter-track)
-    var(--right-layout-track)
-    var(--right-edge-track);
+    var(--left-edge-track) var(--left-layout-track) var(--left-splitter-track) minmax(0, 1fr) var(--right-splitter-track) var(--right-layout-track) var(--right-edge-track);
   gap: 0.35rem;
   align-items: stretch;
   overflow: hidden;
 }
 
-.ide-workbench > * {
+.ide-workbench>* {
   min-width: 0;
   min-height: 0;
 }
@@ -403,11 +424,26 @@ button {
   min-height: 0;
   display: grid;
   grid-template-rows:
-    minmax(0, 1fr)
-    var(--bottom-splitter-track)
-    var(--bottom-layout-track);
+    minmax(0, 1fr) var(--bottom-splitter-track) var(--bottom-layout-track) 0;
   gap: 0.5rem;
   overflow: hidden;
+}
+
+.center-dock-stack>.center-editor {
+  grid-row: 1;
+  min-height: 0;
+}
+
+#bottom-drawer-splitter {
+  grid-row: 2;
+}
+
+#bottom-drawer-shell {
+  grid-row: 3;
+}
+
+#bottom-edge-strip {
+  grid-row: 3;
 }
 
 #right-dock-splitter {
@@ -504,6 +540,7 @@ button {
 }
 
 .bottom-edge-strip {
+  display: none;
   flex-direction: row;
   align-items: center;
   min-block-size: var(--bottom-edge-size);
@@ -565,6 +602,13 @@ button {
   background: #334155;
 }
 
+.layout-splitter:focus-visible,
+.layout-tab-button:focus-visible,
+.edge-tab-button:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
 .layout-splitter.vertical {
   width: 0.45rem;
   min-height: 0;
@@ -614,6 +658,11 @@ button {
 .workspace-recent-list {
   display: grid;
   gap: 0.5rem;
+}
+
+.workspace-list-row,
+.file-list-row {
+  display: contents;
 }
 
 .workspace-chip {
@@ -918,30 +967,30 @@ button {
   height: 100%;
 }
 
-.drawer-panel > .panel,
-.dock-panel > .panel,
-.dock-panel > .insight-panel {
+.drawer-panel>.panel,
+.dock-panel>.panel,
+.dock-panel>.insight-panel {
   height: 100%;
 }
 
-.drawer-panel > .panel,
-.dock-panel > .panel,
-.dock-panel > .insight-panel {
+.drawer-panel>.panel,
+.dock-panel>.panel,
+.dock-panel>.insight-panel {
   border: 0;
   border-radius: 0;
   background: transparent;
   padding: 0;
 }
 
-.dock-panel > .panel .panel-title,
-.drawer-panel > .panel .panel-title,
-.dock-panel > .insight-panel .insight-title {
+.dock-panel>.panel .panel-title,
+.drawer-panel>.panel .panel-title,
+.dock-panel>.insight-panel .insight-title {
   font-size: 0.86rem;
   color: #dbe4ef;
 }
 
-.dock-panel > .panel .panel-heading-row,
-.drawer-panel > .panel .panel-heading-row {
+.dock-panel>.panel .panel-heading-row,
+.drawer-panel>.panel .panel-heading-row {
   padding-bottom: 0.35rem;
   border-bottom: 1px solid #232933;
 }
@@ -1488,6 +1537,18 @@ button {
   z-index: 22;
 }
 
+@media (max-width: 1180px) {
+  .playground-body {
+    --left-splitter-track: 0rem;
+    --right-splitter-track: 0rem;
+    --bottom-splitter-track: 0rem;
+  }
+
+  .layout-splitter {
+    display: none !important;
+  }
+}
+
 @media (max-width: 960px) {
   .playground-shell {
     padding: 0.625rem;
@@ -1496,9 +1557,9 @@ button {
   .playground-body {
     gap: 0.625rem;
     --left-layout-track: minmax(12rem, min(26vw, var(--left-rail-width)));
-    --left-splitter-track: 0.35rem;
+    --left-splitter-track: 0rem;
     --right-layout-track: minmax(14rem, min(28vw, var(--right-dock-width)));
-    --right-splitter-track: 0.35rem;
+    --right-splitter-track: 0rem;
     --bottom-layout-track: minmax(12rem, min(40vh, var(--bottom-drawer-height)));
     --bottom-splitter-track: 0rem;
   }
@@ -1516,7 +1577,7 @@ button {
   }
 
   .center-dock-stack {
-    grid-template-rows: minmax(0, 1fr) var(--bottom-splitter-track) var(--bottom-layout-track);
+    grid-template-rows: minmax(0, 1fr) var(--bottom-splitter-track) var(--bottom-layout-track) 0;
   }
 
   .bottom-drawer-body {

@@ -120,6 +120,10 @@ describe('site routing and playground integration', () => {
       path.resolve(__dirname, '../playground/src/style.css'),
       'utf-8'
     );
+    const playgroundIndex = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/index.ts'),
+      'utf-8'
+    );
 
     expect(playgroundApp).toContain('workspace-shell');
     expect(playgroundApp).toContain('dock-layout');
@@ -134,18 +138,27 @@ describe('site routing and playground integration', () => {
     expect(playgroundApp).toContain('edge-dock-tab-preview');
     expect(playgroundApp).toContain('edge-drawer-tab-console');
     expect(playgroundApp).toContain('div_node("center-editor"');
-    expect(playgroundApp).toContain('props_id("left-rail-splitter")');
-    expect(playgroundApp).toContain('props_id("right-dock-splitter")');
-    expect(playgroundApp).toContain('props_id("bottom-drawer-splitter")');
+    expect(playgroundApp).toContain('splitter("left-rail-splitter"');
+    expect(playgroundApp).toContain('splitter("right-dock-splitter"');
+    expect(playgroundApp).toContain('splitter("bottom-drawer-splitter"');
     expect(playgroundApp).toContain('props_id("bottom-drawer-shell")');
     expect(playgroundApp).toContain('workspace-toolbar');
     expect(playgroundApp).toContain('console-root');
     expect(playgroundApp).toContain('diagnostics-root');
     expect(playgroundApp).toContain('route-details-root');
     expect(playgroundApp).toContain('data-tab-group');
+    expect(playgroundApp).toContain('props_attr("role", "tablist")');
+    expect(playgroundApp).toContain('props_attr("role", "tab")');
+    expect(playgroundApp).toContain('props_attr("role", "tabpanel")');
+    expect(playgroundApp).toContain('props_attr("role", "separator")');
+    expect(playgroundApp).toContain('props_attr("aria-controls"');
+    expect(playgroundApp).toContain('props_attr("aria-orientation", orientation)');
+    expect(playgroundApp).toContain('props_attr("tabindex", "0")');
     expect(playgroundStyle).toContain('.workspace-shell');
     expect(playgroundStyle).toContain('.dock-group');
     expect(playgroundStyle).toContain('.center-dock-stack');
+    expect(playgroundStyle).toContain('#bottom-edge-strip');
+    expect(playgroundStyle).toContain('grid-row: 3');
     expect(playgroundStyle).toContain('.edge-strip');
     expect(playgroundStyle).toContain('--edge-strip-size');
     expect(playgroundStyle).toContain('height: 100dvh');
@@ -156,7 +169,14 @@ describe('site routing and playground integration', () => {
     expect(playgroundStyle).toContain('.ide-workbench');
     expect(playgroundStyle).toContain('var(--left-rail-width)');
     expect(playgroundStyle).toContain('.layout-splitter');
+    expect(playgroundStyle).toContain('@media (max-width: 1180px)');
+    expect(playgroundStyle).toContain('.layout-splitter:focus-visible');
     expect(playgroundStyle).toContain('.bottom-drawer-body');
     expect(playgroundStyle).toContain('@media (max-width: 960px)');
+    expect(playgroundIndex).toContain("button.setAttribute('aria-selected'");
+    expect(playgroundIndex).toContain("element.setAttribute('aria-hidden'");
+    expect(playgroundIndex).toContain('setSplitterValue');
+    expect(playgroundIndex).toContain('collapseWorkbenchForCompact');
+    expect(playgroundIndex).toContain("handle.addEventListener('keydown'");
   });
 });
