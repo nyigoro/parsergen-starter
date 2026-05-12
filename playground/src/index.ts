@@ -234,6 +234,14 @@ const writeStoredWorkspaceSession = (value: StoredWorkspaceSession): void => {
   }
 };
 
+const clearStoredWorkspaceSession = (): void => {
+  try {
+    window.localStorage.removeItem(workspaceSessionKey);
+  } catch {
+    // Session metadata is optional.
+  }
+};
+
 const readWorkspaceStore = (): PlaygroundWorkspaceCollection => {
   try {
     const raw = window.localStorage.getItem(workspaceStorageKey);
@@ -1557,10 +1565,14 @@ const startPlayground = async (): Promise<void> => {
 
   const persist = (): void => {
     writeStoredState(persistedStateFromPlayground(state));
-    writeStoredWorkspaceSession({
-      workspaceId: state.workspaceId,
-      workspaceName: state.workspaceName,
-    });
+    if (state.workspaceId) {
+      writeStoredWorkspaceSession({
+        workspaceId: state.workspaceId,
+        workspaceName: state.workspaceName,
+      });
+    } else {
+      clearStoredWorkspaceSession();
+    }
   };
 
   const setCompileStatus = (label: string, status: 'idle' | 'running' | 'ok' | 'error'): void => {
@@ -1764,11 +1776,11 @@ const startPlayground = async (): Promise<void> => {
     updateModePill('left-rail-mode-pill', layoutState.leftRailMode);
     updateModePill('right-dock-mode-pill', layoutState.rightDockMode);
     updateModePill('bottom-drawer-mode-pill', layoutState.bottomDrawerMode);
+    writeLayoutState(layoutState);
   };
 
   const persistLayoutState = (): void => {
     syncLayoutState();
-    writeLayoutState(layoutState);
   };
 
   const revealRightDockTab = (tab: RightDockTab): void => {
@@ -1843,13 +1855,19 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const toggleLeftRailMode = (): void =>
-    setGroupMode('left', layoutState.leftRailMode === 'pinned' ? 'auto-hide' : 'pinned');
+    setGroupMode('left', layoutState.leftRailMode === 'pinned' ? 'auto-hide' : 'pinned', {
+      visible: isGroupVisible('left'),
+    });
 
   const toggleRightDockMode = (): void =>
-    setGroupMode('right', layoutState.rightDockMode === 'pinned' ? 'auto-hide' : 'pinned');
+    setGroupMode('right', layoutState.rightDockMode === 'pinned' ? 'auto-hide' : 'pinned', {
+      visible: isGroupVisible('right'),
+    });
 
   const toggleBottomDrawerMode = (): void =>
-    setGroupMode('bottom', layoutState.bottomDrawerMode === 'pinned' ? 'auto-hide' : 'pinned');
+    setGroupMode('bottom', layoutState.bottomDrawerMode === 'pinned' ? 'auto-hide' : 'pinned', {
+      visible: isGroupVisible('bottom'),
+    });
 
   const toggleLeftRailToolbar = (): void => {
     if (isCompactWorkbench()) {
@@ -1902,7 +1920,8 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const dismissAutoHideOverlaysFromTarget = (target: EventTarget | null): void => {
-    if (isCompactWorkbench() && compactVisibleGroup) {
+    if (isCompactWorkbench()) {
+      if (!compactVisibleGroup) return;
       const shouldKeepVisible =
         (compactVisibleGroup === 'left' &&
           (containsEventTarget(target, '#left-dock-group') ||

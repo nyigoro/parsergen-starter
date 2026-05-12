@@ -239,6 +239,11 @@ describe('site routing and playground integration', () => {
     expect(playgroundIndex).toContain("element.setAttribute('aria-hidden'");
     expect(playgroundIndex).toContain('setSplitterValue');
     expect(playgroundIndex).toContain('collapseWorkbenchForCompact');
+    expect(playgroundIndex).toContain('clearStoredWorkspaceSession');
+    expect(playgroundIndex).toContain('compactVisibleGroup');
+    expect(playgroundIndex).toContain('isGroupVisible');
+    expect(playgroundIndex).toContain("visible: isGroupVisible('left')");
+    expect(playgroundIndex).toContain('if (!compactVisibleGroup) return;');
     expect(playgroundIndex).toContain("handle.addEventListener('keydown'");
   });
 });
