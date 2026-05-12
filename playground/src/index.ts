@@ -366,6 +366,13 @@ const setButtonExpanded = (id: string, expanded: boolean): void => {
   if (element) element.setAttribute('aria-expanded', String(expanded));
 };
 
+const setControlLabel = (id: string, label: string): void => {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.setAttribute('aria-label', label);
+  element.setAttribute('title', label);
+};
+
 const setSplitterValue = (id: string, value: number, min: number, max: number): void => {
   const element = document.getElementById(id);
   if (!element) return;
@@ -1740,18 +1747,9 @@ const startPlayground = async (): Promise<void> => {
       'toggle-bottom-drawer-button',
       layoutState.bottomDrawerMode === 'pinned' ? 'Auto-hide' : 'Pin'
     );
-    setButtonLabel(
-      'toggle-left-rail-toolbar-button',
-      leftToolbarLabel
-    );
-    setButtonLabel(
-      'toggle-right-dock-toolbar-button',
-      rightToolbarLabel
-    );
-    setButtonLabel(
-      'toggle-bottom-drawer-toolbar-button',
-      bottomToolbarLabel
-    );
+    setControlLabel('toggle-left-rail-toolbar-button', leftToolbarLabel);
+    setControlLabel('toggle-right-dock-toolbar-button', rightToolbarLabel);
+    setControlLabel('toggle-bottom-drawer-toolbar-button', bottomToolbarLabel);
     setDataset(
       'toggle-left-rail-toolbar-button',
       'active',
@@ -1869,6 +1867,24 @@ const startPlayground = async (): Promise<void> => {
       visible: isGroupVisible('bottom'),
     });
 
+  const pinDockGroup = (group: DockGroup): void => setGroupMode(group, 'pinned', { visible: true });
+
+  const closeDockGroup = (group: DockGroup): void => {
+    if (isCompactWorkbench()) {
+      compactVisibleGroup = compactVisibleGroup === group ? null : compactVisibleGroup;
+      persistLayoutState();
+      return;
+    }
+    if (group === 'left') {
+      layoutState = { ...layoutState, leftRailVisible: false };
+    } else if (group === 'right') {
+      layoutState = { ...layoutState, rightDockVisible: false };
+    } else {
+      layoutState = { ...layoutState, bottomDrawerVisible: false };
+    }
+    persistLayoutState();
+  };
+
   const toggleLeftRailToolbar = (): void => {
     if (isCompactWorkbench()) {
       compactVisibleGroup = compactVisibleGroup === 'left' ? null : 'left';
@@ -1926,15 +1942,30 @@ const startPlayground = async (): Promise<void> => {
         (compactVisibleGroup === 'left' &&
           (containsEventTarget(target, '#left-dock-group') ||
             containsEventTarget(target, '#left-edge-strip') ||
-            eventTargetsAnyControl(target, ['toggle-left-rail-button', 'toggle-left-rail-toolbar-button']))) ||
+            eventTargetsAnyControl(target, [
+              'pin-left-rail-button',
+              'toggle-left-rail-button',
+              'close-left-rail-button',
+              'toggle-left-rail-toolbar-button',
+            ]))) ||
         (compactVisibleGroup === 'right' &&
           (containsEventTarget(target, '.right-dock') ||
             containsEventTarget(target, '#right-edge-strip') ||
-            eventTargetsAnyControl(target, ['toggle-right-dock-button', 'toggle-right-dock-toolbar-button']))) ||
+            eventTargetsAnyControl(target, [
+              'pin-right-dock-button',
+              'toggle-right-dock-button',
+              'close-right-dock-button',
+              'toggle-right-dock-toolbar-button',
+            ]))) ||
         (compactVisibleGroup === 'bottom' &&
           (containsEventTarget(target, '#bottom-drawer-shell') ||
             containsEventTarget(target, '#bottom-edge-strip') ||
-            eventTargetsAnyControl(target, ['toggle-bottom-drawer-button', 'toggle-bottom-drawer-toolbar-button'])));
+            eventTargetsAnyControl(target, [
+              'pin-bottom-drawer-button',
+              'toggle-bottom-drawer-button',
+              'close-bottom-drawer-button',
+              'toggle-bottom-drawer-toolbar-button',
+            ])));
       if (!shouldKeepVisible) {
         compactVisibleGroup = null;
         syncLayoutState();
@@ -1948,7 +1979,12 @@ const startPlayground = async (): Promise<void> => {
       nextState.leftRailVisible &&
       !containsEventTarget(target, '#left-dock-group') &&
       !containsEventTarget(target, '#left-edge-strip') &&
-      !eventTargetsAnyControl(target, ['toggle-left-rail-button', 'toggle-left-rail-toolbar-button'])
+      !eventTargetsAnyControl(target, [
+        'pin-left-rail-button',
+        'toggle-left-rail-button',
+        'close-left-rail-button',
+        'toggle-left-rail-toolbar-button',
+      ])
     ) {
       nextState = { ...nextState, leftRailVisible: false };
     }
@@ -1957,7 +1993,12 @@ const startPlayground = async (): Promise<void> => {
       nextState.rightDockVisible &&
       !containsEventTarget(target, '.right-dock') &&
       !containsEventTarget(target, '#right-edge-strip') &&
-      !eventTargetsAnyControl(target, ['toggle-right-dock-button', 'toggle-right-dock-toolbar-button'])
+      !eventTargetsAnyControl(target, [
+        'pin-right-dock-button',
+        'toggle-right-dock-button',
+        'close-right-dock-button',
+        'toggle-right-dock-toolbar-button',
+      ])
     ) {
       nextState = { ...nextState, rightDockVisible: false };
     }
@@ -1966,7 +2007,12 @@ const startPlayground = async (): Promise<void> => {
       nextState.bottomDrawerVisible &&
       !containsEventTarget(target, '#bottom-drawer-shell') &&
       !containsEventTarget(target, '#bottom-edge-strip') &&
-      !eventTargetsAnyControl(target, ['toggle-bottom-drawer-button', 'toggle-bottom-drawer-toolbar-button'])
+      !eventTargetsAnyControl(target, [
+        'pin-bottom-drawer-button',
+        'toggle-bottom-drawer-button',
+        'close-bottom-drawer-button',
+        'toggle-bottom-drawer-toolbar-button',
+      ])
     ) {
       nextState = { ...nextState, bottomDrawerVisible: false };
     }
@@ -2108,10 +2154,12 @@ const startPlayground = async (): Promise<void> => {
 
   const updateRouteUi = (): void => {
     const location = currentRouteLocation(state.routePreview);
+    const href = routeHrefFromLocation(location, playgroundBaseHref);
     setInputValue('route-path-input', location.pathname);
     setInputValue('route-search-input', location.search);
     setInputValue('route-hash-input', location.hash);
-    setText('route-preview-url', routeHrefFromLocation(location, playgroundBaseHref));
+    setText('route-preview-url', href);
+    setText('runtime-route-stat', href);
     setButtonDisabled('route-back-button', !routePreviewCanGoBack(state.routePreview));
     setButtonDisabled('route-forward-button', !routePreviewCanGoForward(state.routePreview));
   };
@@ -2848,17 +2896,35 @@ const startPlayground = async (): Promise<void> => {
   document.getElementById('toggle-left-rail-button')?.addEventListener('click', () => {
     toggleLeftRailMode();
   });
+  document.getElementById('pin-left-rail-button')?.addEventListener('click', () => {
+    pinDockGroup('left');
+  });
+  document.getElementById('close-left-rail-button')?.addEventListener('click', () => {
+    closeDockGroup('left');
+  });
   document.getElementById('toggle-left-rail-toolbar-button')?.addEventListener('click', () => {
     toggleLeftRailToolbar();
   });
   document.getElementById('toggle-right-dock-button')?.addEventListener('click', () => {
     toggleRightDockMode();
   });
+  document.getElementById('pin-right-dock-button')?.addEventListener('click', () => {
+    pinDockGroup('right');
+  });
+  document.getElementById('close-right-dock-button')?.addEventListener('click', () => {
+    closeDockGroup('right');
+  });
   document.getElementById('toggle-right-dock-toolbar-button')?.addEventListener('click', () => {
     toggleRightDockToolbar();
   });
   document.getElementById('toggle-bottom-drawer-button')?.addEventListener('click', () => {
     toggleBottomDrawerMode();
+  });
+  document.getElementById('pin-bottom-drawer-button')?.addEventListener('click', () => {
+    pinDockGroup('bottom');
+  });
+  document.getElementById('close-bottom-drawer-button')?.addEventListener('click', () => {
+    closeDockGroup('bottom');
   });
   document.getElementById('toggle-bottom-drawer-toolbar-button')?.addEventListener('click', () => {
     toggleBottomDrawerToolbar();

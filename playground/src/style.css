@@ -225,7 +225,7 @@ button {
 .workspace-shell {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 0.625rem;
   overflow: hidden;
 }
@@ -235,9 +235,9 @@ button {
   top: 0;
   z-index: 20;
   isolation: isolate;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.45rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
   padding: 0.625rem 0.75rem;
 }
 
@@ -260,7 +260,20 @@ button {
   background: #1f242c;
 }
 
-.workspace-toolbar .status-strip {
+.workbench-hidden-controls {
+  display: none;
+}
+
+.workbench-statusbar {
+  min-height: 2.15rem;
+  border: 1px solid #242a33;
+  border-radius: 6px;
+  background: #101318;
+  color: #aab4c2;
+  overflow: hidden;
+}
+
+.workbench-statusbar .status-strip {
   min-width: 0;
   display: flex;
   flex-wrap: nowrap;
@@ -318,7 +331,7 @@ button {
   flex: 0 0 auto;
 }
 
-.workspace-toolbar .stat:first-child {
+.workbench-statusbar .stat:first-child {
   padding-left: 0;
   border-left: 0;
 }
@@ -537,6 +550,42 @@ button {
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
+}
+
+.workbench-activity-strip {
+  justify-content: flex-start;
+  background: #0f1217;
+}
+
+.activity-button {
+  width: 100%;
+  min-height: 2.45rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa4b2;
+  cursor: pointer;
+  font-family: IBM Plex Mono, ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.activity-button:hover {
+  border-color: #343b47;
+  background: #151a21;
+  color: #eef2f7;
+}
+
+.activity-button[data-active='true'] {
+  border-color: #0f766e;
+  background: #10211d;
+  color: #d1fae5;
+}
+
+.legacy-edge-tabs {
+  display: none;
 }
 
 .bottom-edge-strip {
@@ -1564,7 +1613,7 @@ button {
     --bottom-splitter-track: 0rem;
   }
 
-  .workspace-toolbar .status-strip {
+  .workbench-statusbar .status-strip {
     width: 100%;
   }
 
@@ -1631,6 +1680,32 @@ button {
     align-items: stretch;
   }
 
+  .ide-workbench {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--edge-strip-size);
+  }
+
+  .left-edge-strip {
+    grid-column: 1;
+    grid-row: 2;
+    flex-direction: row;
+  }
+
+  .activity-button {
+    min-height: 100%;
+    min-width: 0;
+  }
+
+  .center-dock-stack {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .right-edge-strip,
+  #bottom-edge-strip {
+    display: none !important;
+  }
+
   .preset-button {
     width: 100%;
   }
@@ -1654,7 +1729,7 @@ button {
   .playground-body {
     --right-layout-track: 0rem;
     --right-splitter-track: 0rem;
-    --right-edge-track: var(--edge-strip-size);
+    --right-edge-track: 0rem;
   }
 
   #right-dock-splitter {
@@ -1669,8 +1744,8 @@ button {
     position: absolute;
     top: 0;
     bottom: 0;
-    right: calc(var(--edge-strip-size) + 0.5rem);
-    width: min(var(--right-dock-width), calc(100vw - 5rem));
+    right: 0;
+    width: min(var(--right-dock-width), calc(100vw - 1rem));
     z-index: 26;
     box-shadow: 0 22px 48px rgba(2, 6, 23, 0.52);
   }
@@ -1680,7 +1755,7 @@ button {
   .playground-body {
     --left-layout-track: 0rem;
     --left-splitter-track: 0rem;
-    --left-edge-track: var(--edge-strip-size);
+    --left-edge-track: 0rem;
   }
 
   #left-rail-splitter {
@@ -1695,8 +1770,8 @@ button {
     position: absolute;
     top: 0;
     bottom: 0;
-    left: calc(var(--edge-strip-size) + 0.5rem);
-    width: min(var(--left-rail-width), calc(100vw - 5rem));
+    left: 0;
+    width: min(var(--left-rail-width), calc(100vw - 1rem));
     z-index: 26;
     box-shadow: 0 22px 48px rgba(2, 6, 23, 0.52);
   }

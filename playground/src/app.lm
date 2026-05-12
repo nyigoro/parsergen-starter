@@ -194,6 +194,22 @@ fn tab_button(id: string, label: string, tabGroup: string, value: string, contro
   )
 }
 
+fn activity_button(id: string, icon: string, label: string, group: string) -> VNode {
+  vnode(
+    "button",
+    attrs7(
+      props_class("activity-button"),
+      props_id(id),
+      props_type("button"),
+      props_attr("data-activity-group", group),
+      props_attr("aria-label", label),
+      props_attr("title", label),
+      props_attr("aria-expanded", "false")
+    ),
+    [text(icon)]
+  )
+}
+
 fn edge_tab_button(id: string, label: string, tabGroup: string, value: string, edge: string, controls: string) -> VNode {
   vnode(
     "button",
@@ -239,39 +255,34 @@ pub fn app() -> VNode {
   let formatButton = tool_button("format-button", "Format", "secondary");
   let shareButton = tool_button("share-button", "Share", "secondary");
   let copyButton = tool_button("copy-js-button", "Copy JS", "secondary");
-  let toggleExplorerButton = tool_button("toggle-left-rail-toolbar-button", "Explorer", "secondary");
-  let toggleDockButton = tool_button("toggle-right-dock-toolbar-button", "Dock", "secondary");
-  let toggleOutputButton = tool_button("toggle-bottom-drawer-toolbar-button", "Output", "secondary");
   let actionRow = div_node("tool-row toolbar-row toolbar-row-primary", [
     runButton,
-    stopButton,
-    stopCompileButton,
     checkButton,
     formatButton,
     shareButton,
     copyButton
   ]);
 
-  let layoutLabel = vnode("span", props_class("toolbar-label"), [text("Panels")]);
-  let layoutRow = div_node("tool-row toolbar-row toolbar-row-secondary", [
-    layoutLabel,
-    toggleExplorerButton,
-    toggleDockButton,
-    toggleOutputButton
+  let hiddenRunStop = vnode("div", props_class("workbench-hidden-controls"), [
+    stopButton,
+    stopCompileButton
   ]);
 
   let statusStat = stat("Compile", "Waiting", "compile-status");
   let diagnosticStat = stat("Diagnostics", "0", "diagnostic-count");
-  let outputStat = stat("Output", "JS", "output-mode");
   let activeFileStat = stat("Active File", "main.lm", "active-file-stat");
+  let runtimeStat = stat("Runtime", "/", "runtime-route-stat");
+  let outputStat = stat("Output", "JS", "output-mode");
   let status = div_node("status-strip stack-sm", [
     statusStat,
     diagnosticStat,
-    outputStat,
-    activeFileStat
+    activeFileStat,
+    runtimeStat,
+    outputStat
   ]);
 
-  let toolbar = div_node("workspace-toolbar", [actionRow, layoutRow, status]);
+  let toolbar = div_node("workspace-toolbar workbench-toolbar-region", [actionRow, hiddenRunStop]);
+  let statusBar = div_node("workbench-statusbar", [status]);
 
   let basicsPreset = preset_button("basics", "Basics", "Functions and return values");
   let indexingPreset = preset_button("safe-index", "Safe Indexing", "Option instead of undefined");
@@ -348,7 +359,9 @@ pub fn app() -> VNode {
       vnode("span", attrs2(props_class("small-pill"), props_id("left-rail-mode-pill")), [text("pinned")])
     ]),
     div_node("tool-row compact-tools", [
-      tool_button("toggle-left-rail-button", "Auto-hide", "secondary")
+      tool_button("pin-left-rail-button", "Pin", "secondary"),
+      tool_button("toggle-left-rail-button", "Auto-hide", "secondary"),
+      tool_button("close-left-rail-button", "Close", "secondary")
     ])
   ]);
   let leftRailTabs = tab_list("dock-tabs rail-tabs", "Explorer panes", [
@@ -363,10 +376,16 @@ pub fn app() -> VNode {
     fileSidebar,
     presetPanel
   ]);
-  let leftEdgeStrip = vnode("aside", attrs4(props_class("edge-strip left-edge-strip"), props_id("left-edge-strip"), props_attr("role", "tablist"), props_attr("aria-label", "Explorer edge panes")), [
+  let legacyExplorerEdgeTabs = div_node("legacy-edge-tabs", [
     edge_tab_button("edge-rail-tab-workspace", "Workspace", "rail", "workspace", "left", "rail-workspace-panel"),
     edge_tab_button("edge-rail-tab-files", "Files", "rail", "files", "left", "rail-files-panel"),
     edge_tab_button("edge-rail-tab-presets", "Presets", "rail", "presets", "left", "rail-presets-panel")
+  ]);
+  let leftEdgeStrip = vnode("aside", attrs4(props_class("edge-strip left-edge-strip workbench-activity-strip"), props_id("left-edge-strip"), props_attr("role", "tablist"), props_attr("aria-label", "Workbench activity strip")), [
+    activity_button("toggle-left-rail-toolbar-button", "Ex", "Explorer", "left"),
+    activity_button("toggle-bottom-drawer-toolbar-button", "Op", "Output", "bottom"),
+    activity_button("toggle-right-dock-toolbar-button", "Dk", "Dock", "right"),
+    legacyExplorerEdgeTabs
   ]);
 
   let activeFile = vnode("span", attrs2(props_class("small-pill"), props_id("active-file-label")), [text("main.lm")]);
@@ -458,7 +477,9 @@ pub fn app() -> VNode {
       vnode("span", attrs2(props_class("small-pill"), props_id("right-dock-mode-pill")), [text("pinned")])
     ]),
     div_node("tool-row compact-tools", [
-      tool_button("toggle-right-dock-button", "Auto-hide", "secondary")
+      tool_button("pin-right-dock-button", "Pin", "secondary"),
+      tool_button("toggle-right-dock-button", "Auto-hide", "secondary"),
+      tool_button("close-right-dock-button", "Close", "secondary")
     ])
   ]);
   let dockTabs = tab_list("dock-tabs", "Dock panes", [
@@ -503,7 +524,9 @@ pub fn app() -> VNode {
       vnode("span", attrs2(props_class("small-pill"), props_id("bottom-drawer-mode-pill")), [text("pinned")])
     ]),
     div_node("tool-row compact-tools", [
-      tool_button("toggle-bottom-drawer-button", "Auto-hide", "secondary")
+      tool_button("pin-bottom-drawer-button", "Pin", "secondary"),
+      tool_button("toggle-bottom-drawer-button", "Auto-hide", "secondary"),
+      tool_button("close-bottom-drawer-button", "Close", "secondary")
     ])
   ]);
   let bottomTabs = tab_list("dock-tabs bottom-drawer-tabs", "Output panes", [
@@ -541,7 +564,7 @@ pub fn app() -> VNode {
     rightDock,
     rightEdgeStrip
   ]);
-  let workspaceShell = div_node("workspace-shell", [toolbar, workspace]);
+  let workspaceShell = div_node("workspace-shell", [toolbar, workspace, statusBar]);
 
   let toast = vnode("div", attrs2(props_class("toast"), props_id("toast-root")), [text("")]);
   let dialogRoot = vnode("div", attrs2(props_class("dialog-root"), props_id("dialog-root")), [
