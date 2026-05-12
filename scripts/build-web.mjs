@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = process.cwd();
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(currentDir, '..');
 const npmCommand =
   process.platform === 'win32'
     ? { command: process.execPath, prefixArgs: [path.join(repoRoot, 'node_modules/npm/bin/npm-cli.js')] }
@@ -23,19 +25,32 @@ const run = (command, args) => {
   }
 };
 
-const copyIfExists = async (fromFile, toFile) => {
+const copyRequired = async (fromFile, toFile) => {
+  await fs.mkdir(path.dirname(toFile), { recursive: true });
+  await fs.copyFile(fromFile, toFile);
+};
+
+const ensureFile = async (filePath, label) => {
   try {
-    await fs.mkdir(path.dirname(toFile), { recursive: true });
-    await fs.copyFile(fromFile, toFile);
+    await fs.access(filePath);
   } catch {
-    // Ignore missing files so the build script stays resilient during scaffolding.
+    throw new Error(`Missing ${label}: ${path.relative(repoRoot, filePath)}`);
   }
 };
 
-run(process.execPath, ['scripts/build-docs.mjs']);
-run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'demo', 'run', 'build']);
+run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'demo', 'run', 'build:shell']);
 run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'docs-site', 'run', 'build']);
 run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'playground', 'run', 'build']);
 
-await copyIfExists(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'docs', '404.html'));
-await copyIfExists(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'playground', '404.html'));
+await copyRequired(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'docs', '404.html'));
+await copyRequired(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'playground', '404.html'));
+
+await Promise.all([
+  ensureFile(path.join(repoRoot, 'docs', 'index.html'), 'root site shell'),
+  ensureFile(path.join(repoRoot, 'docs', '404.html'), 'root site fallback'),
+  ensureFile(path.join(repoRoot, 'docs', 'docs', 'index.html'), 'docs app shell'),
+  ensureFile(path.join(repoRoot, 'docs', 'docs', '404.html'), 'docs app fallback'),
+  ensureFile(path.join(repoRoot, 'docs', 'docs', 'docs-bundle.json'), 'docs bundle'),
+  ensureFile(path.join(repoRoot, 'docs', 'playground', 'index.html'), 'playground shell'),
+  ensureFile(path.join(repoRoot, 'docs', 'playground', '404.html'), 'playground fallback'),
+]);

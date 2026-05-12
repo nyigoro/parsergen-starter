@@ -328,6 +328,13 @@ test.describe('playground browser smoke', () => {
 
       await page.locator('#toggle-right-dock-button').click({ force: true });
       await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'true');
+      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'false');
+      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'true');
       await page.locator('#edge-dock-tab-problems').click({ force: true });
       await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'true');
       await expect(page.locator('#dock-tab-problems')).toHaveAttribute('data-active', 'true');
@@ -348,6 +355,12 @@ test.describe('playground browser smoke', () => {
 
       await page.locator('#toggle-bottom-drawer-button').click({ force: true });
       await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-mode', 'auto-hide');
+      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'false');
+      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'true');
       await page.mouse.click((centerEditorBox?.x ?? 0) + 48, (centerEditorBox?.y ?? 0) + 48);
       await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'false');
       await page.locator('#edge-drawer-tab-js').click({ force: true });
@@ -366,6 +379,12 @@ test.describe('playground browser smoke', () => {
 
       await page.locator('#toggle-left-rail-button').click({ force: true });
       await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-mode', 'auto-hide');
+      await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'false');
+      await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-mode', 'auto-hide');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'true');
       await page.locator('#edge-rail-tab-files').click({ force: true });
       await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'true');
       await expect(page.locator('#rail-tab-files')).toHaveAttribute('data-active', 'true');
@@ -386,10 +405,6 @@ test.describe('playground browser smoke', () => {
       await page.setViewportSize({ width: 625, height: 1200 });
       await page.goto(`${server.baseUrl}/playground/?preset=starter-app`);
       await waitForCompile(page);
-
-      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
-      await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
-      await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
 
       const layout = await page.evaluate(() => {
         const body = document.querySelector('.playground-body');
@@ -426,12 +441,25 @@ test.describe('playground browser smoke', () => {
       expect(layout.hasVerticalScroll).toBe(false);
 
       await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'true');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'false');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'false');
       await selectRailTab(page, 'files');
       await expect(page.locator('#file-list-root')).toContainText('main.lm');
       await page.locator('#toggle-left-rail-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'false');
+
       await page.locator('#toggle-bottom-drawer-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'false');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'false');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'true');
       await selectDrawerTab(page, 'console');
       await expect(page.locator('#console-root')).toContainText('Run the program to see output.');
+
+      await page.locator('#toggle-right-dock-toolbar-button').click({ force: true });
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-left-rail-visible', 'false');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-right-dock-visible', 'true');
+      await expect(page.locator('.playground-body')).toHaveAttribute('data-bottom-drawer-visible', 'false');
     } finally {
       await server.close();
     }

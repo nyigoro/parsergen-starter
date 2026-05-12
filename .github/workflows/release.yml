@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npm run lint:check
       - run: npm run build
+      - run: npm run web:build
       - run: npm run build:verify
       - run: npm run pack:check
       - run: npm test

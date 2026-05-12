@@ -118,6 +118,12 @@ type LeftRailTab = 'workspace' | 'files' | 'presets';
 type RightDockTab = 'preview' | 'problems' | 'route' | 'packages' | 'graph' | 'compile' | 'inspector';
 type BottomDrawerTab = 'console' | 'events' | 'js';
 type DockMode = 'pinned' | 'auto-hide';
+type DockGroup = 'left' | 'right' | 'bottom';
+
+type StoredWorkspaceSession = {
+  workspaceId: string | null;
+  workspaceName: string;
+};
 
 type PlaygroundLayoutState = {
   leftRailMode: DockMode;
@@ -137,6 +143,7 @@ type PlaygroundLayoutState = {
 const storageKey = 'lumina-playground-state-v3';
 const workspaceStorageKey = 'lumina-playground-workspaces-v1';
 const layoutStorageKey = 'lumina-playground-layout-v3';
+const workspaceSessionKey = 'lumina-playground-workspace-session-v1';
 const isDirectPlaygroundDev = import.meta.env.DEV && window.location.port === '5175';
 const devAppUrl = (port: string, pathname: string): string =>
   `${window.location.protocol}//${window.location.hostname}:${port}${pathname}`;
@@ -195,6 +202,35 @@ const writeStoredState = (state: PersistedPlaygroundState): void => {
     window.localStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
     // Storage is optional for the playground.
+  }
+};
+
+const sanitizeWorkspaceSession = (value: unknown): StoredWorkspaceSession => ({
+  workspaceId: typeof (value as StoredWorkspaceSession | null)?.workspaceId === 'string'
+    ? (value as StoredWorkspaceSession).workspaceId
+    : null,
+  workspaceName:
+    typeof (value as StoredWorkspaceSession | null)?.workspaceName === 'string' &&
+    (value as StoredWorkspaceSession).workspaceName.trim().length > 0
+      ? (value as StoredWorkspaceSession).workspaceName.trim()
+      : 'workspace',
+});
+
+const readStoredWorkspaceSession = (): StoredWorkspaceSession | null => {
+  try {
+    const raw = window.localStorage.getItem(workspaceSessionKey);
+    if (!raw) return null;
+    return sanitizeWorkspaceSession(JSON.parse(raw) as StoredWorkspaceSession);
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredWorkspaceSession = (value: StoredWorkspaceSession): void => {
+  try {
+    window.localStorage.setItem(workspaceSessionKey, JSON.stringify(sanitizeWorkspaceSession(value)));
+  } catch {
+    // Session metadata is optional.
   }
 };
 
@@ -1081,12 +1117,13 @@ const resolveInitialState = (
 
   const storedState = readStoredState();
   if (storedState) {
-    const activeWorkspace = workspaceStore.activeWorkspaceId
-      ? getWorkspaceSnapshot(workspaceStore, workspaceStore.activeWorkspaceId)
+    const storedWorkspaceSession = readStoredWorkspaceSession();
+    const restoredWorkspace = storedWorkspaceSession?.workspaceId
+      ? getWorkspaceSnapshot(workspaceStore, storedWorkspaceSession.workspaceId)
       : undefined;
     return stateFromPersisted(storedState, {
-      workspaceId: activeWorkspace?.id ?? null,
-      workspaceName: activeWorkspace?.name ?? 'workspace',
+      workspaceId: restoredWorkspace?.id ?? null,
+      workspaceName: restoredWorkspace?.name ?? storedWorkspaceSession?.workspaceName ?? 'workspace',
       dirty: false,
     });
   }
@@ -1501,13 +1538,9 @@ const startPlayground = async (): Promise<void> => {
   let editorReadyMs = now() - startedAt;
   let layoutState = readLayoutState();
   const isCompactWorkbench = (): boolean => window.matchMedia('(max-width: 760px)').matches;
-  let isCompactOverride = false;
+  let compactVisibleGroup: DockGroup | null = null;
   const collapseWorkbenchForCompact = (): void => {
-    if (!isCompactWorkbench()) {
-      isCompactOverride = false;
-      return;
-    }
-    isCompactOverride = true;
+    compactVisibleGroup = null;
   };
   collapseWorkbenchForCompact();
   let wasCompactWorkbench = isCompactWorkbench();
@@ -1515,7 +1548,7 @@ const startPlayground = async (): Promise<void> => {
     const compact = isCompactWorkbench();
     if (compact !== wasCompactWorkbench) {
       wasCompactWorkbench = compact;
-      isCompactOverride = compact;
+      compactVisibleGroup = null;
       syncLayoutState();
     }
   });
@@ -1524,6 +1557,10 @@ const startPlayground = async (): Promise<void> => {
 
   const persist = (): void => {
     writeStoredState(persistedStateFromPlayground(state));
+    writeStoredWorkspaceSession({
+      workspaceId: state.workspaceId,
+      workspaceName: state.workspaceName,
+    });
   };
 
   const setCompileStatus = (label: string, status: 'idle' | 'running' | 'ok' | 'error'): void => {
@@ -1598,7 +1635,34 @@ const startPlayground = async (): Promise<void> => {
     persistLayoutState();
   };
 
+  const setActiveWorkspaceSession = (workspaceId: string | null): void => {
+    workspaceStore = sanitizeWorkspaceCollection({
+      ...workspaceStore,
+      activeWorkspaceId: workspaceId,
+      recentWorkspaceIds: workspaceId ? [workspaceId, ...workspaceStore.recentWorkspaceIds] : workspaceStore.recentWorkspaceIds,
+      items: workspaceStore.items,
+    });
+    writeWorkspaceStore(workspaceStore);
+  };
+
+  const revealCompactGroup = (group: DockGroup | null): void => {
+    compactVisibleGroup = isCompactWorkbench() ? group : null;
+  };
+
+  const isGroupVisible = (group: DockGroup): boolean => {
+    if (isCompactWorkbench()) return compactVisibleGroup === group;
+    if (group === 'left') return layoutState.leftRailVisible;
+    if (group === 'right') return layoutState.rightDockVisible;
+    return layoutState.bottomDrawerVisible;
+  };
+
   const hideAutoHideOverlays = (): void => {
+    if (isCompactWorkbench()) {
+      if (compactVisibleGroup == null) return;
+      compactVisibleGroup = null;
+      syncLayoutState();
+      return;
+    }
     const nextState: PlaygroundLayoutState = {
       ...layoutState,
       leftRailVisible: layoutState.leftRailMode === 'auto-hide' ? false : layoutState.leftRailVisible,
@@ -1616,9 +1680,9 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const syncLayoutState = (): void => {
-    const effectiveLeftRailVisible = layoutState.leftRailVisible && !isCompactOverride;
-    const effectiveRightDockVisible = layoutState.rightDockVisible && !isCompactOverride;
-    const effectiveBottomDrawerVisible = layoutState.bottomDrawerVisible && !isCompactOverride;
+    const effectiveLeftRailVisible = isGroupVisible('left');
+    const effectiveRightDockVisible = isGroupVisible('right');
+    const effectiveBottomDrawerVisible = isGroupVisible('bottom');
 
     playgroundBody.dataset.leftRailMode = layoutState.leftRailMode;
     playgroundBody.dataset.leftRailVisible = effectiveLeftRailVisible ? 'true' : 'false';
@@ -1707,31 +1771,75 @@ const startPlayground = async (): Promise<void> => {
     writeLayoutState(layoutState);
   };
 
+  const revealRightDockTab = (tab: RightDockTab): void => {
+    layoutState = isCompactWorkbench()
+      ? {
+          ...layoutState,
+          rightDockTab: tab,
+        }
+      : {
+          ...layoutState,
+          rightDockTab: tab,
+          rightDockVisible: true,
+        };
+    revealCompactGroup('right');
+    persistLayoutState();
+  };
+
+  const revealBottomDrawerTab = (tab: BottomDrawerTab): void => {
+    layoutState = isCompactWorkbench()
+      ? {
+          ...layoutState,
+          bottomDrawerTab: tab,
+        }
+      : {
+          ...layoutState,
+          bottomDrawerTab: tab,
+          bottomDrawerVisible: true,
+        };
+    revealCompactGroup('bottom');
+    persistLayoutState();
+  };
+
+  const revealProblemsAndConsole = (preferredGroup: DockGroup): void => {
+    layoutState = isCompactWorkbench()
+      ? {
+          ...layoutState,
+          rightDockTab: 'problems',
+          bottomDrawerTab: 'console',
+        }
+      : {
+          ...layoutState,
+          rightDockTab: 'problems',
+          rightDockVisible: true,
+          bottomDrawerTab: 'console',
+          bottomDrawerVisible: true,
+        };
+    revealCompactGroup(preferredGroup);
+    persistLayoutState();
+  };
+
   const selectLeftRailTab = (tab: LeftRailTab): void => {
-    layoutState = {
-      ...layoutState,
-      leftRailTab: tab,
-      leftRailVisible: true,
-    };
+    layoutState = isCompactWorkbench()
+      ? {
+          ...layoutState,
+          leftRailTab: tab,
+        }
+      : {
+          ...layoutState,
+          leftRailTab: tab,
+          leftRailVisible: true,
+        };
+    revealCompactGroup('left');
     persistLayoutState();
   };
 
   const selectRightDockTab = (tab: RightDockTab): void => {
-    layoutState = {
-      ...layoutState,
-      rightDockTab: tab,
-      rightDockVisible: true,
-    };
-    persistLayoutState();
+    revealRightDockTab(tab);
   };
 
   const selectBottomDrawerTab = (tab: BottomDrawerTab): void => {
-    layoutState = {
-      ...layoutState,
-      bottomDrawerTab: tab,
-      bottomDrawerVisible: true,
-    };
-    persistLayoutState();
+    revealBottomDrawerTab(tab);
   };
 
   const toggleLeftRailMode = (): void =>
@@ -1744,35 +1852,38 @@ const startPlayground = async (): Promise<void> => {
     setGroupMode('bottom', layoutState.bottomDrawerMode === 'pinned' ? 'auto-hide' : 'pinned');
 
   const toggleLeftRailToolbar = (): void => {
-    const willBeVisible = !layoutState.leftRailVisible;
-    if (willBeVisible && isCompactOverride) {
-      isCompactOverride = false;
+    if (isCompactWorkbench()) {
+      compactVisibleGroup = compactVisibleGroup === 'left' ? null : 'left';
+      persistLayoutState();
+      return;
     }
     layoutState = layoutState.leftRailVisible
       ? { ...layoutState, leftRailVisible: false }
-      : { ...layoutState, leftRailMode: 'pinned', leftRailVisible: true };
+      : { ...layoutState, leftRailVisible: true };
     persistLayoutState();
   };
 
   const toggleRightDockToolbar = (): void => {
-    const willBeVisible = !layoutState.rightDockVisible;
-    if (willBeVisible && isCompactOverride) {
-      isCompactOverride = false;
+    if (isCompactWorkbench()) {
+      compactVisibleGroup = compactVisibleGroup === 'right' ? null : 'right';
+      persistLayoutState();
+      return;
     }
     layoutState = layoutState.rightDockVisible
       ? { ...layoutState, rightDockVisible: false }
-      : { ...layoutState, rightDockMode: 'pinned', rightDockVisible: true };
+      : { ...layoutState, rightDockVisible: true };
     persistLayoutState();
   };
 
   const toggleBottomDrawerToolbar = (): void => {
-    const willBeVisible = !layoutState.bottomDrawerVisible;
-    if (willBeVisible && isCompactOverride) {
-      isCompactOverride = false;
+    if (isCompactWorkbench()) {
+      compactVisibleGroup = compactVisibleGroup === 'bottom' ? null : 'bottom';
+      persistLayoutState();
+      return;
     }
     layoutState = layoutState.bottomDrawerVisible
       ? { ...layoutState, bottomDrawerVisible: false }
-      : { ...layoutState, bottomDrawerMode: 'pinned', bottomDrawerVisible: true };
+      : { ...layoutState, bottomDrawerVisible: true };
     persistLayoutState();
   };
 
@@ -1791,6 +1902,27 @@ const startPlayground = async (): Promise<void> => {
   };
 
   const dismissAutoHideOverlaysFromTarget = (target: EventTarget | null): void => {
+    if (isCompactWorkbench() && compactVisibleGroup) {
+      const shouldKeepVisible =
+        (compactVisibleGroup === 'left' &&
+          (containsEventTarget(target, '#left-dock-group') ||
+            containsEventTarget(target, '#left-edge-strip') ||
+            eventTargetsAnyControl(target, ['toggle-left-rail-button', 'toggle-left-rail-toolbar-button']))) ||
+        (compactVisibleGroup === 'right' &&
+          (containsEventTarget(target, '.right-dock') ||
+            containsEventTarget(target, '#right-edge-strip') ||
+            eventTargetsAnyControl(target, ['toggle-right-dock-button', 'toggle-right-dock-toolbar-button']))) ||
+        (compactVisibleGroup === 'bottom' &&
+          (containsEventTarget(target, '#bottom-drawer-shell') ||
+            containsEventTarget(target, '#bottom-edge-strip') ||
+            eventTargetsAnyControl(target, ['toggle-bottom-drawer-button', 'toggle-bottom-drawer-toolbar-button'])));
+      if (!shouldKeepVisible) {
+        compactVisibleGroup = null;
+        syncLayoutState();
+      }
+      return;
+    }
+
     let nextState = layoutState;
     if (
       nextState.leftRailMode === 'auto-hide' &&
@@ -2150,14 +2282,7 @@ const startPlayground = async (): Promise<void> => {
   const renderLoadFailure = (message: string): void => {
     const diagnostic = [{ severity: 'error', message, code: 'PLAYGROUND-LOAD' } satisfies CompileDiagnostic];
     lastDiagnostics = diagnostic;
-    layoutState = {
-      ...layoutState,
-      rightDockTab: 'problems',
-      rightDockVisible: true,
-      bottomDrawerTab: 'console',
-      bottomDrawerVisible: true,
-    };
-    syncLayoutState();
+    revealProblemsAndConsole('right');
     setCompileStatus('Load failed', 'error');
     setRunStatus('Blocked', 'error');
     renderDiagnostics(diagnosticsRoot, diagnostic, diagnosticsFilter);
@@ -2215,14 +2340,7 @@ const startPlayground = async (): Promise<void> => {
       lastResult = result;
       lastDiagnostics = result.diagnostics;
       if (!result.ok) {
-        layoutState = {
-          ...layoutState,
-          rightDockTab: 'problems',
-          rightDockVisible: true,
-          bottomDrawerTab: 'console',
-          bottomDrawerVisible: true,
-        };
-        syncLayoutState();
+        revealProblemsAndConsole('right');
       }
       setCompileStatus(result.ok ? `Compiled • ${result.timings.totalMs.toFixed(1)}ms` : 'Needs attention', result.ok ? 'ok' : 'error');
       setText('output-mode', `JS • ${result.graphNodes} modules`);
@@ -2297,12 +2415,7 @@ const startPlayground = async (): Promise<void> => {
     activeRun = { controller };
     setButtonDisabled('stop-run-button', false);
     setRunStatus('Running', 'running');
-    layoutState = {
-      ...layoutState,
-      bottomDrawerTab: 'console',
-      bottomDrawerVisible: true,
-    };
-    syncLayoutState();
+    revealBottomDrawerTab('console');
 
     try {
       const routeHref = routeHrefFromLocation(currentRouteLocation(state.routePreview), playgroundBaseHref);
@@ -2434,6 +2547,7 @@ const startPlayground = async (): Promise<void> => {
       showToast('Workspace not found.');
       return;
     }
+    setActiveWorkspaceSession(snapshot.id);
     applyLoadedState(
       stateFromPersisted(snapshot.state, {
         workspaceId: snapshot.id,

@@ -18,6 +18,7 @@ jobs:
       - run: npm ci
       - run: npm run lint:check
       - run: npm run build
+      - run: npm run web:build
       - run: npm test
 
   browser-smoke:

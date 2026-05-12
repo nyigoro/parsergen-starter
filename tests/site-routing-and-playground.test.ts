@@ -20,6 +20,11 @@ type DocsBundle = {
   }>;
 };
 
+const collectAssetRefs = (html: string): string[] =>
+  Array.from(html.matchAll(/(?:src|href)="([^"]+)"/g))
+    .map((match) => match[1])
+    .filter((value) => value.startsWith('./assets/') || value.startsWith('assets/'));
+
 describe('site routing and playground integration', () => {
   test('404 redirect keeps docs deep links inside the docs app', () => {
     expect(
@@ -49,9 +54,15 @@ describe('site routing and playground integration', () => {
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8')) as {
       scripts?: Record<string, string>;
     };
+    const demoPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../demo/package.json'), 'utf-8')) as {
+      scripts?: Record<string, string>;
+    };
 
     expect(pkg.scripts?.['site:dev']).toBe('npm run web:dev');
     expect(pkg.scripts?.['site:build']).toBe('npm run web:build');
+    expect(pkg.scripts?.['web:build']).toBe('node scripts/build-web.mjs');
+    expect(demoPkg.scripts?.build).toBe('node ../scripts/build-web.mjs');
+    expect(demoPkg.scripts?.['build:shell']).toContain('vite build --config vite.config.ts');
   });
 
   test('generated docs bundle preserves route fragments and heading ids', () => {
@@ -69,6 +80,48 @@ describe('site routing and playground integration', () => {
     );
     expect(errorHandling?.html).toContain('#/stdlib?section=result');
     expect(stdlib?.html).toContain('<h2 id="result">Result</h2>');
+  });
+
+  test('published docs and playground artifacts exist with live asset references', () => {
+    const docsRoot = path.resolve(__dirname, '../docs');
+    const rootIndexPath = path.join(docsRoot, 'index.html');
+    const rootFallbackPath = path.join(docsRoot, '404.html');
+    const docsIndexPath = path.join(docsRoot, 'docs', 'index.html');
+    const docsFallbackPath = path.join(docsRoot, 'docs', '404.html');
+    const docsBundlePath = path.join(docsRoot, 'docs', 'docs-bundle.json');
+    const playgroundIndexPath = path.join(docsRoot, 'playground', 'index.html');
+    const playgroundFallbackPath = path.join(docsRoot, 'playground', '404.html');
+
+    for (const filePath of [
+      rootIndexPath,
+      rootFallbackPath,
+      docsIndexPath,
+      docsFallbackPath,
+      docsBundlePath,
+      playgroundIndexPath,
+      playgroundFallbackPath,
+    ]) {
+      expect(fs.existsSync(filePath)).toBe(true);
+    }
+
+    const rootIndex = fs.readFileSync(rootIndexPath, 'utf-8');
+    const docsIndex = fs.readFileSync(docsIndexPath, 'utf-8');
+    const playgroundIndex = fs.readFileSync(playgroundIndexPath, 'utf-8');
+    const rootFallback = fs.readFileSync(rootFallbackPath, 'utf-8');
+    const playgroundFallback = fs.readFileSync(playgroundFallbackPath, 'utf-8');
+
+    for (const assetRef of collectAssetRefs(rootIndex)) {
+      expect(fs.existsSync(path.resolve(docsRoot, assetRef))).toBe(true);
+    }
+    for (const assetRef of collectAssetRefs(docsIndex)) {
+      expect(fs.existsSync(path.resolve(path.join(docsRoot, 'docs'), assetRef))).toBe(true);
+    }
+    for (const assetRef of collectAssetRefs(playgroundIndex)) {
+      expect(fs.existsSync(path.resolve(path.join(docsRoot, 'playground'), assetRef))).toBe(true);
+    }
+
+    expect(rootFallback).toContain('Redirecting...');
+    expect(playgroundFallback).toContain('Redirecting...');
   });
 
   test('playground compiler path stays browser-safe and lazy on startup', () => {
