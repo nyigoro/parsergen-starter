@@ -74,9 +74,17 @@ describe('site routing and playground integration', () => {
     expect(demoViteConfig).toContain('emptyOutDir: false');
   });
 
-  test('generated docs bundle preserves route fragments and heading ids', () => {
+  test('ci and release workflows exercise the full web publish build', () => {
+    const ci = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/ci.yml'), 'utf-8');
+    const release = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/release.yml'), 'utf-8');
+
+    expect(ci).toContain('- run: npm run web:build');
+    expect(release).toContain('- run: npm run web:build');
+  });
+
+  test('published docs bundle preserves route fragments and heading ids', () => {
     const bundle = JSON.parse(
-      fs.readFileSync(path.resolve(__dirname, '../docs-site/public/docs-bundle.json'), 'utf-8')
+      fs.readFileSync(path.resolve(__dirname, '../docs/docs/docs-bundle.json'), 'utf-8')
     ) as DocsBundle;
 
     const gettingStarted = bundle.pages.find((page) => page.slug === 'getting-started');
