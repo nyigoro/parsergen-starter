@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ../scripts/build-docs.mjs && vite --config vite.config.ts",
-    "build:shell": "node ../scripts/build-docs.mjs && vite build --config vite.config.ts && node ../scripts/copy-cname.cjs && node ../scripts/build-404.cjs",
+    "build:shell": "node ../scripts/build-docs.mjs && node ../scripts/clean-root-web-output.mjs && vite build --config vite.config.ts && node ../scripts/copy-cname.cjs && node ../scripts/build-404.cjs && node ../scripts/copy-web-fallbacks.mjs",
     "build": "node ../scripts/build-web.mjs"
   },
   "dependencies": {

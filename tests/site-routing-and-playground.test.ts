@@ -62,7 +62,16 @@ describe('site routing and playground integration', () => {
     expect(pkg.scripts?.['site:build']).toBe('npm run web:build');
     expect(pkg.scripts?.['web:build']).toBe('node scripts/build-web.mjs');
     expect(demoPkg.scripts?.build).toBe('node ../scripts/build-web.mjs');
+    expect(demoPkg.scripts?.['build:shell']).toContain('node ../scripts/clean-root-web-output.mjs');
+    expect(demoPkg.scripts?.['build:shell']).toContain('node ../scripts/copy-web-fallbacks.mjs');
     expect(demoPkg.scripts?.['build:shell']).toContain('vite build --config vite.config.ts');
+
+    const buildWeb = fs.readFileSync(path.resolve(__dirname, '../scripts/build-web.mjs'), 'utf-8');
+    expect(buildWeb).toContain("run(process.execPath, ['scripts/copy-web-fallbacks.mjs'])");
+
+    const demoViteConfig = fs.readFileSync(path.resolve(__dirname, '../demo/vite.config.ts'), 'utf-8');
+    expect(demoViteConfig).toContain("outDir: '../docs'");
+    expect(demoViteConfig).toContain('emptyOutDir: false');
   });
 
   test('generated docs bundle preserves route fragments and heading ids', () => {

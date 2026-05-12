@@ -50,7 +50,7 @@ export default defineConfig({
   },
   build: {
     outDir: '../docs',
-    emptyOutDir: true,
+    emptyOutDir: false,
     sourcemap: false,
     rollupOptions: {
       external: [],

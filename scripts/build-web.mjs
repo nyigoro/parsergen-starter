@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -25,12 +24,8 @@ const run = (command, args) => {
   }
 };
 
-const copyRequired = async (fromFile, toFile) => {
-  await fs.mkdir(path.dirname(toFile), { recursive: true });
-  await fs.copyFile(fromFile, toFile);
-};
-
 const ensureFile = async (filePath, label) => {
+  const fs = await import('node:fs/promises');
   try {
     await fs.access(filePath);
   } catch {
@@ -41,9 +36,7 @@ const ensureFile = async (filePath, label) => {
 run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'demo', 'run', 'build:shell']);
 run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'docs-site', 'run', 'build']);
 run(npmCommand.command, [...npmCommand.prefixArgs, '--prefix', 'playground', 'run', 'build']);
-
-await copyRequired(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'docs', '404.html'));
-await copyRequired(path.join(repoRoot, 'docs', '404.html'), path.join(repoRoot, 'docs', 'playground', '404.html'));
+run(process.execPath, ['scripts/copy-web-fallbacks.mjs']);
 
 await Promise.all([
   ensureFile(path.join(repoRoot, 'docs', 'index.html'), 'root site shell'),
