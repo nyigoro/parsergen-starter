@@ -117,4 +117,20 @@ export const allExamples = exampleGroups.flatMap((group) => group.examples);
 export const findExample = (id: string | null | undefined): Example | null =>
   id ? allExamples.find((item) => item.id === (exampleAliases[id] ?? id)) ?? null : null;
 
+export const normalizeExampleSource = (source: string): string =>
+  source
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .trim();
+
+export const findExampleBySource = (
+  source: string,
+  preferredId?: string | null
+): Example | null => {
+  const normalized = normalizeExampleSource(source);
+  const preferred = findExample(preferredId);
+  if (preferred && normalizeExampleSource(preferred.source) === normalized) return preferred;
+  return allExamples.find((example) => normalizeExampleSource(example.source) === normalized) ?? null;
+};
+
 export const defaultExample = findExample('basics') ?? allExamples[0];

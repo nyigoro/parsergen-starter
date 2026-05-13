@@ -4,6 +4,9 @@ export type CompileTarget = 'js' | 'wasm' | 'both';
 export type CompileMode = 'check' | 'run' | 'format';
 export type OutputTab = 'js' | 'wasm' | 'run' | 'ui' | 'types';
 export type CompileStatus = 'idle' | 'checking' | 'running' | 'done' | 'error';
+export type RuntimeStatus = 'idle' | 'running' | 'ok' | 'error';
+export type PreviewStatus = 'idle' | 'rendering' | 'ok' | 'error' | 'empty';
+export type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
 
 export type PlaygroundState = {
   source: string;
@@ -13,6 +16,11 @@ export type PlaygroundState = {
   activeExample: string | null;
   compileResult: CompileResult | null;
   compileStatus: CompileStatus;
+  runtimeStatus: RuntimeStatus;
+  runtimeMessage: string | null;
+  previewStatus: PreviewStatus;
+  previewMessage: string | null;
+  previewDevice: PreviewDevice;
   lastCompiledTarget: CompileTarget | null;
   lastAction: CompileMode | null;
   checkTimeMs: number | null;
@@ -33,6 +41,11 @@ export const defaultState: PlaygroundState = {
   activeExample: 'basics',
   compileResult: null,
   compileStatus: 'idle',
+  runtimeStatus: 'idle',
+  runtimeMessage: null,
+  previewStatus: 'idle',
+  previewMessage: null,
+  previewDevice: 'desktop',
   lastCompiledTarget: null,
   lastAction: null,
   checkTimeMs: null,

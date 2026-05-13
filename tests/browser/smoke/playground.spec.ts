@@ -55,6 +55,10 @@ test.describe('playground browser smoke', () => {
       await waitForCompile(page);
       await expect(page.locator('#examples-current')).toContainText('Counter');
       await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+
+      await page.goto(`${server.baseUrl}/playground/?example=hkt-stdlib`);
+      await waitForCompile(page);
+      await expect(page.locator('#examples-current')).toContainText('HKTs');
     } finally {
       await server.close();
     }
@@ -80,6 +84,7 @@ test.describe('playground browser smoke', () => {
       await sharedPage.goto(sharedUrl);
       await waitForCompile(sharedPage);
       await expect.poll(async () => readEditorText(sharedPage)).toContain('let x = 11;');
+      await expect(sharedPage.locator('#examples-current')).toContainText('Custom');
       await sharedPage.close();
 
       await page.goto(`${server.baseUrl}/playground/`);
@@ -118,6 +123,25 @@ test.describe('playground browser smoke', () => {
       await waitForRunOutput(page);
       await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#run-output-root')).toContainText('return 7');
+      await expect(page.locator('#status-runtime')).toContainText('OK');
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('keeps runtime failures separate from compile diagnostics', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?example=basics`);
+      await waitForCompile(page);
+      await setEditorText(page, 'fn main() -> int {\n  let xs = [1];\n  return xs[3]\n}\n');
+      await waitForCompile(page);
+      await expect(page.locator('#diagnostics-count-label')).toContainText('0 errors');
+      await page.click('#run-button');
+      await waitForRunOutput(page);
+      await expect(page.locator('#status-compile')).toContainText('Done');
+      await expect(page.locator('#status-runtime')).toContainText('Runtime error');
+      await expect(page.locator('#diagnostics-count-label')).toContainText('0 errors');
     } finally {
       await server.close();
     }
@@ -167,6 +191,26 @@ test.describe('playground browser smoke', () => {
       await expect.poll(async () => readEditorText(page)).toContain('counterView');
       await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
       await expect(page).toHaveURL(/example=counter/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('renders isolated UI preview with refresh, device, and auto controls', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?example=counter`);
+      await waitForCompile(page);
+      await page.click('#output-tab-ui');
+      await expect(page.locator('#preview-status-label')).toContainText('Idle');
+      await page.selectOption('#preview-device-select', 'mobile');
+      await expect(page.locator('#preview-frame')).toHaveCSS('inline-size', '368px');
+      await page.click('#preview-refresh-button');
+      await expect(page.locator('#preview-status-label')).toContainText(/Ready|Preview error/, { timeout: 15000 });
+      await expect(page.locator('#preview-status-label')).toContainText('Ready');
+      await expect(page.frameLocator('#preview-frame').locator('button')).toHaveCount(2);
+      await page.click('#preview-auto-button');
+      await expect(page.locator('#preview-auto-button')).toHaveAttribute('data-active', 'true');
     } finally {
       await server.close();
     }

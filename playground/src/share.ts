@@ -1,4 +1,4 @@
-import { findExample } from './examples-data';
+import { findExampleBySource } from './examples-data';
 import type { CompileTarget, OutputTab, PlaygroundState } from './state';
 
 const sourceKey = 'lumina_playground_source';
@@ -68,9 +68,9 @@ export const saveLocalState = (state: PlaygroundState): void => {
 
 export const createShareUrl = (state: PlaygroundState): string => {
   const url = new URL(window.location.href);
-  const selectedExample = findExample(state.activeExample);
+  const selectedExample = findExampleBySource(state.source, state.activeExample);
   url.search = '';
-  if (selectedExample && selectedExample.source === state.source) {
+  if (selectedExample) {
     url.searchParams.set('example', selectedExample.id);
   } else {
     url.searchParams.set('code', toBase64Url(state.source));

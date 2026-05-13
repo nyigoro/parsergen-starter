@@ -1,6 +1,6 @@
 import { compileProjectInWorker, formatSourceInWorker, warmCompilerWorker } from './compile-client';
 import type { CompileDiagnostic, CompileResult } from './compiler-bridge';
-import { defaultExample, exampleGroups, findExample } from './examples-data';
+import { defaultExample, exampleGroups, findExample, findExampleBySource } from './examples-data';
 import { createShareUrl, readLocalState, readUrlState, saveLocalState } from './share';
 import {
   createPlaygroundSignal,
@@ -13,6 +13,8 @@ import {
   type CompileTarget,
   type OutputTab,
   type PlaygroundState,
+  type PreviewStatus,
+  type RuntimeStatus,
 } from './state';
 
 type MountEditor = (options: { elementId: string; initialValue: string }) => void;
@@ -22,6 +24,13 @@ type FocusEditorLocation = (elementId: string, line: number, column?: number) =>
 type GetEditorCursor = (elementId: string) => { line: number; column: number } | null;
 type OnEditorChange = (elementId: string, handler: (value: string) => void) => () => void;
 type RunResult = { output: string; status: 'ok' | 'timeout' | 'error' | 'cancelled' };
+type RuntimeModuleSession = {
+  entryUrl: string;
+  cleanup: () => void;
+};
+type PreviewSession = {
+  cleanup: () => void;
+};
 
 const editorId = 'lumina-editor';
 const entryUri = 'main.lm';
@@ -32,6 +41,19 @@ const statusLabels: Record<CompileStatus, string> = {
   running: 'Running',
   done: 'Done',
   error: 'Needs attention',
+};
+const runtimeLabels: Record<RuntimeStatus, string> = {
+  idle: 'Idle',
+  running: 'Running',
+  ok: 'OK',
+  error: 'Runtime error',
+};
+const previewLabels: Record<PreviewStatus, string> = {
+  idle: 'Idle',
+  rendering: 'Rendering',
+  ok: 'Ready',
+  error: 'Preview error',
+  empty: 'No preview',
 };
 
 const escapeHtml = (value: string): string =>
@@ -68,10 +90,7 @@ const setData = (id: string, key: string, value: string): void => {
 const rewriteModuleImportSource = (statement: string, nextSpecifier: string): string =>
   statement.replace(/\bfrom\s+["'][^"']+["']/, `from ${JSON.stringify(nextSpecifier)}`);
 
-const runCompiledModule = async (result: CompileResult, signal: AbortSignal): Promise<RunResult> => {
-  if (!result.hasMain) return { output: 'No main() function found.', status: 'error' };
-  if (typeof Worker === 'undefined') return { output: 'Worker execution is unavailable.', status: 'error' };
-
+const createRuntimeModuleSession = (result: CompileResult): RuntimeModuleSession => {
   const moduleUrls = new Map<string, string>();
   const modules = new Map(result.runnableModules.map((module) => [module.uri, module]));
   const materialize = (uri: string): string => {
@@ -93,12 +112,26 @@ const runCompiledModule = async (result: CompileResult, signal: AbortSignal): Pr
     result.runnableEntryUri && result.runnableModules.length
       ? materialize(result.runnableEntryUri)
       : URL.createObjectURL(new Blob([`${result.runnableJs}\nexport { main as __luminaMain };\n`]));
+  return {
+    entryUrl,
+    cleanup: () => {
+      for (const url of moduleUrls.values()) URL.revokeObjectURL(url);
+      if (!result.runnableEntryUri || !result.runnableModules.length) URL.revokeObjectURL(entryUrl);
+    },
+  };
+};
+
+const runCompiledModule = async (result: CompileResult, signal: AbortSignal): Promise<RunResult> => {
+  if (!result.hasMain) return { output: 'No main() function found.', status: 'error' };
+  if (typeof Worker === 'undefined') return { output: 'Worker execution is unavailable.', status: 'error' };
+
+  const moduleSession = createRuntimeModuleSession(result);
   const runnerUrl = URL.createObjectURL(
     new Blob(
       [
         `const logs=[];const fmt=(v)=>v===undefined?'void':typeof v==='object'?JSON.stringify(v,null,2):String(v);
 console.log=(...a)=>logs.push(a.map(fmt).join(' '));console.error=console.log;
-(async()=>{try{const m=await import(${JSON.stringify(entryUrl)});const r=await m.__luminaMain?.();
+(async()=>{try{const m=await import(${JSON.stringify(moduleSession.entryUrl)});const r=await m.__luminaMain?.();
 postMessage({type:'done',logs,returned:r===undefined?null:fmt(r),error:null});}
 catch(e){postMessage({type:'done',logs,returned:null,error:e instanceof Error?e.message:String(e)});}})();`,
       ],
@@ -137,8 +170,7 @@ catch(e){postMessage({type:'done',logs,returned:null,error:e instanceof Error?e.
     });
   } finally {
     URL.revokeObjectURL(runnerUrl);
-    for (const url of moduleUrls.values()) URL.revokeObjectURL(url);
-    if (!result.runnableEntryUri || !result.runnableModules.length) URL.revokeObjectURL(entryUrl);
+    moduleSession.cleanup();
   }
 };
 
@@ -169,9 +201,8 @@ const initialState = (): PlaygroundState => {
   const source = urlState.source ?? (urlExample ? example.source : localState.source ?? example.source);
   const target = urlState.target ?? (urlExample ? example.target : localState.target ?? example.target);
   const activeTab = urlState.activeTab ?? example.tab;
-  const activeExample = urlState.source
-    ? null
-    : findExample(partialState.activeExample)?.id ?? partialState.activeExample ?? example.id;
+  const matchedSourceExample = findExampleBySource(source, partialState.activeExample);
+  const activeExample = matchedSourceExample?.id ?? (urlState.source ? null : example.id);
   return {
     ...defaultState,
     ...partialState,
@@ -201,10 +232,13 @@ export const startPlayground = async (): Promise<void> => {
   let checkTimer: number | undefined;
   let activeCompile: AbortController | null = null;
   let activeRun: AbortController | null = null;
+  let activePreview: AbortController | null = null;
   let compileSequence = 0;
+  let previewSequence = 0;
   let programmaticSourceChange = false;
   let readableJs = true;
   let runOutput = 'Run the program to see output.';
+  let previewSession: PreviewSession | null = null;
   let selectedDiagnosticIndex: number | null = null;
 
   const renderExamples = (): void => {
@@ -315,6 +349,25 @@ export const startPlayground = async (): Promise<void> => {
         : '<p class="empty-state">No section metrics available.</p>';
   };
 
+  const renderPreviewPanel = (state: PlaygroundState): void => {
+    const frame = document.getElementById('preview-frame');
+    const select = document.getElementById('preview-device-select') as HTMLSelectElement | null;
+    const widths: Record<PlaygroundState['previewDevice'], string> = {
+      desktop: '100%',
+      tablet: '48rem',
+      mobile: '23rem',
+    };
+
+    setText('preview-status-label', previewLabels[state.previewStatus]);
+    setText('preview-message-label', state.previewMessage ?? 'Refresh to render a Lumina UI example.');
+    setData('preview-status-label', 'status', state.previewStatus === 'ok' ? 'ok' : state.previewStatus);
+    setData('preview-auto-button', 'active', String(state.autoPreview));
+    if (select && select.value !== state.previewDevice) select.value = state.previewDevice;
+    if (frame instanceof HTMLIFrameElement) {
+      frame.style.inlineSize = widths[state.previewDevice];
+    }
+  };
+
   const renderState = (state: PlaygroundState): void => {
     const diagnostics = diagnosticsFor(state);
     const counts = diagnosticCounts(diagnostics);
@@ -354,12 +407,17 @@ export const startPlayground = async (): Promise<void> => {
     setText('run-output-root', runOutput);
     setText('minify-js-button', readableJs ? 'Readable' : 'Minified');
     renderWasmPanel(state);
+    renderPreviewPanel(state);
 
     renderDiagnostics(diagnostics, state.diagnosticsOpen);
     renderExplainDrawer(selectedDiagnostic);
 
     setText('status-compile', statusLabels[state.compileStatus]);
     setData('status-compile', 'status', state.compileStatus === 'done' ? 'ok' : state.compileStatus);
+    setText('status-runtime', runtimeLabels[state.runtimeStatus]);
+    setData('status-runtime', 'status', state.runtimeStatus);
+    setText('status-preview', previewLabels[state.previewStatus]);
+    setData('status-preview', 'status', state.previewStatus === 'ok' ? 'ok' : state.previewStatus);
     setText('status-check-time', state.checkTimeMs === null ? '-' : `${state.checkTimeMs.toFixed(1)}ms`);
     setText('status-run-time', state.runTimeMs === null ? '-' : `${state.runTimeMs.toFixed(1)}ms`);
     setText('status-js-size', bytes(state.compileResult?.js.length ?? 0));
@@ -381,7 +439,12 @@ export const startPlayground = async (): Promise<void> => {
     activeCompile = controller;
     const requestId = ++compileSequence;
     const target = mode === 'run' ? store.get().target : 'js';
-    store.set({ mode, lastAction: mode, compileStatus: mode === 'run' ? 'running' : 'checking' });
+    store.set({
+      mode,
+      lastAction: mode,
+      compileStatus: mode === 'run' ? 'running' : 'checking',
+      ...(mode === 'run' ? { runtimeStatus: 'idle' as const, runtimeMessage: null } : {}),
+    });
 
     try {
       const result = await compileProjectInWorker(
@@ -408,6 +471,7 @@ export const startPlayground = async (): Promise<void> => {
       selectedDiagnosticIndex = 0;
       store.set({
         compileStatus: 'error',
+        ...(mode === 'run' ? { runtimeStatus: 'idle' as const, runtimeMessage: 'Run blocked by compile failure.' } : {}),
         compileResult: buildCompileFailure(error instanceof Error ? error.message : String(error), mode === 'run' ? 'run' : 'check', target),
         diagnosticsOpen: true,
       });
@@ -417,7 +481,12 @@ export const startPlayground = async (): Promise<void> => {
 
   const scheduleCheck = (): void => {
     if (checkTimer) window.clearTimeout(checkTimer);
-    checkTimer = window.setTimeout(() => void compile('check'), 600);
+    checkTimer = window.setTimeout(() => {
+      void (async () => {
+        const result = await compile('check');
+        if (result?.ok && store.get().autoPreview) await refreshPreview();
+      })();
+    }, 600);
   };
 
   const setEditorSource = (
@@ -427,9 +496,14 @@ export const startPlayground = async (): Promise<void> => {
   ): void => {
     programmaticSourceChange = true;
     setEditorText(editorId, nextSource);
+    const activeExample =
+      Object.prototype.hasOwnProperty.call(patch, 'activeExample')
+        ? patch.activeExample
+        : findExampleBySource(nextSource, store.get().activeExample)?.id ?? null;
     store.set({
       ...patch,
       source: nextSource,
+      activeExample,
       cursorLine: 1,
       cursorCol: 1,
     });
@@ -442,6 +516,9 @@ export const startPlayground = async (): Promise<void> => {
     url.searchParams.set('example', exampleId);
     window.history.replaceState(null, '', url);
   };
+
+  const exampleIdentityFor = (source: string): string | null =>
+    findExampleBySource(source, store.get().activeExample)?.id ?? null;
 
   const executeTargetRun = async (result: CompileResult, target: CompileTarget, signal: AbortSignal): Promise<RunResult> => {
     if (target === 'wasm') {
@@ -471,6 +548,7 @@ export const startPlayground = async (): Promise<void> => {
     const result = await compile('run');
     if (!result?.ok) {
       runOutput = 'Run blocked until the current diagnostics are fixed.';
+      store.set({ runtimeStatus: 'idle', runtimeMessage: 'Run blocked by compile diagnostics.' });
       renderState(store.get());
       return;
     }
@@ -481,14 +559,128 @@ export const startPlayground = async (): Promise<void> => {
     runOutput = target === 'wasm' ? 'Preparing WASM target...' : 'Running...';
     const currentTab = store.get().activeTab;
     const nextTab: OutputTab = target === 'wasm' ? 'wasm' : currentTab === 'js' || currentTab === 'wasm' ? currentTab : 'js';
-    store.set({ activeTab: nextTab });
+    store.set({ activeTab: nextTab, runtimeStatus: 'running', runtimeMessage: 'Executing in a clean runtime.' });
     renderState(store.get());
 
     const output = await executeTargetRun(result, target, controller.signal);
     if (controller.signal.aborted || activeRun !== controller) return;
     activeRun = null;
     runOutput = output.output;
-    store.set({ activeTab: 'run', compileStatus: output.status === 'ok' ? 'done' : 'error' });
+    store.set({
+      activeTab: 'run',
+      runtimeStatus: output.status === 'ok' ? 'ok' : 'error',
+      runtimeMessage: output.status === 'ok' ? 'Run completed.' : output.output,
+    });
+  };
+
+  const disposePreview = (): void => {
+    previewSession?.cleanup();
+    previewSession = null;
+    const frame = document.getElementById('preview-frame') as HTMLIFrameElement | null;
+    if (frame) frame.removeAttribute('srcdoc');
+  };
+
+  const compilePreviewSource = async (signal: AbortSignal): Promise<CompileResult | null> => {
+    activeCompile?.abort('Superseded by preview refresh.');
+    const requestId = ++compileSequence;
+    const source = store.get().source;
+    store.set({ compileStatus: 'running' });
+    try {
+      const result = await compileProjectInWorker(sourceProjectInput(source, 'run', 'js'), signal);
+      if (signal.aborted || requestId !== compileSequence) return null;
+      store.set({
+        compileResult: result,
+        compileStatus: result.ok ? 'done' : 'error',
+        diagnosticsOpen: result.diagnostics.length > 0,
+      });
+      return result;
+    } catch (error) {
+      if (signal.aborted || requestId !== compileSequence) return null;
+      selectedDiagnosticIndex = 0;
+      store.set({
+        compileStatus: 'error',
+        compileResult: buildCompileFailure(
+          error instanceof Error ? error.message : String(error),
+          'run',
+          'js'
+        ),
+        diagnosticsOpen: true,
+      });
+      return null;
+    }
+  };
+
+  const refreshPreview = async (): Promise<void> => {
+    activePreview?.abort();
+    const controller = new AbortController();
+    activePreview = controller;
+    const requestId = ++previewSequence;
+    disposePreview();
+    store.set({ previewStatus: 'rendering', previewMessage: 'Compiling UI preview...' });
+
+    const result = store.get().compileResult?.ok && store.get().compileResult?.runnableModules.length
+      ? store.get().compileResult
+      : await compilePreviewSource(controller.signal);
+    if (controller.signal.aborted || activePreview !== controller || requestId !== previewSequence) return;
+
+    if (!result?.ok || !result.runnableModules.length) {
+      activePreview = null;
+      store.set({
+        previewStatus: result?.ok ? 'empty' : 'error',
+        previewMessage: result?.ok
+          ? 'No previewable JavaScript module is available.'
+          : 'Fix compile diagnostics before refreshing preview.',
+      });
+      return;
+    }
+
+    const frame = document.getElementById('preview-frame') as HTMLIFrameElement | null;
+    if (!frame) return;
+    const moduleSession = createRuntimeModuleSession(result);
+    const previewId = requestId;
+    const onMessage = (event: MessageEvent<{ type?: string; id?: number; status?: string; message?: string }>): void => {
+      if (event.data?.type !== 'lumina-preview-result' || event.data.id !== previewId) return;
+      window.removeEventListener('message', onMessage);
+      if (activePreview !== controller) return;
+      activePreview = null;
+      store.set({
+        previewStatus: event.data.status === 'ok' ? 'ok' : 'error',
+        previewMessage: event.data.message ?? (event.data.status === 'ok' ? 'Preview rendered.' : 'Preview failed.'),
+      });
+    };
+    window.addEventListener('message', onMessage);
+    previewSession = {
+      cleanup: () => {
+        window.removeEventListener('message', onMessage);
+        moduleSession.cleanup();
+      },
+    };
+    frame.srcdoc = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #f8fafc; color: #0f172a; }
+    #root, #app { min-height: 100vh; }
+    button { font: inherit; }
+  </style>
+</head>
+<body>
+  <main id="root"><div id="app"></div></main>
+  <script type="module">
+    const done = (status, message) => parent.postMessage({ type: 'lumina-preview-result', id: ${previewId}, status, message }, '*');
+    window.addEventListener('error', (event) => done('error', event.message || 'Preview runtime error.'));
+    window.addEventListener('unhandledrejection', (event) => done('error', event.reason?.message || String(event.reason ?? 'Preview promise rejected.')));
+    try {
+      await import(${JSON.stringify(moduleSession.entryUrl)});
+      done('ok', 'Preview rendered.');
+    } catch (error) {
+      done('error', error instanceof Error ? error.message : String(error));
+    }
+  </script>
+</body>
+</html>`;
   };
 
   renderExamples();
@@ -514,7 +706,16 @@ export const startPlayground = async (): Promise<void> => {
 
     const cursor = getEditorCursor(editorId) ?? { line: 1, column: 1 };
     selectedDiagnosticIndex = null;
-    store.set({ source, activeExample: null, cursorLine: cursor.line, cursorCol: cursor.column });
+    activePreview?.abort();
+    disposePreview();
+    store.set({
+      source,
+      activeExample: exampleIdentityFor(source),
+      cursorLine: cursor.line,
+      cursorCol: cursor.column,
+      previewStatus: store.get().autoPreview ? 'rendering' : 'idle',
+      previewMessage: store.get().autoPreview ? 'Waiting for debounced check.' : 'Refresh to render a Lumina UI example.',
+    });
     scheduleCheck();
   });
 
@@ -538,10 +739,21 @@ export const startPlayground = async (): Promise<void> => {
     if (!example) return;
     selectedDiagnosticIndex = null;
     runOutput = 'Run the program to see output.';
+    activePreview?.abort();
+    disposePreview();
     setExampleUrl(example.id);
     setEditorSource(
       example.source,
-      { activeExample: example.id, target: example.target, activeTab: example.tab, examplesOpen: false },
+      {
+        activeExample: example.id,
+        target: example.target,
+        activeTab: example.tab,
+        examplesOpen: false,
+        runtimeStatus: 'idle',
+        runtimeMessage: null,
+        previewStatus: 'idle',
+        previewMessage: 'Refresh to render a Lumina UI example.',
+      },
       { scheduleCheck: true }
     );
   });
@@ -599,6 +811,20 @@ export const startPlayground = async (): Promise<void> => {
   document.getElementById('minify-js-button')?.addEventListener('click', () => {
     readableJs = !readableJs;
     renderState(store.get());
+  });
+
+  document.getElementById('preview-refresh-button')?.addEventListener('click', () => void refreshPreview());
+
+  document.getElementById('preview-auto-button')?.addEventListener('click', () => {
+    store.set((state) => ({ autoPreview: !state.autoPreview }));
+    if (store.get().autoPreview) void refreshPreview();
+  });
+
+  document.getElementById('preview-device-select')?.addEventListener('change', (event) => {
+    const value = event.target instanceof HTMLSelectElement ? event.target.value : 'desktop';
+    if (value === 'desktop' || value === 'tablet' || value === 'mobile') {
+      store.set({ previewDevice: value });
+    }
   });
 
   document.addEventListener('click', (event) => {

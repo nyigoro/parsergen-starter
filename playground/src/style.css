@@ -492,6 +492,24 @@ button {
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
 }
 
+.stat-value[data-status='rendering'] {
+  color: #fbbf24;
+}
+
+.stat-value[data-status='rendering']::before {
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+
+.stat-value[data-status='empty'] {
+  color: #cbd5e1;
+}
+
+.stat-value[data-status='empty']::before {
+  background: #64748b;
+  box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.18);
+}
+
 .stat-value[data-status='idle']::before,
 .small-pill[data-status='idle']::before {
   background: #94a3b8;
@@ -1292,6 +1310,82 @@ button {
 
 .wasm-wat-output {
   min-height: 18rem;
+}
+
+.ui-preview-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.625rem;
+}
+
+.preview-device-select {
+  min-height: 2.1rem;
+  border: 1px solid #3a414d;
+  border-radius: 8px;
+  background: #20242b;
+  color: #e5eaf1;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.35rem 0.55rem;
+}
+
+.preview-meta-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: #aab4c2;
+  font-size: 0.82rem;
+}
+
+#preview-status-label {
+  flex: 0 0 auto;
+  color: #f8fafc;
+  font-weight: 800;
+}
+
+#preview-status-label[data-status='ok'] {
+  color: #86efac;
+}
+
+#preview-status-label[data-status='error'] {
+  color: #fda4af;
+}
+
+#preview-status-label[data-status='rendering'] {
+  color: #fbbf24;
+}
+
+#preview-message-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-frame-wrap {
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+  border: 1px solid #303641;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    #0b0d10;
+  background-size: 24px 24px;
+  padding: 0.75rem;
+}
+
+.preview-frame {
+  min-height: 22rem;
+  height: 100%;
+  max-width: 100%;
+  border: 1px solid #3a414d;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .editor-meta-row {

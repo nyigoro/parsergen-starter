@@ -195,7 +195,7 @@ export function generateJS(ir: IRNode, options: CodegenOptions = {}): CodegenRes
   }
 
   const hoistSsa = ir.kind === 'Program' && ir.ssa === true;
-  emit(ir, 0, builder, { hoistSsa, tryFunctions });
+  emit(ir, 0, builder, { hoistSsa, tryFunctions, discardCounter: 0 });
 
   let code = builder.toString().trimEnd() + '\n';
   if (includeRuntime) {
@@ -224,9 +224,17 @@ type EmitContext = {
   hoistSsa: boolean;
   ssaNames?: Set<string> | null;
   tryFunctions?: Set<string>;
+  discardCounter: number;
 };
 
 const SSA_NAME_PATTERN = /_\d+$/;
+
+function emitBindingName(ctx: EmitContext, name: string): string {
+  if (name !== '_') return name;
+  const nextName = `__lumina_discard_${ctx.discardCounter}`;
+  ctx.discardCounter += 1;
+  return nextName;
+}
 
 function collectSsaNames(nodes: IRNode[], out: Set<string>): void {
   for (const node of nodes) {
@@ -347,10 +355,11 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append('\n');
       return;
     }
-    case 'Let':
+    case 'Let': {
+      const bindingName = emitBindingName(ctx, node.name);
       if (ctx.ssaNames?.has(node.name)) {
         out.append(
-          `${pad}${node.name} = `,
+          `${pad}${bindingName} = `,
           node.kind,
           node.location
             ? { line: node.location.start.line, column: node.location.start.column }
@@ -358,7 +367,7 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
         );
       } else {
         out.append(
-          `${pad}let ${node.name} = `,
+          `${pad}let ${bindingName} = `,
           node.kind,
           node.location
             ? { line: node.location.start.line, column: node.location.start.column }
@@ -369,6 +378,7 @@ function emit(node: IRNode, indent: number, out: CodeBuilder, ctx: EmitContext):
       out.append(';');
       out.append('\n');
       return;
+    }
     case 'Phi':
       if (!ctx.ssaNames?.has(node.name)) {
         out.append(

@@ -24,6 +24,23 @@ describe('Lumina AST JS codegen', () => {
     expect(code).toContain('const x = add(1, 2);');
   });
 
+  test('emits repeated discard bindings as unique JavaScript declarations', () => {
+    const program =
+      `
+      fn main() -> int {
+        let _ = 1;
+        let _ = 2;
+        return 3;
+      }
+    `.trim() + '\n';
+
+    const ast = parser.parse(program) as never;
+    const { code } = generateJSFromAst(ast);
+    expect(code).toContain('const __lumina_discard_0 = 1;');
+    expect(code).toContain('const __lumina_discard_1 = 2;');
+    expect(code).not.toContain('const _ =');
+  });
+
   test('emits match expression as IIFE', () => {
     const program =
       `

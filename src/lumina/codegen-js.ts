@@ -120,6 +120,7 @@ class JSGenerator {
   private matchCounter = 0;
   private tempCounter = 0;
   private hoistCounter = 0;
+  private discardCounter = 0;
   private usesTryHelper = false;
   private readonly traitMethodResolutions: Map<number, TraitMethodResolution>;
   private readonly traitDecls = new Map<string, LuminaTraitDecl>();
@@ -414,8 +415,9 @@ class JSGenerator {
       }
       case 'Let': {
         const keyword = stmt.mutable ? 'let' : 'const';
+        const bindingName = this.emitBindingName(stmt.name);
         this.builder.append(
-          `${pad}${keyword} ${stmt.name} = `,
+          `${pad}${keyword} ${bindingName} = `,
           stmt.type,
           stmt.location
             ? { line: stmt.location.start.line, column: stmt.location.start.column }
@@ -438,13 +440,14 @@ class JSGenerator {
         this.builder.append(';\n');
         const keyword = stmt.mutable ? 'let' : 'const';
         stmt.names.forEach((name, idx) => {
+          const bindingName = this.emitBindingName(name);
           const sourceExpr =
             idx === 0
               ? `${tupleTemp}.sender ?? ${tupleTemp}[0]`
               : idx === 1
                 ? `${tupleTemp}.receiver ?? ${tupleTemp}[1]`
                 : `${tupleTemp}[${idx}]`;
-          this.builder.append(`${pad}${keyword} ${name} = ${sourceExpr};\n`);
+          this.builder.append(`${pad}${keyword} ${bindingName} = ${sourceExpr};\n`);
         });
         return;
       }
@@ -723,6 +726,10 @@ class JSGenerator {
           `${indent}if (${param.name} === undefined) ${param.name} = ${this.emitExpr(param.defaultValue as LuminaExpr).code};\n`
       )
       .join('');
+  }
+
+  private emitBindingName(name: string): string {
+    return name === '_' ? `__lumina_discard_${this.discardCounter++}` : name;
   }
 
   private emitFunctionBodyStatements(block: { body: LuminaStatement[] }): void {

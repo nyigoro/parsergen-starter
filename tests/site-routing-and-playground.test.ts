@@ -239,10 +239,17 @@ describe('site routing and playground integration', () => {
     expect(playgroundController).toContain('formatSourceInWorker');
     expect(playgroundShare).toContain("searchParams.get('code')");
     expect(playgroundShare).toContain("searchParams.get('example')");
-    expect(playgroundController).toContain('setTimeout(() => void compile');
+    expect(playgroundController).toContain('setTimeout(() =>');
+    expect(playgroundController).toContain('compile(\'check\')');
     expect(playgroundController).toContain('lastCompiledTarget');
+    expect(playgroundController).toContain('runtimeStatus');
+    expect(playgroundController).toContain('refreshPreview');
+    expect(playgroundController).toContain('createRuntimeModuleSession');
     expect(playgroundController).toContain('status-last-target');
+    expect(playgroundController).toContain('status-runtime');
+    expect(playgroundController).toContain('status-preview');
     expect(playgroundController).toContain("setHidden('run-panel'");
+    expect(playgroundController).toContain("setHidden('ui-panel'");
     expect(playgroundDiagnostics).toContain('diagnostics-root');
     expect(playgroundApp).toContain('statusbar');
     expect(playgroundState).not.toContain('PlaygroundProject');

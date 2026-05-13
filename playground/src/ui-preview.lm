@@ -1,12 +1,29 @@
-import { vnode, text, props_class, props_id, props_merge } from "@std/render";
+import { vnode, text, props_class, props_id, props_type, props_attr, props_merge } from "@std/render";
 
 fn attrs2(left: any, right: any) -> any {
   props_merge(left, right)
 }
 
 pub fn ui_preview() -> VNode {
-  vnode("section", attrs2(props_class("panel stack-sm"), props_id("ui-panel")), [
-    vnode("div", props_class("panel-title"), [text("UI Preview")]),
-    vnode("p", props_class("empty-state"), [text("Live UI preview is reserved for a later phase.")])
+  vnode("section", attrs2(props_class("panel stack-sm ui-preview-panel"), props_id("ui-panel")), [
+    vnode("div", props_class("panel-heading-row"), [
+      vnode("div", props_class("panel-title"), [text("UI Preview")]),
+      vnode("div", props_class("tool-row compact-tools"), [
+        vnode("button", props_merge(props_merge(props_class("tool-button secondary"), props_id("preview-refresh-button")), props_type("button")), [text("Refresh")]),
+        vnode("button", props_merge(props_merge(props_class("tool-button secondary"), props_id("preview-auto-button")), props_type("button")), [text("Auto")]),
+        vnode("select", props_merge(props_class("preview-device-select"), props_id("preview-device-select")), [
+          vnode("option", props_attr("value", "desktop"), [text("Desktop")]),
+          vnode("option", props_attr("value", "tablet"), [text("Tablet")]),
+          vnode("option", props_attr("value", "mobile"), [text("Mobile")])
+        ])
+      ])
+    ]),
+    vnode("div", props_class("preview-meta-row"), [
+      vnode("span", props_id("preview-status-label"), [text("Idle")]),
+      vnode("span", props_id("preview-message-label"), [text("Refresh to render a Lumina UI example.")])
+    ]),
+    vnode("div", props_class("preview-frame-wrap"), [
+      vnode("iframe", props_merge(props_merge(props_class("preview-frame"), props_id("preview-frame")), props_attr("sandbox", "allow-scripts allow-same-origin")), [])
+    ])
   ])
 }
