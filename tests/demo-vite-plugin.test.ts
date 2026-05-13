@@ -9,7 +9,11 @@ describe('demo vite plugin', () => {
     const examplesSource = fs.readFileSync(path.resolve(__dirname, '../demo/home-examples.lm'), 'utf-8');
     const playgroundAppSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/app.lm'), 'utf-8');
     const playgroundSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/index.ts'), 'utf-8');
-    const playgroundPresetsSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/presets.ts'), 'utf-8');
+    const playgroundControllerSource = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/playground-controller.ts'),
+      'utf-8'
+    );
+    const playgroundExamplesSource = fs.readFileSync(path.resolve(__dirname, '../playground/src/examples-data.ts'), 'utf-8');
     const styleSource = fs.readFileSync(path.resolve(__dirname, '../demo/style.css'), 'utf-8');
 
     expect(componentsSource).not.toContain('@std/router');
@@ -20,14 +24,15 @@ describe('demo vite plugin', () => {
     expect(examplesSource).toContain('./playground/?preset=basics');
     expect(examplesSource).toContain('./playground/?preset=results');
     expect(examplesSource).toContain('./playground/?preset=view-basic');
-    expect(playgroundPresetsSource).toContain("'view-basic'");
-    expect(playgroundPresetsSource).toContain("'starter-app'");
-    expect(playgroundPresetsSource).toContain("'forms-resource'");
-    expect(playgroundPresetsSource).toContain("'package-import'");
-    expect(playgroundAppSource).toContain('preset_button("view-basic"');
-    expect(playgroundAppSource).toContain('preset_button("package-import"');
-    expect(playgroundSource).toContain('readPresetFromLocation');
-    expect(playgroundSource).toContain("searchParams.get('preset')");
+    expect(playgroundExamplesSource).toContain("'basics'");
+    expect(playgroundExamplesSource).toContain("'counter'");
+    expect(playgroundExamplesSource).toContain("'forms-store-resource'");
+    expect(playgroundExamplesSource).toContain("'json-parser'");
+    expect(playgroundAppSource).toContain('topbar()');
+    expect(playgroundAppSource).toContain('editor_zone()');
+    expect(playgroundSource).toContain('startPlayground');
+    expect(playgroundControllerSource).toContain('readUrlState');
+    expect(playgroundControllerSource).toContain("document.getElementById('examples-select')");
     expect(styleSource).toContain("@import 'tailwindcss' source(none);");
     expect(styleSource).toContain("@source './*.lm';");
   });

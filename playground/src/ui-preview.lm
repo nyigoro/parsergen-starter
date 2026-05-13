@@ -1,0 +1,12 @@
+import { vnode, text, props_class, props_id, props_merge } from "@std/render";
+
+fn attrs2(left: any, right: any) -> any {
+  props_merge(left, right)
+}
+
+pub fn ui_preview() -> VNode {
+  vnode("section", attrs2(props_class("panel stack-sm"), props_id("ui-panel")), [
+    vnode("div", props_class("panel-title"), [text("UI Preview")]),
+    vnode("p", props_class("empty-state"), [text("Live UI preview is reserved for a later phase.")])
+  ])
+}

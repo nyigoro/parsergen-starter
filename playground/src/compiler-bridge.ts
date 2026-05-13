@@ -8,9 +8,13 @@ import { lowerLumina } from '../../src/lumina/lower';
 import { optimizeIR } from '../../src/lumina/optimize';
 import { generateJS } from '../../src/lumina/codegen';
 import { extractImports } from '../../src/project/imports';
-import type { PlaygroundProjectFile } from './playground-state';
 import type { RunnableModuleArtifact } from './runnable-module-graph';
 import { buildRunnableModuleGraph } from './runnable-module-graph';
+
+export type PlaygroundProjectFile = {
+  uri: string;
+  text: string;
+};
 
 export type CompileDiagnostic = {
   severity: string;

@@ -1,0 +1,37 @@
+import {
+  vnode,
+  text,
+  props_class,
+  props_id,
+  props_type,
+  props_attr,
+  props_merge
+} from "@std/render";
+
+fn attrs2(left: any, right: any) -> any {
+  props_merge(left, right)
+}
+
+fn attrs3(first: any, second: any, third: any) -> any {
+  props_merge(props_merge(first, second), third)
+}
+
+fn button_node(id: string, label: string) -> VNode {
+  vnode("button", attrs3(props_class("tool-button secondary"), props_id(id), props_type("button")), [text(label)])
+}
+
+pub fn js_panel() -> VNode {
+  vnode("section", attrs2(props_class("panel stack-sm"), props_id("js-panel")), [
+    vnode("div", props_class("panel-heading-row"), [
+      vnode("div", props_class("panel-title"), [text("JavaScript")]),
+      vnode("div", props_class("tool-row compact-tools"), [
+        button_node("copy-js-panel-button", "Copy"),
+        button_node("download-js-button", "Download"),
+        button_node("minify-js-button", "Readable")
+      ])
+    ]),
+    vnode("pre", attrs3(props_class("js-output"), props_id("js-output"), props_attr("aria-live", "polite")), [text("")]),
+    vnode("div", props_class("panel-title"), [text("Run Output")]),
+    vnode("pre", attrs3(props_class("js-output run-output"), props_id("run-output-root"), props_attr("aria-live", "polite")), [text("")])
+  ])
+}

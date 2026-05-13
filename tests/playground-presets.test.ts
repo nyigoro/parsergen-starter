@@ -1,57 +1,52 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { checkLuminaTask, setDefaultStdPath } from '../src/bin/lumina-core.js';
-import { playgroundPresets } from '../playground/src/presets';
 
 const repoRoot = path.resolve(__dirname, '..');
-const grammarPath = path.join(repoRoot, 'src', 'grammar', 'lumina.peg');
-const tempDirs: string[] = [];
+const examplesDataPath = path.join(repoRoot, 'playground', 'src', 'examples-data.ts');
 
-const createTempDir = (): string => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumina-playground-preset-'));
-  tempDirs.push(dir);
-  return dir;
-};
+describe('playground examples data', () => {
+  test('keeps the Phase 1 examples grouped by product area', () => {
+    const source = fs.readFileSync(examplesDataPath, 'utf-8');
 
-const writePresetProject = (root: string, presetId: string): string => {
-  const preset = playgroundPresets.find((entry) => entry.id === presetId);
-  expect(preset).toBeTruthy();
+    for (const group of ['LANGUAGE_CORE', 'TYPE_SYSTEM', 'REACTIVE_UI', 'WEB_NATIVE', 'ADVANCED']) {
+      expect(source).toContain(`id: '${group}'`);
+    }
 
-  for (const file of preset!.files) {
-    const fullPath = path.join(root, file.uri);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    fs.writeFileSync(fullPath, `${file.source.trim()}\n`, 'utf-8');
-  }
-
-  return path.join(root, preset!.entryUri);
-};
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0, tempDirs.length)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-describe('playground presets', () => {
-  beforeAll(() => {
-    setDefaultStdPath(path.join(repoRoot, 'std'));
+    for (const exampleId of [
+      'basics',
+      'safe-index',
+      'counter',
+      'dom-render',
+      'tabs',
+      'forms-store-resource',
+      'ui-showcase',
+      'gadts',
+      'hkt-stdlib',
+      'const-generics',
+      'traits-demo',
+      'wasm-hello',
+      'web-components',
+      'channels-mpsc',
+      'thread-patterns',
+      'async-json-validator',
+      'json-parser',
+      'github-demo',
+      'http-demo',
+    ]) {
+      expect(source).toContain(`'${exampleId}'`);
+    }
   });
 
-  test.each([
-    'starter-app',
-    'forms-resource',
-    'package-import',
-  ])('%s preset stays aligned with the CLI checker', async (presetId) => {
-    const dir = createTempDir();
-    const sourcePath = writePresetProject(dir, presetId);
+  test('mines real example files instead of invented snippets', () => {
+    const source = fs.readFileSync(examplesDataPath, 'utf-8');
+    const rawImports = Array.from(source.matchAll(/import\s+\w+Source\s+from\s+'([^']+)\?raw'/g)).map(
+      (match) => match[1]
+    );
 
-    const result = await checkLuminaTask({
-      sourcePath,
-      grammarPath,
-      useRecovery: false,
-    });
-
-    expect(result.ok).toBe(true);
-  }, 20000);
+    expect(rawImports.length).toBeGreaterThanOrEqual(16);
+    for (const specifier of rawImports) {
+      const resolved = path.resolve(path.dirname(examplesDataPath), specifier);
+      expect(fs.existsSync(resolved)).toBe(true);
+    }
+  });
 });

@@ -1,0 +1,28 @@
+import { vnode, text, props_class, props_id, props_attr, props_merge } from "@std/render";
+
+fn attrs2(left: any, right: any) -> any {
+  props_merge(left, right)
+}
+
+fn stat(label: string, id: string, value: string) -> VNode {
+  vnode("div", props_class("stat"), [
+    vnode("span", props_class("stat-label"), [text(label)]),
+    vnode("span", attrs2(props_class("stat-value"), props_id(id)), [text(value)])
+  ])
+}
+
+pub fn statusbar() -> VNode {
+  vnode("footer", attrs2(props_class("workbench-statusbar"), props_attr("style", "min-height:2rem;")), [
+    vnode("div", props_class("status-strip stack-sm"), [
+      stat("Status", "status-compile", "Idle"),
+      stat("Time", "status-time", "0ms"),
+      stat("JS", "status-js-size", "0 KB"),
+      stat("WASM", "status-wasm-size", "-"),
+      stat("Errors", "status-errors", "0"),
+      stat("Warnings", "status-warnings", "0"),
+      stat("Target", "status-target", "JS"),
+      stat("Example", "status-example", "basics"),
+      stat("Cursor", "status-cursor", "1:1")
+    ])
+  ])
+}

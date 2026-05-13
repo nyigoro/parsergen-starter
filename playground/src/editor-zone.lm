@@ -1,0 +1,27 @@
+import { vnode, props_class, props_id, props_attr, props_merge } from "@std/render";
+
+fn attrs2(left: any, right: any) -> any {
+  props_merge(left, right)
+}
+
+fn attrs3(first: any, second: any, third: any) -> any {
+  props_merge(props_merge(first, second), third)
+}
+
+pub fn editor_zone() -> VNode {
+  vnode(
+    "section",
+    attrs2(props_class("editor-panel"), props_attr("style", "min-height:0;display:grid;overflow:hidden;padding:0.5rem;background:#11151b;")),
+    [
+      vnode(
+        "div",
+        attrs3(
+          props_id("lumina-editor"),
+          props_class("editor-zone-mount"),
+          props_attr("style", "min-height:0;height:100%;overflow:auto;")
+        ),
+        []
+      )
+    ]
+  )
+}

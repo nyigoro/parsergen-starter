@@ -1,0 +1,12 @@
+import { vnode, text, props_class, props_id, props_merge } from "@std/render";
+
+fn attrs2(left: any, right: any) -> any {
+  props_merge(left, right)
+}
+
+pub fn wasm_panel() -> VNode {
+  vnode("section", attrs2(props_class("panel stack-sm"), props_id("wasm-panel")), [
+    vnode("div", props_class("panel-title"), [text("WASM")]),
+    vnode("p", props_class("empty-state"), [text("WASM rendering lands after the Phase 1 shell reset.")])
+  ])
+}

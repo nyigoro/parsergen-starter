@@ -162,16 +162,27 @@ describe('site routing and playground integration', () => {
       path.resolve(__dirname, '../playground/src/compile-client.ts'),
       'utf-8'
     );
+    const playgroundController = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/playground-controller.ts'),
+      'utf-8'
+    );
+    const playgroundShare = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/share.ts'),
+      'utf-8'
+    );
 
     expect(importSource).not.toContain('node:fs');
     expect(importSource).not.toContain('node:path');
     expect(playgroundIndex).not.toContain("import('./compiler-bridge')");
-    expect(playgroundIndex).toContain('stateFromPreset');
-    expect(playgroundIndex).toContain("document.getElementById('file-list-root')");
-    expect(playgroundIndex).toContain("document.getElementById('route-apply-button')");
-    expect(playgroundIndex).toContain("document.getElementById('file-tabs-root')");
-    expect(playgroundIndex).toContain("document.getElementById('save-workspace-button')");
-    expect(playgroundIndex).toContain("document.getElementById('stop-compile-button')");
+    expect(playgroundIndex).toContain('startPlayground');
+    expect(playgroundController).toContain('createPlaygroundSignal');
+    expect(playgroundController).toContain("document.getElementById('examples-select')");
+    expect(playgroundController).toContain("document.getElementById('run-button')");
+    expect(playgroundController).toContain("document.getElementById('format-button')");
+    expect(playgroundController).toContain("document.getElementById('diagnostics-toggle')");
+    expect(playgroundController).toContain('sourceProjectInput');
+    expect(playgroundShare).toContain("searchParams.get('code')");
+    expect(playgroundShare).toContain("searchParams.get('example')");
     expect(compilerBridge).toContain('compileLuminaGrammar(luminaGrammarRaw, { cache: true })');
     expect(compilerBridge).toContain("import routerStdRaw from '../../std/router.lm?raw';");
     expect(compilerBridge).toContain('compileLuminaProject');
@@ -181,77 +192,52 @@ describe('site routing and playground integration', () => {
     expect(compileClient).toContain("new URL('./compiler-worker.ts', import.meta.url)");
   });
 
-  test('playground shell uses an editor-first docked layout', () => {
+  test('playground shell uses a focused single-source layout', () => {
     const playgroundApp = fs.readFileSync(
       path.resolve(__dirname, '../playground/src/app.lm'),
-      'utf-8'
-    );
-    const playgroundStyle = fs.readFileSync(
-      path.resolve(__dirname, '../playground/src/style.css'),
       'utf-8'
     );
     const playgroundIndex = fs.readFileSync(
       path.resolve(__dirname, '../playground/src/index.ts'),
       'utf-8'
     );
+    const playgroundController = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/playground-controller.ts'),
+      'utf-8'
+    );
+    const playgroundDiagnostics = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/diagnostics-panel.lm'),
+      'utf-8'
+    );
+    const playgroundShare = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/share.ts'),
+      'utf-8'
+    );
+    const playgroundState = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/state.ts'),
+      'utf-8'
+    );
 
-    expect(playgroundApp).toContain('workspace-shell');
-    expect(playgroundApp).toContain('dock-layout');
-    expect(playgroundApp).toContain('center-dock-stack');
-    expect(playgroundApp).toContain('props_class("left-rail dock-group dock-shell")');
-    expect(playgroundApp).toContain('props_class("right-dock dock-group dock-shell")');
-    expect(playgroundApp).toContain('props_class("bottom-drawer dock-group")');
-    expect(playgroundApp).toContain('props_id("left-edge-strip")');
-    expect(playgroundApp).toContain('props_id("right-edge-strip")');
-    expect(playgroundApp).toContain('props_id("bottom-edge-strip")');
-    expect(playgroundApp).toContain('edge-rail-tab-workspace');
-    expect(playgroundApp).toContain('edge-dock-tab-preview');
-    expect(playgroundApp).toContain('edge-drawer-tab-console');
-    expect(playgroundApp).toContain('div_node("center-editor"');
-    expect(playgroundApp).toContain('splitter("left-rail-splitter"');
-    expect(playgroundApp).toContain('splitter("right-dock-splitter"');
-    expect(playgroundApp).toContain('splitter("bottom-drawer-splitter"');
-    expect(playgroundApp).toContain('props_id("bottom-drawer-shell")');
-    expect(playgroundApp).toContain('workspace-toolbar');
-    expect(playgroundApp).toContain('console-root');
-    expect(playgroundApp).toContain('diagnostics-root');
-    expect(playgroundApp).toContain('route-details-root');
-    expect(playgroundApp).toContain('data-tab-group');
-    expect(playgroundApp).toContain('props_attr("role", "tablist")');
-    expect(playgroundApp).toContain('props_attr("role", "tab")');
-    expect(playgroundApp).toContain('props_attr("role", "tabpanel")');
-    expect(playgroundApp).toContain('props_attr("role", "separator")');
-    expect(playgroundApp).toContain('props_attr("aria-controls"');
-    expect(playgroundApp).toContain('props_attr("aria-orientation", orientation)');
-    expect(playgroundApp).toContain('props_attr("tabindex", "0")');
-    expect(playgroundStyle).toContain('.workspace-shell');
-    expect(playgroundStyle).toContain('.dock-group');
-    expect(playgroundStyle).toContain('.center-dock-stack');
-    expect(playgroundStyle).toContain('#bottom-edge-strip');
-    expect(playgroundStyle).toContain('grid-row: 3');
-    expect(playgroundStyle).toContain('.edge-strip');
-    expect(playgroundStyle).toContain('--edge-strip-size');
-    expect(playgroundStyle).toContain('height: 100dvh');
-    expect(playgroundStyle).toContain("data-left-rail-mode='auto-hide'");
-    expect(playgroundStyle).toContain("data-left-rail-visible='true'");
-    expect(playgroundStyle).toContain("data-bottom-drawer-mode='auto-hide'");
-    expect(playgroundStyle).toContain('position: absolute');
-    expect(playgroundStyle).toContain('.ide-workbench');
-    expect(playgroundStyle).toContain('var(--left-rail-width)');
-    expect(playgroundStyle).toContain('.layout-splitter');
-    expect(playgroundStyle).toContain('@media (max-width: 1180px)');
-    expect(playgroundStyle).toContain('.layout-splitter:focus-visible');
-    expect(playgroundStyle).toContain('.bottom-drawer-body');
-    expect(playgroundStyle).toContain('@media (max-width: 960px)');
-    expect(playgroundIndex).toContain("button.setAttribute('aria-selected'");
-    expect(playgroundIndex).toContain("element.setAttribute('aria-hidden'");
-    expect(playgroundIndex).toContain('setSplitterValue');
-    expect(playgroundIndex).toContain('collapseWorkbenchForCompact');
-    expect(playgroundIndex).toContain('clearStoredWorkspaceSession');
-    expect(playgroundIndex).toContain('compactVisibleGroup');
-    expect(playgroundIndex).toContain('isGroupVisible');
-    expect(playgroundIndex).toContain("visible: isGroupVisible('left')");
-    expect(playgroundIndex).toContain('if (!compactVisibleGroup) return;');
-    expect(playgroundIndex).toContain("handle.addEventListener('keydown'");
+    expect(playgroundApp).toContain('single-source-main');
+    expect(playgroundApp).toContain('topbar()');
+    expect(playgroundApp).toContain('editor_zone()');
+    expect(playgroundApp).toContain('output_tabs()');
+    expect(playgroundApp).toContain('diagnostics_panel()');
+    expect(playgroundApp).toContain('statusbar()');
+    expect(playgroundApp).not.toContain('left-rail');
+    expect(playgroundApp).not.toContain('right-dock');
+    expect(playgroundApp).not.toContain('route-details-root');
+    expect(playgroundIndex).toContain('startPlayground');
+    expect(playgroundController).toContain('lumina-editor');
+    expect(playgroundController).toContain('compileProjectInWorker');
+    expect(playgroundController).toContain('formatSourceInWorker');
+    expect(playgroundShare).toContain("searchParams.get('code')");
+    expect(playgroundShare).toContain("searchParams.get('example')");
+    expect(playgroundController).toContain('setTimeout(() => void compile');
+    expect(playgroundDiagnostics).toContain('diagnostics-root');
+    expect(playgroundApp).toContain('statusbar');
+    expect(playgroundState).not.toContain('PlaygroundProject');
+    expect(playgroundState).not.toContain('Workspace');
+    expect(playgroundState).not.toContain('RoutePreview');
   });
 });
