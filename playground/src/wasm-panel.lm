@@ -1,12 +1,41 @@
-import { vnode, text, props_class, props_id, props_merge } from "@std/render";
+import {
+  vnode,
+  text,
+  props_class,
+  props_id,
+  props_type,
+  props_attr,
+  props_merge
+} from "@std/render";
 
 fn attrs2(left: any, right: any) -> any {
   props_merge(left, right)
 }
 
+fn attrs3(first: any, second: any, third: any) -> any {
+  props_merge(props_merge(first, second), third)
+}
+
+fn button_node(id: string, label: string) -> VNode {
+  vnode("button", attrs3(props_class("tool-button secondary"), props_id(id), props_type("button")), [text(label)])
+}
+
 pub fn wasm_panel() -> VNode {
   vnode("section", attrs2(props_class("panel stack-sm"), props_id("wasm-panel")), [
-    vnode("div", props_class("panel-title"), [text("WASM")]),
-    vnode("p", props_class("empty-state"), [text("WASM rendering lands after the Phase 1 shell reset.")])
+    vnode("div", props_class("panel-heading-row"), [
+      vnode("div", props_class("panel-title"), [text("WebAssembly")]),
+      vnode("div", props_class("tool-row compact-tools"), [
+        vnode("span", attrs2(props_class("small-pill"), props_id("wasm-size-label")), [text("-")]),
+        button_node("copy-wat-button", "Copy WAT"),
+        button_node("download-wasm-button", "Download")
+      ])
+    ]),
+    vnode("p", attrs3(props_class("empty-state"), props_id("wasm-empty-state"), props_attr("aria-live", "polite")), [text("")]),
+    vnode("div", attrs3(props_class("wasm-content stack-sm"), props_id("wasm-content-root"), props_attr("hidden", "")), [
+      vnode("div", props_class("panel-title"), [text("Sections")]),
+      vnode("div", attrs2(props_class("wasm-section-list"), props_id("wasm-sections-root")), []),
+      vnode("div", props_class("panel-title"), [text("WAT")]),
+      vnode("pre", attrs3(props_class("js-output wasm-wat-output"), props_id("wasm-wat-output"), props_attr("aria-live", "polite")), [text("")])
+    ])
   ])
 }

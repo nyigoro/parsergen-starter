@@ -30,8 +30,6 @@ pub fn js_panel() -> VNode {
         button_node("minify-js-button", "Readable")
       ])
     ]),
-    vnode("pre", attrs3(props_class("js-output"), props_id("js-output"), props_attr("aria-live", "polite")), [text("")]),
-    vnode("div", props_class("panel-title"), [text("Run Output")]),
-    vnode("pre", attrs3(props_class("js-output run-output"), props_id("run-output-root"), props_attr("aria-live", "polite")), [text("")])
+    vnode("pre", attrs3(props_class("js-output"), props_id("js-output"), props_attr("aria-live", "polite")), [text("")])
   ])
 }

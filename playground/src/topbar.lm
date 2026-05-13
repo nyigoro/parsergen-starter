@@ -35,14 +35,24 @@ pub fn topbar() -> VNode {
   ]);
 
   let examples = vnode(
-    "select",
-    attrs4(
-      props_class("route-input"),
-      props_id("examples-select"),
-      props_attr("aria-label", "Examples"),
-      props_attr("style", "width:min(44rem,42vw);min-width:18rem;")
-    ),
-    []
+    "div",
+    props_class("examples-browser-shell"),
+    [
+      vnode(
+        "button",
+        attrs4(
+          props_class("tool-button secondary examples-toggle"),
+          props_id("examples-toggle"),
+          props_type("button"),
+          props_attr("aria-haspopup", "true")
+        ),
+        [
+          vnode("span", props_class("examples-toggle-label"), [text("Examples")]),
+          vnode("span", props_id("examples-current"), [text("Functions")])
+        ]
+      ),
+      vnode("div", attrs3(props_class("examples-browser"), props_id("examples-browser-root"), props_attr("hidden", "")), [])
+    ]
   );
 
   let modes = vnode("div", props_class("tool-row compact-tools"), [

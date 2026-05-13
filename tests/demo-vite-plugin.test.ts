@@ -32,7 +32,8 @@ describe('demo vite plugin', () => {
     expect(playgroundAppSource).toContain('editor_zone()');
     expect(playgroundSource).toContain('startPlayground');
     expect(playgroundControllerSource).toContain('readUrlState');
-    expect(playgroundControllerSource).toContain("document.getElementById('examples-select')");
+    expect(playgroundControllerSource).toContain("document.getElementById('examples-toggle')");
+    expect(playgroundControllerSource).toContain('[data-example-id]');
     expect(styleSource).toContain("@import 'tailwindcss' source(none);");
     expect(styleSource).toContain("@source './*.lm';");
   });

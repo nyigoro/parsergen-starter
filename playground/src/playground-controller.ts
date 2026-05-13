@@ -1,4 +1,4 @@
-import { compileProjectInWorker, formatSourceInWorker } from './compile-client';
+import { compileProjectInWorker, formatSourceInWorker, warmCompilerWorker } from './compile-client';
 import type { CompileDiagnostic, CompileResult } from './compiler-bridge';
 import { defaultExample, exampleGroups, findExample } from './examples-data';
 import { createShareUrl, readLocalState, readUrlState, saveLocalState } from './share';
@@ -46,6 +46,9 @@ const bytes = (value: number): string => {
   if (value < 1024) return `${value} B`;
   return `${(value / 1024).toFixed(1)} KB`;
 };
+
+const targetLabel = (target: CompileTarget | null): string => (target ? target.toUpperCase() : '-');
+const tabLabel = (tab: OutputTab): string => tab.toUpperCase();
 
 const setText = (id: string, value: string): void => {
   const element = document.getElementById(id);
@@ -139,19 +142,22 @@ catch(e){postMessage({type:'done',logs,returned:null,error:e instanceof Error?e.
   }
 };
 
-const buildCompileFailure = (message: string): CompileResult => ({
+const buildCompileFailure = (message: string, action: 'check' | 'run', target: CompileTarget): CompileResult => ({
   ok: false,
+  action,
+  target,
   js: '',
   runnableJs: '',
   runnableEntryUri: null,
   runnableModules: [],
+  wasm: null,
   hasMain: false,
   diagnostics: [{ severity: 'error', message, fileUri: entryUri }],
   entryUri,
   graphEdges: 0,
   graphNodes: 0,
   importResolutions: [],
-  timings: { diagnosticsMs: 0, lowerMs: 0, codegenMs: 0, moduleGraphMs: 0, totalMs: 0 },
+  timings: { diagnosticsMs: 0, lowerMs: 0, codegenMs: 0, moduleGraphMs: 0, wasmWatMs: 0, wasmBinaryMs: 0, totalMs: 0 },
 });
 
 const initialState = (): PlaygroundState => {
@@ -163,13 +169,16 @@ const initialState = (): PlaygroundState => {
   const source = urlState.source ?? (urlExample ? example.source : localState.source ?? example.source);
   const target = urlState.target ?? (urlExample ? example.target : localState.target ?? example.target);
   const activeTab = urlState.activeTab ?? example.tab;
+  const activeExample = urlState.source
+    ? null
+    : findExample(partialState.activeExample)?.id ?? partialState.activeExample ?? example.id;
   return {
     ...defaultState,
     ...partialState,
     source,
     target,
     activeTab,
-    activeExample: findExample(partialState.activeExample)?.id ?? partialState.activeExample ?? example.id,
+    activeExample,
   };
 };
 
@@ -192,23 +201,33 @@ export const startPlayground = async (): Promise<void> => {
   let checkTimer: number | undefined;
   let activeCompile: AbortController | null = null;
   let activeRun: AbortController | null = null;
+  let compileSequence = 0;
   let programmaticSourceChange = false;
   let readableJs = true;
   let runOutput = 'Run the program to see output.';
   let selectedDiagnosticIndex: number | null = null;
 
   const renderExamples = (): void => {
-    const select = document.getElementById('examples-select') as HTMLSelectElement | null;
-    if (!select) return;
-    select.innerHTML = [
-      '<option value="">Custom</option>',
-      ...exampleGroups.map(
-        (group) =>
-          `<optgroup label="${escapeHtml(group.label)}">${group.examples
-            .map((example) => `<option value="${escapeHtml(example.id)}">${escapeHtml(example.label)}</option>`)
-            .join('')}</optgroup>`
-      ),
-    ].join('');
+    const root = document.getElementById('examples-browser-root');
+    if (!root) return;
+    root.innerHTML = exampleGroups
+      .map(
+        (group) => `<section class="examples-group">
+  <div class="examples-group-title">${escapeHtml(group.label)}</div>
+  <div class="examples-grid">
+    ${group.examples
+      .map(
+        (example) => `<button class="example-card" type="button" data-example-id="${escapeHtml(example.id)}">
+      <span class="example-label">${escapeHtml(example.label)}</span>
+      <span class="example-detail">${escapeHtml(example.detail)}</span>
+      <span class="example-meta">${escapeHtml(example.target.toUpperCase())} | ${escapeHtml(example.tab.toUpperCase())}</span>
+    </button>`
+      )
+      .join('')}
+  </div>
+</section>`
+      )
+      .join('');
   };
 
   const renderExplainDrawer = (diagnostic: CompileDiagnostic | null): void => {
@@ -225,7 +244,10 @@ export const startPlayground = async (): Promise<void> => {
         ? 'Location unavailable'
         : `Line ${diagnostic.line}, column ${diagnostic.column ?? 1}`;
     root.innerHTML = `<div class="compile-detail-block">
-  <div class="compile-detail-heading">Explain</div>
+  <div class="panel-heading-row">
+    <button class="tool-button secondary" type="button" id="diagnostic-back-button">Back to errors</button>
+    <div class="compile-detail-heading">Explain</div>
+  </div>
   <p class="diagnostic-message">${escapeHtml(diagnostic.message)}</p>
   <div class="compile-resolution-meta">${escapeHtml(diagnostic.code ?? 'No code')} | ${escapeHtml(
       diagnostic.severity
@@ -263,16 +285,49 @@ export const startPlayground = async (): Promise<void> => {
             .join('');
   };
 
+  const renderWasmPanel = (state: PlaygroundState): void => {
+    const wasm = state.compileResult?.wasm ?? null;
+    const empty = document.getElementById('wasm-empty-state');
+    const content = document.getElementById('wasm-content-root');
+    const sectionRoot = document.getElementById('wasm-sections-root');
+    const targetHint =
+      state.target === 'js'
+        ? 'Switch target to WASM or Both, then Run to generate WASM.'
+        : 'Run with the current target to generate WASM.';
+
+    setText('wasm-size-label', wasm ? bytes(wasm.byteSize) : '-');
+    setText('wasm-wat-output', wasm?.wat ?? '');
+    setText('wasm-empty-state', wasm ? '' : targetHint);
+
+    if (empty) empty.toggleAttribute('hidden', Boolean(wasm));
+    if (content) content.toggleAttribute('hidden', !wasm);
+    if (!sectionRoot) return;
+    sectionRoot.innerHTML =
+      wasm && wasm.sections.length > 0
+        ? wasm.sections
+            .map(
+              (section) => `<div class="wasm-section-row">
+  <span>${escapeHtml(section.name)}</span>
+  <strong>${escapeHtml(bytes(section.byteSize))}</strong>
+</div>`
+            )
+            .join('')
+        : '<p class="empty-state">No section metrics available.</p>';
+  };
+
   const renderState = (state: PlaygroundState): void => {
     const diagnostics = diagnosticsFor(state);
     const counts = diagnosticCounts(diagnostics);
     const jsOutput = state.compileResult?.js || '// Check or run to populate JavaScript output.';
-    const selected = document.getElementById('examples-select') as HTMLSelectElement | null;
+    const activeExample = findExample(state.activeExample);
     const selectedDiagnostic = selectedDiagnosticIndex === null ? null : diagnostics[selectedDiagnosticIndex] ?? null;
 
-    if (selected && selected.value !== (state.activeExample ?? '')) {
-      selected.value = state.activeExample ?? '';
-    }
+    setText('examples-current', activeExample?.label ?? 'Custom');
+    setData('examples-toggle', 'active', String(state.examplesOpen));
+    setHidden('examples-browser-root', !state.examplesOpen);
+    document.querySelectorAll<HTMLElement>('[data-example-id]').forEach((button) => {
+      button.dataset.active = String(button.dataset.exampleId === state.activeExample);
+    });
 
     for (const [id, isActive] of [
       ['mode-check-button', state.mode === 'check'],
@@ -292,23 +347,28 @@ export const startPlayground = async (): Promise<void> => {
 
     setHidden('js-panel', state.activeTab !== 'js');
     setHidden('wasm-panel', state.activeTab !== 'wasm');
+    setHidden('run-panel', state.activeTab !== 'run');
     setHidden('ui-panel', state.activeTab !== 'ui');
     setHidden('types-panel', state.activeTab !== 'types');
     setText('js-output', readableJs ? jsOutput : jsOutput.replace(/\s+/g, ' ').trim());
     setText('run-output-root', runOutput);
     setText('minify-js-button', readableJs ? 'Readable' : 'Minified');
+    renderWasmPanel(state);
 
     renderDiagnostics(diagnostics, state.diagnosticsOpen);
     renderExplainDrawer(selectedDiagnostic);
 
     setText('status-compile', statusLabels[state.compileStatus]);
     setData('status-compile', 'status', state.compileStatus === 'done' ? 'ok' : state.compileStatus);
-    setText('status-time', state.compileResult ? `${state.compileResult.timings.totalMs.toFixed(1)}ms` : '0ms');
+    setText('status-check-time', state.checkTimeMs === null ? '-' : `${state.checkTimeMs.toFixed(1)}ms`);
+    setText('status-run-time', state.runTimeMs === null ? '-' : `${state.runTimeMs.toFixed(1)}ms`);
     setText('status-js-size', bytes(state.compileResult?.js.length ?? 0));
-    setText('status-wasm-size', state.target === 'js' ? '-' : 'Phase 1');
+    setText('status-wasm-size', state.compileResult?.wasm ? bytes(state.compileResult.wasm.byteSize) : '-');
     setText('status-errors', String(counts.errors));
     setText('status-warnings', String(counts.warnings));
-    setText('status-target', state.target.toUpperCase());
+    setText('status-target', targetLabel(state.target));
+    setText('status-last-target', targetLabel(state.lastCompiledTarget));
+    setText('status-view', tabLabel(state.activeTab));
     setText('status-example', state.activeExample ?? 'custom');
     setText('status-cursor', `${state.cursorLine}:${state.cursorCol}`);
     saveLocalState(state);
@@ -319,11 +379,16 @@ export const startPlayground = async (): Promise<void> => {
     activeCompile?.abort('Superseded.');
     const controller = new AbortController();
     activeCompile = controller;
-    store.set({ mode, compileStatus: mode === 'run' ? 'running' : 'checking' });
+    const requestId = ++compileSequence;
+    const target = mode === 'run' ? store.get().target : 'js';
+    store.set({ mode, lastAction: mode, compileStatus: mode === 'run' ? 'running' : 'checking' });
 
     try {
-      const result = await compileProjectInWorker(sourceProjectInput(store.get().source), controller.signal);
-      if (controller.signal.aborted || activeCompile !== controller) return null;
+      const result = await compileProjectInWorker(
+        sourceProjectInput(store.get().source, mode === 'run' ? 'run' : 'check', target),
+        controller.signal
+      );
+      if (controller.signal.aborted || activeCompile !== controller || requestId !== compileSequence) return null;
       activeCompile = null;
       if (selectedDiagnosticIndex !== null && selectedDiagnosticIndex >= result.diagnostics.length) {
         selectedDiagnosticIndex = null;
@@ -331,16 +396,19 @@ export const startPlayground = async (): Promise<void> => {
       store.set({
         compileResult: result,
         compileStatus: result.ok ? 'done' : 'error',
+        checkTimeMs: mode === 'check' ? result.timings.totalMs : store.get().checkTimeMs,
+        runTimeMs: mode === 'run' ? result.timings.totalMs : store.get().runTimeMs,
+        lastCompiledTarget: mode === 'run' && result.ok ? target : store.get().lastCompiledTarget,
         diagnosticsOpen: result.diagnostics.length > 0,
       });
       return result;
     } catch (error) {
-      if (controller.signal.aborted || activeCompile !== controller) return null;
+      if (controller.signal.aborted || activeCompile !== controller || requestId !== compileSequence) return null;
       activeCompile = null;
       selectedDiagnosticIndex = 0;
       store.set({
         compileStatus: 'error',
-        compileResult: buildCompileFailure(error instanceof Error ? error.message : String(error)),
+        compileResult: buildCompileFailure(error instanceof Error ? error.message : String(error), mode === 'run' ? 'run' : 'check', target),
         diagnosticsOpen: true,
       });
       return null;
@@ -368,15 +436,29 @@ export const startPlayground = async (): Promise<void> => {
     if (options.scheduleCheck) scheduleCheck();
   };
 
+  const setExampleUrl = (exampleId: string): void => {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('example', exampleId);
+    window.history.replaceState(null, '', url);
+  };
+
   const executeTargetRun = async (result: CompileResult, target: CompileTarget, signal: AbortSignal): Promise<RunResult> => {
     if (target === 'wasm') {
-      return { output: 'WASM execution is a Phase 1 placeholder.', status: 'ok' };
+      return {
+        output: result.wasm
+          ? `Generated WASM artifact (${bytes(result.wasm.byteSize)}).`
+          : 'WASM output was not generated.',
+        status: result.wasm ? 'ok' : 'error',
+      };
     }
 
     const jsRun = await runCompiledModule(result, signal);
     if (target === 'both') {
       return {
-        output: `${jsRun.output}\n\nWASM execution is a Phase 1 placeholder.`,
+        output: `${jsRun.output}\n\n${
+          result.wasm ? `Generated WASM artifact (${bytes(result.wasm.byteSize)}).` : 'WASM output was not generated.'
+        }`,
         status: jsRun.status,
       };
     }
@@ -397,17 +479,22 @@ export const startPlayground = async (): Promise<void> => {
     const controller = new AbortController();
     activeRun = controller;
     runOutput = target === 'wasm' ? 'Preparing WASM target...' : 'Running...';
-    store.set({ activeTab: target === 'wasm' ? 'wasm' : 'js' });
+    const currentTab = store.get().activeTab;
+    const nextTab: OutputTab = target === 'wasm' ? 'wasm' : currentTab === 'js' || currentTab === 'wasm' ? currentTab : 'js';
+    store.set({ activeTab: nextTab });
     renderState(store.get());
 
     const output = await executeTargetRun(result, target, controller.signal);
     if (controller.signal.aborted || activeRun !== controller) return;
     activeRun = null;
     runOutput = output.output;
-    store.set({ compileStatus: output.status === 'ok' ? 'done' : 'error' });
+    store.set({ activeTab: 'run', compileStatus: output.status === 'ok' ? 'done' : 'error' });
   };
 
   renderExamples();
+  void warmCompilerWorker().catch(() => {
+    // The first compile will surface worker failures if warming is unavailable.
+  });
   if (bootUrlExample && !bootUrlState.source) {
     store.set({
       source: bootUrlExample.source,
@@ -431,14 +518,30 @@ export const startPlayground = async (): Promise<void> => {
     scheduleCheck();
   });
 
-  document.getElementById('examples-select')?.addEventListener('change', (event) => {
-    const example = findExample((event.target as HTMLSelectElement).value);
+  document.getElementById('examples-toggle')?.addEventListener('click', () => {
+    store.set((state) => ({ examplesOpen: !state.examplesOpen }));
+  });
+
+  document.addEventListener('click', (event) => {
+    const withinExamples =
+      event.target instanceof HTMLElement
+        ? event.target.closest('#examples-browser-root, #examples-toggle')
+        : null;
+    if (!withinExamples && store.get().examplesOpen) store.set({ examplesOpen: false });
+  });
+
+  document.addEventListener('click', (event) => {
+    const button =
+      event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-example-id]') : null;
+    if (!button) return;
+    const example = findExample(button.dataset.exampleId);
     if (!example) return;
     selectedDiagnosticIndex = null;
     runOutput = 'Run the program to see output.';
+    setExampleUrl(example.id);
     setEditorSource(
       example.source,
-      { activeExample: example.id, target: example.target, activeTab: example.tab },
+      { activeExample: example.id, target: example.target, activeTab: example.tab, examplesOpen: false },
       { scheduleCheck: true }
     );
   });
@@ -478,9 +581,33 @@ export const startPlayground = async (): Promise<void> => {
     URL.revokeObjectURL(url);
   });
 
+  document.getElementById('copy-wat-button')?.addEventListener('click', () => {
+    void navigator.clipboard?.writeText(store.get().compileResult?.wasm?.wat ?? '');
+  });
+
+  document.getElementById('download-wasm-button')?.addEventListener('click', () => {
+    const wasm = store.get().compileResult?.wasm;
+    if (!wasm?.bytes) return;
+    const url = URL.createObjectURL(new Blob([wasm.bytes], { type: 'application/wasm' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'lumina-output.wasm';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  });
+
   document.getElementById('minify-js-button')?.addEventListener('click', () => {
     readableJs = !readableJs;
     renderState(store.get());
+  });
+
+  document.addEventListener('click', (event) => {
+    const backButton =
+      event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('#diagnostic-back-button') : null;
+    if (!backButton) return;
+    selectedDiagnosticIndex = null;
+    renderState(store.get());
+    document.getElementById('diagnostics-root')?.scrollIntoView({ block: 'nearest' });
   });
 
   document.getElementById('share-button')?.addEventListener('click', () => {
@@ -533,12 +660,13 @@ export const startPlayground = async (): Promise<void> => {
     }
     if (mod && event.key.toLowerCase() === 'k') {
       event.preventDefault();
-      (document.getElementById('examples-select') as HTMLSelectElement | null)?.focus();
+      store.set({ examplesOpen: true });
+      document.getElementById('examples-toggle')?.focus();
       return;
     }
     if (event.key === 'Escape') {
       selectedDiagnosticIndex = null;
-      store.set({ diagnosticsOpen: false, settingsOpen: false });
+      store.set({ diagnosticsOpen: false, settingsOpen: false, examplesOpen: false });
       renderState(store.get());
     }
   });

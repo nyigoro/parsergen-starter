@@ -1,11 +1,16 @@
 import {
   compileLuminaProject,
   formatLuminaSource,
+  warmLuminaCompiler,
   type CompileResult,
   type PlaygroundCompileInput,
 } from './compiler-bridge';
 
 type CompileWorkerRequest =
+  | {
+      id: number;
+      type: 'warm';
+    }
   | {
       id: number;
       type: 'compile';
@@ -20,6 +25,11 @@ type CompileWorkerRequest =
 type CompileWorkerResponse =
   | {
       type: 'ready';
+      bootMs: number;
+    }
+  | {
+      id: number;
+      type: 'warm-result';
       bootMs: number;
     }
   | {
@@ -55,6 +65,15 @@ workerScope.postMessage({
 workerScope.onmessage = (event: MessageEvent<CompileWorkerRequest>) => {
   const request = event.data;
   try {
+    if (request.type === 'warm') {
+      workerScope.postMessage({
+        id: request.id,
+        type: 'warm-result',
+        bootMs: warmLuminaCompiler(),
+      } satisfies CompileWorkerResponse);
+      return;
+    }
+
     if (request.type === 'compile') {
       const result = compileLuminaProject(request.input);
       workerScope.postMessage({

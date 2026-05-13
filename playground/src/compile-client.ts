@@ -3,6 +3,10 @@ import type { CompileResult, PlaygroundCompileInput } from './compiler-bridge';
 type CompileWorkerRequest =
   | {
       id: number;
+      type: 'warm';
+    }
+  | {
+      id: number;
       type: 'compile';
       input: PlaygroundCompileInput;
     }
@@ -19,6 +23,11 @@ type CompileWorkerReadyResponse = {
 
 type CompileWorkerResponse =
   | CompileWorkerReadyResponse
+  | {
+      id: number;
+      type: 'warm-result';
+      bootMs: number;
+    }
   | {
       id: number;
       type: 'compile-result';
@@ -40,7 +49,7 @@ export type CompileWorkerTelemetry = {
   restartCount: number;
   completedTaskCount: number;
   activeRequestCount: number;
-  lastTaskType: 'compile' | 'format' | null;
+  lastTaskType: CompileWorkerRequest['type'] | null;
 };
 
 type PendingRequest<T> = {
@@ -149,11 +158,6 @@ const ensureCompilerWorker = async (): Promise<Worker> => {
   return compilerWorker;
 };
 
-const recycleCompilerWorker = (message: string): void => {
-  workerRestartCount += 1;
-  teardownCompilerWorker(message);
-};
-
 const runWorkerTask = async <T>(
   request: CompileWorkerRequest,
   consume: (response: CompileWorkerResponse) => T,
@@ -178,7 +182,6 @@ const runWorkerTask = async <T>(
 
     const abort = (): void => {
       pendingRequests.delete(request.id);
-      recycleCompilerWorker(signal?.reason ? String(signal.reason) : 'Compiler task cancelled.');
       reject(new Error(signal?.reason ? String(signal.reason) : 'Compiler task cancelled.'));
     };
 
@@ -217,6 +220,19 @@ export const compileProjectInWorker = (
       return response.result;
     },
     signal
+  );
+
+export const warmCompilerWorker = (): Promise<void> =>
+  runWorkerTask(
+    {
+      id: ++requestCounter,
+      type: 'warm',
+    },
+    (response) => {
+      if (response.type !== 'warm-result') {
+        throw new Error('Compiler worker returned an unexpected warm response.');
+      }
+    }
   );
 
 export const formatSourceInWorker = (source: string, signal?: AbortSignal): Promise<string> =>

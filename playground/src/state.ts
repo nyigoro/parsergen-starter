@@ -2,7 +2,7 @@ import type { CompileDiagnostic, CompileResult } from './compiler-bridge';
 
 export type CompileTarget = 'js' | 'wasm' | 'both';
 export type CompileMode = 'check' | 'run' | 'format';
-export type OutputTab = 'js' | 'wasm' | 'ui' | 'types';
+export type OutputTab = 'js' | 'wasm' | 'run' | 'ui' | 'types';
 export type CompileStatus = 'idle' | 'checking' | 'running' | 'done' | 'error';
 
 export type PlaygroundState = {
@@ -13,6 +13,11 @@ export type PlaygroundState = {
   activeExample: string | null;
   compileResult: CompileResult | null;
   compileStatus: CompileStatus;
+  lastCompiledTarget: CompileTarget | null;
+  lastAction: CompileMode | null;
+  checkTimeMs: number | null;
+  runTimeMs: number | null;
+  examplesOpen: boolean;
   diagnosticsOpen: boolean;
   settingsOpen: boolean;
   autoPreview: boolean;
@@ -28,6 +33,11 @@ export const defaultState: PlaygroundState = {
   activeExample: 'basics',
   compileResult: null,
   compileStatus: 'idle',
+  lastCompiledTarget: null,
+  lastAction: null,
+  checkTimeMs: null,
+  runTimeMs: null,
+  examplesOpen: false,
   diagnosticsOpen: false,
   settingsOpen: false,
   autoPreview: false,
@@ -70,7 +80,9 @@ export const diagnosticCounts = (diagnostics: CompileDiagnostic[]) => ({
   warnings: diagnostics.filter((diagnostic) => diagnostic.severity === 'warning').length,
 });
 
-export const sourceProjectInput = (source: string) => ({
+export const sourceProjectInput = (source: string, action: 'check' | 'run', target: CompileTarget) => ({
+  action,
+  target,
   entryUri: 'main.lm',
   files: [{ uri: 'main.lm', text: source }],
 });

@@ -5,7 +5,7 @@ const sourceKey = 'lumina_playground_source';
 const targetKey = 'lumina_playground_target';
 const exampleKey = 'lumina_playground_example';
 const targets = new Set<CompileTarget>(['js', 'wasm', 'both']);
-const tabs = new Set<OutputTab>(['js', 'wasm', 'ui', 'types']);
+const tabs = new Set<OutputTab>(['js', 'wasm', 'run', 'ui', 'types']);
 
 const toBase64Url = (value: string): string => {
   const bytes = new TextEncoder().encode(value);
@@ -36,7 +36,7 @@ export const readUrlState = (): Partial<PlaygroundState> => {
   const tab = url.searchParams.get('tab');
   return {
     ...(code ? { source: fromBase64Url(code) ?? '' } : {}),
-    ...(example ? { activeExample: example } : {}),
+    ...(!code && example ? { activeExample: example } : {}),
     ...(target && targets.has(target as CompileTarget) ? { target: target as CompileTarget } : {}),
     ...(tab && tabs.has(tab as OutputTab) ? { activeTab: tab as OutputTab } : {}),
   };

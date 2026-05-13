@@ -13,12 +13,14 @@ fn attrs3(first: any, second: any, third: any) -> any {
 }
 
 pub fn diagnostics_panel() -> VNode {
-  vnode("section", attrs3(props_class("panel stack-sm"), props_id("diagnostics-panel"), props_attr("style", "margin-top:0.625rem;")), [
+  vnode("section", attrs3(props_class("panel diagnostics-panel"), props_id("diagnostics-panel"), props_attr("style", "min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;")), [
     vnode("button", attrs3(props_class("tool-button secondary"), props_id("diagnostics-toggle"), props_type("button")), [
       text("Diagnostics "),
       vnode("span", props_id("diagnostics-count-label"), [text("0")])
     ]),
-    vnode("div", attrs3(props_class("diagnostics-list"), props_id("diagnostics-root"), props_attr("aria-live", "polite")), []),
-    vnode("div", attrs3(props_class("debug-list"), props_id("diagnostic-explain-root"), props_attr("hidden", "true")), [])
+    vnode("div", props_class("diagnostics-body"), [
+      vnode("div", attrs3(props_class("diagnostics-list"), props_id("diagnostics-root"), props_attr("aria-live", "polite")), []),
+      vnode("div", attrs3(props_class("debug-list"), props_id("diagnostic-explain-root"), props_attr("hidden", "true")), [])
+    ])
   ])
 }

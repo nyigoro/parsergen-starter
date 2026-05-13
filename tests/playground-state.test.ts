@@ -16,6 +16,11 @@ describe('playground single-source state helpers', () => {
       activeExample: 'basics',
       compileResult: null,
       compileStatus: 'idle',
+      lastCompiledTarget: null,
+      lastAction: null,
+      checkTimeMs: null,
+      runTimeMs: null,
+      examplesOpen: false,
       diagnosticsOpen: false,
       settingsOpen: false,
       autoPreview: false,
@@ -39,10 +44,18 @@ describe('playground single-source state helpers', () => {
   });
 
   test('adapts source to the compiler bridge single-file input', () => {
-    expect(sourceProjectInput('fn main() -> int { 1 }')).toEqual({
+    expect(sourceProjectInput('fn main() -> int { 1 }', 'check', 'js')).toEqual({
+      action: 'check',
+      target: 'js',
       entryUri: 'main.lm',
       files: [{ uri: 'main.lm', text: 'fn main() -> int { 1 }' }],
     });
+  });
+
+  test('allows run output to be selected independently from compile target tabs', () => {
+    const store = createPlaygroundSignal(defaultState);
+    store.set({ target: 'wasm', activeTab: 'run' });
+    expect(store.get()).toMatchObject({ target: 'wasm', activeTab: 'run' });
   });
 
   test('counts diagnostics for status and collapsed diagnostics bar', () => {

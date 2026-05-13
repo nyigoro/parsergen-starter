@@ -176,7 +176,8 @@ describe('site routing and playground integration', () => {
     expect(playgroundIndex).not.toContain("import('./compiler-bridge')");
     expect(playgroundIndex).toContain('startPlayground');
     expect(playgroundController).toContain('createPlaygroundSignal');
-    expect(playgroundController).toContain("document.getElementById('examples-select')");
+    expect(playgroundController).toContain("document.getElementById('examples-toggle')");
+    expect(playgroundController).toContain('[data-example-id]');
     expect(playgroundController).toContain("document.getElementById('run-button')");
     expect(playgroundController).toContain("document.getElementById('format-button')");
     expect(playgroundController).toContain("document.getElementById('diagnostics-toggle')");
@@ -186,9 +187,14 @@ describe('site routing and playground integration', () => {
     expect(compilerBridge).toContain('compileLuminaGrammar(luminaGrammarRaw, { cache: true })');
     expect(compilerBridge).toContain("import routerStdRaw from '../../std/router.lm?raw';");
     expect(compilerBridge).toContain('compileLuminaProject');
+    expect(compilerBridge).toContain("input.action === 'check'");
+    expect(compilerBridge).toContain('generateWasmTextModuleFromAst');
+    expect(compilerBridge).toContain('emitWasmBinary');
     expect(compilerBridge).toContain("'@std/router', routerStdRaw");
     expect(compilerBridge).toContain('importResolutions');
+    expect(compilerWorker).toContain("type: 'warm-result'");
     expect(compilerWorker).toContain("type: 'compile-result'");
+    expect(compileClient).toContain('warmCompilerWorker');
     expect(compileClient).toContain("new URL('./compiler-worker.ts', import.meta.url)");
   });
 
@@ -234,6 +240,9 @@ describe('site routing and playground integration', () => {
     expect(playgroundShare).toContain("searchParams.get('code')");
     expect(playgroundShare).toContain("searchParams.get('example')");
     expect(playgroundController).toContain('setTimeout(() => void compile');
+    expect(playgroundController).toContain('lastCompiledTarget');
+    expect(playgroundController).toContain('status-last-target');
+    expect(playgroundController).toContain("setHidden('run-panel'");
     expect(playgroundDiagnostics).toContain('diagnostics-root');
     expect(playgroundApp).toContain('statusbar');
     expect(playgroundState).not.toContain('PlaygroundProject');

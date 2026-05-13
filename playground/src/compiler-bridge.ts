@@ -7,6 +7,9 @@ import { BrowserProjectContext } from '../../src/project/browser-context';
 import { lowerLumina } from '../../src/lumina/lower';
 import { optimizeIR } from '../../src/lumina/optimize';
 import { generateJS } from '../../src/lumina/codegen';
+import { generateWasmTextModuleFromAst } from '../../src/lumina/codegen-wasm';
+import { emitWasmBinary } from '../../src/lumina/wasm-emit-binary';
+import { emitWAT } from '../../src/lumina/wasm-emit-wat';
 import { extractImports } from '../../src/project/imports';
 import type { RunnableModuleArtifact } from './runnable-module-graph';
 import { buildRunnableModuleGraph } from './runnable-module-graph';
@@ -26,6 +29,8 @@ export type CompileDiagnostic = {
 };
 
 export type PlaygroundCompileInput = {
+  action: 'check' | 'run';
+  target: 'js' | 'wasm' | 'both';
   entryUri: string;
   files: PlaygroundProjectFile[];
 };
@@ -43,15 +48,37 @@ export type CompileTimings = {
   lowerMs: number;
   codegenMs: number;
   moduleGraphMs: number;
+  wasmWatMs: number;
+  wasmBinaryMs: number;
   totalMs: number;
+};
+
+export type WasmSectionMetric = {
+  name: string;
+  byteSize: number;
+};
+
+export type CompileWasmOutput = {
+  wat: string;
+  bytes: Uint8Array | null;
+  byteSize: number;
+  sections: WasmSectionMetric[];
+  timings: {
+    watMs: number;
+    binaryMs: number;
+    totalMs: number;
+  };
 };
 
 export type CompileResult = {
   ok: boolean;
+  action: PlaygroundCompileInput['action'];
+  target: PlaygroundCompileInput['target'];
   js: string;
   runnableJs: string;
   runnableEntryUri: string | null;
   runnableModules: RunnableModuleArtifact[];
+  wasm: CompileWasmOutput | null;
   hasMain: boolean;
   diagnostics: CompileDiagnostic[];
   entryUri: string;
@@ -93,6 +120,12 @@ const getCompilerRuntime = (): PlaygroundCompilerRuntime => {
   }
 
   return compilerRuntime;
+};
+
+export const warmLuminaCompiler = (): number => {
+  const startedAt = now();
+  getCompilerRuntime();
+  return now() - startedAt;
 };
 
 export const formatLuminaSource = (source: string): string => {
@@ -239,6 +272,91 @@ const collectImportResolutions = (
       })
     );
 
+const emptyTimings = (totalMs: number): CompileTimings => ({
+  diagnosticsMs: 0,
+  lowerMs: 0,
+  codegenMs: 0,
+  moduleGraphMs: 0,
+  wasmWatMs: 0,
+  wasmBinaryMs: 0,
+  totalMs,
+});
+
+const resultBase = (input: PlaygroundCompileInput) => ({
+  action: input.action,
+  target: input.target,
+  entryUri: input.entryUri,
+  js: '',
+  runnableJs: '',
+  runnableEntryUri: null,
+  runnableModules: [],
+  wasm: null,
+  hasMain: false,
+  graphEdges: 0,
+  graphNodes: 0,
+});
+
+const diagnosticFromCompiler = (
+  diagnostic: {
+    severity?: string;
+    message: string;
+    code?: string;
+    location?: { start?: { line?: number; column?: number } };
+  },
+  fileUri: string
+): CompileDiagnostic => ({
+  severity: diagnostic.severity ?? 'error',
+  message: diagnostic.message,
+  line: diagnostic.location?.start?.line,
+  column: diagnostic.location?.start?.column,
+  code: diagnostic.code,
+  fileUri,
+});
+
+const sectionNames: Record<number, string> = {
+  0: 'custom',
+  1: 'types',
+  2: 'imports',
+  3: 'functions',
+  4: 'tables',
+  5: 'memory',
+  6: 'globals',
+  7: 'exports',
+  8: 'start',
+  9: 'elements',
+  10: 'code',
+  11: 'data',
+  12: 'data-count',
+};
+
+const readU32 = (bytes: Uint8Array, offset: number): { value: number; offset: number } => {
+  let result = 0;
+  let shift = 0;
+  let cursor = offset;
+  while (cursor < bytes.length) {
+    const byte = bytes[cursor++];
+    result |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) break;
+    shift += 7;
+  }
+  return { value: result >>> 0, offset: cursor };
+};
+
+const collectWasmSections = (bytes: Uint8Array): WasmSectionMetric[] => {
+  const sections: WasmSectionMetric[] = [];
+  let offset = 8;
+  while (offset < bytes.length) {
+    const id = bytes[offset++];
+    const size = readU32(bytes, offset);
+    offset = size.offset + size.value;
+    sections.push({
+      name: sectionNames[id] ?? `section-${id}`,
+      byteSize: size.value,
+    });
+  }
+  return sections;
+};
+
 export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResult => {
   const startedAt = now();
   try {
@@ -253,22 +371,36 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
     const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === 'error');
     if (hasErrors) {
       return {
+        ...resultBase(input),
         ok: false,
-        js: '',
-        runnableJs: '',
-        runnableEntryUri: null,
-        runnableModules: [],
-        hasMain: false,
         diagnostics,
-        entryUri: input.entryUri,
-        graphEdges: 0,
-        graphNodes: 0,
         importResolutions,
         timings: {
           diagnosticsMs,
           lowerMs: 0,
           codegenMs: 0,
           moduleGraphMs: 0,
+          wasmWatMs: 0,
+          wasmBinaryMs: 0,
+          totalMs: now() - startedAt,
+        },
+      };
+    }
+
+    if (input.action === 'check') {
+      return {
+        ...resultBase(input),
+        ok: true,
+        hasMain: Boolean(project.getDocumentAst(input.entryUri)),
+        diagnostics,
+        importResolutions,
+        timings: {
+          diagnosticsMs,
+          lowerMs: 0,
+          codegenMs: 0,
+          moduleGraphMs: 0,
+          wasmWatMs: 0,
+          wasmBinaryMs: 0,
           totalMs: now() - startedAt,
         },
       };
@@ -277,12 +409,8 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
     const ast = project.getDocumentAst(input.entryUri);
     if (!ast) {
       return {
+        ...resultBase(input),
         ok: false,
-        js: '',
-        runnableJs: '',
-        runnableEntryUri: null,
-        runnableModules: [],
-        hasMain: false,
         diagnostics: [
           {
             severity: 'error',
@@ -290,108 +418,158 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
             fileUri: input.entryUri,
           },
         ],
-        entryUri: input.entryUri,
-        graphEdges: 0,
-        graphNodes: 0,
         importResolutions,
         timings: {
           diagnosticsMs,
           lowerMs: 0,
           codegenMs: 0,
           moduleGraphMs: 0,
+          wasmWatMs: 0,
+          wasmBinaryMs: 0,
           totalMs: now() - startedAt,
         },
       };
     }
 
-    const lowerStartedAt = now();
-    const lowered = lowerLumina(ast as never);
-    const optimized = optimizeIR(lowered);
-    const lowerMs = now() - lowerStartedAt;
-    const codegenStartedAt = now();
-    const js = optimized ? generateJS(optimized as never).code : '// No JavaScript output generated.';
-    const codegenMs = now() - codegenStartedAt;
-    const moduleGraphStartedAt = now();
-    const runnableGraph = buildRunnableModuleGraph({
-      project,
-      entryUri: input.entryUri,
-      runtimeUrl: resolvedRuntimeUrl,
-    });
-    const moduleGraphMs = now() - moduleGraphStartedAt;
-    const entryModule = runnableGraph.modules.find((module) => module.uri === runnableGraph.entryUri);
-    if (!entryModule) {
-      return {
-        ok: false,
-        js: '',
-        runnableJs: '',
-        runnableEntryUri: null,
-        runnableModules: [],
-        hasMain: false,
-        diagnostics: [
-          {
-            severity: 'error',
-            message: `No runnable entry module produced for ${input.entryUri}`,
-            fileUri: input.entryUri,
-          },
-        ],
+    const shouldBuildJs = input.target === 'js' || input.target === 'both';
+    const shouldBuildWasm = input.target === 'wasm' || input.target === 'both';
+    let js = '';
+    let runnableJs = '';
+    let runnableEntryUri: string | null = null;
+    let runnableModules: RunnableModuleArtifact[] = [];
+    let graphEdges = 0;
+    let graphNodes = 0;
+    let lowerMs = 0;
+    let codegenMs = 0;
+    let moduleGraphMs = 0;
+    let wasmWatMs = 0;
+    let wasmBinaryMs = 0;
+    let wasm: CompileWasmOutput | null = null;
+
+    if (shouldBuildJs) {
+      const lowerStartedAt = now();
+      const lowered = lowerLumina(ast as never);
+      const optimized = optimizeIR(lowered);
+      lowerMs = now() - lowerStartedAt;
+      const codegenStartedAt = now();
+      js = optimized ? generateJS(optimized as never).code : '// No JavaScript output generated.';
+      codegenMs = now() - codegenStartedAt;
+      const moduleGraphStartedAt = now();
+      const runnableGraph = buildRunnableModuleGraph({
+        project,
         entryUri: input.entryUri,
-        graphEdges: 0,
-        graphNodes: 0,
-        importResolutions,
-        timings: {
-          diagnosticsMs,
-          lowerMs,
-          codegenMs,
-          moduleGraphMs,
-          totalMs: now() - startedAt,
-        },
-      };
+        runtimeUrl: resolvedRuntimeUrl,
+      });
+      moduleGraphMs = now() - moduleGraphStartedAt;
+      const entryModule = runnableGraph.modules.find((module) => module.uri === runnableGraph.entryUri);
+      if (!entryModule) {
+        return {
+          ...resultBase(input),
+          ok: false,
+          diagnostics: [
+            {
+              severity: 'error',
+              message: `No runnable entry module produced for ${input.entryUri}`,
+              fileUri: input.entryUri,
+            },
+          ],
+          importResolutions,
+          timings: {
+            diagnosticsMs,
+            lowerMs,
+            codegenMs,
+            moduleGraphMs,
+            wasmWatMs: 0,
+            wasmBinaryMs: 0,
+            totalMs: now() - startedAt,
+          },
+        };
+      }
+      runnableJs = entryModule.code;
+      runnableEntryUri = runnableGraph.entryUri;
+      runnableModules = runnableGraph.modules;
+      graphEdges = runnableGraph.modules.reduce((count, module) => count + module.sourceImports.length, 0);
+      graphNodes = runnableGraph.modules.length;
     }
 
+    if (shouldBuildWasm) {
+      const wasmStartedAt = now();
+      const wasmModule = generateWasmTextModuleFromAst(ast as never, {
+        exportMain: true,
+        targetProfile: 'wasm-web',
+        emitDebugMetadata: true,
+        sourceFile: input.entryUri,
+      });
+      wasmWatMs = now() - wasmStartedAt;
+      const wasmDiagnostics = wasmModule.diagnostics.map((diagnostic) =>
+        diagnosticFromCompiler(diagnostic, input.entryUri)
+      );
+      const wasmHasErrors = wasmDiagnostics.some((diagnostic) => diagnostic.severity === 'error');
+      const wat = emitWAT(wasmModule.module);
+      let wasmBytes: Uint8Array | null = null;
+      let sections: WasmSectionMetric[] = [];
+      if (!wasmHasErrors) {
+        const binaryStartedAt = now();
+        try {
+          wasmBytes = emitWasmBinary(wasmModule.module);
+          sections = collectWasmSections(wasmBytes);
+        } catch (error) {
+          diagnostics.push({
+            severity: 'error',
+            message: `WASM binary emission failed: ${error instanceof Error ? error.message : String(error)}`,
+            code: 'WASM-BINARY-001',
+            fileUri: input.entryUri,
+          });
+        } finally {
+          wasmBinaryMs = now() - binaryStartedAt;
+        }
+      }
+      wasm = {
+        wat,
+        bytes: wasmBytes,
+        byteSize: wasmBytes?.byteLength ?? 0,
+        sections,
+        timings: {
+          watMs: wasmWatMs,
+          binaryMs: wasmBinaryMs,
+          totalMs: wasmWatMs + wasmBinaryMs,
+        },
+      };
+      diagnostics.push(...wasmDiagnostics);
+    }
+
+    const ok = !diagnostics.some((diagnostic) => diagnostic.severity === 'error');
     return {
-      ok: true,
+      ...resultBase(input),
+      ok,
       js,
-      runnableJs: entryModule.code,
-      runnableEntryUri: runnableGraph.entryUri,
-      runnableModules: runnableGraph.modules,
+      runnableJs,
+      runnableEntryUri,
+      runnableModules,
+      wasm,
       hasMain: hasMainFunction(ast),
       diagnostics,
-      entryUri: input.entryUri,
-      graphEdges: runnableGraph.modules.reduce(
-        (count, module) => count + module.sourceImports.length,
-        0
-      ),
-      graphNodes: runnableGraph.modules.length,
+      graphEdges,
+      graphNodes,
       importResolutions,
       timings: {
         diagnosticsMs,
         lowerMs,
         codegenMs,
         moduleGraphMs,
+        wasmWatMs,
+        wasmBinaryMs,
         totalMs: now() - startedAt,
       },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
+      ...resultBase(input),
       ok: false,
-      js: '',
-      runnableJs: '',
-      runnableEntryUri: null,
-      runnableModules: [],
-      hasMain: false,
       diagnostics: [{ severity: 'error', message }],
-      entryUri: input.entryUri,
-      graphEdges: 0,
-      graphNodes: 0,
       importResolutions: [],
-      timings: {
-        diagnosticsMs: 0,
-        lowerMs: 0,
-        codegenMs: 0,
-        moduleGraphMs: 0,
-        totalMs: now() - startedAt,
-      },
+      timings: emptyTimings(now() - startedAt),
     };
   }
 };

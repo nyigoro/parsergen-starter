@@ -48,12 +48,12 @@ test.describe('playground browser smoke', () => {
     try {
       await page.goto(`${server.baseUrl}/playground/?preset=basics`);
       await waitForCompile(page);
-      await expect(page.locator('#examples-select')).toHaveValue('basics');
+      await expect(page.locator('#examples-current')).toContainText('Functions');
       await expect(page.locator('#status-target')).toContainText('JS');
 
       await page.goto(`${server.baseUrl}/playground/?example=counter`);
       await waitForCompile(page);
-      await expect(page.locator('#examples-select')).toHaveValue('counter');
+      await expect(page.locator('#examples-current')).toContainText('Counter');
       await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
     } finally {
       await server.close();
@@ -116,13 +116,14 @@ test.describe('playground browser smoke', () => {
 
       await page.click('#run-button');
       await waitForRunOutput(page);
+      await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#run-output-root')).toContainText('return 7');
     } finally {
       await server.close();
     }
   });
 
-  test('respects target switching and Phase 1 placeholder panels', async ({ page }) => {
+  test('respects target switching and renders real WASM output', async ({ page }) => {
     const server = await startSmokeServer();
     try {
       await page.goto(`${server.baseUrl}/playground/?example=wasm-hello`);
@@ -130,7 +131,12 @@ test.describe('playground browser smoke', () => {
       await page.click('#run-button');
       await waitForRunOutput(page);
       await expect(page.locator('#status-target')).toContainText('WASM');
-      await expect(page.locator('#wasm-panel')).toContainText('Phase 1 shell reset');
+      await expect(page.locator('#status-last-target')).toContainText('WASM');
+      await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
+      await page.click('#output-tab-wasm');
+      await expect(page.locator('#wasm-panel')).toContainText('WebAssembly');
+      await expect(page.locator('#wasm-panel')).toContainText('(module');
+      await expect(page.locator('#wasm-size-label')).not.toContainText('-');
 
       await page.goto(`${server.baseUrl}/playground/?example=basics`);
       await waitForCompile(page);
@@ -138,7 +144,29 @@ test.describe('playground browser smoke', () => {
       await page.click('#run-button');
       await waitForRunOutput(page);
       await expect(page.locator('#status-target')).toContainText('BOTH');
-      await expect(page.locator('#run-output-root')).toContainText('WASM execution is a Phase 1 placeholder.');
+      await expect(page.locator('#status-last-target')).toContainText('BOTH');
+      await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#run-output-root')).toContainText('Generated WASM artifact');
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('opens concept-organized examples browser from click and keyboard', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?example=basics`);
+      await waitForCompile(page);
+
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
+      await expect(page.locator('#examples-browser-root')).toBeVisible();
+      await expect(page.locator('#examples-browser-root')).toContainText('Reactive UI');
+      await page.locator('[data-example-id="counter"]').click();
+      await waitForCompile(page);
+      await expect(page.locator('#examples-current')).toContainText('Counter');
+      await expect.poll(async () => readEditorText(page)).toContain('counterView');
+      await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+      await expect(page).toHaveURL(/example=counter/);
     } finally {
       await server.close();
     }

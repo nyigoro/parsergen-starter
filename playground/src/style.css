@@ -123,6 +123,8 @@ button {
 }
 
 .topbar {
+  position: relative;
+  z-index: 40;
   min-height: 3.5rem;
   display: flex;
   align-items: center;
@@ -130,6 +132,7 @@ button {
   gap: 1rem;
   padding: 0.625rem 0.75rem;
   border-radius: 14px;
+  overflow: visible;
 }
 
 .brand {
@@ -244,9 +247,106 @@ button {
 .toolbar-row {
   min-width: 0;
   flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  overflow: visible;
+}
+
+.examples-browser-shell {
+  position: relative;
+  min-width: min(24rem, 42vw);
+  flex: 1 1 24rem;
+}
+
+.examples-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  justify-content: stretch;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.examples-toggle-label {
+  color: #9aa4b2;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+#examples-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.examples-browser {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 35;
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 9rem));
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  overflow: auto;
+  border: 1px solid #303641;
+  border-radius: 8px;
+  background: #11151b;
+  box-shadow: 0 22px 48px rgba(2, 6, 23, 0.48);
+}
+
+.examples-browser[hidden] {
+  display: none !important;
+}
+
+.examples-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.examples-group-title {
+  color: #8e99a8;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.examples-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.example-card {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #303641;
+  border-radius: 8px;
+  background: #0d1014;
+  color: #e5eaf1;
+  cursor: pointer;
+  text-align: left;
+}
+
+.example-card:hover,
+.example-card[data-active='true'] {
+  border-color: #0f766e;
+  background: #13201f;
+}
+
+.example-label {
+  font-weight: 800;
+}
+
+.example-detail,
+.example-meta {
+  color: #9aa4b2;
+  font-size: 0.76rem;
+  line-height: 1.35;
 }
 
 .toolbar-row-secondary .tool-button {
@@ -970,6 +1070,17 @@ button {
   transform: translateY(1px);
 }
 
+.output-heading-row {
+  align-items: end;
+  border-bottom: 1px solid #232933;
+  padding-bottom: 0.25rem;
+}
+
+.output-heading-row .output-tab-strip {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
 .rail-panel[hidden],
 .dock-panel[hidden],
 .drawer-panel[hidden] {
@@ -1098,6 +1209,7 @@ button {
   min-width: 0;
   display: grid;
   gap: 0.875rem;
+  overflow: hidden;
 }
 
 .console-output,
@@ -1129,6 +1241,59 @@ button {
   color: #c4b5fd;
 }
 
+.output-panel-stack {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.output-panel-stack>.panel {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+#js-panel,
+#wasm-panel,
+#run-panel,
+#ui-panel,
+#types-panel {
+  min-height: 0;
+  overflow: auto;
+}
+
+.wasm-content {
+  min-height: 0;
+}
+
+.wasm-section-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.wasm-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #303641;
+  border-radius: 8px;
+  background: #0f1318;
+  color: #aab4c2;
+  font-size: 0.82rem;
+}
+
+.wasm-section-row strong {
+  color: #f8fafc;
+}
+
+.wasm-wat-output {
+  min-height: 18rem;
+}
+
 .editor-meta-row {
   display: flex;
   align-items: center;
@@ -1138,13 +1303,33 @@ button {
 }
 
 .diagnostics-list {
+  min-height: 0;
   display: grid;
   gap: 0.625rem;
+  align-content: start;
+  overflow: auto;
+  padding-right: 0.25rem;
 }
 
 .debug-list {
+  min-height: 0;
+  max-height: 9rem;
   display: grid;
   gap: 0.625rem;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.diagnostics-panel {
+  margin-top: 0;
+}
+
+.diagnostics-body {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.625rem;
+  overflow: hidden;
 }
 
 .empty-state {
@@ -1663,10 +1848,22 @@ button {
     scrollbar-width: thin;
   }
 
+  .toolbar-row {
+    overflow: visible;
+  }
+
   .top-link,
   .tool-button,
   .stat {
     flex: 0 0 auto;
+  }
+
+  .examples-browser-shell {
+    min-width: 18rem;
+  }
+
+  .examples-browser {
+    width: min(34rem, calc(100vw - 1rem));
   }
 
   .stat {
@@ -1711,6 +1908,10 @@ button {
   }
 
   .route-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .examples-grid {
     grid-template-columns: 1fr;
   }
 

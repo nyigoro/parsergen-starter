@@ -15,12 +15,15 @@ pub fn statusbar() -> VNode {
   vnode("footer", attrs2(props_class("workbench-statusbar"), props_attr("style", "min-height:2rem;")), [
     vnode("div", props_class("status-strip stack-sm"), [
       stat("Status", "status-compile", "Idle"),
-      stat("Time", "status-time", "0ms"),
+      stat("Check", "status-check-time", "-"),
+      stat("Run", "status-run-time", "-"),
       stat("JS", "status-js-size", "0 KB"),
       stat("WASM", "status-wasm-size", "-"),
+      stat("Next", "status-target", "JS"),
+      stat("Last Run", "status-last-target", "-"),
+      stat("View", "status-view", "JS"),
       stat("Errors", "status-errors", "0"),
       stat("Warnings", "status-warnings", "0"),
-      stat("Target", "status-target", "JS"),
       stat("Example", "status-example", "basics"),
       stat("Cursor", "status-cursor", "1:1")
     ])

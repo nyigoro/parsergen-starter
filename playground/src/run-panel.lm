@@ -1,0 +1,19 @@
+import {
+  vnode,
+  text,
+  props_class,
+  props_id,
+  props_attr,
+  props_merge
+} from "@std/render";
+
+fn attrs3(first: any, second: any, third: any) -> any {
+  props_merge(props_merge(first, second), third)
+}
+
+pub fn run_panel() -> VNode {
+  vnode("section", attrs3(props_class("panel stack-sm"), props_id("run-panel"), props_attr("hidden", "")), [
+    vnode("div", props_class("panel-title"), [text("Run Output")]),
+    vnode("pre", attrs3(props_class("js-output run-output"), props_id("run-output-root"), props_attr("aria-live", "polite")), [text("")])
+  ])
+}

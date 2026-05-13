@@ -18,7 +18,7 @@ pub fn app() -> VNode {
     ),
     [
       editor_zone(),
-      vnode("section", attrs2(props_class("result-column"), props_attr("style", "min-height:0;display:grid;grid-template-rows:minmax(0,1fr) auto;")), [
+      vnode("section", attrs2(props_class("result-column"), props_attr("style", "min-height:0;display:grid;grid-template-rows:minmax(13rem,1fr) minmax(12rem,0.9fr);gap:0.625rem;overflow:hidden;")), [
         output_tabs(),
         diagnostics_panel()
       ])

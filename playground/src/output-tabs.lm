@@ -9,6 +9,7 @@ import {
 } from "@std/render";
 import { js_panel } from "./js-panel.lm";
 import { wasm_panel } from "./wasm-panel.lm";
+import { run_panel } from "./run-panel.lm";
 import { ui_preview } from "./ui-preview.lm";
 import { types_panel } from "./types-panel.lm";
 
@@ -30,15 +31,20 @@ fn tab(id: string, label: string, value: string) -> VNode {
 
 pub fn output_tabs() -> VNode {
   vnode("section", attrs3(props_class("panel stack-sm"), props_id("output-zone"), props_attr("style", "min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);")), [
-    vnode("div", attrs3(props_class("output-tab-strip"), props_id("output-tabs"), props_attr("role", "tablist")), [
-      tab("output-tab-js", "JS", "js"),
-      tab("output-tab-wasm", "WASM", "wasm"),
-      tab("output-tab-ui", "UI", "ui"),
-      tab("output-tab-types", "Types", "types")
+    vnode("div", props_class("panel-heading-row output-heading-row"), [
+      vnode("div", props_class("panel-title"), [text("Output")]),
+      vnode("div", attrs3(props_class("output-tab-strip"), props_id("output-tabs"), props_attr("role", "tablist")), [
+        tab("output-tab-js", "JS", "js"),
+        tab("output-tab-wasm", "WASM", "wasm"),
+        tab("output-tab-run", "Run", "run"),
+        tab("output-tab-ui", "UI", "ui"),
+        tab("output-tab-types", "Types", "types")
+      ])
     ]),
-    vnode("div", attrs3(props_class("output-panel-stack"), props_id("output-panels"), props_attr("style", "min-height:0;overflow:hidden;")), [
+    vnode("div", attrs3(props_class("output-panel-stack"), props_id("output-panels"), props_attr("style", "min-height:0;overflow:auto;")), [
       js_panel(),
       wasm_panel(),
+      run_panel(),
       ui_preview(),
       types_panel()
     ])
