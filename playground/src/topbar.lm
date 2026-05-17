@@ -68,14 +68,14 @@ pub fn topbar() -> VNode {
   ]);
 
   let actions = vnode("div", props_class("tool-row compact-tools"), [
-    button_node("share-button", "Share", "tool-button secondary"),
-    button_node("copy-embed-button", "Copy Embed", "tool-button secondary"),
-    button_node("open-playground-button", "Open in Playground", "tool-button secondary embed-only"),
     button_node("settings-button", "Settings", "tool-button secondary"),
+    button_node("share-button", "Share", "tool-button secondary"),
+    button_node("copy-embed-button", "Embed", "tool-button secondary"),
+    button_node("open-playground-button", "Open in Playground", "tool-button secondary embed-only"),
     vnode("a", attrs3(props_class("top-link"), props_id("docs-link"), props_href("../docs/")), [text("Docs")])
   ]);
 
-  vnode("header", attrs2(props_class("topbar"), props_attr("style", "display:grid;grid-template-columns:17.5rem minmax(0,1fr);gap:1rem;align-items:center;")), [
+  vnode("header", attrs2(props_class("topbar"), props_attr("style", "display:flex;gap:1rem;align-items:center;")), [
     brand,
     vnode("div", attrs2(props_class("tool-row toolbar-row"), props_attr("style", "justify-content:end;align-items:center;gap:0.75rem;")), [examples, modes, targets, actions])
   ])

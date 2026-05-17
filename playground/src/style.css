@@ -157,7 +157,7 @@ button {
 }
 
 .topbar:not([data-embed='true']) {
-  grid-template-columns: 17.5rem minmax(0, 1fr) !important;
+  display: flex !important;
 }
 
 .topbar[data-embed='true'] {
@@ -210,8 +210,8 @@ button {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-width: 15rem;
-  flex: 0 0 auto;
+  min-width: 14rem;
+  flex: 0 0 14rem;
 }
 
 .brand-mark {
@@ -320,15 +320,16 @@ button {
 
 .toolbar-row {
   min-width: 0;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
   overflow: visible;
 }
 
 .examples-browser-shell {
   position: relative;
-  min-width: clamp(13rem, 20vw, 16.5rem);
-  max-width: 24rem;
-  flex: 0 1 16.5rem;
+  min-width: clamp(10rem, 16vw, 14rem);
+  max-width: 18rem;
+  flex: 0 1 14rem;
 }
 
 .examples-toggle {
