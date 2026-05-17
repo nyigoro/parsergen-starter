@@ -31,6 +31,7 @@ import {
   renderTypesEmptyState,
   typeInfoToJson,
   typeRowLocation,
+  type TypeExpressionFilter,
   type TypeFilter,
 } from './types-view';
 
@@ -99,10 +100,39 @@ const bytes = (value: number): string => {
   return `${(value / 1024).toFixed(1)} KB`;
 };
 
+const ms = (value: number): string => `${value.toFixed(1)}ms`;
+
 const targetLabel = (target: CompileTarget | null): string => (target ? target.toUpperCase() : '-');
 const tabLabel = (tab: OutputTab): string => tab.toUpperCase();
 const diagnosticLocationLabel = (diagnostic: CompileDiagnostic): string =>
   diagnostic.line === undefined ? 'Location unavailable' : `${diagnostic.line}:${diagnostic.column ?? 1}`;
+
+const wasmSectionLabel = (name: string): string => {
+  if (name === 'type') return 'Types';
+  if (name === 'import') return 'Imports';
+  if (name === 'function') return 'Functions';
+  if (name === 'code') return 'Code';
+  if (name === 'export') return 'Exports';
+  if (name === 'memory') return 'Memory';
+  if (name === 'global') return 'Globals';
+  if (name === 'data') return 'Data';
+  if (name === 'data-count') return 'Data Count';
+  if (name === 'custom') return 'Custom';
+  return name.replaceAll('-', ' ');
+};
+
+const wasmSectionRole = (name: string): string => {
+  if (name === 'type') return 'Function signatures and block shapes';
+  if (name === 'import') return 'Host functions, memories, or tables';
+  if (name === 'function') return 'Function declarations';
+  if (name === 'code') return 'Compiled function bodies';
+  if (name === 'export') return 'Exports visible to the host';
+  if (name === 'memory') return 'Linear memory definition';
+  if (name === 'global') return 'Global values';
+  if (name === 'data' || name === 'data-count') return 'Static data payload';
+  if (name === 'custom') return 'Debug or tool metadata';
+  return 'WASM section';
+};
 
 const relativeTimestamp = (value: number | null): string => {
   if (!value) return 'Not yet';
@@ -340,6 +370,8 @@ export const startPlayground = async (): Promise<void> => {
   let programmaticSourceChange = false;
   let readableJs = true;
   let typeFilter: TypeFilter = 'all';
+  let typeExpressionFilter: TypeExpressionFilter = 'all';
+  let selectedTypeExpressionKey: string | null = null;
   let runOutput = 'Run the program to see output.';
   let previewSession: PreviewSession | null = null;
   let selectedDiagnosticIndex: number | null = null;
@@ -457,26 +489,68 @@ export const startPlayground = async (): Promise<void> => {
     const empty = document.getElementById('wasm-empty-state');
     const content = document.getElementById('wasm-content-root');
     const sectionRoot = document.getElementById('wasm-sections-root');
+    const watSection = document.getElementById('wasm-wat-section');
+    const copyButton = document.getElementById('copy-wat-button') as HTMLButtonElement | null;
+    const downloadButton = document.getElementById('download-wasm-button') as HTMLButtonElement | null;
+    const shouldBuildWasm = state.target === 'wasm' || state.target === 'both';
+    const visibleWasm = shouldBuildWasm ? wasm : null;
+    const isLoading = shouldBuildWasm && state.compileStatus === 'running';
+    const hasCompileError = shouldBuildWasm && state.compileStatus === 'error' && !visibleWasm;
     const targetHint =
-      state.target === 'js'
+      !shouldBuildWasm
         ? 'Switch target to WASM or Both, then Run to generate WASM.'
-        : 'Run with the current target to generate WASM.';
+        : hasCompileError
+          ? 'Fix compile diagnostics, then Run again to generate WASM.'
+          : isLoading
+            ? 'Generating WebAssembly for the current source...'
+            : 'Run with the current target to generate WASM.';
+    const emptyTitle =
+      !shouldBuildWasm
+        ? 'WASM target not selected'
+        : hasCompileError
+          ? 'WASM unavailable'
+          : isLoading
+            ? 'Building WASM'
+            : 'No WASM output yet';
+    const sectionTotal = visibleWasm?.sections.reduce((sum, section) => sum + section.byteSize, 0) ?? 0;
 
-    setText('wasm-size-label', wasm ? bytes(wasm.byteSize) : '-');
-    setText('wasm-wat-output', wasm?.wat ?? '');
-    setText('wasm-empty-state', wasm ? '' : targetHint);
+    setText('wasm-size-label', visibleWasm ? bytes(visibleWasm.byteSize) : '-');
+    setText('wasm-section-count-label', visibleWasm ? String(visibleWasm.sections.length) : '-');
+    setText('wasm-build-time-label', visibleWasm ? ms(visibleWasm.timings.totalMs) : '-');
+    setText(
+      'wasm-section-summary-label',
+      visibleWasm ? `${visibleWasm.sections.length} sections / ${bytes(sectionTotal)}` : '0 sections'
+    );
+    setText('wasm-wat-output', visibleWasm?.wat ?? '');
+    setText('wasm-empty-title', visibleWasm ? '' : emptyTitle);
+    setText('wasm-empty-detail', visibleWasm ? '' : targetHint);
+    if (empty) empty.dataset.status = isLoading ? 'loading' : hasCompileError ? 'error' : 'empty';
+    if (copyButton) copyButton.disabled = !visibleWasm?.wat;
+    if (downloadButton) downloadButton.disabled = !visibleWasm?.bytes;
 
-    if (empty) empty.toggleAttribute('hidden', Boolean(wasm));
-    if (content) content.toggleAttribute('hidden', !wasm);
+    if (empty) empty.toggleAttribute('hidden', Boolean(visibleWasm));
+    if (content) content.toggleAttribute('hidden', !visibleWasm);
+    if (watSection) watSection.toggleAttribute('hidden', !visibleWasm?.wat);
     if (!sectionRoot) return;
     sectionRoot.innerHTML =
-      wasm && wasm.sections.length > 0
-        ? wasm.sections
+      visibleWasm && visibleWasm.sections.length > 0
+        ? visibleWasm.sections
             .map(
-              (section) => `<div class="wasm-section-row">
-  <span>${escapeHtml(section.name)}</span>
-  <strong>${escapeHtml(bytes(section.byteSize))}</strong>
-</div>`
+              (section) => {
+                const percentNumber = sectionTotal > 0 ? Math.round((section.byteSize / sectionTotal) * 100) : 0;
+                const percent = `${percentNumber}%`;
+                return `<div class="wasm-section-row">
+  <span>
+    <strong>${escapeHtml(wasmSectionLabel(section.name))}</strong>
+    <small>${escapeHtml(wasmSectionRole(section.name))}</small>
+  </span>
+  <span class="wasm-section-metric">
+    <strong>${escapeHtml(bytes(section.byteSize))}</strong>
+    <small>${escapeHtml(percent)}</small>
+  </span>
+  <span class="wasm-section-bar" style="--section-percent: ${percentNumber}%"></span>
+</div>`;
+              }
             )
             .join('')
         : '<p class="empty-state">No section metrics available.</p>';
@@ -545,6 +619,9 @@ export const startPlayground = async (): Promise<void> => {
     document.querySelectorAll<HTMLElement>('[data-type-filter]').forEach((button) => {
       button.dataset.active = String(button.dataset.typeFilter === typeFilter);
     });
+    document.querySelectorAll<HTMLElement>('[data-type-expression-filter]').forEach((button) => {
+      button.dataset.active = String(button.dataset.typeExpressionFilter === typeExpressionFilter);
+    });
 
     if (!typeInfo) {
       if (empty) {
@@ -553,11 +630,13 @@ export const startPlayground = async (): Promise<void> => {
       }
       content?.toggleAttribute('hidden', true);
       if (copyButton) copyButton.disabled = true;
-      setText('types-footer-counts', '0 declarations · 0 expression types');
+      setText('types-declaration-summary-label', '0 shown');
+      setText('types-expression-summary-label', '0 shown');
+      setText('types-footer-counts', '0 declarations / 0 expression types');
       return;
     }
 
-    const rendered = renderTypeInfoTables(typeInfo, typeFilter);
+    const rendered = renderTypeInfoTables(typeInfo, typeFilter, typeExpressionFilter, selectedTypeExpressionKey);
     if (empty) {
       empty.innerHTML = '';
       empty.toggleAttribute('hidden', true);
@@ -566,6 +645,8 @@ export const startPlayground = async (): Promise<void> => {
     if (declarationsRoot) declarationsRoot.innerHTML = rendered.declarationsHtml;
     if (expressionsRoot) expressionsRoot.innerHTML = rendered.expressionsHtml;
     if (copyButton) copyButton.disabled = false;
+    setText('types-declaration-summary-label', `${rendered.filteredDeclarationsCount}/${rendered.declarationsCount} shown`);
+    setText('types-expression-summary-label', `${rendered.filteredExpressionCount}/${rendered.expressionCount} shown`);
     setText('types-footer-counts', rendered.footerText);
   };
 
@@ -1011,6 +1092,7 @@ export const startPlayground = async (): Promise<void> => {
 
     const cursor = getEditorCursor(editorId) ?? { line: 1, column: 1 };
     selectedDiagnosticIndex = null;
+    selectedTypeExpressionKey = null;
     activePreview?.abort();
     disposePreview();
     runOutput = 'Run the program to see output.';
@@ -1049,6 +1131,7 @@ export const startPlayground = async (): Promise<void> => {
     const example = findExample(button.dataset.exampleId);
     if (!example) return;
     selectedDiagnosticIndex = null;
+    selectedTypeExpressionKey = null;
     runOutput = 'Run the program to see output.';
     activePreview?.abort();
     disposePreview();
@@ -1099,6 +1182,17 @@ export const startPlayground = async (): Promise<void> => {
     });
   });
 
+  document.querySelectorAll<HTMLElement>('[data-type-expression-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const next = button.dataset.typeExpressionFilter;
+      if (next === 'all' || next === 'calls' || next === 'literals' || next === 'values') {
+        typeExpressionFilter = next;
+        selectedTypeExpressionKey = null;
+        renderState(store.get());
+      }
+    });
+  });
+
   document.getElementById('copy-types-json-button')?.addEventListener('click', () => {
     const typeInfo = store.get().typeInfo;
     if (!typeInfo) return;
@@ -1109,6 +1203,8 @@ export const startPlayground = async (): Promise<void> => {
     const row = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-type-row]') : null;
     const location = row ? typeRowLocation(row.dataset) : null;
     if (!location) return;
+    selectedTypeExpressionKey = row.dataset.typeKey ?? null;
+    renderState(store.get());
     focusEditorLocation(editorId, location.line, location.column);
   });
 
@@ -1118,6 +1214,8 @@ export const startPlayground = async (): Promise<void> => {
     const location = typeRowLocation(row.dataset);
     if (!location) return;
     event.preventDefault();
+    selectedTypeExpressionKey = row.dataset.typeKey ?? null;
+    renderState(store.get());
     focusEditorLocation(editorId, location.line, location.column);
   });
 

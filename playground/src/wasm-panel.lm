@@ -21,21 +21,48 @@ fn button_node(id: string, label: string) -> VNode {
 }
 
 pub fn wasm_panel() -> VNode {
-  vnode("section", attrs2(props_class("panel stack-sm"), props_id("wasm-panel")), [
+  vnode("section", attrs2(props_class("panel stack-sm wasm-panel"), props_id("wasm-panel")), [
     vnode("div", props_class("panel-heading-row"), [
-      vnode("div", props_class("panel-title"), [text("WebAssembly")]),
-      vnode("div", props_class("tool-row compact-tools"), [
-        vnode("span", attrs2(props_class("small-pill"), props_id("wasm-size-label")), [text("-")]),
-        button_node("copy-wat-button", "Copy WAT"),
-        button_node("download-wasm-button", "Download")
+      vnode("div", props_class("panel-title"), [text("WebAssembly")])
+    ]),
+    vnode("p", props_class("wasm-intro"), [text("Inspect the WASM artifact from the current source: size, sections, download, and readable WAT.")]),
+    vnode("div", props_class("wasm-summary-grid"), [
+      vnode("div", props_class("wasm-summary-card"), [
+        vnode("span", props_class("wasm-summary-label"), [text("Binary")]),
+        vnode("strong", props_id("wasm-size-label"), [text("-")])
+      ]),
+      vnode("div", props_class("wasm-summary-card"), [
+        vnode("span", props_class("wasm-summary-label"), [text("Sections")]),
+        vnode("strong", props_id("wasm-section-count-label"), [text("-")])
+      ]),
+      vnode("div", props_class("wasm-summary-card"), [
+        vnode("span", props_class("wasm-summary-label"), [text("Build")]),
+        vnode("strong", props_id("wasm-build-time-label"), [text("-")])
       ])
     ]),
-    vnode("p", attrs3(props_class("empty-state"), props_id("wasm-empty-state"), props_attr("aria-live", "polite")), [text("")]),
-    vnode("div", attrs3(props_class("wasm-content stack-sm"), props_id("wasm-content-root"), props_attr("hidden", "")), [
-      vnode("div", props_class("panel-title"), [text("Sections")]),
-      vnode("div", attrs2(props_class("wasm-section-list"), props_id("wasm-sections-root")), []),
-      vnode("div", props_class("panel-title"), [text("WAT")]),
-      vnode("pre", attrs3(props_class("js-output wasm-wat-output"), props_id("wasm-wat-output"), props_attr("aria-live", "polite")), [text("")])
+    vnode("div", attrs3(props_class("wasm-state-card"), props_id("wasm-empty-state"), props_attr("aria-live", "polite")), [
+      vnode("strong", props_id("wasm-empty-title"), [text("No WASM output yet")]),
+      vnode("span", props_id("wasm-empty-detail"), [text("Run with target WASM or Both to generate WebAssembly.")])
+    ]),
+    vnode("div", attrs3(props_class("wasm-content"), props_id("wasm-content-root"), props_attr("hidden", "")), [
+      vnode("section", attrs2(props_class("wasm-section-block stack-sm"), props_id("wasm-wat-section")), [
+        vnode("div", props_class("panel-heading-row"), [
+          vnode("div", props_class("panel-title"), [text("WAT Viewer")]),
+          vnode("div", props_class("tool-row compact-tools"), [
+            vnode("span", props_class("muted-chip"), [text("readable text format")]),
+            button_node("copy-wat-button", "Copy WAT"),
+            button_node("download-wasm-button", "Download")
+          ])
+        ]),
+        vnode("pre", attrs3(props_class("wasm-wat-output"), props_id("wasm-wat-output"), props_attr("aria-live", "polite")), [text("")])
+      ]),
+      vnode("section", props_class("wasm-section-block stack-sm"), [
+        vnode("div", props_class("panel-heading-row"), [
+          vnode("div", props_class("panel-title"), [text("Section Breakdown")]),
+          vnode("span", attrs2(props_class("muted-chip"), props_id("wasm-section-summary-label")), [text("0 sections")])
+        ]),
+        vnode("div", attrs2(props_class("wasm-section-list"), props_id("wasm-sections-root")), [])
+      ])
     ])
   ])
 }

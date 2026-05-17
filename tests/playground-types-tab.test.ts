@@ -55,6 +55,24 @@ const sampleTypeInfo: BrowserTypeInfo = {
       endCol: 26,
       preview: 'square(12)',
     },
+    {
+      nodeId: 8,
+      typeStr: 'int',
+      startLine: 7,
+      startCol: 10,
+      endLine: 7,
+      endCol: 16,
+      preview: 'answer',
+    },
+    {
+      nodeId: 9,
+      typeStr: 'int',
+      startLine: 6,
+      startCol: 23,
+      endLine: 6,
+      endCol: 25,
+      preview: '12',
+    },
   ],
 };
 
@@ -114,6 +132,26 @@ describe('playground Types tab rendering helpers', () => {
     const location = typeRowLocation({ typeLine: '6', typeCol: '16' });
     if (location) calls.push(location);
     expect(calls).toEqual([{ line: 6, column: 16 }]);
+  });
+
+  test('expression filters reduce rows by expression shape', () => {
+    const calls = renderTypeInfoTables(sampleTypeInfo, 'all', 'calls');
+    expect(calls.expressionsHtml).toContain('square(12)');
+    expect(calls.expressionsHtml).not.toContain('answer');
+
+    const values = renderTypeInfoTables(sampleTypeInfo, 'all', 'values');
+    expect(values.expressionsHtml).toContain('answer');
+    expect(values.expressionsHtml).not.toContain('square(12)');
+
+    const literals = renderTypeInfoTables(sampleTypeInfo, 'all', 'literals');
+    expect(literals.expressionsHtml).toContain('12');
+    expect(literals.expressionsHtml).not.toContain('answer');
+  });
+
+  test('selected expression row is marked for visible focus feedback', () => {
+    const rendered = renderTypeInfoTables(sampleTypeInfo, 'all', 'all', '7:6:16');
+    expect(rendered.expressionsHtml).toContain('data-selected="true"');
+    expect(rendered.filteredExpressionCount).toBe(3);
   });
 
   test('empty state prompts Check or Run when typeInfo is null', () => {

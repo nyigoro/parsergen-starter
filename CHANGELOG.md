@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Playground:** Polished the WASM tab with summary metrics, section explanations, clearer empty/error/loading states, and deepened the Types tab with expression filters, selected-row feedback, and clearer learning copy.
 - **Playground:** Polished UI Preview and Run lifecycle states with clearer empty/loading/success/error surfaces, preview timeout recovery, stale-output reset behavior, and more precise compile/runtime/preview status wording.
 - **Docs/Playground:** Embedded curated live playground examples into high-value docs pages, with docs-side iframe styling and local-dev URL normalization for `?embed=1` examples.
 - **Playground:** Migrated the editor language path to Lezer-backed Lumina tokenization and polished Diagnostics explain cards with clearer code, location, why-it-happens, and fix guidance.

@@ -1,6 +1,7 @@
 import type { PlaygroundTypeInfo } from './compiler-bridge';
 
 export type TypeFilter = 'all' | 'functions' | 'variables' | 'types';
+export type TypeExpressionFilter = 'all' | 'calls' | 'literals' | 'values';
 
 export type RenderedTypeInfo = {
   declarationsHtml: string;
@@ -8,6 +9,8 @@ export type RenderedTypeInfo = {
   footerText: string;
   declarationsCount: number;
   expressionCount: number;
+  filteredDeclarationsCount: number;
+  filteredExpressionCount: number;
 };
 
 export const escapeTypeHtml = (value: string): string =>
@@ -25,6 +28,14 @@ export const typeFilterMatches = (kind: string, filter: TypeFilter): boolean => 
   return normalized === 'type' || normalized === 'struct' || normalized === 'enum' || normalized === 'trait';
 };
 
+const expressionFilterMatches = (preview: string, filter: TypeExpressionFilter): boolean => {
+  if (filter === 'all') return true;
+  const trimmed = preview.trim();
+  if (filter === 'calls') return /^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(trimmed) || trimmed.includes('(');
+  if (filter === 'literals') return /^["'0-9]/.test(trimmed) || trimmed === 'true' || trimmed === 'false';
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed);
+};
+
 export const typeInfoToJson = (typeInfo: PlaygroundTypeInfo): string =>
   JSON.stringify(typeInfo, null, 2);
 
@@ -40,14 +51,20 @@ export const renderTypesEmptyState = (): string => `<div class="types-empty-card
   <pre class="types-hint-code"><code>fn square(x: int) -> int {
   return x * x
 }</code></pre>
-  <p class="types-hint-copy">Lumina infers expression types from the same HM analysis used by diagnostics.</p>
+  <p class="types-hint-copy">Lumina infers expression types from the same HM analysis used by diagnostics. Click expression rows to jump back to source.</p>
 </div>`;
 
 export const renderTypeInfoTables = (
   typeInfo: PlaygroundTypeInfo,
-  filter: TypeFilter
+  filter: TypeFilter,
+  expressionFilter: TypeExpressionFilter = 'all',
+  selectedExpressionKey: string | null = null
 ): RenderedTypeInfo => {
   const declarations = typeInfo.declarations.filter((declaration) => typeFilterMatches(declaration.kind, filter));
+  const expressions = typeInfo.exprTypes
+    .filter((expr) => expressionFilterMatches(expr.preview, expressionFilter))
+    .sort((left, right) => left.startLine - right.startLine || left.startCol - right.startCol);
+
   const declarationsHtml =
     declarations.length === 0
       ? '<p class="empty-state">No declarations match this filter.</p>'
@@ -69,21 +86,25 @@ export const renderTypeInfoTables = (
 </table>`;
 
   const expressionsHtml =
-    typeInfo.exprTypes.length === 0
-      ? '<p class="empty-state">No expression types were emitted for this source.</p>'
+    expressions.length === 0
+      ? '<p class="empty-state">No expression types match this filter.</p>'
       : `<table class="types-table types-expression-table">
   <thead>
     <tr><th>Line</th><th>Preview</th><th>Inferred Type</th></tr>
   </thead>
   <tbody>
-    ${typeInfo.exprTypes
-      .map(
-        (expr) => `<tr class="type-expression-row" tabindex="0" data-type-row="expression" data-type-line="${expr.startLine}" data-type-col="${expr.startCol}">
+    ${expressions
+      .map((expr) => {
+        const key = `${expr.nodeId}:${expr.startLine}:${expr.startCol}`;
+        const selected = selectedExpressionKey === key ? ' data-selected="true"' : '';
+        return `<tr class="type-expression-row" tabindex="0" data-type-row="expression" data-type-key="${escapeTypeHtml(
+          key
+        )}" data-type-line="${expr.startLine}" data-type-col="${expr.startCol}"${selected}>
       <td>${expr.startLine}:${expr.startCol}</td>
       <td><code>${escapeTypeHtml(expr.preview)}</code></td>
       <td><code>${escapeTypeHtml(expr.typeStr)}</code></td>
-    </tr>`
-      )
+    </tr>`;
+      })
       .join('')}
   </tbody>
 </table>`;
@@ -91,8 +112,10 @@ export const renderTypeInfoTables = (
   return {
     declarationsHtml,
     expressionsHtml,
-    footerText: `${typeInfo.declarations.length} declarations · ${typeInfo.exprTypes.length} expression types`,
+    footerText: `${typeInfo.declarations.length} declarations / ${typeInfo.exprTypes.length} expression types`,
     declarationsCount: typeInfo.declarations.length,
     expressionCount: typeInfo.exprTypes.length,
+    filteredDeclarationsCount: declarations.length,
+    filteredExpressionCount: expressions.length,
   };
 };

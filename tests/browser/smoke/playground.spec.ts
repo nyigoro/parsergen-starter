@@ -245,8 +245,15 @@ test.describe('playground browser smoke', () => {
       await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
       await page.click('#output-tab-wasm');
       await expect(page.locator('#wasm-panel')).toContainText('WebAssembly');
+      await expect(page.locator('#wasm-panel')).toContainText('Section Breakdown');
+      await expect(page.locator('#wasm-panel')).toContainText('WAT Viewer');
       await expect(page.locator('#wasm-panel')).toContainText('(module');
       await expect(page.locator('#wasm-size-label')).not.toContainText('-');
+      await expect(page.locator('#wasm-section-count-label')).not.toContainText('-');
+      await expect(page.locator('#wasm-build-time-label')).toContainText('ms');
+      await expect(page.locator('#wasm-sections-root')).toContainText(/Types|Code|Exports/);
+      await expect(page.locator('#copy-wat-button')).toBeEnabled();
+      await expect(page.locator('#download-wasm-button')).toBeEnabled();
 
       await page.goto(`${server.baseUrl}/playground/?example=basics`);
       await waitForCompile(page);
@@ -257,6 +264,10 @@ test.describe('playground browser smoke', () => {
       await expect(page.locator('#status-last-target')).toContainText('BOTH');
       await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#run-output-root')).toContainText('Generated WASM artifact');
+
+      await page.click('#target-js-button');
+      await page.click('#output-tab-wasm');
+      await expect(page.locator('#wasm-empty-state')).toContainText('WASM target not selected');
     } finally {
       await server.close();
     }
@@ -327,6 +338,7 @@ test.describe('playground browser smoke', () => {
       await waitForCompile(page);
       await page.click('#output-tab-types');
       await expect(page.locator('#types-panel')).toContainText('Declarations');
+      await expect(page.locator('#types-panel')).toContainText('Declarations show named program surfaces');
       await expect(page.locator('#types-declarations-root')).toContainText('main');
       await expect(page.locator('#types-footer-counts')).not.toContainText('0 declarations');
 
@@ -336,6 +348,11 @@ test.describe('playground browser smoke', () => {
       const column = Number(await row.getAttribute('data-type-col'));
       await row.click();
       await expect.poll(async () => readEditorCursor(page)).toMatchObject({ line, column });
+      await expect(row).toHaveAttribute('data-selected', 'true');
+
+      await page.click('#types-expression-filter-calls');
+      await expect(page.locator('#types-expression-summary-label')).toContainText('/');
+      await expect(page.locator('#types-expressions-root')).toContainText(/No expression types match|Inferred Type/);
 
       await page.click('#copy-types-json-button');
       const copied = await page.evaluate(() => navigator.clipboard.readText());
