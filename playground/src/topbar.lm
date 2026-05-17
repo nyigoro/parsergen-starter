@@ -75,7 +75,7 @@ pub fn topbar() -> VNode {
     vnode("a", attrs3(props_class("top-link"), props_id("docs-link"), props_href("../docs/")), [text("Docs")])
   ]);
 
-  vnode("header", attrs2(props_class("topbar"), props_attr("style", "display:grid;grid-template-columns:auto minmax(0,1fr);gap:1rem;align-items:center;")), [
+  vnode("header", attrs2(props_class("topbar"), props_attr("style", "display:grid;grid-template-columns:17.5rem minmax(0,1fr);gap:1rem;align-items:center;")), [
     brand,
     vnode("div", attrs2(props_class("tool-row toolbar-row"), props_attr("style", "justify-content:end;align-items:center;gap:0.75rem;")), [examples, modes, targets, actions])
   ])
