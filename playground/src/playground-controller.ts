@@ -1,5 +1,6 @@
 import { compileProjectInWorker, formatSourceInWorker, warmCompilerWorker } from './compile-client';
 import type { CompileDiagnostic, CompileResult } from './compiler-bridge';
+import { getDiagnosticExplanation } from '../../src/lumina/diagnostic-explain';
 import { defaultExample, exampleGroups, findExample, findExampleBySource } from './examples-data';
 import {
   createEmbedSnippet,
@@ -88,6 +89,8 @@ const bytes = (value: number): string => {
 
 const targetLabel = (target: CompileTarget | null): string => (target ? target.toUpperCase() : '-');
 const tabLabel = (tab: OutputTab): string => tab.toUpperCase();
+const diagnosticLocationLabel = (diagnostic: CompileDiagnostic): string =>
+  diagnostic.line === undefined ? 'Location unavailable' : `${diagnostic.line}:${diagnostic.column ?? 1}`;
 
 const setText = (id: string, value: string): void => {
   const element = document.getElementById(id);
@@ -325,19 +328,41 @@ export const startPlayground = async (): Promise<void> => {
       return;
     }
 
+    const explanation = getDiagnosticExplanation(diagnostic.code);
     const location =
       diagnostic.line === undefined
         ? 'Location unavailable'
         : `Line ${diagnostic.line}, column ${diagnostic.column ?? 1}`;
-    root.innerHTML = `<div class="compile-detail-block">
+    root.innerHTML = `<div class="compile-detail-block diagnostic-explain-card">
   <div class="panel-heading-row">
-    <button class="tool-button secondary" type="button" id="diagnostic-back-button">Back to errors</button>
-    <div class="compile-detail-heading">Explain</div>
+    <button class="tool-button secondary" type="button" id="diagnostic-back-button">Back to diagnostics</button>
+    <div class="compile-detail-heading">Explain diagnostic</div>
   </div>
+  <div class="diagnostic-explain-hero">
+    <span class="diagnostic-severity">${escapeHtml(diagnostic.severity)}</span>
+    <span class="diagnostic-code">${escapeHtml(explanation.code)}</span>
+    <button class="diagnostic-line diagnostic-location-link" type="button" data-diagnostic-focus-index="${
+      selectedDiagnosticIndex ?? 0
+    }">
+      ${escapeHtml(location)}
+    </button>
+  </div>
+  <h3>${escapeHtml(explanation.title)}</h3>
   <p class="diagnostic-message">${escapeHtml(diagnostic.message)}</p>
-  <div class="compile-resolution-meta">${escapeHtml(diagnostic.code ?? 'No code')} | ${escapeHtml(
-      diagnostic.severity
-    )} | ${escapeHtml(location)}</div>
+  <section class="diagnostic-explain-section">
+    <h4>What happened</h4>
+    <p>${escapeHtml(explanation.summary)}</p>
+  </section>
+  <section class="diagnostic-explain-section">
+    <h4>Why this happens</h4>
+    <p>${escapeHtml(explanation.why)}</p>
+  </section>
+  <section class="diagnostic-explain-section">
+    <h4>How to fix</h4>
+    <ol class="diagnostic-fix-list">
+      ${explanation.howToFix.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
+    </ol>
+  </section>
   <p class="compile-resolution-meta">Fix the highlighted code, then run Check again to confirm the diagnostic clears.</p>
 </div>`;
     root.toggleAttribute('hidden', false);
@@ -355,16 +380,18 @@ export const startPlayground = async (): Promise<void> => {
             .map(
               (diagnostic, index) => `<button class="diagnostic ${escapeHtml(
                 diagnostic.severity
-              )}" data-diagnostic-index="${index}">
-  <span class="diagnostic-meta">
-    <span class="diagnostic-severity">${escapeHtml(diagnostic.severity)}</span>
-    <span class="diagnostic-code">${escapeHtml(diagnostic.code ?? 'DIAGNOSTIC')}</span>
-    <span class="diagnostic-line">${escapeHtml(
-      diagnostic.line === undefined ? 'line ?' : `${diagnostic.line}:${diagnostic.column ?? 1}`
-    )}</span>
+              )}" type="button" data-diagnostic-index="${index}" aria-label="Open diagnostic ${escapeHtml(
+                diagnostic.code ?? 'DIAGNOSTIC'
+              )} at ${escapeHtml(diagnosticLocationLabel(diagnostic))}">
+  <span class="diagnostic-topline">
+    <span class="diagnostic-meta">
+      <span class="diagnostic-severity">${escapeHtml(diagnostic.severity)}</span>
+      <span class="diagnostic-code">${escapeHtml(diagnostic.code ?? 'DIAGNOSTIC')}</span>
+    </span>
+    <span class="diagnostic-line">${escapeHtml(diagnosticLocationLabel(diagnostic))}</span>
   </span>
   <span class="diagnostic-message">${escapeHtml(diagnostic.message)}</span>
-  <span class="diagnostic-code">Explain</span>
+  <span class="diagnostic-action">Jump and explain</span>
 </button>`
             )
             .join('');
@@ -1015,6 +1042,15 @@ export const startPlayground = async (): Promise<void> => {
     selectedDiagnosticIndex = selectedDiagnosticIndex === diagnosticIndex ? null : diagnosticIndex;
     if (diagnostic.line) focusEditorLocation(editorId, diagnostic.line, diagnostic.column ?? 1);
     renderState(store.get());
+  });
+
+  document.addEventListener('click', (event) => {
+    const target =
+      event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-diagnostic-focus-index]') : null;
+    if (!target) return;
+    const diagnosticIndex = Number(target.dataset.diagnosticFocusIndex);
+    const diagnostic = diagnosticsFor(store.get())[diagnosticIndex];
+    if (diagnostic?.line) focusEditorLocation(editorId, diagnostic.line, diagnostic.column ?? 1);
   });
 
   document.addEventListener('keyup', () => {

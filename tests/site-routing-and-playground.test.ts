@@ -226,6 +226,10 @@ describe('site routing and playground integration', () => {
       path.resolve(__dirname, '../playground/src/state.ts'),
       'utf-8'
     );
+    const playgroundLanguage = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/lumina-language.ts'),
+      'utf-8'
+    );
 
     expect(playgroundApp).toContain('single-source-main');
     expect(playgroundApp).toContain('topbar()');
@@ -267,6 +271,9 @@ describe('site routing and playground integration', () => {
     expect(playgroundApp).toContain('statusbar');
     expect(playgroundState).toContain('typeInfo');
     expect(playgroundState).toContain("'diagnostics'");
+    expect(playgroundLanguage).toContain("from '@lezer/common'");
+    expect(playgroundLanguage).toContain('new Language');
+    expect(playgroundLanguage).not.toContain('StreamLanguage');
     expect(playgroundState).not.toContain('diagnosticsOpen');
     expect(playgroundState).not.toContain('PlaygroundProject');
     expect(playgroundState).not.toContain('Workspace');

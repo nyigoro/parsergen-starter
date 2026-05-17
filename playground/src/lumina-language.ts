@@ -1,13 +1,134 @@
-import { StreamLanguage, StringStream, type StreamParser } from '@codemirror/language';
-import { tags } from '@lezer/highlight';
+import { defineLanguageFacet, Language, languageDataProp } from '@codemirror/language';
+import { NodeSet, NodeType, Parser, Tree, type Input, type PartialParse, type TreeFragment } from '@lezer/common';
+import { styleTags, tags } from '@lezer/highlight';
 
-type LuminaState = {
-  blockCommentDepth: number;
+type TokenKind =
+  | 'LineComment'
+  | 'BlockComment'
+  | 'String'
+  | 'Character'
+  | 'Number'
+  | 'DefinitionKeyword'
+  | 'ControlKeyword'
+  | 'ModuleKeyword'
+  | 'Modifier'
+  | 'Keyword'
+  | 'Self'
+  | 'Null'
+  | 'Bool'
+  | 'TypeName'
+  | 'TypeDefinition'
+  | 'ValueDefinition'
+  | 'ModuleDefinition'
+  | 'PropertyName'
+  | 'CallName'
+  | 'VariableName'
+  | 'Operator'
+  | 'Brace'
+  | 'Paren'
+  | 'SquareBracket'
+  | 'Separator'
+  | 'Punctuation'
+  | 'Invalid';
+
+type Token = {
+  kind: TokenKind;
+  from: number;
+  to: number;
+};
+
+type ScanState = {
   pendingDefinition: 'value' | 'type' | 'module' | null;
   afterDot: boolean;
 };
 
-const definitionKeywords = new Map<string, LuminaState['pendingDefinition']>([
+const languageData = {
+  closeBrackets: { brackets: ['(', '[', '{', '"', "'"] },
+  commentTokens: { line: '//', block: { open: '/*', close: '*/' } },
+};
+
+const dataFacet = defineLanguageFacet(languageData);
+const topNode = NodeType.define({
+  id: 0,
+  name: 'Lumina',
+  top: true,
+  props: [[languageDataProp, dataFacet]],
+});
+
+const tokenNames: TokenKind[] = [
+  'LineComment',
+  'BlockComment',
+  'String',
+  'Character',
+  'Number',
+  'DefinitionKeyword',
+  'ControlKeyword',
+  'ModuleKeyword',
+  'Modifier',
+  'Keyword',
+  'Self',
+  'Null',
+  'Bool',
+  'TypeName',
+  'TypeDefinition',
+  'ValueDefinition',
+  'ModuleDefinition',
+  'PropertyName',
+  'CallName',
+  'VariableName',
+  'Operator',
+  'Brace',
+  'Paren',
+  'SquareBracket',
+  'Separator',
+  'Punctuation',
+  'Invalid',
+];
+
+const typeByName = new Map<TokenKind | 'Lumina', NodeType>([['Lumina', topNode]]);
+const baseNodeSet = new NodeSet([
+  topNode,
+  ...tokenNames.map((name, index) => {
+    const type = NodeType.define({ id: index + 1, name });
+    typeByName.set(name, type);
+    return type;
+  }),
+]);
+
+const nodeSet = baseNodeSet.extend(
+  styleTags({
+    'LineComment BlockComment': tags.comment,
+    String: tags.string,
+    Character: tags.character,
+    Number: tags.number,
+    DefinitionKeyword: tags.definitionKeyword,
+    ControlKeyword: tags.controlKeyword,
+    ModuleKeyword: tags.moduleKeyword,
+    Modifier: tags.modifier,
+    Keyword: tags.keyword,
+    Self: tags.self,
+    Null: tags.null,
+    Bool: tags.bool,
+    TypeName: tags.typeName,
+    TypeDefinition: tags.definition(tags.typeName),
+    ValueDefinition: tags.definition(tags.variableName),
+    ModuleDefinition: tags.definition(tags.namespace),
+    PropertyName: tags.propertyName,
+    CallName: tags.function(tags.variableName),
+    VariableName: tags.variableName,
+    Operator: tags.operator,
+    Brace: tags.brace,
+    Paren: tags.paren,
+    SquareBracket: tags.squareBracket,
+    Separator: tags.separator,
+    Punctuation: tags.punctuation,
+    Invalid: tags.invalid,
+  })
+);
+
+const nodeType = (kind: TokenKind | 'Lumina'): NodeType => nodeSet.types[typeByName.get(kind)?.id ?? 0];
+
+const definitionKeywords = new Map<string, ScanState['pendingDefinition']>([
   ['const', 'value'],
   ['enum', 'type'],
   ['fn', 'value'],
@@ -17,16 +138,7 @@ const definitionKeywords = new Map<string, LuminaState['pendingDefinition']>([
   ['type', 'type'],
 ]);
 
-const controlKeywords = new Set([
-  'break',
-  'continue',
-  'else',
-  'if',
-  'loop',
-  'match',
-  'return',
-  'while',
-]);
+const controlKeywords = new Set(['break', 'continue', 'else', 'if', 'loop', 'match', 'return', 'while']);
 const moduleKeywords = new Set(['as', 'export', 'from', 'import', 'use']);
 const modifierKeywords = new Set(['async', 'extern', 'impl', 'mut', 'pub', 'where']);
 const plainKeywords = new Set(['await', 'for', 'in', 'key']);
@@ -47,97 +159,101 @@ const builtinTypes = new Set([
   'void',
 ]);
 const booleanLiterals = new Set(['false', 'true']);
+const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*/;
+const numberPattern = /^(?:0x[0-9a-fA-F_]+|0o[0-7_]+|0b[01_]+|\d[\d_]*(?:\.\d[\d_]*)?)/;
+const multiCharOperatorPattern = /^(?:->|=>|::|==|!=|<=|>=|\+=|-=|\*=|\/=|&&|\|\||\.\.)/;
 
-const readBlockComment = (stream: StringStream, state: LuminaState): string => {
-  while (!stream.eol()) {
-    if (stream.match('/*')) {
-      state.blockCommentDepth += 1;
-    } else if (stream.match('*/')) {
-      state.blockCommentDepth -= 1;
-      if (state.blockCommentDepth === 0) break;
-    } else {
-      stream.next();
-    }
-  }
+const token = (kind: TokenKind, from: number, to: number): Token => ({ kind, from, to });
 
-  return 'comment';
-};
-
-const readQuotedLiteral = (stream: StringStream, quote: '"' | "'"): string => {
-  stream.next();
+const skipQuoted = (source: string, start: number, quote: '"' | "'"): number => {
+  let index = start + 1;
   let escaped = false;
-
-  while (!stream.eol()) {
-    const next = stream.next();
+  while (index < source.length) {
+    const char = source[index];
+    index += 1;
     if (escaped) {
       escaped = false;
       continue;
     }
-
-    if (next === '\\') {
+    if (char === '\\') {
       escaped = true;
       continue;
     }
-
-    if (next === quote) break;
+    if (char === quote) break;
   }
-
-  return quote === '"' ? 'string' : 'character';
+  return index;
 };
 
-const classifyIdentifier = (stream: StringStream, state: LuminaState, word: string): string => {
+const skipTripleString = (source: string, start: number): number => {
+  const end = source.indexOf('"""', start + 3);
+  return end === -1 ? source.length : end + 3;
+};
+
+const skipBlockComment = (source: string, start: number): number => {
+  let depth = 1;
+  let index = start + 2;
+  while (index < source.length && depth > 0) {
+    if (source.startsWith('/*', index)) {
+      depth += 1;
+      index += 2;
+      continue;
+    }
+    if (source.startsWith('*/', index)) {
+      depth -= 1;
+      index += 2;
+      continue;
+    }
+    index += 1;
+  }
+  return index;
+};
+
+const classifyIdentifier = (source: string, from: number, to: number, state: ScanState): TokenKind => {
+  const word = source.slice(from, to);
   if (definitionKeywords.has(word)) {
     state.pendingDefinition = definitionKeywords.get(word) ?? null;
     state.afterDot = false;
-    return 'definitionKeyword';
+    return 'DefinitionKeyword';
   }
-
   if (controlKeywords.has(word)) {
     state.pendingDefinition = null;
     state.afterDot = false;
-    return 'controlKeyword';
+    return 'ControlKeyword';
   }
-
   if (moduleKeywords.has(word)) {
-    state.pendingDefinition = word === 'module' ? 'module' : null;
+    state.pendingDefinition = null;
     state.afterDot = false;
-    return 'moduleKeyword';
+    return 'ModuleKeyword';
   }
-
   if (modifierKeywords.has(word)) {
     state.pendingDefinition = null;
     state.afterDot = false;
-    return 'modifier';
+    return 'Modifier';
   }
-
   if (plainKeywords.has(word)) {
     state.pendingDefinition = null;
     state.afterDot = false;
-    return 'keyword';
+    return 'Keyword';
   }
-
   if (word === 'self') {
     state.pendingDefinition = null;
     state.afterDot = false;
-    return 'self';
+    return 'Self';
   }
-
   if (word === 'null') {
     state.pendingDefinition = null;
     state.afterDot = false;
-    return 'null';
+    return 'Null';
   }
-
   if (booleanLiterals.has(word)) {
     state.pendingDefinition = null;
     state.afterDot = false;
-    return 'bool';
+    return 'Bool';
   }
-
   if (builtinTypes.has(word) || /^(?:[iu]\d+|f\d+)$/.test(word) || word === 'Self') {
     state.pendingDefinition = null;
     state.afterDot = false;
-    return 'typeName';
+    return 'TypeName';
   }
 
   const wasAfterDot = state.afterDot;
@@ -145,143 +261,186 @@ const classifyIdentifier = (stream: StringStream, state: LuminaState, word: stri
   state.pendingDefinition = null;
   state.afterDot = false;
 
-  if (wasAfterDot) return 'propertyName';
-
-  if (pendingDefinition === 'type' || pendingDefinition === 'module') return 'typeDefinition';
-  if (pendingDefinition === 'value') return 'valueDefinition';
-
-  if (/^[A-Z]/.test(word)) return 'typeName';
-  if (stream.match(/^\s*\(/, false)) return 'callName';
-
-  return 'variableName';
+  if (wasAfterDot) return 'PropertyName';
+  if (pendingDefinition === 'type') return 'TypeDefinition';
+  if (pendingDefinition === 'module') return 'ModuleDefinition';
+  if (pendingDefinition === 'value') return 'ValueDefinition';
+  if (/^[A-Z]/.test(word)) return 'TypeName';
+  if (/^\s*\(/.test(source.slice(to))) return 'CallName';
+  return 'VariableName';
 };
 
-const luminaStreamParser: StreamParser<LuminaState> = {
-  name: 'lumina',
-  startState: () => ({
-    blockCommentDepth: 0,
-    pendingDefinition: null,
-    afterDot: false,
-  }),
-  token(stream, state) {
-    if (state.blockCommentDepth > 0) return readBlockComment(stream, state);
-    if (stream.eatSpace()) return null;
+export const scanLuminaTokens = (source: string): Token[] => {
+  const tokens: Token[] = [];
+  const state: ScanState = { pendingDefinition: null, afterDot: false };
+  let index = 0;
 
-    if (stream.match('//')) {
-      state.pendingDefinition = null;
-      state.afterDot = false;
-      stream.skipToEnd();
-      return 'comment';
+  while (index < source.length) {
+    const char = source[index];
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
     }
 
-    if (stream.match('/*')) {
+    const start = index;
+    if (source.startsWith('//', index)) {
+      index = source.indexOf('\n', index + 2);
+      if (index === -1) index = source.length;
+      tokens.push(token('LineComment', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      state.blockCommentDepth = 1;
-      return readBlockComment(stream, state);
+      continue;
     }
-
-    const next = stream.peek();
-    if (next === '"' || next === "'") {
+    if (source.startsWith('/*', index)) {
+      index = skipBlockComment(source, index);
+      tokens.push(token('BlockComment', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return readQuotedLiteral(stream, next);
+      continue;
     }
-
-    if (stream.match(/^(?:0x[0-9a-fA-F_]+|0o[0-7_]+|0b[01_]+|\d[\d_]*(?:\.\d[\d_]*)?)/)) {
+    if (source.startsWith('r"""', index)) {
+      index = skipTripleString(source, index + 1);
+      tokens.push(token('String', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'number';
+      continue;
     }
-
-    if (stream.match(/^(?:->|=>|::|==|!=|<=|>=|\+=|-=|\*=|\/=|&&|\|\||\.\.)/)) {
+    if (source.startsWith('"""', index)) {
+      index = skipTripleString(source, index);
+      tokens.push(token('String', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'operator';
+      continue;
     }
-
-    if (stream.match(/^[{}]/)) {
+    if (source.startsWith('r"', index)) {
+      index = source.indexOf('"', index + 2);
+      index = index === -1 ? source.length : index + 1;
+      tokens.push(token('String', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'brace';
+      continue;
     }
-
-    if (stream.match(/^[()]/)) {
+    if (char === '"' || char === "'") {
+      index = skipQuoted(source, index, char);
+      tokens.push(token(char === '"' ? 'String' : 'Character', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'paren';
+      continue;
     }
 
-    if (stream.match(/^(?:\[|\])/)) {
+    const numberMatch = source.slice(index).match(numberPattern);
+    if (numberMatch) {
+      index += numberMatch[0].length;
+      tokens.push(token('Number', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'squareBracket';
+      continue;
     }
 
-    if (stream.match(/^[,;]/)) {
+    const operatorMatch = source.slice(index).match(multiCharOperatorPattern);
+    if (operatorMatch) {
+      index += operatorMatch[0].length;
+      tokens.push(token('Operator', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'separator';
+      continue;
     }
 
-    if (stream.match(/^[:?]/)) {
+    if ('{}'.includes(char)) {
+      index += 1;
+      tokens.push(token('Brace', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'punctuation';
+      continue;
     }
-
-    if (stream.match(/^\./)) {
+    if ('()'.includes(char)) {
+      index += 1;
+      tokens.push(token('Paren', start, index));
+      state.pendingDefinition = null;
+      state.afterDot = false;
+      continue;
+    }
+    if ('[]'.includes(char)) {
+      index += 1;
+      tokens.push(token('SquareBracket', start, index));
+      state.pendingDefinition = null;
+      state.afterDot = false;
+      continue;
+    }
+    if (',;'.includes(char)) {
+      index += 1;
+      tokens.push(token('Separator', start, index));
+      state.pendingDefinition = null;
+      state.afterDot = false;
+      continue;
+    }
+    if (':?'.includes(char)) {
+      index += 1;
+      tokens.push(token('Punctuation', start, index));
+      state.pendingDefinition = null;
+      state.afterDot = false;
+      continue;
+    }
+    if (char === '.') {
+      index += 1;
+      tokens.push(token('Punctuation', start, index));
       state.pendingDefinition = null;
       state.afterDot = true;
-      return 'punctuation';
+      continue;
     }
-
-    if (stream.match(/^[+\-*/%=&|!<>]/)) {
+    if ('+-*/%=&|!<>'.includes(char)) {
+      index += 1;
+      tokens.push(token('Operator', start, index));
       state.pendingDefinition = null;
       state.afterDot = false;
-      return 'operator';
+      continue;
     }
 
-    if (stream.match(/^[A-Za-z_][A-Za-z0-9_]*/)) {
-      return classifyIdentifier(stream, state, stream.current());
+    const identifierMatch = source.slice(index).match(identifierPattern);
+    if (identifierMatch) {
+      index += identifierMatch[0].length;
+      tokens.push(token(classifyIdentifier(source, start, index, state), start, index));
+      continue;
     }
 
+    index += 1;
+    tokens.push(token('Invalid', start, index));
     state.pendingDefinition = null;
     state.afterDot = false;
-    stream.next();
-    return 'invalid';
-  },
-  languageData: {
-    closeBrackets: { brackets: ['(', '[', '{', '"', "'"] },
-    commentTokens: { line: '//', block: { open: '/*', close: '*/' } },
-  },
-  tokenTable: {
-    bool: tags.bool,
-    brace: tags.brace,
-    callName: tags.function(tags.variableName),
-    character: tags.character,
-    comment: tags.comment,
-    controlKeyword: tags.controlKeyword,
-    definitionKeyword: tags.definitionKeyword,
-    invalid: tags.invalid,
-    keyword: tags.keyword,
-    modifier: tags.modifier,
-    moduleKeyword: tags.moduleKeyword,
-    null: tags.null,
-    number: tags.number,
-    operator: tags.operator,
-    paren: tags.paren,
-    propertyName: tags.propertyName,
-    punctuation: tags.punctuation,
-    self: tags.self,
-    separator: tags.separator,
-    squareBracket: tags.squareBracket,
-    string: tags.string,
-    typeDefinition: tags.definition(tags.typeName),
-    typeName: tags.typeName,
-    valueDefinition: tags.definition(tags.variableName),
-    variableName: tags.variableName,
-  },
+  }
+
+  return tokens;
 };
 
-export const luminaLanguage = StreamLanguage.define(luminaStreamParser);
+const treeFromSource = (source: string): Tree => {
+  const tokens = scanLuminaTokens(source);
+  const children = tokens.map((item) => new Tree(nodeType(item.kind), [], [], item.to - item.from));
+  const positions = tokens.map((item) => item.from);
+  return new Tree(nodeType('Lumina'), children, positions, source.length);
+};
+
+class LuminaParse implements PartialParse {
+  readonly parsedPos: number;
+  stoppedAt: number | null = null;
+
+  constructor(private readonly source: string) {
+    this.parsedPos = source.length;
+  }
+
+  advance(): Tree {
+    return treeFromSource(this.source);
+  }
+
+  stopAt(pos: number): void {
+    this.stoppedAt = pos;
+  }
+}
+
+class LuminaParser extends Parser {
+  createParse(input: Input, _fragments: readonly TreeFragment[], _ranges: readonly { from: number; to: number }[]): PartialParse {
+    return new LuminaParse(input.read(0, input.length));
+  }
+}
+
+export const luminaParser = new LuminaParser();
+export const luminaLanguage = new Language(dataFacet, luminaParser, [], 'lumina');

@@ -127,6 +127,10 @@ test.describe('playground browser smoke', () => {
       await page.locator('#diagnostics-root .diagnostic').first().click();
       await expect.poll(async () => readEditorCursor(page)).toMatchObject({ line: 2 });
       await expect(page.locator('#diagnostic-explain-root')).toContainText('Fix the highlighted code');
+      await expect(page.locator('#diagnostic-explain-root')).toContainText('What happened');
+      await expect(page.locator('#diagnostic-explain-root')).toContainText('Why this happens');
+      await expect(page.locator('#diagnostic-explain-root')).toContainText('How to fix');
+      await expect(page.locator('#diagnostic-back-button')).toContainText('Back to diagnostics');
 
       await setEditorText(page, 'fn main() -> int {   \n  return 7   \n\n\n}\n');
       await page.click('#format-button');
