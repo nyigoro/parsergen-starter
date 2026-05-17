@@ -1,5 +1,12 @@
 # Lumina Standard Library
 
+The standard library is easiest to learn when you can run small flows and inspect their outputs. This live example uses `Option` helpers plus `io` and `str` to make safe indexing visible.
+
+<div class="docs-live-example" data-playground-doc-embed="safe-index">
+  <p class="docs-live-example-copy">Live example: safe stdlib data flow with Option, string conversion, and Run output.</p>
+  <iframe class="docs-playground-frame" title="Lumina playground: Option and Result stdlib example" src="../playground/?embed=1&amp;example=safe-index" data-playground-example="safe-index" data-playground-tab="run" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+</div>
+
 ## String Literals
 
 Lumina supports several string literal forms:

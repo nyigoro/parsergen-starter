@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Docs/Playground:** Embedded curated live playground examples into high-value docs pages, with docs-side iframe styling and local-dev URL normalization for `?embed=1` examples.
 - **Playground:** Migrated the editor language path to Lezer-backed Lumina tokenization and polished Diagnostics explain cards with clearer code, location, why-it-happens, and fix guidance.
 - **Playground:** Added `?embed=1` compact embed mode with Open in Playground state preservation, Copy Embed snippet support, and local settings for theme, editor font size, and tab size.
 - **Playground:** Expanded the examples browser into a curated language tour with richer single-source examples across Language Core, Type System, Reactive UI, Web Native, and Advanced groups.

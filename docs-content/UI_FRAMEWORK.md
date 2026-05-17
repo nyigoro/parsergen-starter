@@ -42,6 +42,13 @@ Today the repo includes:
 
 That foundation is now strong enough to support real headless UI authoring, but the broader app/framework layer is still intentionally incomplete.
 
+The playground can render the current DOM path directly. Try changing the button labels or signal updates, then use Refresh in the UI tab to see the preview update.
+
+<div class="docs-live-example" data-playground-doc-embed="counter">
+  <p class="docs-live-example-copy">Live example: signal-backed UI rendered through the playground's UI Preview tab.</p>
+  <iframe class="docs-playground-frame" title="Lumina playground: Reactive counter UI example" src="../playground/?embed=1&amp;example=counter" data-playground-example="counter" data-playground-tab="ui" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+</div>
+
 Two current facts matter for the framework roadmap:
 
 - `mount_reactive` and `hydrate_reactive` currently rerun a `view() -> VNode` function inside an effect

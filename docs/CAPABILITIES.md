@@ -12,4 +12,5 @@
 - The examples browser is organized as a curated language tour across Language Core, Type System, Reactive UI, Web Native, and Advanced examples.
 - Example entries carry intentional target/tab defaults so UI examples open in Preview, type-heavy examples open in Types, and WASM examples open in WebAssembly output.
 - Embed mode is available with `?embed=1` for docs, tutorials, and iframe use, with compact chrome and an Open in Playground action that preserves source, example, target, and tab state.
+- The docs site now embeds selected live playground examples so readers can run core syntax, stdlib, UI, and type-system examples in context.
 - Playground settings persist locally for theme, editor font size, and tab size, and apply immediately in both full and embed mode.

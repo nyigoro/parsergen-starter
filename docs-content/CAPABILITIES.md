@@ -41,6 +41,13 @@ Last updated for v0.5.7.
 | Monomorphization | Stable | Compile-time specialization for generic functions |
 | Exhaustiveness and holes | Stable | Enum exhaustiveness and `_` diagnostics |
 
+Explore the type-system surface in the playground's Types tab. This example keeps the source single-file while showing higher-kinded stdlib patterns and inferred declaration/expression types.
+
+<div class="docs-live-example" data-playground-doc-embed="hkt-stdlib">
+  <p class="docs-live-example-copy">Live example: higher-kinded type patterns with the Types tab open by default.</p>
+  <iframe class="docs-playground-frame" title="Lumina playground: HKT type system example" src="../playground/?embed=1&amp;example=hkt-stdlib" data-playground-example="hkt-stdlib" data-playground-tab="types" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+</div>
+
 ## Diagnostics and LSP
 
 | Feature | Status | Notes |

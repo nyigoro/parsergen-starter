@@ -52,6 +52,13 @@ Hello Lumina
 5 * 6 = 30
 ```
 
+Try the same core loop in the live playground. Change the `add` function, press Run, then open Types to inspect what HM inference learned.
+
+<div class="docs-live-example" data-playground-doc-embed="basics">
+  <p class="docs-live-example-copy">Live example: core functions, bindings, string output, and Run output in the focused playground shell.</p>
+  <iframe class="docs-playground-frame" title="Lumina playground: Functions example" src="../playground/?embed=1&amp;example=basics" data-playground-example="basics" data-playground-tab="run" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+</div>
+
 ## 5. Useful Next Commands
 
 ```bash

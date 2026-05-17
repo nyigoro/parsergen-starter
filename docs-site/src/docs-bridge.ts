@@ -81,6 +81,27 @@ const renderSidebar = (items: DocsBundle['index'], activeSlug: string): string =
   return htmlParts.join('');
 };
 
+const playgroundEmbedUrl = (frame: HTMLIFrameElement): string => {
+  const url = new URL(playgroundHref(), window.location.href);
+  url.searchParams.set('embed', '1');
+
+  const example = frame.dataset.playgroundExample;
+  const target = frame.dataset.playgroundTarget;
+  const tab = frame.dataset.playgroundTab;
+
+  if (example) url.searchParams.set('example', example);
+  if (target) url.searchParams.set('target', target);
+  if (tab) url.searchParams.set('tab', tab);
+
+  return url.toString();
+};
+
+const enhancePlaygroundEmbeds = (root: HTMLElement): void => {
+  for (const frame of root.querySelectorAll<HTMLIFrameElement>('iframe[data-playground-example]')) {
+    frame.src = playgroundEmbedUrl(frame);
+  }
+};
+
 const renderCurrentDoc = async (): Promise<void> => {
   const bundle = await loadBundle();
   const route = routeFromLocation();
@@ -113,6 +134,7 @@ const renderCurrentDoc = async (): Promise<void> => {
         </main>
       </div>
     `;
+    enhancePlaygroundEmbeds(root);
   }
 
   document.title = `${page.title} | Lumina Docs`;
