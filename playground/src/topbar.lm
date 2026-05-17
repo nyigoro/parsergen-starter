@@ -56,8 +56,8 @@ pub fn topbar() -> VNode {
   );
 
   let modes = vnode("div", props_class("tool-row compact-tools"), [
-    button_node("mode-check-button", "Check", "tool-button secondary"),
     button_node("run-button", "Run", "tool-button primary"),
+    button_node("mode-check-button", "Check", "tool-button secondary"),
     button_node("format-button", "Format", "tool-button secondary")
   ]);
 
