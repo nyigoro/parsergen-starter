@@ -300,12 +300,11 @@ export const startPlayground = async (): Promise<void> => {
     root.toggleAttribute('hidden', false);
   };
 
-  const renderDiagnostics = (diagnostics: CompileDiagnostic[], open: boolean): void => {
+  const renderDiagnostics = (diagnostics: CompileDiagnostic[]): void => {
     const root = document.getElementById('diagnostics-root');
     if (!root) return;
     const counts = diagnosticCounts(diagnostics);
     setText('diagnostics-count-label', `${counts.errors} errors / ${counts.warnings} warnings`);
-    root.toggleAttribute('hidden', !open);
     root.innerHTML =
       diagnostics.length === 0
         ? '<p class="empty-state">No diagnostics.</p>'
@@ -447,6 +446,7 @@ export const startPlayground = async (): Promise<void> => {
     setHidden('run-panel', state.activeTab !== 'run');
     setHidden('ui-panel', state.activeTab !== 'ui');
     setHidden('types-panel', state.activeTab !== 'types');
+    setHidden('diagnostics-panel', state.activeTab !== 'diagnostics');
     setText('js-output', readableJs ? jsOutput : jsOutput.replace(/\s+/g, ' ').trim());
     setText('run-output-root', runOutput);
     setText('minify-js-button', readableJs ? 'Readable' : 'Minified');
@@ -454,7 +454,7 @@ export const startPlayground = async (): Promise<void> => {
     renderPreviewPanel(state);
     renderTypesPanel(state);
 
-    renderDiagnostics(diagnostics, state.diagnosticsOpen);
+    renderDiagnostics(diagnostics);
     renderExplainDrawer(selectedDiagnostic);
 
     setText('status-compile', statusLabels[state.compileStatus]);
@@ -508,7 +508,7 @@ export const startPlayground = async (): Promise<void> => {
         checkTimeMs: mode === 'check' ? result.timings.totalMs : store.get().checkTimeMs,
         runTimeMs: mode === 'run' ? result.timings.totalMs : store.get().runTimeMs,
         lastCompiledTarget: mode === 'run' && result.ok ? target : store.get().lastCompiledTarget,
-        diagnosticsOpen: result.diagnostics.length > 0,
+        activeTab: result.ok ? store.get().activeTab : 'diagnostics',
       });
       return result;
     } catch (error) {
@@ -520,7 +520,7 @@ export const startPlayground = async (): Promise<void> => {
         ...(mode === 'run' ? { runtimeStatus: 'idle' as const, runtimeMessage: 'Run blocked by compile failure.' } : {}),
         compileResult: buildCompileFailure(error instanceof Error ? error.message : String(error), mode === 'run' ? 'run' : 'check', target),
         typeInfo: null,
-        diagnosticsOpen: true,
+        activeTab: 'diagnostics',
       });
       return null;
     }
@@ -640,7 +640,7 @@ export const startPlayground = async (): Promise<void> => {
         compileResult: result,
         typeInfo: result.typeInfo,
         compileStatus: result.ok ? 'done' : 'error',
-        diagnosticsOpen: result.diagnostics.length > 0,
+        activeTab: result.ok ? store.get().activeTab : 'diagnostics',
       });
       return result;
     } catch (error) {
@@ -654,7 +654,7 @@ export const startPlayground = async (): Promise<void> => {
           'js'
         ),
         typeInfo: null,
-        diagnosticsOpen: true,
+        activeTab: 'diagnostics',
       });
       return null;
     }
@@ -859,10 +859,6 @@ export const startPlayground = async (): Promise<void> => {
     focusEditorLocation(editorId, location.line, location.column);
   });
 
-  document.getElementById('diagnostics-toggle')?.addEventListener('click', () =>
-    store.set((state) => ({ diagnosticsOpen: !state.diagnosticsOpen }))
-  );
-
   document.getElementById('copy-js-panel-button')?.addEventListener('click', () => {
     void navigator.clipboard?.writeText(store.get().compileResult?.js ?? '');
   });
@@ -975,7 +971,7 @@ export const startPlayground = async (): Promise<void> => {
     }
     if (event.key === 'Escape') {
       selectedDiagnosticIndex = null;
-      store.set({ diagnosticsOpen: false, settingsOpen: false, examplesOpen: false });
+      store.set({ settingsOpen: false, examplesOpen: false });
       renderState(store.get());
     }
   });

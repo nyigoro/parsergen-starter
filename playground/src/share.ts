@@ -5,7 +5,7 @@ const sourceKey = 'lumina_playground_source';
 const targetKey = 'lumina_playground_target';
 const exampleKey = 'lumina_playground_example';
 const targets = new Set<CompileTarget>(['js', 'wasm', 'both']);
-const tabs = new Set<OutputTab>(['js', 'wasm', 'run', 'ui', 'types']);
+const tabs = new Set<OutputTab>(['js', 'wasm', 'run', 'ui', 'types', 'diagnostics']);
 
 const toBase64Url = (value: string): string => {
   const bytes = new TextEncoder().encode(value);

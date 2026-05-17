@@ -26,7 +26,6 @@ describe('playground single-source state helpers', () => {
       checkTimeMs: null,
       runTimeMs: null,
       examplesOpen: false,
-      diagnosticsOpen: false,
       settingsOpen: false,
       autoPreview: false,
       cursorLine: 1,
@@ -63,7 +62,7 @@ describe('playground single-source state helpers', () => {
     expect(store.get()).toMatchObject({ target: 'wasm', activeTab: 'run' });
   });
 
-  test('counts diagnostics for status and collapsed diagnostics bar', () => {
+  test('counts diagnostics for status and diagnostics tab summary', () => {
     expect(
       diagnosticCounts([
         { severity: 'warning', message: 'warn' },

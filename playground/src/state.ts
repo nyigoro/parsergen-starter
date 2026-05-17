@@ -2,7 +2,7 @@ import type { CompileDiagnostic, CompileResult, PlaygroundTypeInfo } from './com
 
 export type CompileTarget = 'js' | 'wasm' | 'both';
 export type CompileMode = 'check' | 'run' | 'format';
-export type OutputTab = 'js' | 'wasm' | 'run' | 'ui' | 'types';
+export type OutputTab = 'js' | 'wasm' | 'run' | 'ui' | 'types' | 'diagnostics';
 export type CompileStatus = 'idle' | 'checking' | 'running' | 'done' | 'error';
 export type RuntimeStatus = 'idle' | 'running' | 'ok' | 'error';
 export type PreviewStatus = 'idle' | 'rendering' | 'ok' | 'error' | 'empty';
@@ -27,7 +27,6 @@ export type PlaygroundState = {
   checkTimeMs: number | null;
   runTimeMs: number | null;
   examplesOpen: boolean;
-  diagnosticsOpen: boolean;
   settingsOpen: boolean;
   autoPreview: boolean;
   cursorLine: number;
@@ -53,7 +52,6 @@ export const defaultState: PlaygroundState = {
   checkTimeMs: null,
   runTimeMs: null,
   examplesOpen: false,
-  diagnosticsOpen: false,
   settingsOpen: false,
   autoPreview: false,
   cursorLine: 1,

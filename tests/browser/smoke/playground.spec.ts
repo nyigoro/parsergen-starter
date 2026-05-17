@@ -23,6 +23,14 @@ const waitForRunOutput = async (page: Page): Promise<void> => {
     .not.toBe('');
 };
 
+const expectOnlyOutputPanelVisible = async (page: Page, activePanelId: string): Promise<void> => {
+  for (const panelId of ['js-panel', 'wasm-panel', 'run-panel', 'ui-panel', 'types-panel', 'diagnostics-panel']) {
+    const assertion = expect(page.locator(`#${panelId}`));
+    if (panelId === activePanelId) await assertion.toBeVisible();
+    else await assertion.toBeHidden();
+  }
+};
+
 const readEditorText = async (page: Page): Promise<string> =>
   page.evaluate(() => window.getEditorText?.('lumina-editor') ?? '');
 
@@ -105,6 +113,8 @@ test.describe('playground browser smoke', () => {
       await page.click('#mode-check-button');
       await waitForCompile(page);
       await expect(page.locator('#status-compile')).toContainText('Needs attention');
+      await expect(page.locator('#output-tab-diagnostics')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#diagnostics-panel')).toBeVisible();
       await expect(page.locator('#diagnostics-root')).toContainText('error');
 
       await page.locator('#diagnostics-root .diagnostic').first().click();
@@ -139,9 +149,71 @@ test.describe('playground browser smoke', () => {
       await expect(page.locator('#diagnostics-count-label')).toContainText('0 errors');
       await page.click('#run-button');
       await waitForRunOutput(page);
+      await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#status-compile')).toContainText('Done');
       await expect(page.locator('#status-runtime')).toContainText('Runtime error');
       await expect(page.locator('#diagnostics-count-label')).toContainText('0 errors');
+      await page.click('#output-tab-diagnostics');
+      await expect(page.locator('#diagnostics-root')).not.toContainText('Runtime error');
+      await expect(page.locator('#diagnostics-root')).toContainText('No diagnostics.');
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('keeps output tab bodies single-purpose', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?example=basics`);
+      await waitForCompile(page);
+
+      await page.click('#output-tab-js');
+      await expectOnlyOutputPanelVisible(page, 'js-panel');
+      await expect(page.locator('#js-panel')).not.toContainText('UI Preview');
+      await expect(page.locator('#js-panel')).not.toContainText('Declarations');
+      await expect(page.locator('#js-panel')).not.toContainText('Diagnostics');
+      await expect(page.locator('#js-panel')).not.toContainText('Run Output');
+
+      await page.click('#output-tab-types');
+      await expectOnlyOutputPanelVisible(page, 'types-panel');
+      await expect(page.locator('#types-panel')).toContainText('Declarations');
+      await expect(page.locator('#types-panel')).not.toContainText('UI Preview');
+      await expect(page.locator('#types-panel')).not.toContainText('Run Output');
+      await expect(page.locator('#types-panel')).not.toContainText('Diagnostics');
+
+      await page.click('#output-tab-ui');
+      await expectOnlyOutputPanelVisible(page, 'ui-panel');
+      await expect(page.locator('#ui-panel')).toContainText('UI Preview');
+      await expect(page.locator('#ui-panel')).not.toContainText('Declarations');
+      await expect(page.locator('#ui-panel')).not.toContainText('Run Output');
+      await expect(page.locator('#ui-panel')).not.toContainText('Diagnostics');
+
+      await page.click('#run-button');
+      await waitForRunOutput(page);
+      await expectOnlyOutputPanelVisible(page, 'run-panel');
+      await expect(page.locator('#run-panel')).not.toContainText('UI Preview');
+      await expect(page.locator('#run-panel')).not.toContainText('Declarations');
+      await expect(page.locator('#run-panel')).not.toContainText('Diagnostics');
+
+      await page.click('#output-tab-diagnostics');
+      await expectOnlyOutputPanelVisible(page, 'diagnostics-panel');
+      await expect(page.locator('#diagnostics-panel')).toContainText('Diagnostics');
+      await expect(page.locator('#diagnostics-panel')).not.toContainText('Run Output');
+      await expect(page.locator('#diagnostics-panel')).not.toContainText('Declarations');
+      await expect(page.locator('#diagnostics-panel')).not.toContainText('UI Preview');
+
+      await page.goto(`${server.baseUrl}/playground/?example=wasm-hello`);
+      await waitForCompile(page);
+      await page.click('#run-button');
+      await waitForRunOutput(page);
+      await expect(page.locator('#run-output-root')).toContainText('Generated WASM artifact');
+      await page.click('#output-tab-wasm');
+      await expectOnlyOutputPanelVisible(page, 'wasm-panel');
+      await expect(page.locator('#wasm-panel')).toContainText('WebAssembly');
+      await expect(page.locator('#wasm-panel')).not.toContainText('UI Preview');
+      await expect(page.locator('#wasm-panel')).not.toContainText('Declarations');
+      await expect(page.locator('#wasm-panel')).not.toContainText('Diagnostics');
+      await expect(page.locator('#wasm-panel')).not.toContainText('Run Output');
     } finally {
       await server.close();
     }

@@ -1225,8 +1225,8 @@ button {
 
 .result-column {
   min-width: 0;
+  min-height: 0;
   display: grid;
-  gap: 0.875rem;
   overflow: hidden;
 }
 
@@ -1273,11 +1273,22 @@ button {
   scrollbar-width: thin;
 }
 
+.output-panel-stack>.panel[hidden],
+#js-panel[hidden],
+#wasm-panel[hidden],
+#run-panel[hidden],
+#ui-panel[hidden],
+#types-panel[hidden],
+#diagnostics-panel[hidden] {
+  display: none !important;
+}
+
 #js-panel,
 #wasm-panel,
 #run-panel,
 #ui-panel,
-#types-panel {
+#types-panel,
+#diagnostics-panel {
   min-height: 0;
   overflow: auto;
 }

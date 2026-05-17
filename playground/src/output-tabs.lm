@@ -12,6 +12,7 @@ import { wasm_panel } from "./wasm-panel.lm";
 import { run_panel } from "./run-panel.lm";
 import { ui_preview } from "./ui-preview.lm";
 import { types_panel } from "./types-panel.lm";
+import { diagnostics_panel } from "./diagnostics-panel.lm";
 
 fn attrs3(first: any, second: any, third: any) -> any {
   props_merge(props_merge(first, second), third)
@@ -38,7 +39,8 @@ pub fn output_tabs() -> VNode {
         tab("output-tab-wasm", "WASM", "wasm"),
         tab("output-tab-run", "Run", "run"),
         tab("output-tab-ui", "UI", "ui"),
-        tab("output-tab-types", "Types", "types")
+        tab("output-tab-types", "Types", "types"),
+        tab("output-tab-diagnostics", "Diagnostics", "diagnostics")
       ])
     ]),
     vnode("div", attrs3(props_class("output-panel-stack"), props_id("output-panels"), props_attr("style", "min-height:0;overflow:auto;")), [
@@ -46,7 +48,8 @@ pub fn output_tabs() -> VNode {
       wasm_panel(),
       run_panel(),
       ui_preview(),
-      types_panel()
+      types_panel(),
+      diagnostics_panel()
     ])
   ])
 }

@@ -180,7 +180,6 @@ describe('site routing and playground integration', () => {
     expect(playgroundController).toContain('[data-example-id]');
     expect(playgroundController).toContain("document.getElementById('run-button')");
     expect(playgroundController).toContain("document.getElementById('format-button')");
-    expect(playgroundController).toContain("document.getElementById('diagnostics-toggle')");
     expect(playgroundController).toContain('sourceProjectInput');
     expect(playgroundShare).toContain("searchParams.get('code')");
     expect(playgroundShare).toContain("searchParams.get('example')");
@@ -215,6 +214,10 @@ describe('site routing and playground integration', () => {
       path.resolve(__dirname, '../playground/src/diagnostics-panel.lm'),
       'utf-8'
     );
+    const playgroundOutputTabs = fs.readFileSync(
+      path.resolve(__dirname, '../playground/src/output-tabs.lm'),
+      'utf-8'
+    );
     const playgroundShare = fs.readFileSync(
       path.resolve(__dirname, '../playground/src/share.ts'),
       'utf-8'
@@ -228,8 +231,9 @@ describe('site routing and playground integration', () => {
     expect(playgroundApp).toContain('topbar()');
     expect(playgroundApp).toContain('editor_zone()');
     expect(playgroundApp).toContain('output_tabs()');
-    expect(playgroundApp).toContain('diagnostics_panel()');
     expect(playgroundApp).toContain('statusbar()');
+    expect(playgroundOutputTabs).toContain('diagnostics_panel()');
+    expect(playgroundOutputTabs).toContain('output-tab-diagnostics');
     expect(playgroundApp).not.toContain('left-rail');
     expect(playgroundApp).not.toContain('right-dock');
     expect(playgroundApp).not.toContain('route-details-root');
@@ -253,9 +257,12 @@ describe('site routing and playground integration', () => {
     expect(playgroundController).toContain("setHidden('run-panel'");
     expect(playgroundController).toContain("setHidden('ui-panel'");
     expect(playgroundController).toContain("setHidden('types-panel'");
+    expect(playgroundController).toContain("setHidden('diagnostics-panel'");
     expect(playgroundDiagnostics).toContain('diagnostics-root');
     expect(playgroundApp).toContain('statusbar');
     expect(playgroundState).toContain('typeInfo');
+    expect(playgroundState).toContain("'diagnostics'");
+    expect(playgroundState).not.toContain('diagnosticsOpen');
     expect(playgroundState).not.toContain('PlaygroundProject');
     expect(playgroundState).not.toContain('Workspace');
     expect(playgroundState).not.toContain('RoutePreview');

@@ -2,7 +2,6 @@ import { vnode, props_class, props_attr, props_merge } from "@std/render";
 import { topbar } from "./topbar.lm";
 import { editor_zone } from "./editor-zone.lm";
 import { output_tabs } from "./output-tabs.lm";
-import { diagnostics_panel } from "./diagnostics-panel.lm";
 import { statusbar } from "./statusbar.lm";
 
 fn attrs2(left: any, right: any) -> any {
@@ -18,9 +17,8 @@ pub fn app() -> VNode {
     ),
     [
       editor_zone(),
-      vnode("section", attrs2(props_class("result-column"), props_attr("style", "min-height:0;display:grid;grid-template-rows:minmax(13rem,1fr) minmax(12rem,0.9fr);gap:0.625rem;overflow:hidden;")), [
-        output_tabs(),
-        diagnostics_panel()
+      vnode("section", attrs2(props_class("result-column"), props_attr("style", "min-height:0;display:grid;grid-template-rows:minmax(0,1fr);overflow:hidden;")), [
+        output_tabs()
       ])
     ]
   );
