@@ -26,8 +26,10 @@ describe('demo vite plugin', () => {
     expect(examplesSource).toContain('./playground/?preset=view-basic');
     expect(playgroundExamplesSource).toContain("'basics'");
     expect(playgroundExamplesSource).toContain("'counter'");
-    expect(playgroundExamplesSource).toContain("'forms-store-resource'");
-    expect(playgroundExamplesSource).toContain("'json-parser'");
+    expect(playgroundExamplesSource).toContain("'named-defaults'");
+    expect(playgroundExamplesSource).toContain("'hkt-stdlib'");
+    expect(playgroundExamplesSource).toContain("'wasm-hello'");
+    expect(playgroundExamplesSource).toContain("'parallel-fibonacci'");
     expect(playgroundAppSource).toContain('topbar()');
     expect(playgroundAppSource).toContain('editor_zone()');
     expect(playgroundSource).toContain('startPlayground');

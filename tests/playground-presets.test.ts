@@ -5,33 +5,36 @@ const repoRoot = path.resolve(__dirname, '..');
 const examplesDataPath = path.join(repoRoot, 'playground', 'src', 'examples-data.ts');
 
 describe('playground examples data', () => {
-  test('keeps the Phase 1 examples grouped by product area', () => {
+  test('keeps examples grouped as a curated language tour', () => {
     const source = fs.readFileSync(examplesDataPath, 'utf-8');
 
     for (const group of ['LANGUAGE_CORE', 'TYPE_SYSTEM', 'REACTIVE_UI', 'WEB_NATIVE', 'ADVANCED']) {
       expect(source).toContain(`id: '${group}'`);
     }
 
+    expect(source).toContain('description:');
+    expect(source).toContain('groupId: string');
+    expect(source).toContain('featured?: boolean');
+
     for (const exampleId of [
       'basics',
+      'control-flow',
       'safe-index',
+      'pattern-match',
+      'string-interpolation',
+      'named-defaults',
+      'list-comprehension',
       'counter',
-      'dom-render',
-      'tabs',
-      'forms-store-resource',
-      'ui-showcase',
-      'gadts',
+      'reactive-greeting',
+      'algebraic-data',
       'hkt-stdlib',
-      'const-generics',
-      'traits-demo',
+      'type-holes',
       'wasm-hello',
-      'web-components',
+      'dom-list',
       'channels-mpsc',
+      'thread-channel-producer-consumer',
       'thread-patterns',
-      'async-json-validator',
-      'json-parser',
-      'github-demo',
-      'http-demo',
+      'parallel-fibonacci',
     ]) {
       expect(source).toContain(`'${exampleId}'`);
     }
@@ -43,7 +46,7 @@ describe('playground examples data', () => {
       (match) => match[1]
     );
 
-    expect(rawImports.length).toBeGreaterThanOrEqual(16);
+    expect(rawImports.length).toBeGreaterThanOrEqual(7);
     for (const specifier of rawImports) {
       const resolved = path.resolve(path.dirname(examplesDataPath), specifier);
       expect(fs.existsSync(resolved)).toBe(true);

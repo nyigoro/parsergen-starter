@@ -256,14 +256,21 @@ export const startPlayground = async (): Promise<void> => {
     root.innerHTML = exampleGroups
       .map(
         (group) => `<section class="examples-group">
-  <div class="examples-group-title">${escapeHtml(group.label)}</div>
+  <div class="examples-group-heading">
+    <div class="examples-group-title">${escapeHtml(group.label)}</div>
+    <p class="examples-group-description">${escapeHtml(group.description)}</p>
+  </div>
   <div class="examples-grid">
     ${group.examples
       .map(
-        (example) => `<button class="example-card" type="button" data-example-id="${escapeHtml(example.id)}">
+        (example) => `<button class="example-card" type="button" data-example-id="${escapeHtml(example.id)}" data-featured="${String(
+          Boolean(example.featured)
+        )}">
       <span class="example-label">${escapeHtml(example.label)}</span>
       <span class="example-detail">${escapeHtml(example.detail)}</span>
-      <span class="example-meta">${escapeHtml(example.target.toUpperCase())} | ${escapeHtml(example.tab.toUpperCase())}</span>
+      <span class="example-meta">${example.featured ? '<span class="featured-dot">Featured</span>' : ''}<span>${escapeHtml(
+        example.target.toUpperCase()
+      )} | ${escapeHtml(example.tab.toUpperCase())}</span></span>
     </button>`
       )
       .join('')}

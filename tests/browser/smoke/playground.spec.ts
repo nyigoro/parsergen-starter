@@ -48,6 +48,13 @@ const readEditorCursor = async (
 } | null> =>
   page.evaluate(() => window.getEditorCursor?.('lumina-editor') ?? null);
 
+const selectExampleFromBrowser = async (page: Page, exampleId: string): Promise<void> => {
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
+  await expect(page.locator('#examples-browser-root')).toBeVisible();
+  await page.locator(`[data-example-id="${exampleId}"]`).click();
+  await waitForCompile(page);
+};
+
 test.describe('playground browser smoke', () => {
   test.skip(!runSmoke, 'Set LUMINA_BROWSER_SMOKE=1 to run browser smoke tests');
 
@@ -257,12 +264,49 @@ test.describe('playground browser smoke', () => {
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
       await expect(page.locator('#examples-browser-root')).toBeVisible();
       await expect(page.locator('#examples-browser-root')).toContainText('Reactive UI');
+      await expect(page.locator('#examples-browser-root')).toContainText('HM inference');
+      await expect(page.locator('#examples-browser-root')).toContainText('Featured');
       await page.locator('[data-example-id="counter"]').click();
       await waitForCompile(page);
       await expect(page.locator('#examples-current')).toContainText('Counter');
       await expect.poll(async () => readEditorText(page)).toContain('counterView');
       await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
       await expect(page).toHaveURL(/example=counter/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('loads curated examples from every concept group with intentional defaults', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?example=basics`);
+      await waitForCompile(page);
+
+      await selectExampleFromBrowser(page, 'named-defaults');
+      await expect(page.locator('#examples-current')).toContainText('Named Defaults');
+      await expect(page.locator('#output-tab-types')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#status-target')).toContainText('JS');
+      await expect.poll(async () => readEditorText(page)).toContain('discount: i32 = 0');
+
+      await selectExampleFromBrowser(page, 'type-holes');
+      await expect(page.locator('#examples-current')).toContainText('Type Holes');
+      await expect(page.locator('#output-tab-types')).toHaveAttribute('data-active', 'true');
+      await expect.poll(async () => readEditorText(page)).toContain('value: _');
+
+      await selectExampleFromBrowser(page, 'counter');
+      await expect(page.locator('#examples-current')).toContainText('Counter');
+      await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+
+      await selectExampleFromBrowser(page, 'wasm-hello');
+      await expect(page.locator('#examples-current')).toContainText('WASM');
+      await expect(page.locator('#output-tab-wasm')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#status-target')).toContainText('WASM');
+
+      await selectExampleFromBrowser(page, 'parallel-fibonacci');
+      await expect(page.locator('#examples-current')).toContainText('Parallel Fibonacci');
+      await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#status-target')).toContainText('JS');
     } finally {
       await server.close();
     }

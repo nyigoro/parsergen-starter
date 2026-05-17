@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Playground:** Expanded the examples browser into a curated language tour with richer single-source examples across Language Core, Type System, Reactive UI, Web Native, and Advanced groups.
 - **Playground:** Added a real Types tab that surfaces HM inference data with declaration and expression type tables, click-to-jump expression rows, and Copy JSON export.
 - **Routing/UI:** Added `@std/router` with browser-history-aware navigation, current-path/search helpers, route matching/param extraction, and declarative link support for Lumina browser apps.
 - **Demo:** Migrated the Lumina-authored browser demo from an internal route signal to URL-aware routing with back/forward browser navigation support.
