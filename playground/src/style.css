@@ -156,6 +156,18 @@ button {
   overflow: visible;
 }
 
+.topbar:not([data-embed='true']) {
+  grid-template-columns: 17.5rem minmax(0, 1fr) !important;
+}
+
+.topbar[data-embed='true'] {
+  grid-template-columns: auto minmax(0, 1fr) !important;
+}
+
+.topbar:not([data-embed='true']) .toolbar-row {
+  justify-content: flex-start !important;
+}
+
 .topbar[data-theme='light'],
 .playground-shell[data-theme='light'] .topbar,
 .playground-shell[data-theme='light'] .editor-panel,
@@ -314,9 +326,9 @@ button {
 
 .examples-browser-shell {
   position: relative;
-  min-width: clamp(14rem, 24vw, 22rem);
-  max-width: 36rem;
-  flex: 1 1 18rem;
+  min-width: clamp(13rem, 20vw, 16.5rem);
+  max-width: 24rem;
+  flex: 0 1 16.5rem;
 }
 
 .examples-toggle {
