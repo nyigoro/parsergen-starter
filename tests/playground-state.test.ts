@@ -27,6 +27,12 @@ describe('playground single-source state helpers', () => {
       runTimeMs: null,
       examplesOpen: false,
       settingsOpen: false,
+      embedMode: false,
+      settings: {
+        theme: 'dark',
+        fontSize: 15,
+        tabSize: 2,
+      },
       autoPreview: false,
       cursorLine: 1,
       cursorCol: 1,

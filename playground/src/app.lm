@@ -3,6 +3,7 @@ import { topbar } from "./topbar.lm";
 import { editor_zone } from "./editor-zone.lm";
 import { output_tabs } from "./output-tabs.lm";
 import { statusbar } from "./statusbar.lm";
+import { settings_panel } from "./settings-panel.lm";
 
 fn attrs2(left: any, right: any) -> any {
   props_merge(left, right)
@@ -28,10 +29,11 @@ pub fn app() -> VNode {
       "div",
       attrs2(
         props_class("playground-body"),
-        props_attr("style", "grid-template-rows:auto minmax(0,1fr) auto;")
+        props_attr("style", "grid-template-rows:auto auto minmax(0,1fr) auto;")
       ),
       [
         topbar(),
+        settings_panel(),
         mainSplit,
         statusbar()
       ]

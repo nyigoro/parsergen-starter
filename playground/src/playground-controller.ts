@@ -1,7 +1,15 @@
 import { compileProjectInWorker, formatSourceInWorker, warmCompilerWorker } from './compile-client';
 import type { CompileDiagnostic, CompileResult } from './compiler-bridge';
 import { defaultExample, exampleGroups, findExample, findExampleBySource } from './examples-data';
-import { createShareUrl, readLocalState, readUrlState, saveLocalState } from './share';
+import {
+  createEmbedSnippet,
+  createOpenPlaygroundUrl,
+  createShareUrl,
+  readLocalState,
+  readUrlState,
+  saveLocalState,
+} from './share';
+import { readSettings, sanitizeFontSize, sanitizeTabSize, sanitizeTheme, saveSettings } from './settings';
 import {
   createPlaygroundSignal,
   defaultState,
@@ -12,6 +20,7 @@ import {
   type CompileStatus,
   type CompileTarget,
   type OutputTab,
+  type PlaygroundSettings,
   type PlaygroundState,
   type PreviewStatus,
   type RuntimeStatus,
@@ -30,6 +39,7 @@ type SetEditorText = (elementId: string, value: string) => void;
 type FocusEditorLocation = (elementId: string, line: number, column?: number) => void;
 type GetEditorCursor = (elementId: string) => { line: number; column: number } | null;
 type OnEditorChange = (elementId: string, handler: (value: string) => void) => () => void;
+type ApplyEditorSettings = (settings: Partial<PlaygroundSettings>) => void;
 type RunResult = { output: string; status: 'ok' | 'timeout' | 'error' | 'cancelled' };
 type RuntimeModuleSession = {
   entryUrl: string;
@@ -92,6 +102,20 @@ const setHidden = (id: string, hidden: boolean): void => {
 const setData = (id: string, key: string, value: string): void => {
   const element = document.getElementById(id);
   if (element) element.dataset[key] = value;
+};
+
+const setInputValue = (id: string, value: string): void => {
+  const element = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+  if (element && element.value !== value) element.value = value;
+};
+
+const applyShellSettings = (state: PlaygroundState): void => {
+  document.documentElement.dataset.theme = state.settings.theme;
+  document.documentElement.dataset.embed = String(state.embedMode);
+  document.body.dataset.theme = state.settings.theme;
+  document.body.dataset.embed = String(state.embedMode);
+  document.documentElement.style.setProperty('--playground-code-font-size', `${state.settings.fontSize}px`);
+  document.documentElement.style.setProperty('--playground-tab-size', String(state.settings.tabSize));
 };
 
 const rewriteModuleImportSource = (statement: string, nextSpecifier: string): string =>
@@ -214,6 +238,7 @@ const initialState = (): PlaygroundState => {
   return {
     ...defaultState,
     ...partialState,
+    settings: readSettings(),
     source,
     target,
     activeTab,
@@ -229,12 +254,23 @@ export const startPlayground = async (): Promise<void> => {
   const focusEditorLocation = bridge.focusEditorLocation as FocusEditorLocation | undefined;
   const getEditorCursor = bridge.getEditorCursor as GetEditorCursor | undefined;
   const onEditorChange = bridge.onEditorChange as OnEditorChange | undefined;
+  const applyEditorSettings = bridge.applyEditorSettings as ApplyEditorSettings | undefined;
 
-  if (!mountEditor || !getEditorText || !setEditorText || !focusEditorLocation || !getEditorCursor || !onEditorChange) {
+  if (
+    !mountEditor ||
+    !getEditorText ||
+    !setEditorText ||
+    !focusEditorLocation ||
+    !getEditorCursor ||
+    !onEditorChange ||
+    !applyEditorSettings
+  ) {
     throw new Error('Editor tools did not load.');
   }
 
   const store = createPlaygroundSignal(initialState());
+  applyShellSettings(store.get());
+  applyEditorSettings(store.get().settings);
   const bootUrlState = readUrlState();
   const bootUrlExample = findExample(bootUrlState.activeExample);
   let checkTimer: number | undefined;
@@ -425,9 +461,21 @@ export const startPlayground = async (): Promise<void> => {
     const activeExample = findExample(state.activeExample);
     const selectedDiagnostic = selectedDiagnosticIndex === null ? null : diagnostics[selectedDiagnosticIndex] ?? null;
 
+    applyShellSettings(state);
+    applyEditorSettings(state.settings);
+    saveSettings(state.settings);
+    document.querySelectorAll<HTMLElement>('.playground-shell, .playground-body, .topbar').forEach((element) => {
+      element.dataset.embed = String(state.embedMode);
+      element.dataset.theme = state.settings.theme;
+    });
+
     setText('examples-current', activeExample?.label ?? 'Custom');
     setData('examples-toggle', 'active', String(state.examplesOpen));
     setHidden('examples-browser-root', !state.examplesOpen);
+    setHidden('settings-panel', !state.settingsOpen);
+    setInputValue('setting-theme', state.settings.theme);
+    setInputValue('setting-font-size', String(state.settings.fontSize));
+    setInputValue('setting-tab-size', String(state.settings.tabSize));
     document.querySelectorAll<HTMLElement>('[data-example-id]').forEach((button) => {
       button.dataset.active = String(button.dataset.exampleId === state.activeExample);
     });
@@ -568,6 +616,7 @@ export const startPlayground = async (): Promise<void> => {
   const setExampleUrl = (exampleId: string): void => {
     const url = new URL(window.location.href);
     url.search = '';
+    if (store.get().embedMode) url.searchParams.set('embed', '1');
     url.searchParams.set('example', exampleId);
     window.history.replaceState(null, '', url);
   };
@@ -928,9 +977,34 @@ export const startPlayground = async (): Promise<void> => {
     void navigator.clipboard?.writeText(url);
   });
 
+  document.getElementById('copy-embed-button')?.addEventListener('click', () => {
+    void navigator.clipboard?.writeText(createEmbedSnippet(store.get()));
+  });
+
+  document.getElementById('open-playground-button')?.addEventListener('click', () => {
+    window.location.href = createOpenPlaygroundUrl(store.get());
+  });
+
   document.getElementById('settings-button')?.addEventListener('click', () =>
     store.set((state) => ({ settingsOpen: !state.settingsOpen }))
   );
+
+  document.getElementById('settings-close-button')?.addEventListener('click', () => store.set({ settingsOpen: false }));
+
+  document.getElementById('setting-theme')?.addEventListener('change', (event) => {
+    const theme = sanitizeTheme(event.target instanceof HTMLSelectElement ? event.target.value : null);
+    store.set((state) => ({ settings: { ...state.settings, theme } }));
+  });
+
+  document.getElementById('setting-font-size')?.addEventListener('change', (event) => {
+    const fontSize = sanitizeFontSize(event.target instanceof HTMLSelectElement ? event.target.value : null);
+    store.set((state) => ({ settings: { ...state.settings, fontSize } }));
+  });
+
+  document.getElementById('setting-tab-size')?.addEventListener('change', (event) => {
+    const tabSize = sanitizeTabSize(event.target instanceof HTMLSelectElement ? event.target.value : null);
+    store.set((state) => ({ settings: { ...state.settings, tabSize } }));
+  });
 
   document.addEventListener('click', (event) => {
     const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-diagnostic-index]') : null;

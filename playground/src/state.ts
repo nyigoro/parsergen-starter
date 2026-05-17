@@ -7,12 +7,20 @@ export type CompileStatus = 'idle' | 'checking' | 'running' | 'done' | 'error';
 export type RuntimeStatus = 'idle' | 'running' | 'ok' | 'error';
 export type PreviewStatus = 'idle' | 'rendering' | 'ok' | 'error' | 'empty';
 export type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
+export type PlaygroundTheme = 'dark' | 'light';
+
+export type PlaygroundSettings = {
+  theme: PlaygroundTheme;
+  fontSize: number;
+  tabSize: number;
+};
 
 export type PlaygroundState = {
   source: string;
   target: CompileTarget;
   mode: CompileMode;
   activeTab: OutputTab;
+  embedMode: boolean;
   activeExample: string | null;
   compileResult: CompileResult | null;
   typeInfo: PlaygroundTypeInfo | null;
@@ -28,6 +36,7 @@ export type PlaygroundState = {
   runTimeMs: number | null;
   examplesOpen: boolean;
   settingsOpen: boolean;
+  settings: PlaygroundSettings;
   autoPreview: boolean;
   cursorLine: number;
   cursorCol: number;
@@ -38,6 +47,7 @@ export const defaultState: PlaygroundState = {
   target: 'js',
   mode: 'run',
   activeTab: 'js',
+  embedMode: false,
   activeExample: 'basics',
   compileResult: null,
   typeInfo: null,
@@ -53,6 +63,11 @@ export const defaultState: PlaygroundState = {
   runTimeMs: null,
   examplesOpen: false,
   settingsOpen: false,
+  settings: {
+    theme: 'dark',
+    fontSize: 15,
+    tabSize: 2,
+  },
   autoPreview: false,
   cursorLine: 1,
   cursorCol: 1,

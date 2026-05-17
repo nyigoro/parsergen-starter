@@ -229,6 +229,7 @@ describe('site routing and playground integration', () => {
 
     expect(playgroundApp).toContain('single-source-main');
     expect(playgroundApp).toContain('topbar()');
+    expect(playgroundApp).toContain('settings_panel()');
     expect(playgroundApp).toContain('editor_zone()');
     expect(playgroundApp).toContain('output_tabs()');
     expect(playgroundApp).toContain('statusbar()');
@@ -250,6 +251,10 @@ describe('site routing and playground integration', () => {
     expect(playgroundController).toContain('refreshPreview');
     expect(playgroundController).toContain('renderTypesPanel');
     expect(playgroundController).toContain('copy-types-json-button');
+    expect(playgroundController).toContain('createOpenPlaygroundUrl');
+    expect(playgroundController).toContain('createEmbedSnippet');
+    expect(playgroundController).toContain('applyEditorSettings');
+    expect(playgroundShare).toContain("searchParams.get('embed')");
     expect(playgroundController).toContain('createRuntimeModuleSession');
     expect(playgroundController).toContain('status-last-target');
     expect(playgroundController).toContain('status-runtime');

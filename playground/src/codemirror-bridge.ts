@@ -1,7 +1,9 @@
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorSelection } from '@codemirror/state';
+import { Compartment, EditorSelection, EditorState } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { luminaLanguage } from './lumina-language';
+import { defaultSettings, sanitizeFontSize, sanitizeTabSize, sanitizeTheme } from './settings';
+import type { PlaygroundSettings } from './state';
 
 export type EditorMountOptions = {
   elementId: string;
@@ -16,6 +18,8 @@ type EditorCursor = {
 
 const editors = new Map<string, EditorView>();
 const changeHandlers = new Map<string, Set<ChangeHandler>>();
+const settingsCompartments = new Map<string, Compartment>();
+let activeSettings: PlaygroundSettings = { ...defaultSettings };
 
 const emitChange = (elementId: string): void => {
   const nextValue = getEditorText(elementId);
@@ -32,7 +36,7 @@ const editorTheme = EditorView.theme({
   },
   '.cm-scroller': {
     fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
-    fontSize: '0.95rem',
+    fontSize: 'var(--playground-code-font-size, 15px)',
     lineHeight: '1.6',
   },
   '.cm-content': {
@@ -45,6 +49,41 @@ const editorTheme = EditorView.theme({
   },
 });
 
+const lightEditorTheme = EditorView.theme(
+  {
+    '&': {
+      backgroundColor: '#f8fafc',
+      color: '#101827',
+    },
+    '.cm-content': {
+      caretColor: '#0f766e',
+    },
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeftColor: '#0f766e',
+    },
+    '.cm-activeLine': {
+      backgroundColor: '#e8eef7',
+    },
+    '.cm-gutters': {
+      backgroundColor: '#eef3f9',
+      color: '#64748b',
+      border: 'none',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: '#e2e8f0',
+    },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+      backgroundColor: '#bfdbfe',
+    },
+  },
+  { dark: false }
+);
+
+const settingsExtension = (settings: PlaygroundSettings) => [
+  sanitizeTheme(settings.theme) === 'dark' ? oneDark : lightEditorTheme,
+  EditorState.tabSize.of(sanitizeTabSize(settings.tabSize)),
+];
+
 const mountEditor = ({ elementId, initialValue }: EditorMountOptions): void => {
   const element = document.getElementById(elementId);
   if (!element) return;
@@ -53,15 +92,17 @@ const mountEditor = ({ elementId, initialValue }: EditorMountOptions): void => {
   if (existing) {
     existing.destroy();
     editors.delete(elementId);
+    settingsCompartments.delete(elementId);
   }
 
   element.innerHTML = '';
+  const settingsCompartment = new Compartment();
   const view = new EditorView({
     doc: initialValue,
     extensions: [
       basicSetup,
       luminaLanguage,
-      oneDark,
+      settingsCompartment.of(settingsExtension(activeSettings)),
       EditorView.lineWrapping,
       editorTheme,
       EditorView.updateListener.of(update => {
@@ -72,6 +113,7 @@ const mountEditor = ({ elementId, initialValue }: EditorMountOptions): void => {
   });
 
   editors.set(elementId, view);
+  settingsCompartments.set(elementId, settingsCompartment);
   emitChange(elementId);
 };
 
@@ -140,9 +182,29 @@ const onEditorChange = (elementId: string, handler: ChangeHandler): (() => void)
   };
 };
 
+const applyEditorSettings = (settings: Partial<PlaygroundSettings>): void => {
+  activeSettings = {
+    theme: sanitizeTheme(settings.theme ?? activeSettings.theme),
+    fontSize: sanitizeFontSize(settings.fontSize ?? activeSettings.fontSize),
+    tabSize: sanitizeTabSize(settings.tabSize ?? activeSettings.tabSize),
+  };
+
+  document.documentElement.style.setProperty('--playground-code-font-size', `${activeSettings.fontSize}px`);
+  document.documentElement.style.setProperty('--playground-tab-size', String(activeSettings.tabSize));
+
+  for (const [elementId, view] of editors) {
+    const compartment = settingsCompartments.get(elementId);
+    if (!compartment) continue;
+    view.dispatch({
+      effects: compartment.reconfigure(settingsExtension(activeSettings)),
+    });
+  }
+};
+
 (globalThis as Record<string, unknown>).mountEditor = mountEditor;
 (globalThis as Record<string, unknown>).getEditorText = getEditorText;
 (globalThis as Record<string, unknown>).setEditorText = setEditorText;
 (globalThis as Record<string, unknown>).focusEditorLocation = focusEditorLocation;
 (globalThis as Record<string, unknown>).getEditorCursor = getEditorCursor;
 (globalThis as Record<string, unknown>).onEditorChange = onEditorChange;
+(globalThis as Record<string, unknown>).applyEditorSettings = applyEditorSettings;

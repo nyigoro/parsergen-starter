@@ -69,6 +69,8 @@ pub fn topbar() -> VNode {
 
   let actions = vnode("div", props_class("tool-row compact-tools"), [
     button_node("share-button", "Share", "tool-button secondary"),
+    button_node("copy-embed-button", "Copy Embed", "tool-button secondary"),
+    button_node("open-playground-button", "Open in Playground", "tool-button secondary embed-only"),
     button_node("settings-button", "Settings", "tool-button secondary"),
     vnode("a", attrs3(props_class("top-link"), props_id("docs-link"), props_href("../docs/")), [text("Docs")])
   ]);

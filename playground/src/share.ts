@@ -34,11 +34,13 @@ export const readUrlState = (): Partial<PlaygroundState> => {
   const example = url.searchParams.get('example') ?? url.searchParams.get('preset');
   const target = url.searchParams.get('target');
   const tab = url.searchParams.get('tab');
+  const embed = url.searchParams.get('embed');
   return {
     ...(code ? { source: fromBase64Url(code) ?? '' } : {}),
     ...(!code && example ? { activeExample: example } : {}),
     ...(target && targets.has(target as CompileTarget) ? { target: target as CompileTarget } : {}),
     ...(tab && tabs.has(tab as OutputTab) ? { activeTab: tab as OutputTab } : {}),
+    ...(embed === '1' ? { embedMode: true } : {}),
   };
 };
 
@@ -78,4 +80,21 @@ export const createShareUrl = (state: PlaygroundState): string => {
   url.searchParams.set('target', state.target);
   url.searchParams.set('tab', state.activeTab);
   return url.toString();
+};
+
+export const createOpenPlaygroundUrl = (state: PlaygroundState): string => {
+  const url = new URL(createShareUrl(state));
+  url.searchParams.delete('embed');
+  return url.toString();
+};
+
+export const createEmbedUrl = (state: PlaygroundState): string => {
+  const url = new URL(createShareUrl(state));
+  url.searchParams.set('embed', '1');
+  return url.toString();
+};
+
+export const createEmbedSnippet = (state: PlaygroundState): string => {
+  const src = createEmbedUrl(state).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+  return `<iframe src="${src}" title="Lumina Playground" loading="lazy" style="width:100%;height:520px;border:0;border-radius:12px;overflow:hidden;"></iframe>`;
 };

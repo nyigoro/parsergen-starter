@@ -357,4 +357,70 @@ test.describe('playground browser smoke', () => {
       await server.close();
     }
   });
+
+  test('supports compact embed mode and opens full playground with state preserved', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?embed=1&example=counter`);
+      await waitForCompile(page);
+
+      await expect(page.locator('.topbar')).toHaveAttribute('data-embed', 'true');
+      await expect(page.locator('#open-playground-button')).toBeVisible();
+      await expect(page.locator('#docs-link')).toBeHidden();
+      await expect(page.locator('#examples-toggle')).toBeHidden();
+      await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+      await page.click('#output-tab-diagnostics');
+      await expectOnlyOutputPanelVisible(page, 'diagnostics-panel');
+
+      await page.click('#open-playground-button');
+      await expect(page).toHaveURL(/example=counter/);
+      expect(page.url()).not.toContain('embed=1');
+      await expect(page.locator('.topbar')).toHaveAttribute('data-embed', 'false');
+      await expect(page.locator('#examples-current')).toContainText('Counter');
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('applies and persists settings without disturbing playground state', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.goto(`${server.baseUrl}/playground/?example=basics`);
+      await waitForCompile(page);
+
+      await page.click('#settings-button');
+      await expect(page.locator('#settings-panel')).toBeVisible();
+      await page.selectOption('#setting-theme', 'light');
+      await page.selectOption('#setting-font-size', '18');
+      await page.selectOption('#setting-tab-size', '4');
+
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect
+        .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--playground-code-font-size').trim()))
+        .toBe('18px');
+      await expect
+        .poll(() =>
+          page.evaluate(() => ({
+            theme: localStorage.getItem('lumina_playground_theme'),
+            fontSize: localStorage.getItem('lumina_playground_font_size'),
+            tabSize: localStorage.getItem('lumina_playground_tab_size'),
+          }))
+        )
+        .toEqual({ theme: 'light', fontSize: '18', tabSize: '4' });
+
+      await page.reload();
+      await waitForCompile(page);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await page.click('#share-button');
+      expect(page.url()).not.toContain('theme=');
+      expect(page.url()).toContain('example=basics');
+
+      await page.goto(`${server.baseUrl}/playground/?embed=1&example=basics`);
+      await waitForCompile(page);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect(page.locator('#settings-button')).toBeVisible();
+    } finally {
+      await server.close();
+    }
+  });
 });

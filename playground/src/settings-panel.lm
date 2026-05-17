@@ -1,0 +1,81 @@
+import {
+  vnode,
+  text,
+  props_class,
+  props_id,
+  props_type,
+  props_attr,
+  props_merge
+} from "@std/render";
+
+fn attrs3(first: any, second: any, third: any) -> any {
+  props_merge(props_merge(first, second), third)
+}
+
+fn attrs4(first: any, second: any, third: any, fourth: any) -> any {
+  props_merge(attrs3(first, second, third), fourth)
+}
+
+fn option_node(value: string, label: string) -> VNode {
+  vnode("option", props_attr("value", value), [text(label)])
+}
+
+fn shortcut(label: string, keys: string) -> VNode {
+  vnode("div", props_class("shortcut-row"), [
+    vnode("span", [text(label)]),
+    vnode("kbd", [text(keys)])
+  ])
+}
+
+pub fn settings_panel() -> VNode {
+  vnode(
+    "section",
+    attrs4(
+      props_class("settings-panel stack-sm"),
+      props_id("settings-panel"),
+      props_attr("hidden", ""),
+      props_attr("aria-label", "Playground settings")
+    ),
+    [
+      vnode("div", props_class("panel-heading-row"), [
+        vnode("div", props_class("panel-title"), [text("Settings")]),
+        vnode("button", attrs3(props_class("tool-button secondary"), props_id("settings-close-button"), props_type("button")), [text("Close")])
+      ]),
+      vnode("div", props_class("settings-grid"), [
+        vnode("label", props_class("settings-field"), [
+          vnode("span", [text("Theme")]),
+          vnode("select", attrs3(props_class("settings-select"), props_id("setting-theme"), props_attr("name", "theme")), [
+            option_node("dark", "Dark"),
+            option_node("light", "Light")
+          ])
+        ]),
+        vnode("label", props_class("settings-field"), [
+          vnode("span", [text("Font size")]),
+          vnode("select", attrs3(props_class("settings-select"), props_id("setting-font-size"), props_attr("name", "font-size")), [
+            option_node("13", "13 px"),
+            option_node("15", "15 px"),
+            option_node("16", "16 px"),
+            option_node("18", "18 px"),
+            option_node("20", "20 px")
+          ])
+        ]),
+        vnode("label", props_class("settings-field"), [
+          vnode("span", [text("Tab size")]),
+          vnode("select", attrs3(props_class("settings-select"), props_id("setting-tab-size"), props_attr("name", "tab-size")), [
+            option_node("2", "2 spaces"),
+            option_node("4", "4 spaces"),
+            option_node("8", "8 spaces")
+          ])
+        ])
+      ]),
+      vnode("div", props_class("shortcut-help stack-sm"), [
+        vnode("div", props_class("panel-title"), [text("Shortcuts")]),
+        shortcut("Run", "Ctrl/⌘ Enter"),
+        shortcut("Check", "Ctrl/⌘ Shift Enter"),
+        shortcut("Format", "Ctrl/⌘ Shift F"),
+        shortcut("Share", "Ctrl/⌘ S"),
+        shortcut("Examples", "Ctrl/⌘ K")
+      ])
+    ]
+  )
+}
