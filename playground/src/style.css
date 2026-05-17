@@ -185,7 +185,6 @@ button {
   border-radius: 8px;
 }
 
-.topbar[data-embed='true'] .brand-copy,
 .topbar[data-embed='true'] .examples-browser-shell,
 .topbar[data-embed='true'] #share-button,
 .topbar[data-embed='true'] #copy-embed-button,
@@ -204,43 +203,6 @@ button {
 
 .topbar[data-embed='true'] .embed-only {
   display: inline-flex;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 14rem;
-  flex: 0 0 14rem;
-}
-
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 8px;
-  background: #0f766e;
-  color: #ecfeff;
-  font-weight: 800;
-}
-
-.brand-copy {
-  display: grid;
-  gap: 0.125rem;
-  min-width: 0;
-}
-
-.brand-title {
-  font-size: 1rem;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.brand-subtitle {
-  color: #9aa4b2;
-  font-size: 0.8125rem;
-  white-space: nowrap;
 }
 
 .top-links,

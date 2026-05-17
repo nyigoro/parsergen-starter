@@ -26,14 +26,6 @@ fn button_node(id: string, label: string, cls: string) -> VNode {
 }
 
 pub fn topbar() -> VNode {
-  let brandMark = vnode("span", props_class("brand-mark"), [text("L")]);
-  let brandTitle = vnode("strong", props_class("brand-title"), [text("Lumina Playground")]);
-  let brandSubtitle = vnode("span", props_class("brand-subtitle"), [text("v0.5.7")]);
-  let brand = vnode("div", props_class("brand"), [
-    brandMark,
-    vnode("div", props_class("brand-copy"), [brandTitle, brandSubtitle])
-  ]);
-
   let examples = vnode(
     "div",
     props_class("examples-browser-shell"),
@@ -76,7 +68,6 @@ pub fn topbar() -> VNode {
   ]);
 
   vnode("header", attrs2(props_class("topbar"), props_attr("style", "display:flex;gap:1rem;align-items:center;")), [
-    brand,
-    vnode("div", attrs2(props_class("tool-row toolbar-row"), props_attr("style", "justify-content:end;align-items:center;gap:0.75rem;")), [examples, modes, targets, actions])
+    vnode("div", attrs2(props_class("tool-row toolbar-row"), props_attr("style", "justify-content:flex-start;align-items:center;gap:1.25rem;")), [examples, modes, targets, actions])
   ])
 }
