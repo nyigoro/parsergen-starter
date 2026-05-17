@@ -13,7 +13,15 @@ fn attrs3(first: any, second: any, third: any) -> any {
 
 pub fn run_panel() -> VNode {
   vnode("section", attrs3(props_class("panel stack-sm"), props_id("run-panel"), props_attr("hidden", "")), [
-    vnode("div", props_class("panel-title"), [text("Run Output")]),
+    vnode("div", props_class("panel-heading-row"), [
+      vnode("div", props_class("panel-title"), [text("Run")]),
+      vnode("span", props_class("muted-chip"), [text("runtime only")])
+    ]),
+    vnode("div", props_class("runtime-meta-row"), [
+      vnode("span", props_id("runtime-status-label"), [text("Not run")]),
+      vnode("span", props_id("runtime-message-label"), [text("Run the program to execute it in a clean session.")]),
+      vnode("span", props_id("runtime-last-run-label"), [text("No run yet")])
+    ]),
     vnode("pre", attrs3(props_class("js-output run-output"), props_id("run-output-root"), props_attr("aria-live", "polite")), [text("")])
   ])
 }

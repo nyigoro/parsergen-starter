@@ -14,10 +14,13 @@ declare global {
 const waitForCompile = async (page: Page): Promise<void> => {
   await expect
     .poll(async () => (await page.locator('#status-compile').textContent())?.trim() ?? '')
-    .toMatch(/Done|Needs attention/);
+    .toMatch(/Checked|Done|Needs attention/);
 };
 
 const waitForRunOutput = async (page: Page): Promise<void> => {
+  await expect
+    .poll(async () => (await page.locator('#status-runtime').textContent())?.trim() ?? '')
+    .toMatch(/Passed|Runtime error/);
   await expect
     .poll(async () => (await page.locator('#run-output-root').textContent())?.trim() ?? '')
     .not.toBe('');
@@ -144,7 +147,7 @@ test.describe('playground browser smoke', () => {
       await waitForRunOutput(page);
       await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#run-output-root')).toContainText('return 7');
-      await expect(page.locator('#status-runtime')).toContainText('OK');
+      await expect(page.locator('#status-runtime')).toContainText('Passed');
     } finally {
       await server.close();
     }
@@ -161,7 +164,7 @@ test.describe('playground browser smoke', () => {
       await page.click('#run-button');
       await waitForRunOutput(page);
       await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
-      await expect(page.locator('#status-compile')).toContainText('Done');
+      await expect(page.locator('#status-compile')).toContainText('Checked');
       await expect(page.locator('#status-runtime')).toContainText('Runtime error');
       await expect(page.locator('#diagnostics-count-label')).toContainText('0 errors');
       await page.click('#output-tab-diagnostics');
@@ -349,14 +352,24 @@ test.describe('playground browser smoke', () => {
       await waitForCompile(page);
       await page.click('#output-tab-ui');
       await expect(page.locator('#preview-status-label')).toContainText('Idle');
+      await expect(page.locator('#preview-overlay')).toBeVisible();
       await page.selectOption('#preview-device-select', 'mobile');
       await expect(page.locator('#preview-frame')).toHaveCSS('inline-size', '368px');
       await page.click('#preview-refresh-button');
-      await expect(page.locator('#preview-status-label')).toContainText(/Ready|Preview error/, { timeout: 15000 });
-      await expect(page.locator('#preview-status-label')).toContainText('Ready');
-      await expect(page.frameLocator('#preview-frame').locator('button')).toHaveCount(2);
+      await expect(page.locator('#preview-status-label')).toContainText(/Rendered|Preview error/, { timeout: 15000 });
+      await expect(page.locator('#preview-status-label')).toContainText('Rendered');
+      await expect(page.locator('#preview-overlay')).toBeHidden();
+      await expect(page.locator('#preview-frame')).toHaveAttribute('sandbox', 'allow-scripts');
       await page.click('#preview-auto-button');
       await expect(page.locator('#preview-auto-button')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#preview-auto-button')).toContainText('Auto On');
+
+      await page.goto(`${server.baseUrl}/playground/?example=basics`);
+      await waitForCompile(page);
+      await page.click('#output-tab-ui');
+      await page.click('#preview-refresh-button');
+      await expect(page.locator('#preview-status-label')).toContainText('No preview');
+      await expect(page.locator('#preview-overlay')).toContainText('No previewable UI');
     } finally {
       await server.close();
     }

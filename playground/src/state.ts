@@ -30,6 +30,8 @@ export type PlaygroundState = {
   previewStatus: PreviewStatus;
   previewMessage: string | null;
   previewDevice: PreviewDevice;
+  lastRunAt: number | null;
+  lastPreviewAt: number | null;
   lastCompiledTarget: CompileTarget | null;
   lastAction: CompileMode | null;
   checkTimeMs: number | null;
@@ -57,6 +59,8 @@ export const defaultState: PlaygroundState = {
   previewStatus: 'idle',
   previewMessage: null,
   previewDevice: 'desktop',
+  lastRunAt: null,
+  lastPreviewAt: null,
   lastCompiledTarget: null,
   lastAction: null,
   checkTimeMs: null,

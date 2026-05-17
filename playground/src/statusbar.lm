@@ -14,7 +14,7 @@ fn stat(label: string, id: string, value: string) -> VNode {
 pub fn statusbar() -> VNode {
   vnode("footer", attrs2(props_class("workbench-statusbar"), props_attr("style", "min-height:2rem;")), [
     vnode("div", props_class("status-strip stack-sm"), [
-      stat("Status", "status-compile", "Idle"),
+      stat("Compile", "status-compile", "Idle"),
       stat("Runtime", "status-runtime", "Idle"),
       stat("Preview", "status-preview", "Idle"),
       stat("Check", "status-check-time", "-"),

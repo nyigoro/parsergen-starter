@@ -14,3 +14,4 @@
 - Embed mode is available with `?embed=1` for docs, tutorials, and iframe use, with compact chrome and an Open in Playground action that preserves source, example, target, and tab state.
 - The docs site now embeds selected live playground examples so readers can run core syntax, stdlib, UI, and type-system examples in context.
 - Playground settings persist locally for theme, editor font size, and tab size, and apply immediately in both full and embed mode.
+- UI Preview and Run now use explicit empty/loading/success/error states, isolated runtime sessions, and compact statusbar wording so compile, runtime, and preview outcomes stay distinct.

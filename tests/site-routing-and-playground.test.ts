@@ -263,6 +263,9 @@ describe('site routing and playground integration', () => {
     expect(playgroundController).toContain('status-last-target');
     expect(playgroundController).toContain('status-runtime');
     expect(playgroundController).toContain('status-preview');
+    expect(playgroundController).toContain('lastRunAt');
+    expect(playgroundController).toContain('lastPreviewAt');
+    expect(playgroundController).toContain('sourceLooksPreviewable');
     expect(playgroundController).toContain("setHidden('run-panel'");
     expect(playgroundController).toContain("setHidden('ui-panel'");
     expect(playgroundController).toContain("setHidden('types-panel'");
@@ -270,6 +273,7 @@ describe('site routing and playground integration', () => {
     expect(playgroundDiagnostics).toContain('diagnostics-root');
     expect(playgroundApp).toContain('statusbar');
     expect(playgroundState).toContain('typeInfo');
+    expect(playgroundState).toContain('lastPreviewAt');
     expect(playgroundState).toContain("'diagnostics'");
     expect(playgroundLanguage).toContain("from '@lezer/common'");
     expect(playgroundLanguage).toContain('new Language');

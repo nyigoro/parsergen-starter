@@ -49,6 +49,18 @@ type RuntimeModuleSession = {
 type PreviewSession = {
   cleanup: () => void;
 };
+type PreviewModulePayload = {
+  entryUri: string;
+  runtimeSource: string | null;
+  modules: Array<{
+    uri: string;
+    code: string;
+    sourceImports: Array<{
+      statement: string;
+      resolvedUri: string;
+    }>;
+  }>;
+};
 
 const editorId = 'lumina-editor';
 const entryUri = 'main.lm';
@@ -56,20 +68,20 @@ const bridge = globalThis as Record<string, unknown>;
 const statusLabels: Record<CompileStatus, string> = {
   idle: 'Idle',
   checking: 'Checking',
-  running: 'Running',
-  done: 'Done',
+  running: 'Compiling',
+  done: 'Checked',
   error: 'Needs attention',
 };
 const runtimeLabels: Record<RuntimeStatus, string> = {
-  idle: 'Idle',
+  idle: 'Not run',
   running: 'Running',
-  ok: 'OK',
+  ok: 'Passed',
   error: 'Runtime error',
 };
 const previewLabels: Record<PreviewStatus, string> = {
   idle: 'Idle',
   rendering: 'Rendering',
-  ok: 'Ready',
+  ok: 'Rendered',
   error: 'Preview error',
   empty: 'No preview',
 };
@@ -91,6 +103,21 @@ const targetLabel = (target: CompileTarget | null): string => (target ? target.t
 const tabLabel = (tab: OutputTab): string => tab.toUpperCase();
 const diagnosticLocationLabel = (diagnostic: CompileDiagnostic): string =>
   diagnostic.line === undefined ? 'Location unavailable' : `${diagnostic.line}:${diagnostic.column ?? 1}`;
+
+const relativeTimestamp = (value: number | null): string => {
+  if (!value) return 'Not yet';
+  const seconds = Math.max(0, Math.round((Date.now() - value) / 1000));
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes}m ago`;
+};
+
+const sourceLooksPreviewable = (source: string): boolean =>
+  /\b(vnode|mount_reactive|createDomRenderer|renderApp|render_to_dom)\b/.test(source) ||
+  source.includes('@std/render');
+
+const safeScriptJson = (value: unknown): string => JSON.stringify(value).replaceAll('</', '<\\/');
 
 const setText = (id: string, value: string): void => {
   const element = document.getElementById(id);
@@ -124,6 +151,9 @@ const applyShellSettings = (state: PlaygroundState): void => {
 const rewriteModuleImportSource = (statement: string, nextSpecifier: string): string =>
   statement.replace(/\bfrom\s+["'][^"']+["']/, `from ${JSON.stringify(nextSpecifier)}`);
 
+const findRuntimeSpecifier = (code: string): string | null =>
+  code.match(/\bfrom\s+["']([^"']*lumina-runtime[^"']*\.js[^"']*)["']/)?.[1] ?? null;
+
 const createRuntimeModuleSession = (result: CompileResult): RuntimeModuleSession => {
   const moduleUrls = new Map<string, string>();
   const modules = new Map(result.runnableModules.map((module) => [module.uri, module]));
@@ -152,6 +182,31 @@ const createRuntimeModuleSession = (result: CompileResult): RuntimeModuleSession
       for (const url of moduleUrls.values()) URL.revokeObjectURL(url);
       if (!result.runnableEntryUri || !result.runnableModules.length) URL.revokeObjectURL(entryUrl);
     },
+  };
+};
+
+const createPreviewModulePayload = async (result: CompileResult): Promise<PreviewModulePayload> => {
+  const runtimeSpecifier = result.runnableModules
+    .map((module) => findRuntimeSpecifier(module.code))
+    .find((specifier): specifier is string => Boolean(specifier));
+  const runtimeSource = runtimeSpecifier
+    ? await fetch(runtimeSpecifier).then((response) => {
+        if (!response.ok) throw new Error(`Failed to load preview runtime (${response.status})`);
+        return response.text();
+      })
+    : null;
+
+  return {
+    entryUri: result.runnableEntryUri ?? entryUri,
+    runtimeSource,
+    modules: result.runnableModules.map((module) => ({
+      uri: module.uri,
+      code: module.code,
+      sourceImports: module.sourceImports.map((item) => ({
+        statement: item.statement,
+        resolvedUri: item.resolvedUri,
+      })),
+    })),
   };
 };
 
@@ -429,16 +484,49 @@ export const startPlayground = async (): Promise<void> => {
 
   const renderPreviewPanel = (state: PlaygroundState): void => {
     const frame = document.getElementById('preview-frame');
+    const frameWrap = document.getElementById('preview-frame-wrap');
+    const overlay = document.getElementById('preview-overlay');
+    const refreshButton = document.getElementById('preview-refresh-button') as HTMLButtonElement | null;
+    const autoButton = document.getElementById('preview-auto-button');
     const select = document.getElementById('preview-device-select') as HTMLSelectElement | null;
     const widths: Record<PlaygroundState['previewDevice'], string> = {
       desktop: '100%',
       tablet: '48rem',
       mobile: '23rem',
     };
+    const overlayCopy: Record<PreviewStatus, { title: string; message: string }> = {
+      idle: {
+        title: 'Preview idle',
+        message: 'Refresh when you want to render this source.',
+      },
+      rendering: {
+        title: 'Rendering preview',
+        message: 'Compiling and mounting the UI in a fresh sandbox.',
+      },
+      ok: {
+        title: 'Preview rendered',
+        message: state.previewMessage ?? 'The sandbox is showing the latest preview.',
+      },
+      error: {
+        title: 'Preview failed',
+        message: state.previewMessage ?? 'The preview runtime reported an error.',
+      },
+      empty: {
+        title: 'No previewable UI',
+        message: state.previewMessage ?? 'Choose a UI example or add render code to this source.',
+      },
+    };
 
     setText('preview-status-label', previewLabels[state.previewStatus]);
     setText('preview-message-label', state.previewMessage ?? 'Refresh to render a Lumina UI example.');
+    setText('preview-last-label', `Last preview: ${relativeTimestamp(state.lastPreviewAt)}`);
+    setText('preview-overlay-title', overlayCopy[state.previewStatus].title);
+    setText('preview-overlay-message', overlayCopy[state.previewStatus].message);
     setData('preview-status-label', 'status', state.previewStatus === 'ok' ? 'ok' : state.previewStatus);
+    if (frameWrap) frameWrap.dataset.status = state.previewStatus;
+    if (overlay) overlay.toggleAttribute('hidden', state.previewStatus === 'ok');
+    if (refreshButton) refreshButton.disabled = state.previewStatus === 'rendering';
+    if (autoButton) autoButton.textContent = state.autoPreview ? 'Auto On' : 'Auto Off';
     setData('preview-auto-button', 'active', String(state.autoPreview));
     if (select && select.value !== state.previewDevice) select.value = state.previewDevice;
     if (frame instanceof HTMLIFrameElement) {
@@ -531,6 +619,10 @@ export const startPlayground = async (): Promise<void> => {
     setHidden('diagnostics-panel', state.activeTab !== 'diagnostics');
     setText('js-output', readableJs ? jsOutput : jsOutput.replace(/\s+/g, ' ').trim());
     setText('run-output-root', runOutput);
+    setText('runtime-status-label', runtimeLabels[state.runtimeStatus]);
+    setText('runtime-message-label', state.runtimeMessage ?? 'Run the program to execute it in a clean session.');
+    setText('runtime-last-run-label', `Last run: ${relativeTimestamp(state.lastRunAt)}`);
+    setData('runtime-status-label', 'status', state.runtimeStatus);
     setText('minify-js-button', readableJs ? 'Readable' : 'Minified');
     renderWasmPanel(state);
     renderPreviewPanel(state);
@@ -570,7 +662,9 @@ export const startPlayground = async (): Promise<void> => {
       mode,
       lastAction: mode,
       compileStatus: mode === 'run' ? 'running' : 'checking',
-      ...(mode === 'run' ? { runtimeStatus: 'idle' as const, runtimeMessage: null } : {}),
+      ...(mode === 'run'
+        ? { runtimeStatus: 'running' as const, runtimeMessage: 'Compiling source before execution.' }
+        : {}),
     });
 
     try {
@@ -634,6 +728,8 @@ export const startPlayground = async (): Promise<void> => {
       source: nextSource,
       activeExample,
       typeInfo: null,
+      lastRunAt: null,
+      lastPreviewAt: null,
       cursorLine: 1,
       cursorCol: 1,
     });
@@ -676,21 +772,28 @@ export const startPlayground = async (): Promise<void> => {
 
   const run = async (): Promise<void> => {
     const target = store.get().target;
+    activeRun?.abort();
+    activeRun = null;
+    runOutput = 'Compiling source before execution...';
+    store.set({ activeTab: 'run', runtimeStatus: 'running', runtimeMessage: 'Compiling source before execution.' });
+    renderState(store.get());
+
     const result = await compile('run');
     if (!result?.ok) {
       runOutput = 'Run blocked until the current diagnostics are fixed.';
-      store.set({ runtimeStatus: 'idle', runtimeMessage: 'Run blocked by compile diagnostics.' });
+      store.set({
+        runtimeStatus: 'idle',
+        runtimeMessage: 'Run did not start because compile diagnostics are present.',
+        lastRunAt: null,
+      });
       renderState(store.get());
       return;
     }
 
-    activeRun?.abort();
     const controller = new AbortController();
     activeRun = controller;
-    runOutput = target === 'wasm' ? 'Preparing WASM target...' : 'Running...';
-    const currentTab = store.get().activeTab;
-    const nextTab: OutputTab = target === 'wasm' ? 'wasm' : currentTab === 'js' || currentTab === 'wasm' ? currentTab : 'js';
-    store.set({ activeTab: nextTab, runtimeStatus: 'running', runtimeMessage: 'Executing in a clean runtime.' });
+    runOutput = target === 'wasm' ? 'Generating WASM artifact...' : 'Executing in an isolated runtime...';
+    store.set({ activeTab: 'run', runtimeStatus: 'running', runtimeMessage: 'Executing in a clean runtime.' });
     renderState(store.get());
 
     const output = await executeTargetRun(result, target, controller.signal);
@@ -700,7 +803,8 @@ export const startPlayground = async (): Promise<void> => {
     store.set({
       activeTab: 'run',
       runtimeStatus: output.status === 'ok' ? 'ok' : 'error',
-      runtimeMessage: output.status === 'ok' ? 'Run completed.' : output.output,
+      runtimeMessage: output.status === 'ok' ? 'Run completed in a fresh session.' : 'Runtime failed. See output below.',
+      lastRunAt: Date.now(),
     });
   };
 
@@ -751,6 +855,16 @@ export const startPlayground = async (): Promise<void> => {
     disposePreview();
     store.set({ previewStatus: 'rendering', previewMessage: 'Compiling UI preview...' });
 
+    if (!sourceLooksPreviewable(store.get().source)) {
+      activePreview = null;
+      store.set({
+        previewStatus: 'empty',
+        previewMessage: 'This source does not appear to mount UI. Try a Reactive UI example.',
+        lastPreviewAt: null,
+      });
+      return;
+    }
+
     const result = store.get().compileResult?.ok && store.get().compileResult?.runnableModules.length
       ? store.get().compileResult
       : await compilePreviewSource(controller.signal);
@@ -763,29 +877,62 @@ export const startPlayground = async (): Promise<void> => {
         previewMessage: result?.ok
           ? 'No previewable JavaScript module is available.'
           : 'Fix compile diagnostics before refreshing preview.',
+        lastPreviewAt: null,
       });
       return;
     }
 
     const frame = document.getElementById('preview-frame') as HTMLIFrameElement | null;
-    if (!frame) return;
-    const moduleSession = createRuntimeModuleSession(result);
-    const previewId = requestId;
-    const onMessage = (event: MessageEvent<{ type?: string; id?: number; status?: string; message?: string }>): void => {
-      if (event.data?.type !== 'lumina-preview-result' || event.data.id !== previewId) return;
-      window.removeEventListener('message', onMessage);
-      if (activePreview !== controller) return;
+    if (!frame) {
       activePreview = null;
       store.set({
-        previewStatus: event.data.status === 'ok' ? 'ok' : 'error',
-        previewMessage: event.data.message ?? (event.data.status === 'ok' ? 'Preview rendered.' : 'Preview failed.'),
+        previewStatus: 'error',
+        previewMessage: 'Preview frame is unavailable.',
+        lastPreviewAt: null,
+      });
+      return;
+    }
+    let modulePayload: PreviewModulePayload;
+    try {
+      modulePayload = await createPreviewModulePayload(result);
+    } catch (error) {
+      activePreview = null;
+      store.set({
+        previewStatus: 'error',
+        previewMessage: error instanceof Error ? error.message : String(error),
+        lastPreviewAt: null,
+      });
+      return;
+    }
+    if (controller.signal.aborted || activePreview !== controller || requestId !== previewSequence) return;
+    const previewId = requestId;
+    let timeoutId: number | null = null;
+    const completePreview = (status: 'ok' | 'error', message: string): void => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      window.removeEventListener('message', onMessage);
+      if (activePreview !== controller || controller.signal.aborted) return;
+      activePreview = null;
+      store.set({
+        previewStatus: status === 'ok' ? 'ok' : 'error',
+        previewMessage: message,
+        lastPreviewAt: status === 'ok' ? Date.now() : null,
       });
     };
+    const onMessage = (event: MessageEvent<{ type?: string; id?: number; status?: string; message?: string }>): void => {
+      if (event.data?.type !== 'lumina-preview-result' || event.data.id !== previewId) return;
+      completePreview(
+        event.data.status === 'ok' ? 'ok' : 'error',
+        event.data.message ?? (event.data.status === 'ok' ? 'Preview rendered.' : 'Preview failed.')
+      );
+    };
     window.addEventListener('message', onMessage);
+    timeoutId = window.setTimeout(() => {
+      completePreview('error', 'Preview did not finish. Check the UI code, then refresh again.');
+    }, 8000);
     previewSession = {
       cleanup: () => {
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
         window.removeEventListener('message', onMessage);
-        moduleSession.cleanup();
       },
     };
     frame.srcdoc = `<!doctype html>
@@ -803,10 +950,35 @@ export const startPlayground = async (): Promise<void> => {
   <main id="root"><div id="app"></div></main>
   <script type="module">
     const done = (status, message) => parent.postMessage({ type: 'lumina-preview-result', id: ${previewId}, status, message }, '*');
+    const payload = ${safeScriptJson(modulePayload)};
+    const urls = new Map();
+    const modules = new Map(payload.modules.map((module) => [module.uri, module]));
+    const runtimeUrl = payload.runtimeSource
+      ? 'data:text/javascript;charset=utf-8,' + encodeURIComponent(payload.runtimeSource)
+      : null;
+    const rewriteImport = (statement, nextSpecifier) => statement.replace(/\\bfrom\\s+["'][^"']+["']/, 'from ' + JSON.stringify(nextSpecifier));
+    const rewriteRuntimeImports = (source) =>
+      runtimeUrl
+        ? source.replace(/\\bfrom\\s+["'][^"']*lumina-runtime[^"']*\\.js[^"']*["']/g, 'from ' + JSON.stringify(runtimeUrl))
+        : source;
+    const materialize = (uri) => {
+      if (urls.has(uri)) return urls.get(uri);
+      const module = modules.get(uri);
+      if (!module) throw new Error('Missing preview module ' + uri);
+      const imports = module.sourceImports.map((item) => rewriteImport(item.statement, materialize(item.resolvedUri)));
+      const body = rewriteRuntimeImports((imports.length ? imports.join('\\n') + '\\n' : '') + module.code);
+      const url = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(body);
+      urls.set(uri, url);
+      return url;
+    };
+    const cleanup = () => {
+      urls.clear();
+    };
+    window.addEventListener('pagehide', cleanup);
     window.addEventListener('error', (event) => done('error', event.message || 'Preview runtime error.'));
     window.addEventListener('unhandledrejection', (event) => done('error', event.reason?.message || String(event.reason ?? 'Preview promise rejected.')));
     try {
-      await import(${JSON.stringify(moduleSession.entryUrl)});
+      await import(materialize(payload.entryUri));
       done('ok', 'Preview rendered.');
     } catch (error) {
       done('error', error instanceof Error ? error.message : String(error));
@@ -841,12 +1013,17 @@ export const startPlayground = async (): Promise<void> => {
     selectedDiagnosticIndex = null;
     activePreview?.abort();
     disposePreview();
+    runOutput = 'Run the program to see output.';
     store.set({
       source,
       typeInfo: null,
       activeExample: exampleIdentityFor(source),
       cursorLine: cursor.line,
       cursorCol: cursor.column,
+      runtimeStatus: 'idle',
+      runtimeMessage: 'Run again to execute this edited source.',
+      lastRunAt: null,
+      lastPreviewAt: null,
       previewStatus: store.get().autoPreview ? 'rendering' : 'idle',
       previewMessage: store.get().autoPreview ? 'Waiting for debounced check.' : 'Refresh to render a Lumina UI example.',
     });
@@ -887,6 +1064,8 @@ export const startPlayground = async (): Promise<void> => {
         runtimeMessage: null,
         previewStatus: 'idle',
         previewMessage: 'Refresh to render a Lumina UI example.',
+        lastRunAt: null,
+        lastPreviewAt: null,
       },
       { scheduleCheck: true }
     );

@@ -20,10 +20,15 @@ pub fn ui_preview() -> VNode {
     ]),
     vnode("div", props_class("preview-meta-row"), [
       vnode("span", props_id("preview-status-label"), [text("Idle")]),
-      vnode("span", props_id("preview-message-label"), [text("Refresh to render a Lumina UI example.")])
+      vnode("span", props_id("preview-message-label"), [text("Refresh to render a Lumina UI example.")]),
+      vnode("span", props_id("preview-last-label"), [text("Not rendered yet")])
     ]),
-    vnode("div", props_class("preview-frame-wrap"), [
-      vnode("iframe", props_merge(props_merge(props_class("preview-frame"), props_id("preview-frame")), props_attr("sandbox", "allow-scripts allow-same-origin")), [])
+    vnode("div", props_merge(props_class("preview-frame-wrap"), props_id("preview-frame-wrap")), [
+      vnode("div", props_merge(props_class("preview-overlay"), props_id("preview-overlay")), [
+        vnode("strong", props_id("preview-overlay-title"), [text("Preview idle")]),
+        vnode("span", props_id("preview-overlay-message"), [text("Refresh to render a Lumina UI example.")])
+      ]),
+      vnode("iframe", props_merge(props_merge(props_class("preview-frame"), props_id("preview-frame")), props_attr("sandbox", "allow-scripts")), [])
     ])
   ])
 }
