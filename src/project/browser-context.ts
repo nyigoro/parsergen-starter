@@ -34,7 +34,28 @@ export interface BrowserSourceDocument {
   functionHashes?: Map<string, string>;
   inferredReturns?: Map<string, LuminaType>;
   hmCallSignatures?: Map<number, { args: LuminaType[]; returnType: LuminaType }>;
+  hmExprTypes?: Map<number, string>;
 }
+
+export type BrowserTypeInfo = {
+  declarations: Array<{
+    name: string;
+    kind: string;
+    typeStr: string;
+    startLine: number;
+    startCol: number;
+  }>;
+  exprTypes: Array<{
+    nodeId: number;
+    typeStr: string;
+    startLine: number;
+    startCol: number;
+    endLine: number;
+    endCol: number;
+    preview: string;
+  }>;
+  sourceUri: string;
+};
 
 type ImportBinding = {
   local: string;
@@ -48,6 +69,15 @@ type LuminaLockfile = NormalizedLockfile;
 type BareResolveResult =
   | { resolved: string }
   | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004'; message: string } };
+
+type LocationInfo = {
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
+  startOffset: number;
+  endOffset: number;
+};
 
 const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
@@ -194,6 +224,56 @@ export class BrowserProjectContext {
     return this.documents.get(this.toVirtualUri(uri))?.text;
   }
 
+  getTypeInfo(uri: string): BrowserTypeInfo | null {
+    const normalized = this.toVirtualUri(uri);
+    const doc = this.documents.get(normalized);
+    if (!doc?.ast || doc.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) return null;
+
+    const declarations = (doc.symbols?.list() ?? [])
+      .filter((symbol) => symbol.location && !symbol.extern && (!symbol.uri || this.toVirtualUri(symbol.uri) === normalized))
+      .map((symbol) => ({
+        name: symbol.name,
+        kind: symbol.kind,
+        typeStr: symbol.type ? String(symbol.type) : symbol.name,
+        startLine: symbol.location?.start.line ?? 1,
+        startCol: symbol.location?.start.column ?? 1,
+      }))
+      .sort((left, right) => left.startLine - right.startLine || left.startCol - right.startCol || left.name.localeCompare(right.name));
+
+    const locations = collectNodeLocations(doc.ast);
+    const byPosition = new Map<string, BrowserTypeInfo['exprTypes'][number]>();
+    for (const [nodeId, typeStr] of (doc.hmExprTypes ?? new Map<number, string>()).entries()) {
+      const location = locations.get(nodeId);
+      if (!location) continue;
+      const preview = previewSourceRange(doc.text, location);
+      if (!preview) continue;
+      const key = `${location.startLine}:${location.startCol}`;
+      const entry = {
+        nodeId,
+        typeStr,
+        startLine: location.startLine,
+        startCol: location.startCol,
+        endLine: location.endLine,
+        endCol: location.endCol,
+        preview,
+      };
+      const existing = byPosition.get(key);
+      const existingSpan = existing ? existing.endLine * 100000 + existing.endCol - (existing.startLine * 100000 + existing.startCol) : -1;
+      const nextSpan = location.endLine * 100000 + location.endCol - (location.startLine * 100000 + location.startCol);
+      if (!existing || nextSpan >= existingSpan) byPosition.set(key, entry);
+    }
+
+    const exprTypes = Array.from(byPosition.values()).sort(
+      (left, right) => left.startLine - right.startLine || left.startCol - right.startCol || left.nodeId - right.nodeId
+    );
+
+    return {
+      declarations,
+      exprTypes,
+      sourceUri: normalized,
+    };
+  }
+
   resolveImportUri(fromUri: string, source: string): string {
     return this.resolveImport(this.toVirtualUri(fromUri), source);
   }
@@ -209,6 +289,7 @@ export class BrowserProjectContext {
     doc.importNameMap = undefined;
     doc.moduleBindings = undefined;
     doc.hmCallSignatures = undefined;
+    doc.hmExprTypes = undefined;
     let payload: unknown = null;
     if (result.result && typeof result.result === 'object' && 'success' in result.result && (result.result as { success: boolean }).success) {
       payload = (result.result as { result: unknown }).result ?? result.result;
@@ -246,9 +327,13 @@ export class BrowserProjectContext {
           cachedFunctionReturns: cachedReturns,
           moduleRegistry: this.moduleRegistry,
           moduleBindings,
+          currentUri: uri,
+          hmSourceText: doc.text,
+          useHm: true,
         });
         doc.symbols = analysis.symbols;
         doc.hmCallSignatures = analysis.hmCallSignatures;
+        doc.hmExprTypes = analysis.hmExprTypes;
         doc.inferredReturns = new Map<string, LuminaType>();
         for (const sym of analysis.symbols.list()) {
           if (sym.kind === 'function' && sym.type) {
@@ -649,6 +734,69 @@ function collectImportBindings(program: { type: string; body?: unknown[] }): {
   }
 
   return { locals, aliases, bindings, map };
+}
+
+function collectNodeLocations(ast: LuminaProgram): Map<number, LocationInfo> {
+  const locations = new Map<number, LocationInfo>();
+  const seen = new Set<object>();
+
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    const node = value as { id?: unknown; location?: unknown };
+    if (typeof node.id === 'number' && isLocation(node.location)) {
+      locations.set(node.id, normalizeLocation(node.location));
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+
+    for (const child of Object.values(value)) {
+      visit(child);
+    }
+  };
+
+  visit(ast);
+  return locations;
+}
+
+function isLocation(value: unknown): value is Location {
+  if (!value || typeof value !== 'object') return false;
+  const location = value as Partial<Location>;
+  return Boolean(
+    location.start &&
+      location.end &&
+      typeof location.start.line === 'number' &&
+      typeof location.start.column === 'number' &&
+      typeof location.end.line === 'number' &&
+      typeof location.end.column === 'number'
+  );
+}
+
+function normalizeLocation(location: Location): LocationInfo {
+  return {
+    startLine: location.start.line,
+    startCol: location.start.column,
+    endLine: location.end.line,
+    endCol: location.end.column,
+    startOffset: location.start.offset,
+    endOffset: location.end.offset,
+  };
+}
+
+function previewSourceRange(source: string, location: LocationInfo): string {
+  const raw =
+    Number.isFinite(location.startOffset) &&
+    Number.isFinite(location.endOffset) &&
+    location.endOffset > location.startOffset
+      ? source.slice(location.startOffset, location.endOffset)
+      : '';
+  const normalized = raw.replace(/\s+/g, ' ').trim();
+  return normalized.length > 40 ? `${normalized.slice(0, 37)}...` : normalized;
 }
 
 function collectFunctionBodyHashes(

@@ -3,7 +3,7 @@ import preludeRaw from '../../std/prelude.lm?raw';
 import routerStdRaw from '../../std/router.lm?raw';
 import luminaRuntimeUrl from '../../dist/lumina-runtime.js?url';
 import { compileGrammar as compileLuminaGrammar } from '../../src/grammar/index';
-import { BrowserProjectContext } from '../../src/project/browser-context';
+import { BrowserProjectContext, type BrowserTypeInfo } from '../../src/project/browser-context';
 import { lowerLumina } from '../../src/lumina/lower';
 import { optimizeIR } from '../../src/lumina/optimize';
 import { generateJS } from '../../src/lumina/codegen';
@@ -70,6 +70,8 @@ export type CompileWasmOutput = {
   };
 };
 
+export type PlaygroundTypeInfo = BrowserTypeInfo;
+
 export type CompileResult = {
   ok: boolean;
   action: PlaygroundCompileInput['action'];
@@ -86,6 +88,7 @@ export type CompileResult = {
   graphNodes: number;
   importResolutions: CompileImportResolution[];
   timings: CompileTimings;
+  typeInfo: PlaygroundTypeInfo | null;
 };
 
 const maxEmptyLines = 1;
@@ -294,6 +297,7 @@ const resultBase = (input: PlaygroundCompileInput) => ({
   hasMain: false,
   graphEdges: 0,
   graphNodes: 0,
+  typeInfo: null,
 });
 
 const diagnosticFromCompiler = (
@@ -387,6 +391,8 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
       };
     }
 
+    const typeInfo = project.getTypeInfo(input.entryUri);
+
     if (input.action === 'check') {
       return {
         ...resultBase(input),
@@ -394,6 +400,7 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
         hasMain: Boolean(project.getDocumentAst(input.entryUri)),
         diagnostics,
         importResolutions,
+        typeInfo,
         timings: {
           diagnosticsMs,
           lowerMs: 0,
@@ -552,6 +559,7 @@ export const compileLuminaProject = (input: PlaygroundCompileInput): CompileResu
       graphEdges,
       graphNodes,
       importResolutions,
+      typeInfo: ok ? typeInfo : null,
       timings: {
         diagnosticsMs,
         lowerMs,

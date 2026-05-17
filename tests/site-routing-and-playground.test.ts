@@ -244,14 +244,18 @@ describe('site routing and playground integration', () => {
     expect(playgroundController).toContain('lastCompiledTarget');
     expect(playgroundController).toContain('runtimeStatus');
     expect(playgroundController).toContain('refreshPreview');
+    expect(playgroundController).toContain('renderTypesPanel');
+    expect(playgroundController).toContain('copy-types-json-button');
     expect(playgroundController).toContain('createRuntimeModuleSession');
     expect(playgroundController).toContain('status-last-target');
     expect(playgroundController).toContain('status-runtime');
     expect(playgroundController).toContain('status-preview');
     expect(playgroundController).toContain("setHidden('run-panel'");
     expect(playgroundController).toContain("setHidden('ui-panel'");
+    expect(playgroundController).toContain("setHidden('types-panel'");
     expect(playgroundDiagnostics).toContain('diagnostics-root');
     expect(playgroundApp).toContain('statusbar');
+    expect(playgroundState).toContain('typeInfo');
     expect(playgroundState).not.toContain('PlaygroundProject');
     expect(playgroundState).not.toContain('Workspace');
     expect(playgroundState).not.toContain('RoutePreview');

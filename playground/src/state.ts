@@ -1,4 +1,4 @@
-import type { CompileDiagnostic, CompileResult } from './compiler-bridge';
+import type { CompileDiagnostic, CompileResult, PlaygroundTypeInfo } from './compiler-bridge';
 
 export type CompileTarget = 'js' | 'wasm' | 'both';
 export type CompileMode = 'check' | 'run' | 'format';
@@ -15,6 +15,7 @@ export type PlaygroundState = {
   activeTab: OutputTab;
   activeExample: string | null;
   compileResult: CompileResult | null;
+  typeInfo: PlaygroundTypeInfo | null;
   compileStatus: CompileStatus;
   runtimeStatus: RuntimeStatus;
   runtimeMessage: string | null;
@@ -40,6 +41,7 @@ export const defaultState: PlaygroundState = {
   activeTab: 'js',
   activeExample: 'basics',
   compileResult: null,
+  typeInfo: null,
   compileStatus: 'idle',
   runtimeStatus: 'idle',
   runtimeMessage: null,

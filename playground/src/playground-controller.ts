@@ -16,6 +16,13 @@ import {
   type PreviewStatus,
   type RuntimeStatus,
 } from './state';
+import {
+  renderTypeInfoTables,
+  renderTypesEmptyState,
+  typeInfoToJson,
+  typeRowLocation,
+  type TypeFilter,
+} from './types-view';
 
 type MountEditor = (options: { elementId: string; initialValue: string }) => void;
 type GetEditorText = (elementId: string) => string;
@@ -190,6 +197,7 @@ const buildCompileFailure = (message: string, action: 'check' | 'run', target: C
   graphNodes: 0,
   importResolutions: [],
   timings: { diagnosticsMs: 0, lowerMs: 0, codegenMs: 0, moduleGraphMs: 0, wasmWatMs: 0, wasmBinaryMs: 0, totalMs: 0 },
+  typeInfo: null,
 });
 
 const initialState = (): PlaygroundState => {
@@ -237,6 +245,7 @@ export const startPlayground = async (): Promise<void> => {
   let previewSequence = 0;
   let programmaticSourceChange = false;
   let readableJs = true;
+  let typeFilter: TypeFilter = 'all';
   let runOutput = 'Run the program to see output.';
   let previewSession: PreviewSession | null = null;
   let selectedDiagnosticIndex: number | null = null;
@@ -368,6 +377,41 @@ export const startPlayground = async (): Promise<void> => {
     }
   };
 
+  const renderTypesPanel = (state: PlaygroundState): void => {
+    const typeInfo = state.typeInfo;
+    const empty = document.getElementById('types-empty-state');
+    const content = document.getElementById('types-content-root');
+    const declarationsRoot = document.getElementById('types-declarations-root');
+    const expressionsRoot = document.getElementById('types-expressions-root');
+    const copyButton = document.getElementById('copy-types-json-button') as HTMLButtonElement | null;
+
+    document.querySelectorAll<HTMLElement>('[data-type-filter]').forEach((button) => {
+      button.dataset.active = String(button.dataset.typeFilter === typeFilter);
+    });
+
+    if (!typeInfo) {
+      if (empty) {
+        empty.innerHTML = renderTypesEmptyState();
+        empty.toggleAttribute('hidden', false);
+      }
+      content?.toggleAttribute('hidden', true);
+      if (copyButton) copyButton.disabled = true;
+      setText('types-footer-counts', '0 declarations · 0 expression types');
+      return;
+    }
+
+    const rendered = renderTypeInfoTables(typeInfo, typeFilter);
+    if (empty) {
+      empty.innerHTML = '';
+      empty.toggleAttribute('hidden', true);
+    }
+    content?.toggleAttribute('hidden', false);
+    if (declarationsRoot) declarationsRoot.innerHTML = rendered.declarationsHtml;
+    if (expressionsRoot) expressionsRoot.innerHTML = rendered.expressionsHtml;
+    if (copyButton) copyButton.disabled = false;
+    setText('types-footer-counts', rendered.footerText);
+  };
+
   const renderState = (state: PlaygroundState): void => {
     const diagnostics = diagnosticsFor(state);
     const counts = diagnosticCounts(diagnostics);
@@ -408,6 +452,7 @@ export const startPlayground = async (): Promise<void> => {
     setText('minify-js-button', readableJs ? 'Readable' : 'Minified');
     renderWasmPanel(state);
     renderPreviewPanel(state);
+    renderTypesPanel(state);
 
     renderDiagnostics(diagnostics, state.diagnosticsOpen);
     renderExplainDrawer(selectedDiagnostic);
@@ -458,6 +503,7 @@ export const startPlayground = async (): Promise<void> => {
       }
       store.set({
         compileResult: result,
+        typeInfo: result.typeInfo,
         compileStatus: result.ok ? 'done' : 'error',
         checkTimeMs: mode === 'check' ? result.timings.totalMs : store.get().checkTimeMs,
         runTimeMs: mode === 'run' ? result.timings.totalMs : store.get().runTimeMs,
@@ -473,6 +519,7 @@ export const startPlayground = async (): Promise<void> => {
         compileStatus: 'error',
         ...(mode === 'run' ? { runtimeStatus: 'idle' as const, runtimeMessage: 'Run blocked by compile failure.' } : {}),
         compileResult: buildCompileFailure(error instanceof Error ? error.message : String(error), mode === 'run' ? 'run' : 'check', target),
+        typeInfo: null,
         diagnosticsOpen: true,
       });
       return null;
@@ -504,6 +551,7 @@ export const startPlayground = async (): Promise<void> => {
       ...patch,
       source: nextSource,
       activeExample,
+      typeInfo: null,
       cursorLine: 1,
       cursorCol: 1,
     });
@@ -590,6 +638,7 @@ export const startPlayground = async (): Promise<void> => {
       if (signal.aborted || requestId !== compileSequence) return null;
       store.set({
         compileResult: result,
+        typeInfo: result.typeInfo,
         compileStatus: result.ok ? 'done' : 'error',
         diagnosticsOpen: result.diagnostics.length > 0,
       });
@@ -604,6 +653,7 @@ export const startPlayground = async (): Promise<void> => {
           'run',
           'js'
         ),
+        typeInfo: null,
         diagnosticsOpen: true,
       });
       return null;
@@ -710,6 +760,7 @@ export const startPlayground = async (): Promise<void> => {
     disposePreview();
     store.set({
       source,
+      typeInfo: null,
       activeExample: exampleIdentityFor(source),
       cursorLine: cursor.line,
       cursorCol: cursor.column,
@@ -774,6 +825,38 @@ export const startPlayground = async (): Promise<void> => {
 
   document.querySelectorAll<HTMLElement>('[data-output-tab]').forEach((button) => {
     button.addEventListener('click', () => store.set({ activeTab: button.dataset.outputTab as OutputTab }));
+  });
+
+  document.querySelectorAll<HTMLElement>('[data-type-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const next = button.dataset.typeFilter;
+      if (next === 'all' || next === 'functions' || next === 'variables' || next === 'types') {
+        typeFilter = next;
+        renderState(store.get());
+      }
+    });
+  });
+
+  document.getElementById('copy-types-json-button')?.addEventListener('click', () => {
+    const typeInfo = store.get().typeInfo;
+    if (!typeInfo) return;
+    void navigator.clipboard?.writeText(typeInfoToJson(typeInfo));
+  });
+
+  document.addEventListener('click', (event) => {
+    const row = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-type-row]') : null;
+    const location = row ? typeRowLocation(row.dataset) : null;
+    if (!location) return;
+    focusEditorLocation(editorId, location.line, location.column);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    const row = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-type-row]') : null;
+    if (!row || (event.key !== 'Enter' && event.key !== ' ')) return;
+    const location = typeRowLocation(row.dataset);
+    if (!location) return;
+    event.preventDefault();
+    focusEditorLocation(editorId, location.line, location.column);
   });
 
   document.getElementById('diagnostics-toggle')?.addEventListener('click', () =>

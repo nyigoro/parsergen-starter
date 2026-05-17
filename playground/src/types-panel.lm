@@ -1,12 +1,54 @@
-import { vnode, text, props_class, props_id, props_merge } from "@std/render";
+import {
+  vnode,
+  text,
+  props_class,
+  props_id,
+  props_type,
+  props_attr,
+  props_merge
+} from "@std/render";
 
-fn attrs2(left: any, right: any) -> any {
-  props_merge(left, right)
+fn attrs3(first: any, second: any, third: any) -> any {
+  props_merge(props_merge(first, second), third)
+}
+
+fn filter_button(id: string, label: string, filter: string) -> VNode {
+  vnode(
+    "button",
+    attrs3(
+      props_class("tool-button secondary type-filter-button"),
+      props_id(id),
+      props_merge(props_type("button"), props_attr("data-type-filter", filter))
+    ),
+    [text(label)]
+  )
 }
 
 pub fn types_panel() -> VNode {
-  vnode("section", attrs2(props_class("panel stack-sm"), props_id("types-panel")), [
-    vnode("div", props_class("panel-title"), [text("Types")]),
-    vnode("p", props_class("empty-state"), [text("Type inspection is a Phase 1 placeholder.")])
+  vnode("section", attrs3(props_class("panel stack-sm types-panel"), props_id("types-panel"), props_attr("aria-label", "Types")), [
+    vnode("div", props_class("panel-heading-row"), [
+      vnode("div", props_class("panel-title"), [text("Types")]),
+      vnode("button", attrs3(props_class("tool-button secondary"), props_id("copy-types-json-button"), props_type("button")), [text("Copy JSON")])
+    ]),
+    vnode("div", attrs3(props_class("types-filter-row"), props_id("types-filter-row"), props_attr("aria-label", "Declaration filters")), [
+      filter_button("types-filter-all", "All", "all"),
+      filter_button("types-filter-functions", "Functions", "functions"),
+      filter_button("types-filter-variables", "Variables", "variables"),
+      filter_button("types-filter-types", "Types", "types")
+    ]),
+    vnode("div", attrs3(props_class("types-empty-state"), props_id("types-empty-state"), props_attr("role", "status")), []),
+    vnode("div", attrs3(props_class("types-content-root stack-sm"), props_id("types-content-root"), props_attr("hidden", "true")), [
+      vnode("section", props_class("types-section stack-sm"), [
+        vnode("div", props_class("panel-title"), [text("Declarations")]),
+        vnode("div", attrs3(props_class("types-table-wrap"), props_id("types-declarations-root"), props_attr("aria-live", "polite")), [])
+      ]),
+      vnode("section", props_class("types-section stack-sm"), [
+        vnode("div", props_class("panel-title"), [text("Expression Types")]),
+        vnode("div", attrs3(props_class("types-table-wrap"), props_id("types-expressions-root"), props_attr("aria-live", "polite")), [])
+      ]),
+      vnode("div", props_class("types-footer"), [
+        vnode("span", props_id("types-footer-counts"), [text("0 declarations · 0 expression types")])
+      ])
+    ])
   ])
 }

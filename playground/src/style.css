@@ -1282,6 +1282,141 @@ button {
   overflow: auto;
 }
 
+.types-panel {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 0.625rem;
+}
+
+.types-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.types-content-root {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.types-section {
+  min-width: 0;
+}
+
+.types-table-wrap {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid #303641;
+  border-radius: 8px;
+  background: #0b0d10;
+}
+
+.types-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #dbe4ef;
+  font-size: 0.84rem;
+}
+
+.types-table th,
+.types-table td {
+  padding: 0.58rem 0.7rem;
+  border-bottom: 1px solid #222833;
+  text-align: left;
+  vertical-align: top;
+}
+
+.types-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #11161d;
+  color: #9aa4b2;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.types-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.types-table code,
+.types-hint-code {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.type-kind-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #151a21;
+  color: #a7f3d0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.type-kind-badge[data-kind='variable'] {
+  color: #bfdbfe;
+}
+
+.type-kind-badge[data-kind='type'] {
+  color: #fde68a;
+}
+
+.type-expression-row {
+  cursor: pointer;
+}
+
+.type-expression-row:hover,
+.type-expression-row:focus {
+  background: #151c25;
+  outline: none;
+}
+
+.type-expression-row:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: -2px;
+}
+
+.types-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: #9aa4b2;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.types-empty-card {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.types-hint-code {
+  margin: 0;
+  padding: 0.75rem;
+  overflow: auto;
+  border: 1px solid #303641;
+  border-radius: 8px;
+  background: #0b0d10;
+  color: #c4b5fd;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.types-hint-copy {
+  margin: 0;
+  color: #9aa4b2;
+  font-size: 0.82rem;
+}
+
 .wasm-content {
   min-height: 0;
 }

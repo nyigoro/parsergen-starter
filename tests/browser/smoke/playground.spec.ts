@@ -196,6 +196,32 @@ test.describe('playground browser smoke', () => {
     }
   });
 
+  test('renders inferred types and focuses editor from expression rows', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+      await page.goto(`${server.baseUrl}/playground/?example=basics`);
+      await waitForCompile(page);
+      await page.click('#output-tab-types');
+      await expect(page.locator('#types-panel')).toContainText('Declarations');
+      await expect(page.locator('#types-declarations-root')).toContainText('main');
+      await expect(page.locator('#types-footer-counts')).not.toContainText('0 declarations');
+
+      const row = page.locator('[data-type-row="expression"]').first();
+      await expect(row).toBeVisible();
+      const line = Number(await row.getAttribute('data-type-line'));
+      const column = Number(await row.getAttribute('data-type-col'));
+      await row.click();
+      await expect.poll(async () => readEditorCursor(page)).toMatchObject({ line, column });
+
+      await page.click('#copy-types-json-button');
+      const copied = await page.evaluate(() => navigator.clipboard.readText());
+      expect(JSON.parse(copied)).toMatchObject({ sourceUri: 'virtual://main.lm' });
+    } finally {
+      await server.close();
+    }
+  });
+
   test('renders isolated UI preview with refresh, device, and auto controls', async ({ page }) => {
     const server = await startSmokeServer();
     try {
