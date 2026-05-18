@@ -35,6 +35,8 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
+      - run: npm --prefix demo ci
+      - run: npm run web:build
       - run: sudo apt-get update && sudo apt-get install -y wabt
       - run: npx playwright install --with-deps chromium
       - run: mkdir -p .tmp/dom-render-benchmark
