@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Playground:** Run now detects DOM-mounted UI sources and guides users to the UI tab instead of surfacing the low-level worker-only `document-like object` runtime error.
 - **Playground:** Added syntax-highlighted read-only JS and WAT output viewers while preserving copy, download, readable/minified, and WASM artifact actions.
 - **Playground:** Polished the WASM tab with summary metrics, section explanations, clearer empty/error/loading states, and deepened the Types tab with expression filters, selected-row feedback, and clearer learning copy.
 - **Playground:** Polished UI Preview and Run lifecycle states with clearer empty/loading/success/error surfaces, preview timeout recovery, stale-output reset behavior, and more precise compile/runtime/preview status wording.

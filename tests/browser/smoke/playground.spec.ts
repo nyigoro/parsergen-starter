@@ -175,6 +175,32 @@ test.describe('playground browser smoke', () => {
     }
   });
 
+  test('guides DOM UI examples to the UI tab instead of failing worker Run', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      for (const exampleId of ['counter', 'reactive-greeting']) {
+        await page.goto(`${server.baseUrl}/playground/?example=${exampleId}`);
+        await waitForCompile(page);
+        await page.click('#run-button');
+        await expect(page.locator('#status-runtime')).toContainText('Use UI tab');
+        await expect(page.locator('#runtime-status-label')).toContainText('Use UI tab');
+        await expect(page.locator('#runtime-message-label')).toContainText('render it in the UI tab');
+        await expect(page.locator('#run-output-root')).toContainText('This source mounts browser UI');
+        await expect(page.locator('#run-output-root')).toContainText('Open the UI tab and press Refresh');
+        await expect(page.locator('#run-output-root')).not.toContainText('DOM renderer requires a document-like object');
+
+        await page.click('#output-tab-ui');
+        await page.click('#preview-refresh-button');
+        await expect
+          .poll(async () => (await page.locator('#preview-status-label').textContent())?.trim() ?? '')
+          .toBe('Rendered');
+        await expect(page.locator('#preview-overlay')).toBeHidden();
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
   test('keeps output tab bodies single-purpose', async ({ page }) => {
     const server = await startSmokeServer();
     try {

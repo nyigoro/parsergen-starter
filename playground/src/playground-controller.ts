@@ -43,7 +43,7 @@ type FocusEditorLocation = (elementId: string, line: number, column?: number) =>
 type GetEditorCursor = (elementId: string) => { line: number; column: number } | null;
 type OnEditorChange = (elementId: string, handler: (value: string) => void) => () => void;
 type ApplyEditorSettings = (settings: Partial<PlaygroundSettings>) => void;
-type RunResult = { output: string; status: 'ok' | 'timeout' | 'error' | 'cancelled' };
+type RunResult = { output: string; status: 'ok' | 'timeout' | 'error' | 'cancelled' | 'blocked'; message?: string };
 type RuntimeModuleSession = {
   entryUrl: string;
   cleanup: () => void;
@@ -79,6 +79,7 @@ const runtimeLabels: Record<RuntimeStatus, string> = {
   running: 'Running',
   ok: 'Passed',
   error: 'Runtime error',
+  blocked: 'Use UI tab',
 };
 const previewLabels: Record<PreviewStatus, string> = {
   idle: 'Idle',
@@ -147,6 +148,15 @@ const relativeTimestamp = (value: number | null): string => {
 const sourceLooksPreviewable = (source: string): boolean =>
   /\b(vnode|mount_reactive|createDomRenderer|renderApp|render_to_dom)\b/.test(source) ||
   source.includes('@std/render');
+
+const sourceRequiresDocumentRuntime = (source: string): boolean =>
+  /\b(dom_get_element_by_id|createDomRenderer|mount_reactive|hydrate_reactive|mountApp|hydrateApp)\b/.test(source) ||
+  /\brender\.(dom_get_element_by_id|createDomRenderer|mount_reactive|hydrate_reactive|mountApp|hydrateApp)\b/.test(source);
+
+const uiRunGuidance = `This source mounts browser UI and needs a document-backed runtime.
+Open the UI tab and press Refresh to render it.
+
+Run executes non-DOM code in an isolated worker, so it does not provide document or DOM APIs.`;
 
 const safeScriptJson = (value: unknown): string => JSON.stringify(value).replaceAll('</', '<\\/');
 
@@ -850,6 +860,17 @@ export const startPlayground = async (): Promise<void> => {
       };
     }
 
+    if (sourceRequiresDocumentRuntime(store.get().source)) {
+      return {
+        output:
+          target === 'both' && result.wasm
+            ? `${uiRunGuidance}\n\nGenerated WASM artifact (${bytes(result.wasm.byteSize)}).`
+            : uiRunGuidance,
+        status: 'blocked',
+        message: 'This source mounts browser UI; render it in the UI tab.',
+      };
+    }
+
     const jsRun = await runCompiledModule(result, signal);
     if (target === 'both') {
       return {
@@ -885,8 +906,13 @@ export const startPlayground = async (): Promise<void> => {
 
     const controller = new AbortController();
     activeRun = controller;
-    runOutput = target === 'wasm' ? 'Generating WASM artifact...' : 'Executing in an isolated runtime...';
-    store.set({ activeTab: 'run', runtimeStatus: 'running', runtimeMessage: 'Executing in a clean runtime.' });
+    const needsUiRuntime = target !== 'wasm' && sourceRequiresDocumentRuntime(store.get().source);
+    runOutput = target === 'wasm' ? 'Generating WASM artifact...' : needsUiRuntime ? 'Preparing UI guidance...' : 'Executing in an isolated runtime...';
+    store.set({
+      activeTab: 'run',
+      runtimeStatus: 'running',
+      runtimeMessage: needsUiRuntime ? 'Checking whether this source needs the UI preview runtime.' : 'Executing in a clean runtime.',
+    });
     renderState(store.get());
 
     const output = await executeTargetRun(result, target, controller.signal);
@@ -895,8 +921,10 @@ export const startPlayground = async (): Promise<void> => {
     runOutput = output.output;
     store.set({
       activeTab: 'run',
-      runtimeStatus: output.status === 'ok' ? 'ok' : 'error',
-      runtimeMessage: output.status === 'ok' ? 'Run completed in a fresh session.' : 'Runtime failed. See output below.',
+      runtimeStatus: output.status === 'ok' ? 'ok' : output.status === 'blocked' ? 'blocked' : 'error',
+      runtimeMessage:
+        output.message ??
+        (output.status === 'ok' ? 'Run completed in a fresh session.' : 'Runtime failed. See output below.'),
       lastRunAt: Date.now(),
     });
   };

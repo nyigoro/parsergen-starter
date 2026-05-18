@@ -725,6 +725,16 @@ button {
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
 }
 
+.stat-value[data-status='blocked'] {
+  color: #bfdbfe;
+}
+
+.stat-value[data-status='blocked']::before,
+.small-pill[data-status='blocked']::before {
+  background: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+}
+
 .stat-value[data-status='rendering'] {
   color: #fbbf24;
 }
@@ -1614,6 +1624,10 @@ button {
 
 #runtime-status-label[data-status='running'] {
   color: #fbbf24;
+}
+
+#runtime-status-label[data-status='blocked'] {
+  color: #bfdbfe;
 }
 
 #runtime-message-label {
