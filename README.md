@@ -8,6 +8,8 @@ Most languages make you choose: safety or the web. Lumina doesn't.
 
 Lumina is a statically typed, web-native language with HM type inference, algebraic types, and trait-based polymorphism, compiled to JavaScript and WebAssembly. It ships first-class `js`, `wasm-web`, and `wasm-standalone` target profiles so you can keep browser and platform glue on JS while pushing shared systems code to WASM.
 
+The docs are the main learning surface. The playground is the lab: a single-source editor with curated examples, JS/WASM output, runtime execution, UI Preview, inferred Types, and polished diagnostics.
+
 ## At a Glance
 
 ```lumina
@@ -70,10 +72,10 @@ lumina repl
 
 ## Product Structure
 
-- `demo/` currently serves as the Lumina-native marketing site that will be renamed to `site/` in the cleanup pass
-- `docs-content/` is the markdown source tree for the docs portal while `docs/` stays free for static publishing output
-- `docs-site/` is the on-site documentation portal shell backed by prerendered markdown data
-- `playground/` is the focused interactive playground app where the editor and compiler experience will live
+- `demo/` serves the Lumina-native marketing/site shell
+- `docs-content/` is the markdown source tree for the docs portal
+- `docs-site/` is the on-site documentation app backed by generated markdown data
+- `playground/` is the focused single-source playground app
 - `docs/` is the generated GitHub Pages output and should be rebuilt, not edited by hand
 - `src/` contains the compiler, runtime, LSP, and stdlib implementation
 
@@ -99,7 +101,11 @@ lumina repl
 - `lumina repl` with multiline input, history, and persistent declarations
 - `js`, `wasm-web`, and `wasm-standalone` targets
 - Direct `.wasm` emission with optional `--emit-wat` debug output
-- Reactive UI runtime and browser demo
+- Reactive UI runtime, browser preview examples, and DOM-aware guidance in the playground
+- Playground Types tab for HM declaration and expression inference
+- JS and WASM tabs with highlighted generated output, WAT, binary metrics, copy, and download actions
+- Diagnostics tab with click-to-jump rows and educational explain content
+- Embed-ready playground links for docs, tutorials, and blog posts
 - `lumina-lsp` plus a VS Code extension
 
 ## Docs
@@ -119,6 +125,20 @@ lumina repl
 npm install
 npm run build
 npm run lint:check
+npm test
+```
+
+Requires Node.js `>=22.17.0`.
+
+Full local verification mirrors CI:
+
+```bash
+npm run typecheck
+npm run lint:check
+npm run build
+npm run build:verify
+npm run web:build
+npm run test:browser:smoke
 npm test
 ```
 
@@ -148,6 +168,7 @@ Important notes:
 
 - Edit markdown docs in `docs-content/`, not `docs/`
 - Edit the docs shell in `docs-site/`
+- Edit the playground shell in `playground/`
 - `docs/` is the generated GitHub Pages output
 
 ## Project Files
@@ -155,6 +176,7 @@ Important notes:
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 - [Support](SUPPORT.md)
+- [Contact](docs-content/CONTACT.md)
 - [Changelog](CHANGELOG.md)
 
 ## License
