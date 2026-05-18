@@ -54,6 +54,13 @@ describe('Runtime stdlib extra modules', () => {
     const iso = time.nowIso();
     expect(Number.isNaN(Date.parse(iso))).toBe(false);
 
+    expect(time.localDate()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(time.localTime()).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+    expect(time.localClockMs()).toBeGreaterThanOrEqual(0);
+    expect(time.localClockMs()).toBeLessThan(24 * 60 * 60 * 1000);
+    expect(typeof time.timeZone()).toBe('string');
+    expect(time.timeZone().length).toBeGreaterThan(0);
+
     const start = time.instantNow();
     await time.sleep(8);
     const elapsed = time.elapsedMs(start);

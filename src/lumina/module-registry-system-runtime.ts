@@ -300,6 +300,22 @@ export function createStdSystemRuntimeDomainModules(): Pick<StdDomainModules,
         moduleFunction('nowIso', [], 'string', [], primitive('string'), [], 'std://time'),
       ],
       [
+        'localDate',
+        moduleFunction('localDate', [], 'string', [], primitive('string'), [], 'std://time'),
+      ],
+      [
+        'localTime',
+        moduleFunction('localTime', [], 'string', [], primitive('string'), [], 'std://time'),
+      ],
+      [
+        'localClockMs',
+        moduleFunction('localClockMs', [], 'int', [], primitive('int'), [], 'std://time'),
+      ],
+      [
+        'timeZone',
+        moduleFunction('timeZone', [], 'string', [], primitive('string'), [], 'std://time'),
+      ],
+      [
         'instantNow',
         moduleFunction('instantNow', [], 'int', [], primitive('int'), [], 'std://time'),
       ],

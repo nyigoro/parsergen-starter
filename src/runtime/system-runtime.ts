@@ -33,6 +33,28 @@ type SystemRuntimeDeps = {
   getEnumPayload: (value: LuminaEnumLike) => unknown;
 };
 
+const padTimePart = (value: number): string => String(Math.trunc(value)).padStart(2, '0');
+
+const localDateString = (date: Date): string =>
+  `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())}`;
+
+const localTimeString = (date: Date): string =>
+  `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}`;
+
+const localClockMs = (date: Date): number =>
+  date.getHours() * 60 * 60 * 1000 +
+  date.getMinutes() * 60 * 1000 +
+  date.getSeconds() * 1000 +
+  date.getMilliseconds();
+
+const localTimeZoneName = (): string => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time';
+  } catch {
+    return 'Local time';
+  }
+};
+
 interface OpfsFileLike {
   size: number;
   lastModified: number;
@@ -955,6 +977,10 @@ export const createSystemRuntime = (deps: SystemRuntimeDeps) => {
   const time = {
     nowMs: () => Math.trunc(Date.now()),
     nowIso: () => new Date().toISOString(),
+    localDate: () => localDateString(new Date()),
+    localTime: () => localTimeString(new Date()),
+    localClockMs: () => Math.trunc(localClockMs(new Date())),
+    timeZone: () => localTimeZoneName(),
     instantNow: () => Math.trunc(getMonotonicNow()),
     elapsedMs: (since: number) => Math.max(0, Math.trunc(getMonotonicNow()) - Math.trunc(since)),
     sleep: async (ms: number) =>

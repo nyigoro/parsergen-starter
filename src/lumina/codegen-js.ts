@@ -262,7 +262,7 @@ class JSGenerator {
       );
       this.builder.append('\n');
       this.builder.append(
-        'const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };'
+        'const __lumina_pad_time = (value) => String(Math.trunc(value)).padStart(2, "0"); const __lumina_local_date = (date) => `${date.getFullYear()}-${__lumina_pad_time(date.getMonth() + 1)}-${__lumina_pad_time(date.getDate())}`; const __lumina_local_time = (date) => `${__lumina_pad_time(date.getHours())}:${__lumina_pad_time(date.getMinutes())}:${__lumina_pad_time(date.getSeconds())}`; const __lumina_local_clock_ms = (date) => date.getHours() * 3600000 + date.getMinutes() * 60000 + date.getSeconds() * 1000 + date.getMilliseconds(); const __lumina_time_zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time"; } catch { return "Local time"; } }; const time = { nowMs: () => Date.now(), nowIso: () => new Date().toISOString(), localDate: () => __lumina_local_date(new Date()), localTime: () => __lumina_local_time(new Date()), localClockMs: () => Math.trunc(__lumina_local_clock_ms(new Date())), timeZone: () => __lumina_time_zone(), instantNow: () => Date.now(), elapsedMs: (since) => Math.max(0, Date.now() - since), sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.trunc(ms)))) };'
       );
       this.builder.append('\n');
       this.builder.append('const channel = { new: () => ({ sender: {}, receiver: {} }) };');

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Playground:** Added a Clock + Time Reactive UI example with viewer-local date/time output and a live wall clock driven by timer-updated Signals.
+- **Playground:** Tightened the Reactive UI example progression by pruning redundant/low-signal UI catalog entries while keeping legacy links routed to the stronger Counter example.
+- **Stdlib:** Added `time.localDate()`, `time.localTime()`, `time.localClockMs()`, and `time.timeZone()` helpers for viewer-local/browser-local time displays.
 - **Playground:** Added Tabs, Forms + Resource, and UI Showcase examples as Reactive UI catalog entries that open in the UI Preview tab by default.
 - **Playground:** Classified Advanced thread/channel examples as host-runtime patterns with JS-first defaults and Run guidance, avoiding misleading nested-worker `NaN` output.
 - **Playground:** Run now detects DOM-mounted UI sources and guides users to the UI tab instead of surfacing the low-level worker-only `document-like object` runtime error.

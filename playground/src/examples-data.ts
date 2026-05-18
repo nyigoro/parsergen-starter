@@ -181,28 +181,96 @@ pub fn main() -> void {
 
 main();
 `;
-const reactiveGreetingSource = `import { render } from "@std";
+const clockTimePreviewSource = `import { render, str, time } from "@std";
 import { createSignal } from "@std/reactive";
 import { createDomRenderer, dom_get_element_by_id, mount_reactive } from "@std/render";
 
-fn greetingView(name: Signal<string>) -> VNode {
+fn hourAngle(ms: int) -> int {
+  ms / 120000
+}
+
+fn minuteAngle(ms: int) -> int {
+  ms / 10000
+}
+
+fn secondAngle(ms: int) -> int {
+  (ms / 1000) * 6
+}
+
+fn handStyle(angle: int) -> string {
+  str.concat("transform: translateX(-50%) rotate(", str.concat(str.from_int(angle), "deg);"))
+}
+
+fn handProps(className: string, angle: int) -> any {
+  render.props_merge(render.props_class(className), render.props_style(handStyle(angle)))
+}
+
+fn refreshClock(dateText: Signal<string>, timeText: Signal<string>, ms: Signal<int>, ticks: Signal<i32>) -> void {
+  let _ = render.set(dateText, time.localDate());
+  let _ = render.set(timeText, time.localTime());
+  let _ = render.set(ms, time.localClockMs());
+  let _ = render.set(ticks, render.get(ticks) + 1)
+}
+
+async fn runClock(dateText: Signal<string>, timeText: Signal<string>, ms: Signal<int>, ticks: Signal<i32>) -> void {
+  while (true) {
+    await time.sleep(1000);
+    refreshClock(dateText, timeText, ms, ticks)
+  }
+}
+
+fn clockView(dateText: Signal<string>, timeText: Signal<string>, zoneText: string, ms: Signal<int>, ticks: Signal<i32>) -> VNode {
+  let millis = render.get(ms);
   render.element("main", render.props_class("play-surface play-surface-blue"), [
     render.element("section", render.props_class("play-shell compact"), [
-      render.element("p", render.props_class("play-eyebrow blue"), [render.text("Reactive greeting")]),
-      render.element("h1", render.props_class("play-title"), [render.text("Hello {render.get(name)}")]),
+      render.element("p", render.props_class("play-eyebrow blue"), [render.text("Clock + time")]),
+      render.element("h1", render.props_class("play-title"), [render.text("Live wall clock")]),
       render.element("p", render.props_class("play-copy"), [
-        render.text("Swap the signal value and the preview updates without remounting the shell.")
+        render.text("The preview reads the viewer's local timezone, then drives digital date/time and all three analog hands from local time.")
       ]),
-      render.element("div", render.props_class("play-row"), [
-        render.element("button", render.props_on_click(fn() -> void {
-          let _ = render.set(name, "Lumina")
-        }), [render.text("Lumina")]),
-        render.element("button", render.props_on_click(fn() -> void {
-          let _ = render.set(name, "Ada")
-        }), [render.text("Ada")]),
-        render.element("button", render.props_on_click(fn() -> void {
-          let _ = render.set(name, "Grace")
-        }), [render.text("Grace")])
+      render.element("article", render.props_class("clock-card"), [
+        render.element("div", render.props_class("clock-card-head"), [
+          render.element("p", render.props_class("play-metric-label"), [render.text("Viewer-local time")]),
+          render.element("span", render.props_class("clock-chip"), [render.text("Auto refresh: 1s")])
+        ]),
+        render.element("div", render.props_class("clock-board"), [
+          render.element("div", render.props_class("clock-face"), [
+            render.element("span", render.props_class("clock-mark top"), [render.text("12")]),
+            render.element("span", render.props_class("clock-mark right"), [render.text("3")]),
+            render.element("span", render.props_class("clock-mark bottom"), [render.text("6")]),
+            render.element("span", render.props_class("clock-mark left"), [render.text("9")]),
+            render.element("span", handProps("clock-hand hour", hourAngle(millis)), []),
+            render.element("span", handProps("clock-hand minute", minuteAngle(millis)), []),
+            render.element("span", handProps("clock-hand second", secondAngle(millis)), []),
+            render.element("span", render.props_class("clock-center"), [])
+          ]),
+          render.element("div", render.props_class("clock-grid"), [
+            render.element("p", render.props_class("clock-part"), [
+              render.element("span", render.props_class("clock-label"), [render.text("date:")]),
+              render.element("strong", render.props_class("clock-value"), [render.text(render.get(dateText))])
+            ]),
+            render.element("p", render.props_class("clock-part"), [
+              render.element("span", render.props_class("clock-label"), [render.text("time:")]),
+              render.element("strong", render.props_class("clock-value"), [render.text(render.get(timeText))])
+            ]),
+            render.element("p", render.props_class("clock-part"), [
+              render.element("span", render.props_class("clock-label"), [render.text("timezone:")]),
+              render.element("strong", render.props_class("clock-value small"), [render.text(zoneText)])
+            ]),
+            render.element("p", render.props_class("clock-legend"), [
+              render.text("short hand: hour · long hand: minutes · longest hand: seconds")
+            ])
+          ])
+        ]),
+        render.element("div", render.props_class("clock-status-row"), [
+          render.element("span", render.props_class("clock-chip muted"), [
+            render.text("Signal writes: "),
+            render.text(render.get(ticks))
+          ]),
+          render.element("button", render.props_on_click(fn() -> void {
+            refreshClock(dateText, timeText, ms, ticks)
+          }), [render.text("Refresh now")])
+        ])
       ])
     ])
   ])
@@ -211,33 +279,13 @@ fn greetingView(name: Signal<string>) -> VNode {
 pub fn main() -> void {
   let container = dom_get_element_by_id("app");
   let renderer = createDomRenderer();
-  let name = createSignal("Lumina");
-  let _mounted = mount_reactive(renderer, container, || greetingView(name));
-}
-
-main();
-`;
-const domListSource = `import {
-  vnode,
-  text,
-  createDomRenderer,
-  mount_reactive,
-  props_empty,
-  dom_get_element_by_id
-} from "@std/render";
-
-fn listView() -> VNode {
-  vnode("ul", props_empty(), [
-    vnode("li", props_empty(), [text("Signals")]),
-    vnode("li", props_empty(), [text("Types")]),
-    vnode("li", props_empty(), [text("WASM")])
-  ])
-}
-
-pub fn main() -> void {
-  let container = dom_get_element_by_id("app");
-  let renderer = createDomRenderer();
-  let _mounted = mount_reactive(renderer, container, || listView());
+  let dateText = createSignal(time.localDate());
+  let timeText = createSignal(time.localTime());
+  let zoneText = time.timeZone();
+  let ms = createSignal(time.localClockMs());
+  let ticks = createSignal(0);
+  let _clock = runClock(dateText, timeText, ms, ticks);
+  let _mounted = mount_reactive(renderer, container, || clockView(dateText, timeText, zoneText, ms, ticks));
 }
 
 main();
@@ -439,6 +487,8 @@ main();
 
 const exampleAliases: Record<string, string> = {
   'view-basic': 'counter',
+  'reactive-greeting': 'counter',
+  'dom-list': 'counter',
   results: 'safe-index',
 };
 
@@ -470,22 +520,21 @@ export const exampleGroups: ExampleGroup[] = [
   {
     id: 'REACTIVE_UI',
     label: 'Reactive UI',
-    description: 'Signals, reactive rendering, and DOM preview composition.',
+    description: 'A guided progression from simple Signals to app-like browser UI.',
     examples: [
-      example('REACTIVE_UI', 'counter', 'Counter', 'Signal-backed counter', counterPreviewSource, 'js', 'ui', true),
-      example('REACTIVE_UI', 'reactive-greeting', 'Reactive Greeting', 'Signal-driven text rendered into the preview', reactiveGreetingSource, 'js', 'ui'),
-      example('REACTIVE_UI', 'tabs', 'Tabs', 'Headless tabs rendered with reactive state and ARIA wiring', tabsPreviewSource, 'js', 'ui'),
-      example('REACTIVE_UI', 'forms-store-resource', 'Forms + Resource', 'Forms, draft state, and async resource UI in the preview', formsStoreResourcePreviewSource, 'js', 'ui'),
-      example('REACTIVE_UI', 'ui-showcase', 'UI Showcase', 'Styled headless UI composition rendered in the preview', uiShowcasePreviewSource, 'js', 'ui'),
+      example('REACTIVE_UI', 'counter', 'Counter', 'First contact with Signals and visible DOM updates', counterPreviewSource, 'js', 'ui', true),
+      example('REACTIVE_UI', 'clock-time', 'Clock + Time', 'Viewer-local date, time, timezone, and wall-clock Signals', clockTimePreviewSource, 'js', 'ui'),
+      example('REACTIVE_UI', 'tabs', 'Tabs', 'One Signal coordinates tab triggers, panels, and visible state', tabsPreviewSource, 'js', 'ui'),
+      example('REACTIVE_UI', 'forms-store-resource', 'Forms + Resource', 'Advanced form state, resources, keyed panels, and queue updates', formsStoreResourcePreviewSource, 'js', 'ui'),
+      example('REACTIVE_UI', 'ui-showcase', 'UI Showcase', 'Styled composition patterns for a polished preview surface', uiShowcasePreviewSource, 'js', 'ui'),
     ],
   },
   {
     id: 'WEB_NATIVE',
     label: 'Web Native',
-    description: 'WASM and browser-native DOM output.',
+    description: 'WASM and browser-native output targets.',
     examples: [
       example('WEB_NATIVE', 'wasm-hello', 'WASM', 'Math functions for web native output', wasmSource, 'wasm', 'wasm', true),
-      example('WEB_NATIVE', 'dom-list', 'DOM Mount', 'Mount browser-native DOM output from Lumina', domListSource, 'js', 'ui'),
     ],
   },
   {

@@ -178,7 +178,7 @@ test.describe('playground browser smoke', () => {
   test('guides DOM UI examples to the UI tab instead of failing worker Run', async ({ page }) => {
     const server = await startSmokeServer();
     try {
-      for (const exampleId of ['counter', 'reactive-greeting', 'tabs', 'forms-store-resource', 'ui-showcase']) {
+      for (const exampleId of ['counter', 'clock-time', 'tabs', 'forms-store-resource', 'ui-showcase']) {
         await page.goto(`${server.baseUrl}/playground/?example=${exampleId}`);
         await waitForCompile(page);
         await page.click('#run-button');
@@ -205,6 +205,16 @@ test.describe('playground browser smoke', () => {
           await expect(preview.locator('body')).toContainText('Summary stays keyed during hydration and panel swaps.');
           await preview.getByRole('button', { name: 'Rotate queue' }).click();
           await expect(preview.locator('body')).toContainText('Queue: review -> publish -> draft');
+        }
+
+        if (exampleId === 'clock-time') {
+          const preview = page.frameLocator('#preview-frame');
+          await expect(preview.locator('body')).toContainText('date:');
+          await expect(preview.locator('body')).toContainText('time:');
+          await expect(preview.locator('body')).toContainText('timezone:');
+          await expect(preview.locator('body')).toContainText('short hand: hour');
+          await expect(preview.locator('body')).toContainText('Auto refresh: 1s');
+          await expect(preview.locator('body')).toContainText('Signal writes:');
         }
       }
     } finally {
@@ -346,6 +356,8 @@ test.describe('playground browser smoke', () => {
       await expect(page.locator('#examples-browser-root')).toContainText('Reactive UI');
       await expect(page.locator('#examples-browser-root')).toContainText('HM inference');
       await expect(page.locator('#examples-browser-root')).toContainText('Featured');
+      await expect(page.locator('#examples-browser-root')).not.toContainText('Reactive Greeting');
+      await expect(page.locator('#examples-browser-root')).not.toContainText('DOM Mount');
       await page.locator('[data-example-id="counter"]').click();
       await waitForCompile(page);
       await expect(page.locator('#examples-current')).toContainText('Counter');
@@ -377,6 +389,12 @@ test.describe('playground browser smoke', () => {
       await selectExampleFromBrowser(page, 'counter');
       await expect(page.locator('#examples-current')).toContainText('Counter');
       await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+
+      await selectExampleFromBrowser(page, 'clock-time');
+      await expect(page.locator('#examples-current')).toContainText('Clock + Time');
+      await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#status-target')).toContainText('JS');
+      await expect.poll(async () => readEditorText(page)).toContain('time.localTime()');
 
       await selectExampleFromBrowser(page, 'tabs');
       await expect(page.locator('#examples-current')).toContainText('Tabs');

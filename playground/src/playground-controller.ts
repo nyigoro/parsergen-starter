@@ -1117,6 +1117,31 @@ export const startPlayground = async (): Promise<void> => {
     .play-number.violet { color: #7c3aed; }
     .play-shell > button { align-self: flex-start; border-color: #0f172a; background: #0f172a; color: white; }
     .play-shell > button:hover { background: #1e293b; }
+    .clock-card { background: #fff; border: 1px solid #bfdbfe; border-radius: 22px; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 14px; padding: 18px; }
+    .clock-card-head, .clock-status-row { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+    .clock-board { align-items: center; display: grid; gap: 18px; grid-template-columns: 190px 1fr; }
+    .clock-face { aspect-ratio: 1; background: radial-gradient(circle at 50% 45%, #fff 0%, #f8fafc 58%, #dbeafe 100%); border: 8px solid #1e3a8a; border-radius: 50%; box-shadow: inset 0 0 0 2px #bfdbfe, 0 18px 32px rgba(30, 64, 175, 0.16); box-sizing: border-box; position: relative; width: 190px; }
+    .clock-mark { color: #1e3a8a; font-size: 14px; font-weight: 900; position: absolute; }
+    .clock-mark.top { left: 50%; top: 12px; transform: translateX(-50%); }
+    .clock-mark.right { right: 16px; top: 50%; transform: translateY(-50%); }
+    .clock-mark.bottom { bottom: 12px; left: 50%; transform: translateX(-50%); }
+    .clock-mark.left { left: 16px; top: 50%; transform: translateY(-50%); }
+    .clock-hand { border-radius: 999px; bottom: 50%; left: 50%; position: absolute; transform-origin: 50% 100%; }
+    .clock-hand.hour { background: #0f172a; height: 46px; width: 7px; }
+    .clock-hand.minute { background: #2563eb; height: 66px; width: 5px; }
+    .clock-hand.second { background: #dc2626; height: 76px; width: 2px; }
+    .clock-center { background: #0f172a; border: 3px solid #fff; border-radius: 50%; height: 16px; left: 50%; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 16px; }
+    .clock-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .clock-part { background: #f8fafc; border: 1px solid #dbeafe; border-radius: 16px; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 14px; }
+    .clock-label { color: #64748b; font-size: 13px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+    .clock-value { color: #2563eb; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 26px; line-height: 1.15; }
+    .clock-value.small { color: #0f766e; font-size: 18px; overflow-wrap: anywhere; }
+    .clock-legend { color: #475569; font-size: 13px; font-weight: 800; grid-column: 1 / -1; line-height: 1.45; margin: 0; }
+    .clock-chip { background: #dbeafe; border: 1px solid #93c5fd; border-radius: 999px; color: #1e40af; font-size: 13px; font-weight: 900; padding: 7px 10px; }
+    .clock-chip.muted { background: #f8fafc; border-color: #cbd5e1; color: #475569; }
+    .clock-status-row button { border-color: #2563eb; background: #dbeafe; color: #1d4ed8; }
+    .clock-status-row button:hover { background: #bfdbfe; }
+    @media (max-width: 560px) { .clock-board { grid-template-columns: 1fr; } .clock-face { justify-self: center; } }
     .play-insight { border: 1px solid #bae6fd; border-radius: 20px; background: #f0f9ff; color: #0c4a6e; padding: 18px; line-height: 1.6; }
     .play-insight-title { display: block; margin-bottom: 6px; color: #075985; }
     .play-empty-card { border: 1px dashed #cbd5e1; border-radius: 20px; color: #64748b; padding: 18px; }
