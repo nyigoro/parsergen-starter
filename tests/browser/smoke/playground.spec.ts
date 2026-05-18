@@ -183,6 +183,8 @@ test.describe('playground browser smoke', () => {
 
       await page.click('#output-tab-js');
       await expectOnlyOutputPanelVisible(page, 'js-panel');
+      await expect(page.locator('#js-output')).toHaveAttribute('data-highlighted', 'true');
+      await expect(page.locator('#js-output .code-token')).not.toHaveCount(0);
       await expect(page.locator('#js-panel')).not.toContainText('UI Preview');
       await expect(page.locator('#js-panel')).not.toContainText('Declarations');
       await expect(page.locator('#js-panel')).not.toContainText('Diagnostics');
@@ -224,6 +226,8 @@ test.describe('playground browser smoke', () => {
       await page.click('#output-tab-wasm');
       await expectOnlyOutputPanelVisible(page, 'wasm-panel');
       await expect(page.locator('#wasm-panel')).toContainText('WebAssembly');
+      await expect(page.locator('#wasm-wat-output')).toHaveAttribute('data-highlighted', 'true');
+      await expect(page.locator('#wasm-wat-output .syntax-keyword')).not.toHaveCount(0);
       await expect(page.locator('#wasm-panel')).not.toContainText('UI Preview');
       await expect(page.locator('#wasm-panel')).not.toContainText('Declarations');
       await expect(page.locator('#wasm-panel')).not.toContainText('Diagnostics');
@@ -246,8 +250,10 @@ test.describe('playground browser smoke', () => {
       await page.click('#output-tab-wasm');
       await expect(page.locator('#wasm-panel')).toContainText('WebAssembly');
       await expect(page.locator('#wasm-panel')).toContainText('Section Breakdown');
-      await expect(page.locator('#wasm-panel')).toContainText('WAT Viewer');
+      await expect(page.locator('#wasm-panel')).toContainText('WAT');
       await expect(page.locator('#wasm-panel')).toContainText('(module');
+      await expect(page.locator('#wasm-wat-output')).toHaveAttribute('data-highlighted', 'true');
+      await expect(page.locator('#wasm-wat-output .syntax-instruction')).not.toHaveCount(0);
       await expect(page.locator('#wasm-size-label')).not.toContainText('-');
       await expect(page.locator('#wasm-section-count-label')).not.toContainText('-');
       await expect(page.locator('#wasm-build-time-label')).toContainText('ms');

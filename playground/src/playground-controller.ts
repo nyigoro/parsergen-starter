@@ -2,6 +2,7 @@ import { compileProjectInWorker, formatSourceInWorker, warmCompilerWorker } from
 import type { CompileDiagnostic, CompileResult } from './compiler-bridge';
 import { getDiagnosticExplanation } from '../../src/lumina/diagnostic-explain';
 import { defaultExample, exampleGroups, findExample, findExampleBySource } from './examples-data';
+import { renderHighlightedJavaScript, renderHighlightedWat } from './output-highlighting';
 import {
   createEmbedSnippet,
   createOpenPlaygroundUrl,
@@ -152,6 +153,13 @@ const safeScriptJson = (value: unknown): string => JSON.stringify(value).replace
 const setText = (id: string, value: string): void => {
   const element = document.getElementById(id);
   if (element) element.textContent = value;
+};
+
+const setHighlightedCode = (id: string, value: string, render: (source: string) => string): void => {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.innerHTML = render(value);
+  element.dataset.highlighted = 'true';
 };
 
 const setHidden = (id: string, hidden: boolean): void => {
@@ -521,7 +529,7 @@ export const startPlayground = async (): Promise<void> => {
       'wasm-section-summary-label',
       visibleWasm ? `${visibleWasm.sections.length} sections / ${bytes(sectionTotal)}` : '0 sections'
     );
-    setText('wasm-wat-output', visibleWasm?.wat ?? '');
+    setHighlightedCode('wasm-wat-output', visibleWasm?.wat ?? '', renderHighlightedWat);
     setText('wasm-empty-title', visibleWasm ? '' : emptyTitle);
     setText('wasm-empty-detail', visibleWasm ? '' : targetHint);
     if (empty) empty.dataset.status = isLoading ? 'loading' : hasCompileError ? 'error' : 'empty';
@@ -698,7 +706,11 @@ export const startPlayground = async (): Promise<void> => {
     setHidden('ui-panel', state.activeTab !== 'ui');
     setHidden('types-panel', state.activeTab !== 'types');
     setHidden('diagnostics-panel', state.activeTab !== 'diagnostics');
-    setText('js-output', readableJs ? jsOutput : jsOutput.replace(/\s+/g, ' ').trim());
+    setHighlightedCode(
+      'js-output',
+      readableJs ? jsOutput : jsOutput.replace(/\s+/g, ' ').trim(),
+      renderHighlightedJavaScript
+    );
     setText('run-output-root', runOutput);
     setText('runtime-status-label', runtimeLabels[state.runtimeStatus]);
     setText('runtime-message-label', state.runtimeMessage ?? 'Run the program to execute it in a clean session.');

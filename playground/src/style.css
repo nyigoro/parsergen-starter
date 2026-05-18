@@ -557,10 +557,54 @@ button {
 }
 
 .playground-shell[data-theme='light'] .js-output,
+.playground-shell[data-theme='light'] .wasm-wat-output,
 .playground-shell[data-theme='light'] .console-output {
   border-color: #cbd5e1;
   background: #ffffff;
   color: #1e293b;
+}
+
+.playground-shell[data-theme='light'] .code-token {
+  color: #1e293b;
+}
+
+.playground-shell[data-theme='light'] .syntax-keyword {
+  color: #7c3aed;
+}
+
+.playground-shell[data-theme='light'] .syntax-string {
+  color: #047857;
+}
+
+.playground-shell[data-theme='light'] .syntax-number,
+.playground-shell[data-theme='light'] .syntax-literal {
+  color: #b45309;
+}
+
+.playground-shell[data-theme='light'] .syntax-comment {
+  color: #64748b;
+}
+
+.playground-shell[data-theme='light'] .syntax-function {
+  color: #0369a1;
+}
+
+.playground-shell[data-theme='light'] .syntax-identifier,
+.playground-shell[data-theme='light'] .syntax-variable {
+  color: #1d4ed8;
+}
+
+.playground-shell[data-theme='light'] .syntax-type {
+  color: #92400e;
+}
+
+.playground-shell[data-theme='light'] .syntax-instruction {
+  color: #4338ca;
+}
+
+.playground-shell[data-theme='light'] .syntax-operator,
+.playground-shell[data-theme='light'] .syntax-punctuation {
+  color: #475569;
 }
 
 .playground-shell[data-embed='true'] .single-source-main {
@@ -1453,6 +1497,52 @@ button {
   max-height: none;
   padding: 0.875rem;
   color: #c4b5fd;
+}
+
+.code-token {
+  color: #d7ddff;
+}
+
+.syntax-keyword {
+  color: #c084fc;
+  font-weight: 700;
+}
+
+.syntax-string {
+  color: #a7f3d0;
+}
+
+.syntax-number,
+.syntax-literal {
+  color: #facc15;
+}
+
+.syntax-comment {
+  color: #7f8da3;
+  font-style: italic;
+}
+
+.syntax-function {
+  color: #67e8f9;
+}
+
+.syntax-identifier,
+.syntax-variable {
+  color: #dbeafe;
+}
+
+.syntax-type {
+  color: #f9c97b;
+  font-weight: 700;
+}
+
+.syntax-instruction {
+  color: #a5b4fc;
+}
+
+.syntax-operator,
+.syntax-punctuation {
+  color: #94a3b8;
 }
 
 .output-panel-stack {

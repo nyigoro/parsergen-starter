@@ -4,6 +4,7 @@
 
 - The standalone playground is a single-source, editor-first workbench for writing, checking, running, inspecting output, and sharing Lumina snippets.
 - The playground editor uses a Lezer-backed Lumina language path for structured tokenization and future editor-language features.
+- The JS and WASM output tabs render generated JavaScript and WAT as syntax-highlighted, read-only code surfaces with copy/download actions.
 - Compile diagnostics have an educational Explain flow with severity, code, location, plain-language context, why-it-happens notes, and fix guidance.
 - The Types tab displays Hindley-Milner inference results after Check or Run.
 - Type inspection includes declaration rows with name, kind, and type, plus expression rows with source preview, inferred type, and line/column position.
