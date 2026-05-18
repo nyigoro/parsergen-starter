@@ -41,4 +41,31 @@ describe('extractImports', () => {
       './bar',
     ]);
   });
+
+  test('falls back to tolerant scanning when macro rules contain lexer-only tokens', () => {
+    const source = `
+      import { marker } from "./marker";
+
+      macro_rules! one {
+        ($x:expr) => ($x);
+      }
+
+      fn main() -> i32 { one!(41) + marker() }
+    `;
+
+    expect(extractImports(source)).toEqual(['./marker']);
+  });
+
+  test('falls back to tolerant scanning around derive attributes', () => {
+    const source = `
+      #[derive(Clone)]
+      struct Point {
+        x: i32
+      }
+
+      import { origin } from "./points";
+    `;
+
+    expect(extractImports(source)).toEqual(['./points']);
+  });
 });

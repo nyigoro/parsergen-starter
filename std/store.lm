@@ -36,7 +36,7 @@ pub fn update<T>(store: Store<T>, updater: fn(T) -> T) -> T {
 }
 
 pub fn selectMemo<T, U>(store: Store<T>, selector: fn(T) -> U) -> Memo<U> {
-  rx_createMemo(fn() -> U {
+  rx_createMemo<U>(fn() -> U {
     selector(rx_get(store.value))
   })
 }

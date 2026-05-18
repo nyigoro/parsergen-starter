@@ -66,18 +66,135 @@ function collectImportsWithLexer(source: string): string[] {
   return imports;
 }
 
+function skipString(source: string, start: number): number {
+  const quote = source[start];
+  let index = start + 1;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '\\') {
+      index += 2;
+      continue;
+    }
+    if (char === quote) return index + 1;
+    index += 1;
+  }
+  return source.length;
+}
+
+function readStringLiteral(source: string, start: number): { value: string; end: number } | null {
+  const quote = source[start];
+  let value = '';
+  let index = start + 1;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '\\') {
+      const next = source[index + 1];
+      if (next !== undefined) value += next;
+      index += 2;
+      continue;
+    }
+    if (char === quote) return { value, end: index + 1 };
+    value += char;
+    index += 1;
+  }
+  return null;
+}
+
+function skipComment(source: string, start: number): number {
+  if (source.startsWith('//', start)) {
+    const newline = source.indexOf('\n', start + 2);
+    return newline === -1 ? source.length : newline + 1;
+  }
+  if (source.startsWith('/*', start)) {
+    const close = source.indexOf('*/', start + 2);
+    return close === -1 ? source.length : close + 2;
+  }
+  return start;
+}
+
+function isIdentifierChar(char: string | undefined): boolean {
+  return char !== undefined && /[A-Za-z0-9_]/.test(char);
+}
+
+function isImportKeywordAt(source: string, index: number): boolean {
+  return (
+    source.startsWith('import', index) &&
+    !isIdentifierChar(source[index - 1]) &&
+    !isIdentifierChar(source[index + 'import'.length])
+  );
+}
+
+function collectImportsWithScanner(source: string): string[] {
+  const imports: string[] = [];
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '"' || char === "'") {
+      index = skipString(source, index);
+      continue;
+    }
+    if (source.startsWith('//', index) || source.startsWith('/*', index)) {
+      index = skipComment(source, index);
+      continue;
+    }
+    if (!isImportKeywordAt(source, index)) {
+      index += 1;
+      continue;
+    }
+
+    index += 'import'.length;
+    while (index < source.length) {
+      const next = source[index];
+      if (next === '"' || next === "'") {
+        const literal = readStringLiteral(source, index);
+        if (literal) {
+          imports.push(literal.value);
+          index = literal.end;
+        } else {
+          index = source.length;
+        }
+        break;
+      }
+      if (source.startsWith('//', index) || source.startsWith('/*', index)) {
+        index = skipComment(source, index);
+        continue;
+      }
+      if (isImportKeywordAt(source, index)) break;
+      index += 1;
+    }
+  }
+
+  return imports;
+}
+
 export function extractImports(source: string, options: ImportExtractionOptions = {}): string[] {
   const parser = options.parser ?? null;
-  if (!parser) return collectImportsWithLexer(source);
+  if (!parser) {
+    try {
+      return collectImportsWithLexer(source);
+    } catch {
+      return collectImportsWithScanner(source);
+    }
+  }
 
-  const result = parseWithPanicRecovery<LuminaProgram>(parser, source, {
-    syncTokenTypes: luminaSyncTokenTypes,
-    syncKeywordValues: importSyncKeywords,
-    lexer: (input: string): Iterable<LuminaToken> => importLexer.reset(input),
-  });
-  const payload = (result.result as { result?: unknown } | undefined)?.result ?? result.result;
-  const imports = collectImportsFromProgram(payload);
-  if (imports) return imports;
+  try {
+    const result = parseWithPanicRecovery<LuminaProgram>(parser, source, {
+      syncTokenTypes: luminaSyncTokenTypes,
+      syncKeywordValues: importSyncKeywords,
+      lexer: (input: string): Iterable<LuminaToken> => importLexer.reset(input),
+    });
+    const payload = (result.result as { result?: unknown } | undefined)?.result ?? result.result;
+    const imports = collectImportsFromProgram(payload);
+    if (imports) return imports;
+  } catch {
+    // Fall through to tolerant scanning below. Import discovery must not fail
+    // just because another language feature is newer than the lightweight lexer.
+  }
 
-  return collectImportsWithLexer(source);
+  try {
+    return collectImportsWithLexer(source);
+  } catch {
+    return collectImportsWithScanner(source);
+  }
 }
