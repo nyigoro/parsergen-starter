@@ -42,11 +42,25 @@ Today the repo includes:
 
 That foundation is now strong enough to support real headless UI authoring, but the broader app/framework layer is still intentionally incomplete.
 
-The playground can render the current DOM path directly. Try changing the button labels or signal updates, then use Refresh in the UI tab to see the preview update.
+The playground can render the current DOM path directly.
 
-<div class="docs-live-example" data-playground-doc-embed="counter">
-  <p class="docs-live-example-copy">Live example: signal-backed UI rendered through the playground's UI Preview tab.</p>
-  <iframe class="docs-playground-frame" title="Lumina playground: Reactive counter UI example" src="../playground/?embed=1&amp;example=counter" data-playground-example="counter" data-playground-tab="ui" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+<div class="docs-playground-card" data-playground-doc-preview="counter" data-preview-size="tall">
+  <div class="docs-playground-card-header">
+    <p class="docs-playground-card-kicker">Playground preview</p>
+    <h3 class="docs-playground-card-title">Signals rendered into browser DOM</h3>
+  </div>
+  <div class="docs-playground-card-grid">
+    <p><strong>What this shows:</strong> a reactive counter mounted through the DOM renderer, with the UI tab as the preview surface instead of the Worker Run tab.</p>
+    <p><strong>Try this:</strong> change the button labels or the signal update logic, then press Refresh in the UI tab to see the DOM update.</p>
+  </div>
+  <div class="docs-playground-card-footer">
+    <div class="docs-playground-shot" role="img" aria-label="Static preview of the Counter example in the UI tab.">
+      <span>UI tab</span>
+      <strong>Counter</strong>
+      <code>createSignal(0) -> mount_reactive(...)</code>
+    </div>
+    <a class="docs-playground-open" href="../playground/?example=counter&amp;tab=ui" data-playground-link data-playground-example="counter" data-playground-tab="ui">Open in Playground</a>
+  </div>
 </div>
 
 Two current facts matter for the framework roadmap:

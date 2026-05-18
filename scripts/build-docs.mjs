@@ -25,26 +25,88 @@ const bundledLanguages = new Set([
 
 const sectionOrder = [
   'Getting Started',
-  'Why Lumina?',
-  'JS vs WASM',
-  'Capabilities',
+  'Lessons',
+  'Language',
+  'Type System',
+  'Runtime & Rendering',
   'Stdlib',
-  'Web-Native Roadmap',
-  'Contributing',
-  'Security/Support',
-  'More Docs',
+  'Tooling',
+  'Architecture',
+  'Roadmaps & Design',
+  'Community & Project',
+  'Capabilities',
+  'More / Awaiting Categorization',
 ];
 
 const docConfig = new Map([
+  ['README.md', { slug: 'docs-index', section: 'Getting Started' }],
   ['GETTING_STARTED.md', { slug: 'getting-started', section: 'Getting Started' }],
-  ['WHY_LUMINA.md', { slug: 'why-lumina', section: 'Why Lumina?' }],
-  ['WHEN_TO_USE_JS_VS_WASM.md', { slug: 'js-vs-wasm', section: 'JS vs WASM' }],
-  ['CAPABILITIES.md', { slug: 'capabilities', section: 'Capabilities' }],
+  ['LEARNING_PATH.md', { slug: 'learning-path', section: 'Getting Started' }],
+
+  ['lessons/README.md', { slug: 'lessons', section: 'Lessons' }],
+  ['lessons/01-basics.md', { slug: 'lesson-01-basics', section: 'Lessons' }],
+  ['lessons/02-types-and-collections.md', { slug: 'lesson-02-types-and-collections', section: 'Lessons' }],
+  ['lessons/03-control-flow-and-patterns.md', { slug: 'lesson-03-control-flow-and-patterns', section: 'Lessons' }],
+  ['lessons/04-errors-and-result.md', { slug: 'lesson-04-errors-and-result', section: 'Lessons' }],
+  ['lessons/05-traits-and-generics.md', { slug: 'lesson-05-traits-and-generics', section: 'Lessons' }],
+  ['lessons/06-concurrency-and-async.md', { slug: 'lesson-06-concurrency-and-async', section: 'Lessons' }],
+  ['lessons/07-wasm-and-tooling.md', { slug: 'lesson-07-wasm-and-tooling', section: 'Lessons' }],
+
+  ['USING_LUMINA.md', { slug: 'using-lumina', section: 'Language' }],
+  ['ERROR_HANDLING.md', { slug: 'error-handling', section: 'Language' }],
+  ['ASYNC.md', { slug: 'async', section: 'Language' }],
+  ['NUMERIC_TYPES.md', { slug: 'numeric-types', section: 'Language' }],
+  ['MIGRATION_FROM_TS_JS.md', { slug: 'migration-from-ts-js', section: 'Language' }],
+
+  ['GADTS.md', { slug: 'gadts', section: 'Type System' }],
+  ['HKTS.md', { slug: 'hkts', section: 'Type System' }],
+  ['CONST_GENERICS.md', { slug: 'const-generics', section: 'Type System' }],
+  ['MONOMORPHIZATION.md', { slug: 'monomorphization', section: 'Type System' }],
+  ['FUNCTOR.md', { slug: 'functor', section: 'Type System' }],
+  ['APPLICATIVE.md', { slug: 'applicative', section: 'Type System' }],
+  ['MONAD.md', { slug: 'monad', section: 'Type System' }],
+
+  ['RENDER.md', { slug: 'render', section: 'Runtime & Rendering' }],
+  ['UI_FRAMEWORK.md', { slug: 'ui-framework', section: 'Runtime & Rendering' }],
+  ['RUNTIME_ARCHITECTURE.md', { slug: 'runtime-architecture', section: 'Runtime & Rendering' }],
+  ['WEBGPU_TESTING.md', { slug: 'webgpu-testing', section: 'Runtime & Rendering' }],
+
   ['STDLIB.md', { slug: 'stdlib', section: 'Stdlib' }],
-  ['WEB_NATIVE_ROADMAP.md', { slug: 'web-native-roadmap', section: 'Web-Native Roadmap' }],
-  ['CONTRIBUTING.md', { slug: 'contributing', section: 'Contributing' }],
-  ['SECURITY.md', { slug: 'security', section: 'Security/Support' }],
-  ['SUPPORT.md', { slug: 'support', section: 'Security/Support' }],
+  ['STDLIB_PHASE1.md', { slug: 'stdlib-phase1', section: 'Stdlib' }],
+
+  ['PACKAGE_USAGE.md', { slug: 'package-usage', section: 'Tooling' }],
+  ['PACKAGE_MANAGEMENT_PHASE1.md', { slug: 'package-management-phase1', section: 'Tooling' }],
+  ['editor-integration/OVERVIEW.md', { slug: 'editor-integration', section: 'Tooling' }],
+  ['editor-integration/PROTOCOL.md', { slug: 'editor-protocol', section: 'Tooling' }],
+  ['editor-integration/HELIX.md', { slug: 'editor-helix', section: 'Tooling' }],
+  ['editor-integration/NEOVIM.md', { slug: 'editor-neovim', section: 'Tooling' }],
+  ['editor-integration/ZED.md', { slug: 'editor-zed', section: 'Tooling' }],
+
+  ['LARGE_APP_ARCHITECTURE.md', { slug: 'large-app-architecture', section: 'Architecture' }],
+  ['COMPLEX_APP_ROADMAP.md', { slug: 'complex-app-roadmap', section: 'Architecture' }],
+  ['BENCHMARK_ARCHITECTURE.md', { slug: 'benchmark-architecture', section: 'Architecture' }],
+
+  ['WHEN_TO_USE_JS_VS_WASM.md', { slug: 'js-vs-wasm', section: 'Roadmaps & Design' }],
+  ['WEB_NATIVE_ROADMAP.md', { slug: 'web-native-roadmap', section: 'Roadmaps & Design' }],
+  ['MILESTONES.md', { slug: 'milestones', section: 'Roadmaps & Design' }],
+  ['STABILITY.md', { slug: 'stability', section: 'Roadmaps & Design' }],
+
+  ['WHY_LUMINA.md', { slug: 'why-lumina', section: 'Community & Project' }],
+  ['ECOSYSTEM.md', { slug: 'ecosystem', section: 'Community & Project' }],
+  ['CONTACT.md', { slug: 'contact', section: 'Community & Project' }],
+  ['DISCORD_RULES.md', { slug: 'discord-rules', section: 'Community & Project' }],
+  ['DISCORD_SERVER_SETUP.md', { slug: 'discord-server-setup', section: 'Community & Project' }],
+  ['DOCS_MAINTENANCE.md', { slug: 'docs-maintenance', section: 'Community & Project' }],
+  ['RELEASE_NOTES_v0.3.0.md', { slug: 'release-notes-v0-3-0', section: 'Community & Project' }],
+  ['RELEASE_NOTES_v0.5.1.md', { slug: 'release-notes-v0-5-1', section: 'Community & Project' }],
+  ['CONTRIBUTING.md', { slug: 'contributing', section: 'Community & Project' }],
+  ['SECURITY.md', { slug: 'security', section: 'Community & Project' }],
+  ['SUPPORT.md', { slug: 'support', section: 'Community & Project' }],
+
+  ['CAPABILITIES.md', { slug: 'capabilities', section: 'Capabilities' }],
+
+  ['KNOWN_ISSUES.md', { slug: 'known-issues', section: 'More / Awaiting Categorization' }],
+  ['TODO.md', { slug: 'todo', section: 'More / Awaiting Categorization' }],
 ]);
 
 let highlighterPromise;
@@ -153,8 +215,16 @@ const rewriteDocLinks = (html, currentLookupKey, slugByLookupKey) =>
 
 const sectionRank = section => {
   const index = sectionOrder.indexOf(section);
-  return index === -1 ? sectionOrder.indexOf('More Docs') : index;
+  return index === -1 ? sectionOrder.indexOf('More / Awaiting Categorization') : index;
 };
+
+const fallbackDocMeta = lookupKey => ({
+  slug: slugify(lookupKey),
+  section: 'More / Awaiting Categorization',
+});
+
+const getDocMeta = (lookupKey, baseName) =>
+  docConfig.get(lookupKey) ?? docConfig.get(baseName) ?? fallbackDocMeta(lookupKey);
 
 const normalizeCodeLanguage = lang => {
   const raw = String(lang ?? '')
@@ -248,7 +318,7 @@ const buildManifest = async () => {
     const relativePath = isDocsContentFile ? path.relative(docsDir, file) : path.basename(file);
     const lookupKey = relativePath.replace(/\\/g, '/');
     const baseName = path.basename(file);
-    const meta = docConfig.get(baseName) ?? { slug: slugify(lookupKey), section: 'More Docs' };
+    const meta = getDocMeta(lookupKey, baseName);
     const sourcePath = isDocsContentFile ? `docs-content/${lookupKey}` : path.relative(repoRoot, file).replace(/\\/g, '/');
     entries.push({
       lookupKey,

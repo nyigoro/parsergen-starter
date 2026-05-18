@@ -1,10 +1,24 @@
 # Lumina Standard Library
 
-The standard library is easiest to learn when you can run small flows and inspect their outputs. This live example uses `Option` helpers plus `io` and `str` to make safe indexing visible.
+The standard library is easiest to learn when you can run small flows and inspect their outputs.
 
-<div class="docs-live-example" data-playground-doc-embed="safe-index">
-  <p class="docs-live-example-copy">Live example: safe stdlib data flow with Option, string conversion, and Run output.</p>
-  <iframe class="docs-playground-frame" title="Lumina playground: Option and Result stdlib example" src="../playground/?embed=1&amp;example=safe-index" data-playground-example="safe-index" data-playground-tab="run" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+<div class="docs-playground-card" data-playground-doc-preview="safe-index" data-preview-size="compact">
+  <div class="docs-playground-card-header">
+    <p class="docs-playground-card-kicker">Playground preview</p>
+    <h3 class="docs-playground-card-title">Option, strings, and visible output</h3>
+  </div>
+  <div class="docs-playground-card-grid">
+    <p><strong>What this shows:</strong> safe indexing with `Option`, conversion through `str`, and concrete output in the Run tab.</p>
+    <p><strong>Try this:</strong> change the index, press Run, and compare the `Some` and `None` paths.</p>
+  </div>
+  <div class="docs-playground-card-footer">
+    <div class="docs-playground-shot" role="img" aria-label="Static preview of the safe-index example in the Run tab.">
+      <span>Run tab</span>
+      <strong>Safe index</strong>
+      <code>Option&lt;i32&gt; -> visible output</code>
+    </div>
+    <a class="docs-playground-open" href="../playground/?example=safe-index&amp;tab=run" data-playground-link data-playground-example="safe-index" data-playground-tab="run">Open in Playground</a>
+  </div>
 </div>
 
 ## String Literals

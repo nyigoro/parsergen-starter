@@ -45,6 +45,27 @@ How it works:
 2. If the Result is `Err(e)`, returns `Err(e)` immediately
 3. Automatically propagates the error type through the call stack
 
+The playground preview below keeps the flow small: open it, change the requested index, press Run, and watch the safe path switch between a value and the fallback branch.
+
+<div class="docs-playground-card" data-playground-doc-preview="safe-index" data-preview-size="compact">
+  <div class="docs-playground-card-header">
+    <p class="docs-playground-card-kicker">Playground preview</p>
+    <h3 class="docs-playground-card-title">Safe access without a runtime crash</h3>
+  </div>
+  <div class="docs-playground-card-grid">
+    <p><strong>What this shows:</strong> a compact Option/Result-style control flow where absence is represented in the type instead of as a thrown exception.</p>
+    <p><strong>Try this:</strong> change the lookup index, press Run, then open Types to inspect how the safe branch is represented.</p>
+  </div>
+  <div class="docs-playground-card-footer">
+    <div class="docs-playground-shot" role="img" aria-label="Static preview of the safe-index example in the Run tab.">
+      <span>Run tab</span>
+      <strong>Safe access</strong>
+      <code>match maybeValue { Some(v) | None }</code>
+    </div>
+    <a class="docs-playground-open" href="../playground/?example=safe-index&amp;tab=run" data-playground-link data-playground-example="safe-index" data-playground-tab="run">Open in Playground</a>
+  </div>
+</div>
+
 ## Requirements
 
 The `?` operator can only be used:

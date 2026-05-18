@@ -65,29 +65,46 @@ const escapeHtml = (value: string): string =>
 const renderSidebar = (items: DocsBundle['index'], activeSlug: string): string => {
   let currentSection = '';
   const htmlParts: string[] = [];
+  let currentLinks: string[] = [];
+
+  const flushSection = (): void => {
+    if (!currentSection) return;
+    const isOpen = currentLinks.some(link => link.includes(' is-active'));
+    const openAttr = isOpen ? ' open' : '';
+    htmlParts.push(`
+      <details class="docs-sidebar-category"${openAttr}>
+        <summary class="docs-sidebar-section">
+          <span>${escapeHtml(currentSection)}</span>
+          <span class="docs-sidebar-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="docs-sidebar-links">${currentLinks.join('')}</div>
+      </details>
+    `);
+  };
 
   for (const item of items) {
     if (item.section !== currentSection) {
+      flushSection();
       currentSection = item.section;
-      htmlParts.push(`<div class="docs-sidebar-section">${escapeHtml(currentSection)}</div>`);
+      currentLinks = [];
     }
 
     const activeClass = item.slug === activeSlug ? ' is-active' : '';
-    htmlParts.push(
+    currentLinks.push(
       `<a class="docs-sidebar-link${activeClass}" id="doc-link-${item.slug}" href="#/${item.slug}">${escapeHtml(item.title)}</a>`
     );
   }
+  flushSection();
 
   return htmlParts.join('');
 };
 
-const playgroundEmbedUrl = (frame: HTMLIFrameElement): string => {
+const playgroundLinkUrl = (link: HTMLElement): string => {
   const url = new URL(playgroundHref(), window.location.href);
-  url.searchParams.set('embed', '1');
 
-  const example = frame.dataset.playgroundExample;
-  const target = frame.dataset.playgroundTarget;
-  const tab = frame.dataset.playgroundTab;
+  const example = link.dataset.playgroundExample;
+  const target = link.dataset.playgroundTarget;
+  const tab = link.dataset.playgroundTab;
 
   if (example) url.searchParams.set('example', example);
   if (target) url.searchParams.set('target', target);
@@ -96,9 +113,9 @@ const playgroundEmbedUrl = (frame: HTMLIFrameElement): string => {
   return url.toString();
 };
 
-const enhancePlaygroundEmbeds = (root: HTMLElement): void => {
-  for (const frame of root.querySelectorAll<HTMLIFrameElement>('iframe[data-playground-example]')) {
-    frame.src = playgroundEmbedUrl(frame);
+const enhancePlaygroundLinks = (root: HTMLElement): void => {
+  for (const link of root.querySelectorAll<HTMLAnchorElement>('a[data-playground-link]')) {
+    link.href = playgroundLinkUrl(link);
   }
 };
 
@@ -134,7 +151,7 @@ const renderCurrentDoc = async (): Promise<void> => {
         </main>
       </div>
     `;
-    enhancePlaygroundEmbeds(root);
+    enhancePlaygroundLinks(root);
   }
 
   document.title = `${page.title} | Lumina Docs`;

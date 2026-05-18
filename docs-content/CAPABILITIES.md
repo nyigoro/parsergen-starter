@@ -41,11 +41,25 @@ Last updated for v0.5.7.
 | Monomorphization | Stable | Compile-time specialization for generic functions |
 | Exhaustiveness and holes | Stable | Enum exhaustiveness and `_` diagnostics |
 
-Explore the type-system surface in the playground's Types tab. This example keeps the source single-file while showing higher-kinded stdlib patterns and inferred declaration/expression types.
+Explore the type-system surface in the playground's Types tab.
 
-<div class="docs-live-example" data-playground-doc-embed="hkt-stdlib">
-  <p class="docs-live-example-copy">Live example: higher-kinded type patterns with the Types tab open by default.</p>
-  <iframe class="docs-playground-frame" title="Lumina playground: HKT type system example" src="../playground/?embed=1&amp;example=hkt-stdlib" data-playground-example="hkt-stdlib" data-playground-tab="types" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+<div class="docs-playground-card" data-playground-doc-preview="hkt-stdlib" data-preview-size="medium">
+  <div class="docs-playground-card-header">
+    <p class="docs-playground-card-kicker">Playground preview</p>
+    <h3 class="docs-playground-card-title">Higher-kinded patterns with inferred types</h3>
+  </div>
+  <div class="docs-playground-card-grid">
+    <p><strong>What this shows:</strong> single-source HKT-oriented code with declaration and expression types exposed in the Types tab.</p>
+    <p><strong>Try this:</strong> click an expression type row to jump the editor to the inferred source location.</p>
+  </div>
+  <div class="docs-playground-card-footer">
+    <div class="docs-playground-shot" role="img" aria-label="Static preview of the HKT stdlib example in the Types tab.">
+      <span>Types tab</span>
+      <strong>HKT stdlib</strong>
+      <code>Functor&lt;F&gt; declarations + inferred rows</code>
+    </div>
+    <a class="docs-playground-open" href="../playground/?example=hkt-stdlib&amp;tab=types" data-playground-link data-playground-example="hkt-stdlib" data-playground-tab="types">Open in Playground</a>
+  </div>
 </div>
 
 ## Diagnostics and LSP

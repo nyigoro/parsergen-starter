@@ -141,6 +141,28 @@ be a string or number and must be unique among siblings. Do not also put a
 different `props { key: ... }` inside the row; Lumina treats that as a
 conflicting identity.
 
+Try the same identity idea in the playground. The tabs example keeps one Signal
+as the source of truth for the triggers, panels, and visible state.
+
+<div class="docs-playground-card" data-playground-doc-preview="tabs" data-preview-size="tall">
+  <div class="docs-playground-card-header">
+    <p class="docs-playground-card-kicker">Playground preview</p>
+    <h3 class="docs-playground-card-title">Reactive tab state in the DOM renderer</h3>
+  </div>
+  <div class="docs-playground-card-grid">
+    <p><strong>What this shows:</strong> one reactive state value coordinating tab buttons, keyed panel content, and the UI Preview surface.</p>
+    <p><strong>Try this:</strong> add another tab label or change the active default, then press Refresh in the UI tab.</p>
+  </div>
+  <div class="docs-playground-card-footer">
+    <div class="docs-playground-shot" role="img" aria-label="Static preview of the Tabs example in the UI tab.">
+      <span>UI tab</span>
+      <strong>Tabs</strong>
+      <code>Signal&lt;string&gt; -> triggers + panels</code>
+    </div>
+    <a class="docs-playground-open" href="../playground/?example=tabs&amp;tab=ui" data-playground-link data-playground-example="tabs" data-playground-tab="ui">Open in Playground</a>
+  </div>
+</div>
+
 Inline mapped signal children with row keys lower to `forList`. Already-built
 child arrays stay on the generic keyed fallback path.
 

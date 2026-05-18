@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Docs:** Expanded docs navigation into broader learning categories with a dedicated Lessons section, a visible More / Awaiting Categorization bucket, static playground preview cards with Open in Playground links, and independent sidebar/article scrolling.
 - **Playground:** Added a Clock + Time Reactive UI example with viewer-local date/time output and a live wall clock driven by timer-updated Signals.
 - **Playground:** Tightened the Reactive UI example progression by pruning redundant/low-signal UI catalog entries while keeping legacy links routed to the stronger Counter example.
 - **Stdlib:** Added `time.localDate()`, `time.localTime()`, `time.localClockMs()`, and `time.timeZone()` helpers for viewer-local/browser-local time displays.
@@ -13,7 +14,7 @@ All notable changes to this project will be documented in this file.
 - **Playground:** Added syntax-highlighted read-only JS and WAT output viewers while preserving copy, download, readable/minified, and WASM artifact actions.
 - **Playground:** Polished the WASM tab with summary metrics, section explanations, clearer empty/error/loading states, and deepened the Types tab with expression filters, selected-row feedback, and clearer learning copy.
 - **Playground:** Polished UI Preview and Run lifecycle states with clearer empty/loading/success/error surfaces, preview timeout recovery, stale-output reset behavior, and more precise compile/runtime/preview status wording.
-- **Docs/Playground:** Embedded curated live playground examples into high-value docs pages, with docs-side iframe styling and local-dev URL normalization for `?embed=1` examples.
+- **Docs/Playground:** Added curated playground examples to high-value docs pages through lightweight preview cards and Open in Playground links.
 - **Playground:** Migrated the editor language path to Lezer-backed Lumina tokenization and polished Diagnostics explain cards with clearer code, location, why-it-happens, and fix guidance.
 - **Playground:** Added `?embed=1` compact embed mode with Open in Playground state preservation, Copy Embed snippet support, and local settings for theme, editor font size, and tab size.
 - **Playground:** Expanded the examples browser into a curated language tour with richer single-source examples across Language Core, Type System, Reactive UI, Web Native, and Advanced groups.

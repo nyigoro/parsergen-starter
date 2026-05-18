@@ -52,11 +52,25 @@ Hello Lumina
 5 * 6 = 30
 ```
 
-Try the same core loop in the live playground. Change the `add` function, press Run, then open Types to inspect what HM inference learned.
+Try the same core loop in the playground when you are ready to run it.
 
-<div class="docs-live-example" data-playground-doc-embed="basics">
-  <p class="docs-live-example-copy">Live example: core functions, bindings, string output, and Run output in the focused playground shell.</p>
-  <iframe class="docs-playground-frame" title="Lumina playground: Functions example" src="../playground/?embed=1&amp;example=basics" data-playground-example="basics" data-playground-tab="run" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+<div class="docs-playground-card" data-playground-doc-preview="basics" data-preview-size="compact">
+  <div class="docs-playground-card-header">
+    <p class="docs-playground-card-kicker">Playground preview</p>
+    <h3 class="docs-playground-card-title">Functions, bindings, and Run output</h3>
+  </div>
+  <div class="docs-playground-card-grid">
+    <p><strong>What this shows:</strong> a single-source Lumina program with a helper function, local bindings, string output, and the Run tab as the execution surface.</p>
+    <p><strong>Try this:</strong> change the `add` function or the printed message, press Run, then open Types to inspect what HM inference learned.</p>
+  </div>
+  <div class="docs-playground-card-footer">
+    <div class="docs-playground-shot" role="img" aria-label="Static preview of the Functions example in the Run tab.">
+      <span>Run tab</span>
+      <strong>Functions</strong>
+      <code>fn add(a: i32, b: i32) -> i32</code>
+    </div>
+    <a class="docs-playground-open" href="../playground/?example=basics&amp;tab=run" data-playground-link data-playground-example="basics" data-playground-tab="run">Open in Playground</a>
+  </div>
 </div>
 
 ## 5. Useful Next Commands
@@ -91,12 +105,42 @@ npm run build
 
 Then launch extension development host from VS Code.
 
-## 8. Where to Go Next
+## Where to Go Next
 
-- [Usage guide](USING_LUMINA.md)
-- [Why Lumina?](WHY_LUMINA.md)
-- [When to use JS vs WASM](WHEN_TO_USE_JS_VS_WASM.md)
-- [Capabilities/status](CAPABILITIES.md)
-- [Stdlib reference](STDLIB.md)
-- [Error handling (`?`)](ERROR_HANDLING.md)
-- [Numeric system](NUMERIC_TYPES.md)
+<div class="docs-next-grid">
+  <a class="docs-next-card" href="USING_LUMINA.md">
+    <span>Use Lumina</span>
+    <strong>Usage guide</strong>
+    <small>Project setup, commands, and daily workflow.</small>
+  </a>
+  <a class="docs-next-card" href="WHY_LUMINA.md">
+    <span>Orientation</span>
+    <strong>Why Lumina?</strong>
+    <small>The design goals and where Lumina fits.</small>
+  </a>
+  <a class="docs-next-card" href="WHEN_TO_USE_JS_VS_WASM.md">
+    <span>Targets</span>
+    <strong>JS vs WASM</strong>
+    <small>Choose the right output target for the job.</small>
+  </a>
+  <a class="docs-next-card" href="CAPABILITIES.md">
+    <span>Status</span>
+    <strong>Capabilities</strong>
+    <small>Current language, runtime, and playground coverage.</small>
+  </a>
+  <a class="docs-next-card" href="STDLIB.md">
+    <span>Reference</span>
+    <strong>Stdlib</strong>
+    <small>Core modules and browser/runtime helpers.</small>
+  </a>
+  <a class="docs-next-card" href="ERROR_HANDLING.md">
+    <span>Language</span>
+    <strong>Error handling</strong>
+    <small>Option and Result style flows with `?`.</small>
+  </a>
+  <a class="docs-next-card" href="NUMERIC_TYPES.md">
+    <span>Language</span>
+    <strong>Numeric system</strong>
+    <small>Integers, floats, and target-aware numeric behavior.</small>
+  </a>
+</div>

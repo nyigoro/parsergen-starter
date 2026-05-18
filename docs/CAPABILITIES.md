@@ -16,7 +16,9 @@
 - The WASM tab presents binary size, build timing, section breakdown, copy/download actions, and a scrollable WAT viewer.
 - The examples browser is organized as a curated language tour across Language Core, Type System, Reactive UI, Web Native, and Advanced examples.
 - Example entries carry intentional target/tab defaults so UI examples open in Preview, type-heavy examples open in Types, and WASM examples open in WebAssembly output.
-- Embed mode is available with `?embed=1` for docs, tutorials, and iframe use, with compact chrome and an Open in Playground action that preserves source, example, target, and tab state.
-- The docs site now embeds selected live playground examples so readers can run core syntax, stdlib, UI, and type-system examples in context.
+- Embed mode is available with `?embed=1` for external tutorials and iframe use, with compact chrome and an Open in Playground action that preserves source, example, target, and tab state.
+- The docs site now frames selected playground examples as lightweight preview cards with an explicit Open in Playground action, keeping docs pages readable while preserving a direct run path.
+- Docs navigation groups the current corpus into learning categories with a dedicated Lessons section and a visible More / Awaiting Categorization bucket for new or not-yet-taxonomized pages.
+- Docs pages use lesson-framed playground preview cards with What this shows / Try this guidance and independent desktop scrolling for the sidebar and article.
 - Playground settings persist locally for theme, editor font size, and tab size, and apply immediately in both full and embed mode.
 - UI Preview and Run now use explicit empty/loading/success/error states, isolated runtime sessions, and compact statusbar wording so compile, runtime, and preview outcomes stay distinct.
