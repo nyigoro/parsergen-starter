@@ -6,15 +6,12 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -32,8 +29,8 @@ jobs:
       LUMINA_BROWSER_SMOKE: '1'
       LUMINA_DOM_RENDER_BENCHMARK_EXPORT_PATH: .tmp/dom-render-benchmark/export.json
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -47,13 +44,13 @@ jobs:
       - run: npm run test:browser -- --grep-invert "DOM render benchmark contract"
       - run: npm run test:browser:benchmark:smoke
       - run: npm run bench:dom-render:smoke:check -- --input .tmp/dom-render-benchmark/export.json --out-dir .tmp/dom-render-benchmark/history --summary-path .tmp/dom-render-benchmark/gate-summary.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: dom-render-benchmark-smoke
           path: .tmp/dom-render-benchmark/
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: playwright-report
