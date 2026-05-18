@@ -20,5 +20,6 @@
 - The docs site now frames selected playground examples as lightweight preview cards with an explicit Open in Playground action, keeping docs pages readable while preserving a direct run path.
 - Docs navigation groups the current corpus into learning categories with a dedicated Lessons section and a visible More / Awaiting Categorization bucket for new or not-yet-taxonomized pages.
 - Docs pages use lesson-framed playground preview cards with What this shows / Try this guidance and independent desktop scrolling for the sidebar and article.
+- Docs content has been refreshed around the current docs/playground relationship, target profiles, UI Preview versus Worker Run behavior, learning flow, and time/runtime helper coverage.
 - Playground settings persist locally for theme, editor font size, and tab size, and apply immediately in both full and embed mode.
 - UI Preview and Run now use explicit empty/loading/success/error states, isolated runtime sessions, and compact statusbar wording so compile, runtime, and preview outcomes stay distinct.

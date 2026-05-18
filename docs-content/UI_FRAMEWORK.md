@@ -63,6 +63,14 @@ The playground can render the current DOM path directly.
   </div>
 </div>
 
+## Playground Expectations
+
+UI examples that call `dom_get_element_by_id`, `createDomRenderer`, or
+`mount_reactive` need a browser document. In the playground, those examples are
+preview-first and open to the UI tab. The Run tab remains the place for
+non-DOM runtime output; it does not pretend the isolated Worker runtime has a
+document.
+
 Two current facts matter for the framework roadmap:
 
 - `mount_reactive` and `hydrate_reactive` currently rerun a `view() -> VNode` function inside an effect

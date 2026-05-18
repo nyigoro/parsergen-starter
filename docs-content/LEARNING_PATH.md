@@ -16,31 +16,20 @@ This is a practical, step-by-step path to learn Lumina with runnable exercises.
 
 ## Lesson Sequence
 
-1. [Lesson 1](lessons/01-basics.md)
-- Functions, bindings, numbers, strings, interpolation.
-
-2. [Lesson 2](lessons/02-types-and-collections.md)
-- Numeric types, arrays, `Vec`, `HashMap`, `HashSet`.
-
-3. [Lesson 3](lessons/03-control-flow-and-patterns.md)
-- `if`, `while`, `for ... in ...`, `match`, `while let`.
-
-4. [Lesson 4](lessons/04-errors-and-result.md)
-- `Option`, `Result`, and `?` error propagation.
-
-5. [Lesson 5](lessons/05-traits-and-generics.md)
-- Traits, impls, bounds, associated types, default methods.
-
-6. [Lesson 6](lessons/06-concurrency-and-async.md)
-- Threads/channels and async ecosystem patterns.
-
-7. [Lesson 7](lessons/07-wasm-and-tooling.md)
-- WASM compile/run flow, lint/fmt/doc, release workflow.
+| Step | Lesson | What you practice |
+|---|---|---|
+| 1 | [Basics](lessons/01-basics.md) | Functions, bindings, numbers, strings, interpolation |
+| 2 | [Types and collections](lessons/02-types-and-collections.md) | Numeric types, arrays, `Vec`, `HashMap`, `HashSet` |
+| 3 | [Control flow and patterns](lessons/03-control-flow-and-patterns.md) | `if`, `while`, `for ... in ...`, `match`, `while let` |
+| 4 | [Errors and Result](lessons/04-errors-and-result.md) | `Option`, `Result`, and `?` error propagation |
+| 5 | [Traits and generics](lessons/05-traits-and-generics.md) | Traits, impls, bounds, associated types, default methods |
+| 6 | [Concurrency and async](lessons/06-concurrency-and-async.md) | Threads/channels and async ecosystem patterns |
+| 7 | [WASM and tooling](lessons/07-wasm-and-tooling.md) | WASM compile/run flow, lint/fmt/doc, release workflow |
 
 ## Suggested Schedule
 
-- Day 1: Lessons 1–2
-- Day 2: Lessons 3–4
+- Day 1: Lessons 1-2
+- Day 2: Lessons 3-4
 - Day 3: Lesson 5
 - Day 4: Lesson 6
 - Day 5: Lesson 7 + mini project
@@ -56,3 +45,4 @@ This is a practical, step-by-step path to learn Lumina with runnable exercises.
 - [Using Lumina](USING_LUMINA.md)
 - [Stdlib](STDLIB.md)
 - [Capabilities](CAPABILITIES.md)
+- [When to use JS vs WASM](WHEN_TO_USE_JS_VS_WASM.md)

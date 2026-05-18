@@ -108,6 +108,11 @@ Then launch extension development host from VS Code.
 ## Where to Go Next
 
 <div class="docs-next-grid">
+  <a class="docs-next-card" href="LEARNING_PATH.md">
+    <span>Lessons</span>
+    <strong>Learning path</strong>
+    <small>A guided route from basics to WASM/tooling.</small>
+  </a>
   <a class="docs-next-card" href="USING_LUMINA.md">
     <span>Use Lumina</span>
     <strong>Usage guide</strong>

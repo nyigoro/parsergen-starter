@@ -8,6 +8,8 @@ Lumina supports JavaScript and WebAssembly because the web is already a hybrid p
 
 Legacy aliases like `esm`, `cjs`, and `wasm` still work, but the target profiles above are the preferred way to think about deployment.
 
+The playground uses shorter button labels: JS, WASM, and Both. Those labels map to the interactive playground surfaces; for CLI builds, prefer the explicit profiles `js`, `wasm-web`, and `wasm-standalone`.
+
 ## Use the JS Target When
 
 - you want the fastest edit-run-debug loop

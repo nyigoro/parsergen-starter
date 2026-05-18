@@ -368,6 +368,22 @@ Returns elapsed milliseconds since `instantNow()` value.
 
 Async sleep/delay helper.
 
+### localDate() -> String
+
+Viewer-local date in `YYYY-MM-DD` format.
+
+### localTime() -> String
+
+Viewer-local wall-clock time in `HH:MM:SS` format.
+
+### localClockMs() -> Int
+
+Milliseconds elapsed since local midnight. Useful for clock hands, timers, and local-time UI examples.
+
+### timeZone() -> String
+
+Best-effort IANA timezone name from the current runtime, or a local-time fallback label when the host does not expose one.
+
 ## @std/async
 
 ### timeout(ms: Int) -> Promise<Void>

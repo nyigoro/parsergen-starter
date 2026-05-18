@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Docs:** Refreshed the docs content corpus for current target naming, docs/playground workflow, UI Preview versus Worker Run behavior, learning-path structure, stdlib time helpers, and stale command cleanup.
 - **Docs:** Expanded docs navigation into broader learning categories with a dedicated Lessons section, a visible More / Awaiting Categorization bucket, static playground preview cards with Open in Playground links, and independent sidebar/article scrolling.
 - **Playground:** Added a Clock + Time Reactive UI example with viewer-local date/time output and a live wall clock driven by timer-updated Signals.
 - **Playground:** Tightened the Reactive UI example progression by pruning redundant/low-signal UI catalog entries while keeping legacy links routed to the stronger Counter example.

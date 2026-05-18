@@ -235,15 +235,18 @@ fn example() -> Result<i32, string> {
 
 Identical semantics.
 
-## Future: Option Support
+## Option Flows
 
-Planned support for `?` with `Option<T>`:
+Use `match` for `Option<T>` today. The `?` operator is the ergonomic path for
+`Result<T, E>` propagation; `Option<T>` remains explicit so absence stays clear
+at the branch where it matters.
 
 ```lumina
 fn find_value(items: Vec<i32>, target: i32) -> Option<i32> {
-  let first = vec.find(items, |x| x > 0)?;
-  let second = vec.find(items, |x| x == target)?;
-  Some(first + second)
+  match vec.find(items, |x| x == target) {
+    Some(value) => Some(value),
+    None => None
+  }
 }
 ```
 

@@ -90,8 +90,9 @@ Currently supported in the WASM backend:
 - `f32` -> lowered to f64 (temporary)
 - `i128` / `u128` -> lowered to i64 path in this backend
 
-Planned:
-- 128-bit integer emulation
+Still evolving:
+- full 128-bit integer emulation
+- dedicated `f32` lowering instead of the current f64 path
 
 ## Explicit Conversions
 
@@ -107,13 +108,14 @@ let w = z as i32;    // warning: lossy conversion
 
 ## Overflow Behavior
 
-Overflow behavior is planned:
-- Debug mode: panic on overflow
-- Release mode: wrapping arithmetic
+Overflow policy is still being refined. Treat overflow-sensitive code as
+explicit for now: validate inputs, use wider types where appropriate, and prefer
+domain helpers once checked/saturating arithmetic lands.
 
 ## Next Steps
 
-- [ ] Type conversions (`as` operator)
-- [ ] Numeric trait bounds
-- [ ] WASM i64 support
-- [ ] Saturating/checked arithmetic
+- [x] Explicit type conversions with `as`
+- [x] Native WASM i64 lowering for `i64` / `u64`
+- [ ] Full 128-bit integer emulation
+- [ ] Saturating/checked arithmetic helpers
+- [ ] Broader numeric trait ergonomics

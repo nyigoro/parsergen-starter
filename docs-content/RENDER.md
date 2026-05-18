@@ -106,7 +106,7 @@ Runtime helpers:
 - `render.update(root, node)` updates tree.
 - `render.unmount(root)` unmounts current tree.
 
-## DOM Target (Phase 2)
+## DOM Target
 
 Use the built-in DOM renderer:
 
@@ -195,7 +195,7 @@ node object, and keeps focus order meaningful for keyboard users. References:
 [W3C WCAG Focus Order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html),
 and [TC39 keyed collection semantics](https://tc39.es/ecma262/multipage/keyed-collections.html).
 
-## Additional Targets (Phase 3)
+## Additional Targets
 
 ### SSR Renderer
 

@@ -1,6 +1,6 @@
 # Using Lumina
 
-This guide documents daily Lumina usage: CLI workflow, language patterns, and build targets.
+This guide documents daily Lumina usage: CLI workflow, language patterns, build targets, and how the docs/playground loop fits together.
 
 ## CLI Workflow
 
@@ -74,6 +74,18 @@ Optional debug WAT:
 ```bash
 lumina compile src/main.lm --target wasm-web --out dist/main.wasm --emit-wat
 ```
+
+## Docs + Playground Workflow
+
+The docs are the narrative path. The playground is the execution surface for focused, single-source examples.
+
+- Use docs preview cards to understand the concept, then open the example in the playground when you want to edit or run it.
+- Use the Run tab for non-DOM runtime output.
+- Use the UI tab for browser DOM examples that call the renderer and mount into a document-backed preview.
+- Use the Types tab to inspect Hindley-Milner declaration and expression inference.
+- Use the Diagnostics tab when Check or Run reports compile diagnostics.
+
+DOM-mounted UI examples intentionally open to the UI tab. They are not ordinary Worker-Run examples because the Worker runtime does not provide a browser document.
 
 Format, lint, and generate docs:
 
@@ -216,6 +228,8 @@ Use thread/channel modules from `@std`:
 import { thread, channel } from "@std";
 ```
 
+These APIs are host-runtime features. They work where the host provides the needed worker, channel, shared-memory, or stream capability. In the playground, advanced thread/channel examples are presented as host-runtime patterns; the Worker Run surface may explain a nested-worker limitation instead of pretending the example is universally runnable there.
+
 See tests/examples for current supported patterns:
 
 - `tests/runtime-stdlib-thread.test.ts`
@@ -241,6 +255,13 @@ Schema: `lumina.config.schema.json`
 
 Preferred targets are `js`, `wasm-web`, and `wasm-standalone`. Legacy aliases like `esm`, `cjs`, and `wasm` still work for compatibility.
 
+Target naming rule of thumb:
+
+- `js` is the compiler target; `--module esm` or `--module cjs` chooses the JavaScript module format.
+- `wasm-web` is the browser/web-hosted WebAssembly profile.
+- `wasm-standalone` is the stricter import-light profile for portable kernels.
+- The playground target buttons are shorter UI labels: JS, WASM, and Both.
+
 ## Recommended CI Commands
 
 ```bash
@@ -256,3 +277,6 @@ npm run build
 - [Error handling](ERROR_HANDLING.md)
 - [Numeric types](NUMERIC_TYPES.md)
 - [Const generics](CONST_GENERICS.md)
+- [Learning path](LEARNING_PATH.md)
+- [UI framework direction](UI_FRAMEWORK.md)
+- [When to use JS vs WASM](WHEN_TO_USE_JS_VS_WASM.md)

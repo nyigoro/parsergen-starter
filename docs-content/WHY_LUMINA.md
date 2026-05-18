@@ -8,6 +8,15 @@ Lumina exists for teams that want stronger language guarantees on the web withou
 - It keeps one language across browser UI, worker code, and WASM workloads.
 - It is most compelling when you want algebraic data types, traits, pattern matching, and browser-native runtime APIs in the same toolchain.
 
+## How to Learn It
+
+Use the docs as the map and the playground as the lab. Docs pages explain the concept, then selected preview cards open a curated single-source example in the standalone playground.
+
+- Start with [Getting Started](GETTING_STARTED.md) and the [Learning Path](LEARNING_PATH.md).
+- Use Run-oriented examples for normal runtime output.
+- Use UI-oriented examples in the UI Preview tab because they mount into a browser document.
+- Use the Types and Diagnostics tabs when you want to understand inference or compiler feedback.
+
 ## Lumina vs TypeScript
 
 Choose Lumina over TypeScript when:
@@ -60,6 +69,8 @@ Those languages remain strong references for language ergonomics, functional des
 
 ## Read Next
 
+- [Getting Started](GETTING_STARTED.md)
+- [Learning Path](LEARNING_PATH.md)
 - [When to use JS vs WASM](WHEN_TO_USE_JS_VS_WASM.md)
 - [Capabilities](CAPABILITIES.md)
 - [Web-Native Roadmap](WEB_NATIVE_ROADMAP.md)

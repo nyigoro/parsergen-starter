@@ -186,13 +186,13 @@ Typical rollout:
 
 1. Keep TS/JS app shell.
 2. Write Lumina modules for business logic.
-3. Compile Lumina to JS (`--target esm` or `--target cjs`).
+3. Compile Lumina to JS (`--target js --module esm` or `--target js --module cjs`).
 4. Import compiled modules in existing TS/JS runtime.
 
 Example compile:
 
 ```bash
-lumina compile src/core.lm --target esm --out dist/core.js
+lumina compile src/core.lm --target js --module esm --out dist/core.js
 ```
 
 ## 5. Common Pitfalls During Migration

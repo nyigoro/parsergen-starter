@@ -10,6 +10,19 @@ Last updated for v0.5.7.
 - **Platform model**: Capability-checked targets and browser-first constraints drive runtime and codegen priorities
 - **Scope policy**: Existing vision areas like advanced types, traits, macros, tooling/LSP, concurrency, and stdlib breadth remain in scope
 
+## Docs and Playground Surface
+
+The docs site is the primary learning surface, and the playground is the focused execution surface.
+
+| Surface | Current role |
+|---|---|
+| Docs preview cards | Explain why an example matters and link to the full playground without embedding a heavy iframe into every lesson |
+| Run tab | Executes non-DOM examples in an isolated runtime |
+| UI tab | Renders DOM-mounted examples in a document-backed preview |
+| Types tab | Shows HM declaration and expression inference |
+| Diagnostics tab | Shows compile diagnostics and educational explain content |
+| JS/WASM tabs | Show generated JavaScript and WAT/binary metrics as read-only output surfaces |
+
 ## Legend
 
 - **Stable**: Implemented and covered by tests

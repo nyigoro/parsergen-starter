@@ -1,6 +1,6 @@
 # Lumina Async/Await Guide
 
-This guide describes the async/await model in Lumina and how it maps to JavaScript.
+This guide describes the async/await model in Lumina, how it maps to JavaScript, and where host runtime capabilities matter.
 
 ## Syntax
 
@@ -56,3 +56,13 @@ async fn main() {
 
 - Async/await compiles directly to JavaScript `async` / `await`.
 - The runtime uses Node.js `fs/promises` when available; in browsers it falls back to `fetch` for reads.
+- `js` is the most direct async target because it runs on the JavaScript host event loop.
+- `wasm-web` covers shared-core async behavior where the host imports are available.
+- `wasm-standalone` intentionally has a narrower runtime surface; host-backed async APIs need explicit replacement or embedding support.
+- In the playground, Worker Run is best for ordinary runtime examples. Browser DOM examples belong in the UI tab, and nested worker/channel examples may be presented as host-runtime patterns rather than universally runnable snippets.
+
+## Read Next
+
+- [Using Lumina](USING_LUMINA.md)
+- [When to use JS vs WASM](WHEN_TO_USE_JS_VS_WASM.md)
+- [Runtime architecture](RUNTIME_ARCHITECTURE.md)

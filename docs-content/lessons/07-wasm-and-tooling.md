@@ -10,7 +10,7 @@
 JavaScript:
 
 ```bash
-lumina compile examples/wasm-hello/math.lm --target cjs --ast-js --out math.cjs
+lumina compile examples/wasm-hello/math.lm --target js --module cjs --out math.cjs
 node math.cjs
 ```
 
@@ -20,6 +20,8 @@ WASM:
 lumina compile examples/wasm-hello/math.lm --target wasm-web --out math.wasm
 lumina run-wasm math.wasm main
 ```
+
+Use `--target js --module esm|cjs` for JavaScript output. Use `wasm-web` for browser-hosted WebAssembly and `wasm-standalone` for stricter import-light kernels.
 
 Optional debug output:
 
