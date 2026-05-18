@@ -7,6 +7,8 @@
 - The JS and WASM output tabs render generated JavaScript and WAT as syntax-highlighted, read-only code surfaces with copy/download actions.
 - Compile diagnostics have an educational Explain flow with severity, code, location, plain-language context, why-it-happens notes, and fix guidance.
 - Run executes non-DOM code in an isolated worker; DOM-mounted UI sources are guided to the UI Preview tab instead of failing with worker-only document errors.
+- Thread/channel examples are treated as host-runtime patterns in the playground: they open to JS inspection and Run explains the nested-worker limitation instead of showing misleading `NaN` output.
+- The examples catalog includes preview-first Reactive UI examples for counters, tabs, forms/resources, and styled UI composition.
 - The Types tab displays Hindley-Milner inference results after Check or Run.
 - Type inspection includes declaration rows with name, kind, and type, plus expression rows with source preview, inferred type, and line/column position.
 - Expression type rows jump the editor to the inferred expression location, keep a selected-row marker, and can be filtered by calls, literals, or value references.

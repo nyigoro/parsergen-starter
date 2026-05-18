@@ -26,6 +26,9 @@ describe('playground examples data', () => {
       'list-comprehension',
       'counter',
       'reactive-greeting',
+      'tabs',
+      'forms-store-resource',
+      'ui-showcase',
       'algebraic-data',
       'hkt-stdlib',
       'type-holes',
@@ -51,5 +54,24 @@ describe('playground examples data', () => {
       const resolved = path.resolve(path.dirname(examplesDataPath), specifier);
       expect(fs.existsSync(resolved)).toBe(true);
     }
+  });
+
+  test('classifies DOM-backed UI examples as preview-first catalog entries', () => {
+    const source = fs.readFileSync(examplesDataPath, 'utf-8');
+
+    for (const exampleId of ['tabs', 'forms-store-resource', 'ui-showcase']) {
+      expect(source).toContain(`example('REACTIVE_UI', '${exampleId}'`);
+      expect(source).toMatch(
+        new RegExp(`example\\('REACTIVE_UI', '${exampleId}', [\\s\\S]*?, 'js', 'ui'\\)`)
+      );
+    }
+
+    expect(source).toContain("import formsStoreResourceSource from '../../examples/forms-store-resource/main.lm?raw';");
+    expect(source).toContain('const tabsPreviewSource');
+    expect(source).toContain('fn tabsView(active: Signal<string>)');
+    expect(source).toContain('render.tabsRoot(active');
+    expect(source).toContain('const uiShowcasePreviewSource');
+    expect(source).toContain('fn app() -> VNode');
+    expect(source).toContain('render.element("details"');
   });
 });

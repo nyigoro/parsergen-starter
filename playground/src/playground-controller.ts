@@ -79,7 +79,7 @@ const runtimeLabels: Record<RuntimeStatus, string> = {
   running: 'Running',
   ok: 'Passed',
   error: 'Runtime error',
-  blocked: 'Use UI tab',
+  blocked: 'Run blocked',
 };
 const previewLabels: Record<PreviewStatus, string> = {
   idle: 'Idle',
@@ -153,10 +153,18 @@ const sourceRequiresDocumentRuntime = (source: string): boolean =>
   /\b(dom_get_element_by_id|createDomRenderer|mount_reactive|hydrate_reactive|mountApp|hydrateApp)\b/.test(source) ||
   /\brender\.(dom_get_element_by_id|createDomRenderer|mount_reactive|hydrate_reactive|mountApp|hydrateApp)\b/.test(source);
 
+const sourceRequiresHostWorkerRuntime = (source: string): boolean =>
+  /\bthread\.spawn\b/.test(source) || /\bchannel\.(new|bounded)\b/.test(source);
+
 const uiRunGuidance = `This source mounts browser UI and needs a document-backed runtime.
 Open the UI tab and press Refresh to render it.
 
 Run executes non-DOM code in an isolated worker, so it does not provide document or DOM APIs.`;
+
+const workerRunGuidance = `This source uses Lumina thread/channel APIs.
+The playground Run tab already executes inside an isolated worker, so nested worker/channel examples are best inspected here and run from a full host runtime.
+
+Use the JS or Types tab to study the generated program shape.`;
 
 const safeScriptJson = (value: unknown): string => JSON.stringify(value).replaceAll('</', '<\\/');
 
@@ -871,6 +879,17 @@ export const startPlayground = async (): Promise<void> => {
       };
     }
 
+    if (sourceRequiresHostWorkerRuntime(store.get().source)) {
+      return {
+        output:
+          target === 'both' && result.wasm
+            ? `${workerRunGuidance}\n\nGenerated WASM artifact (${bytes(result.wasm.byteSize)}).`
+            : workerRunGuidance,
+        status: 'blocked',
+        message: 'This source uses worker/channel APIs; inspect it or run it from a full host runtime.',
+      };
+    }
+
     const jsRun = await runCompiledModule(result, signal);
     if (target === 'both') {
       return {
@@ -907,11 +926,20 @@ export const startPlayground = async (): Promise<void> => {
     const controller = new AbortController();
     activeRun = controller;
     const needsUiRuntime = target !== 'wasm' && sourceRequiresDocumentRuntime(store.get().source);
-    runOutput = target === 'wasm' ? 'Generating WASM artifact...' : needsUiRuntime ? 'Preparing UI guidance...' : 'Executing in an isolated runtime...';
+    const needsHostWorkerRuntime = target !== 'wasm' && !needsUiRuntime && sourceRequiresHostWorkerRuntime(store.get().source);
+    runOutput = target === 'wasm'
+      ? 'Generating WASM artifact...'
+      : needsUiRuntime || needsHostWorkerRuntime
+        ? 'Preparing runtime guidance...'
+        : 'Executing in an isolated runtime...';
     store.set({
       activeTab: 'run',
       runtimeStatus: 'running',
-      runtimeMessage: needsUiRuntime ? 'Checking whether this source needs the UI preview runtime.' : 'Executing in a clean runtime.',
+      runtimeMessage: needsUiRuntime
+        ? 'Checking whether this source needs the UI preview runtime.'
+        : needsHostWorkerRuntime
+          ? 'Checking whether this source needs a host worker runtime.'
+          : 'Executing in a clean runtime.',
     });
     renderState(store.get());
 
@@ -1065,6 +1093,48 @@ export const startPlayground = async (): Promise<void> => {
     body { margin: 0; min-height: 100vh; background: #f8fafc; color: #0f172a; }
     #root, #app { min-height: 100vh; }
     button { font: inherit; }
+    .play-surface { min-height: 100vh; box-sizing: border-box; padding: 28px; color: #0f172a; }
+    .play-surface-teal { background: linear-gradient(135deg, #eff6ff, #f0fdfa); }
+    .play-surface-blue { background: linear-gradient(135deg, #f8fafc, #eef2ff); }
+    .play-shell { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+    .play-shell.compact { max-width: 720px; }
+    .play-stack { display: flex; flex-direction: column; gap: 8px; }
+    .play-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .play-eyebrow { margin: 0; color: #0f766e; font-size: 12px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; }
+    .play-eyebrow.blue { color: #2563eb; }
+    .play-title { margin: 0; color: #0f172a; font-size: 34px; line-height: 1.1; }
+    .play-copy { margin: 0; color: #475569; line-height: 1.6; max-width: 680px; }
+    .play-muted { margin: 0; color: #64748b; font-size: 14px; }
+    .play-surface button { border: 1px solid #0f766e; background: #ccfbf1; color: #134e4a; border-radius: 999px; padding: 10px 14px; font-weight: 800; cursor: pointer; }
+    .play-surface button:hover { background: #99f6e4; }
+    .play-card { border: 1px solid #bae6fd; border-radius: 16px; background: #fff; padding: 18px; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
+    .play-card-title { margin: 0 0 8px; color: #075985; font-size: 22px; }
+    .play-metric { border: 1px solid #dbeafe; border-radius: 18px; background: #fff; padding: 16px; min-width: 140px; }
+    .play-metric-label { margin: 0 0 8px; color: #64748b; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    .play-number { font-size: 28px; }
+    .play-number.teal { color: #0f766e; }
+    .play-number.blue { color: #2563eb; }
+    .play-number.violet { color: #7c3aed; }
+    .play-shell > button { align-self: flex-start; border-color: #0f172a; background: #0f172a; color: white; }
+    .play-shell > button:hover { background: #1e293b; }
+    .play-insight { border: 1px solid #bae6fd; border-radius: 20px; background: #f0f9ff; color: #0c4a6e; padding: 18px; line-height: 1.6; }
+    .play-insight-title { display: block; margin-bottom: 6px; color: #075985; }
+    .play-empty-card { border: 1px dashed #cbd5e1; border-radius: 20px; color: #64748b; padding: 18px; }
+    .counter-card { align-items: center; background: #fff; border: 1px solid #bae6fd; border-radius: 24px; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); display: flex; gap: 14px; padding: 18px; width: fit-content; }
+    .counter-value { color: #0f172a; font-size: 42px; line-height: 1; min-width: 64px; text-align: center; }
+    .profile-workspace { box-sizing: border-box; color: #0f172a; display: flex; flex-direction: column; gap: 14px; margin: 0 auto; max-width: 760px; min-height: 100vh; padding: 28px; background: linear-gradient(135deg, #f8fafc, #f0fdfa); }
+    .profile-title { font-size: 36px; line-height: 1.05; margin: 0; }
+    .profile-status { align-self: flex-start; background: #dcfce7; border: 1px solid #86efac; border-radius: 999px; color: #166534; font-weight: 800; margin: 0; padding: 6px 10px; }
+    .profile-name { background: #fff; border: 1px solid #dbeafe; border-radius: 18px; color: #075985; font-size: 24px; font-weight: 800; margin: 0; padding: 16px; }
+    .profile-resource-actions, .profile-form, .profile-panels, .profile-queue-panel { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+    .profile-workspace button { border: 1px solid #0f766e; background: #ccfbf1; color: #134e4a; border-radius: 999px; padding: 9px 13px; font-weight: 800; cursor: pointer; }
+    .profile-workspace button:hover { background: #99f6e4; }
+    .profile-input { border: 1px solid #cbd5e1; border-radius: 12px; font: inherit; min-width: 240px; padding: 10px 12px; }
+    .profile-ready { align-items: center; color: #334155; display: flex; gap: 8px; font-weight: 700; }
+    .profile-preview { color: #475569; margin: 0; }
+    .profile-panel { background: #fff; border: 1px solid #dbeafe; border-radius: 16px; padding: 14px; width: 100%; }
+    .profile-queue { background: #fff; border: 1px solid #dbeafe; border-radius: 16px; margin: 0; padding: 14px 14px 14px 34px; width: 100%; }
+    .profile-queue-item { color: #334155; padding: 4px 0; }
   </style>
 </head>
 <body>

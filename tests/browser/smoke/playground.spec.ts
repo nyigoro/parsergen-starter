@@ -178,12 +178,12 @@ test.describe('playground browser smoke', () => {
   test('guides DOM UI examples to the UI tab instead of failing worker Run', async ({ page }) => {
     const server = await startSmokeServer();
     try {
-      for (const exampleId of ['counter', 'reactive-greeting']) {
+      for (const exampleId of ['counter', 'reactive-greeting', 'tabs', 'forms-store-resource', 'ui-showcase']) {
         await page.goto(`${server.baseUrl}/playground/?example=${exampleId}`);
         await waitForCompile(page);
         await page.click('#run-button');
-        await expect(page.locator('#status-runtime')).toContainText('Use UI tab');
-        await expect(page.locator('#runtime-status-label')).toContainText('Use UI tab');
+        await expect(page.locator('#status-runtime')).toContainText('Run blocked');
+        await expect(page.locator('#runtime-status-label')).toContainText('Run blocked');
         await expect(page.locator('#runtime-message-label')).toContainText('render it in the UI tab');
         await expect(page.locator('#run-output-root')).toContainText('This source mounts browser UI');
         await expect(page.locator('#run-output-root')).toContainText('Open the UI tab and press Refresh');
@@ -195,6 +195,36 @@ test.describe('playground browser smoke', () => {
           .poll(async () => (await page.locator('#preview-status-label').textContent())?.trim() ?? '')
           .toBe('Rendered');
         await expect(page.locator('#preview-overlay')).toBeHidden();
+
+        if (exampleId === 'forms-store-resource') {
+          const preview = page.frameLocator('#preview-frame');
+          await expect(preview.locator('body')).toContainText('Queue: draft -> review -> publish');
+          await preview.getByRole('button', { name: 'Editor' }).click();
+          await expect(preview.locator('body')).toContainText('Editor keeps its own keyed identity.');
+          await preview.getByRole('button', { name: 'Summary' }).click();
+          await expect(preview.locator('body')).toContainText('Summary stays keyed during hydration and panel swaps.');
+          await preview.getByRole('button', { name: 'Rotate queue' }).click();
+          await expect(preview.locator('body')).toContainText('Queue: review -> publish -> draft');
+        }
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  test('guides host worker examples away from nested Worker Run output', async ({ page }) => {
+    const server = await startSmokeServer();
+    try {
+      for (const exampleId of ['channels-mpsc', 'thread-channel-producer-consumer', 'thread-patterns', 'parallel-fibonacci']) {
+        await page.goto(`${server.baseUrl}/playground/?example=${exampleId}`);
+        await waitForCompile(page);
+        await expect(page.locator('#output-tab-js')).toHaveAttribute('data-active', 'true');
+        await page.click('#run-button');
+        await expect(page.locator('#status-runtime')).toContainText('Run blocked');
+        await expect(page.locator('#runtime-message-label')).toContainText('full host runtime');
+        await expect(page.locator('#run-output-root')).toContainText('thread/channel APIs');
+        await expect(page.locator('#run-output-root')).not.toContainText('NaN');
+        await expect(page.locator('#run-output-root')).not.toContainText('[object Object]');
       }
     } finally {
       await server.close();
@@ -348,6 +378,24 @@ test.describe('playground browser smoke', () => {
       await expect(page.locator('#examples-current')).toContainText('Counter');
       await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
 
+      await selectExampleFromBrowser(page, 'tabs');
+      await expect(page.locator('#examples-current')).toContainText('Tabs');
+      await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#status-target')).toContainText('JS');
+      await expect.poll(async () => readEditorText(page)).toContain('render.tabsRoot');
+
+      await selectExampleFromBrowser(page, 'forms-store-resource');
+      await expect(page.locator('#examples-current')).toContainText('Forms + Resource');
+      await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#status-target')).toContainText('JS');
+      await expect.poll(async () => readEditorText(page)).toContain('createResource');
+
+      await selectExampleFromBrowser(page, 'ui-showcase');
+      await expect(page.locator('#examples-current')).toContainText('UI Showcase');
+      await expect(page.locator('#output-tab-ui')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#status-target')).toContainText('JS');
+      await expect.poll(async () => readEditorText(page)).toContain('Styled headless workspace');
+
       await selectExampleFromBrowser(page, 'wasm-hello');
       await expect(page.locator('#examples-current')).toContainText('WASM');
       await expect(page.locator('#output-tab-wasm')).toHaveAttribute('data-active', 'true');
@@ -355,7 +403,7 @@ test.describe('playground browser smoke', () => {
 
       await selectExampleFromBrowser(page, 'parallel-fibonacci');
       await expect(page.locator('#examples-current')).toContainText('Parallel Fibonacci');
-      await expect(page.locator('#output-tab-run')).toHaveAttribute('data-active', 'true');
+      await expect(page.locator('#output-tab-js')).toHaveAttribute('data-active', 'true');
       await expect(page.locator('#status-target')).toContainText('JS');
     } finally {
       await server.close();

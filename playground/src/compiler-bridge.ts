@@ -1,6 +1,8 @@
 import luminaGrammarRaw from '../../src/grammar/lumina.peg?raw';
 import preludeRaw from '../../std/prelude.lm?raw';
+import formsStdRaw from '../../std/forms.lm?raw';
 import routerStdRaw from '../../std/router.lm?raw';
+import uiStdRaw from '../../std/ui.lm?raw';
 import luminaRuntimeUrl from '../../dist/lumina-runtime.js?url';
 import { compileGrammar as compileLuminaGrammar } from '../../src/grammar/index';
 import { BrowserProjectContext, type BrowserTypeInfo } from '../../src/project/browser-context';
@@ -233,7 +235,11 @@ const hasMainFunction = (ast: unknown): boolean =>
   );
 
 const buildProjectContext = (runtime: PlaygroundCompilerRuntime, files: PlaygroundProjectFile[]) => {
-  const virtualFiles = new Map<string, string>([['@std/router', routerStdRaw]]);
+  const virtualFiles = new Map<string, string>([
+    ['@std/forms', formsStdRaw],
+    ['@std/router', routerStdRaw],
+    ['@std/ui', uiStdRaw],
+  ]);
   for (const file of files) {
     virtualFiles.set(file.uri, file.text);
   }

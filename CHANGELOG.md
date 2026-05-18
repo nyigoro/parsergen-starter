@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Playground:** Added Tabs, Forms + Resource, and UI Showcase examples as Reactive UI catalog entries that open in the UI Preview tab by default.
+- **Playground:** Classified Advanced thread/channel examples as host-runtime patterns with JS-first defaults and Run guidance, avoiding misleading nested-worker `NaN` output.
 - **Playground:** Run now detects DOM-mounted UI sources and guides users to the UI tab instead of surfacing the low-level worker-only `document-like object` runtime error.
 - **Playground:** Added syntax-highlighted read-only JS and WAT output viewers while preserving copy, download, readable/minified, and WASM artifact actions.
 - **Playground:** Polished the WASM tab with summary metrics, section explanations, clearer empty/error/loading states, and deepened the Types tab with expression filters, selected-row feedback, and clearer learning copy.

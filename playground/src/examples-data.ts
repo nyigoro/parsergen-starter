@@ -1,5 +1,5 @@
 import basicsLessonSource from '../../docs-content/lessons/01-basics.md?raw';
-import counterSource from '../../examples/counter/main.lm?raw';
+import formsStoreResourceSource from '../../examples/forms-store-resource/main.lm?raw';
 import hktSource from '../../examples/hkt-stdlib/main.lm?raw';
 import wasmSource from '../../examples/wasm-hello/math.lm?raw';
 import channelsSource from '../../examples/channels-mpsc/main.lm?raw';
@@ -147,20 +147,64 @@ fn main() -> i32 {
   unwrap_or(MaybeInt.Some(7), 0)
 }
 `;
-const reactiveGreetingSource = `import { createSignal, get } from "@std/reactive";
-import {
-  vnode,
-  text,
-  createDomRenderer,
-  mount_reactive,
-  props_empty,
-  dom_get_element_by_id
-} from "@std/render";
+const counterPreviewSource = `import { render } from "@std";
+import { createSignal } from "@std/reactive";
+import { createDomRenderer, dom_get_element_by_id, mount_reactive } from "@std/render";
+
+fn counterView(count: Signal<i32>) -> VNode {
+  render.element("main", render.props_class("play-surface play-surface-teal"), [
+    render.element("section", render.props_class("play-shell compact"), [
+      render.element("p", render.props_class("play-eyebrow"), [render.text("Signal counter")]),
+      render.element("h1", render.props_class("play-title"), [render.text("Reactive count")]),
+      render.element("p", render.props_class("play-copy"), [
+        render.text("The buttons update one Signal<i32>; the mounted view refreshes from the same source.")
+      ]),
+      render.element("div", render.props_class("counter-card"), [
+        render.element("button", render.props_on_click(fn() -> void {
+          let _ = render.set(count, render.get(count) - 1)
+        }), [render.text("-")]),
+        render.element("strong", render.props_class("counter-value"), [render.text(render.get(count))]),
+        render.element("button", render.props_on_click(fn() -> void {
+          let _ = render.set(count, render.get(count) + 1)
+        }), [render.text("+")])
+      ])
+    ])
+  ])
+}
+
+pub fn main() -> void {
+  let container = dom_get_element_by_id("app");
+  let renderer = createDomRenderer();
+  let count = createSignal(0);
+  let _mounted = mount_reactive(renderer, container, || counterView(count));
+}
+
+main();
+`;
+const reactiveGreetingSource = `import { render } from "@std";
+import { createSignal } from "@std/reactive";
+import { createDomRenderer, dom_get_element_by_id, mount_reactive } from "@std/render";
 
 fn greetingView(name: Signal<string>) -> VNode {
-  vnode("main", props_empty(), [
-    vnode("h1", props_empty(), [text("Hello {get(name)}")]),
-    vnode("p", props_empty(), [text("Reactive text comes from a Signal<string>.")])
+  render.element("main", render.props_class("play-surface play-surface-blue"), [
+    render.element("section", render.props_class("play-shell compact"), [
+      render.element("p", render.props_class("play-eyebrow blue"), [render.text("Reactive greeting")]),
+      render.element("h1", render.props_class("play-title"), [render.text("Hello {render.get(name)}")]),
+      render.element("p", render.props_class("play-copy"), [
+        render.text("Swap the signal value and the preview updates without remounting the shell.")
+      ]),
+      render.element("div", render.props_class("play-row"), [
+        render.element("button", render.props_on_click(fn() -> void {
+          let _ = render.set(name, "Lumina")
+        }), [render.text("Lumina")]),
+        render.element("button", render.props_on_click(fn() -> void {
+          let _ = render.set(name, "Ada")
+        }), [render.text("Ada")]),
+        render.element("button", render.props_on_click(fn() -> void {
+          let _ = render.set(name, "Grace")
+        }), [render.text("Grace")])
+      ])
+    ])
   ])
 }
 
@@ -194,6 +238,200 @@ pub fn main() -> void {
   let container = dom_get_element_by_id("app");
   let renderer = createDomRenderer();
   let _mounted = mount_reactive(renderer, container, || listView());
+}
+
+main();
+`;
+const formsStoreResourcePreviewSource = `${formsStoreResourceSource.includes('ProfileWorkspace') ? '' : '// adapted from forms-store-resource\n'}import { reactive, render } from "@std";
+import { checkbox, submitProps, textInput } from "@std/forms";
+import { createDomRenderer, dom_get_element_by_id, mount_reactive } from "@std/render";
+
+async fn loadProfile() -> string {
+  "Ada Lovelace"
+}
+
+fn ProfileWorkspace(
+  label: string,
+  name: Signal<string>,
+  ready: Signal<bool>,
+  queue: Signal<string>,
+  mode: Signal<string>,
+  draft: Signal<string>,
+  profile: any
+) -> VNode {
+  render.element("section", render.props_class("profile-workspace"), [
+    render.element("h1", render.props_class("profile-title"), [render.text(label)]),
+    render.element("p", render.props_class("profile-status"), [render.text(render.resourceStatus(profile))]),
+    render.suspense(render.text("Loading profile"), || [
+      render.errorBoundary(render.text("Profile failed"), || [
+        render.element("p", render.props_class("profile-name"), [render.text(render.resourceData(profile))])
+      ])
+    ]),
+    render.element("div", render.props_class("profile-resource-actions"), [
+      render.element("button", render.props_on_click(fn() -> void {
+        let _ = render.resourceRefresh(profile)
+      }), [render.text("Refresh profile")]),
+      render.element("button", render.props_on_click(fn() -> void {
+        let _ = render.resourceMutate(profile, "Grace Hopper")
+      }), [render.text("Optimistic profile")]),
+      render.element("button", render.props_on_click(fn() -> void {
+        render.resourceInvalidate(profile)
+      }), [render.text("Invalidate profile")])
+    ]),
+    render.element("form", submitProps(fn() -> void {
+      let _ = reactive.set(draft, reactive.get(name))
+    }, render.props_class("profile-form")), [
+      render.element("input", textInput(name, render.props_class("profile-input")), []),
+      render.element("label", render.props_class("profile-ready"), [
+        render.element("input", checkbox(ready, render.props_class("profile-checkbox")), []),
+        render.text("Ready to publish")
+      ]),
+      render.element("button", render.props_class("profile-submit"), [render.text("Save draft")])
+    ]),
+    render.element("p", render.props_class("profile-preview"), [
+      render.text("Stored draft: "),
+      render.text(reactive.get(draft))
+    ]),
+    render.element("div", render.props_class("profile-panels"), [
+      render.element("button", render.props_merge(render.props_class("profile-panel-button"), render.props_on_click(fn() -> void {
+        let _ = reactive.set(mode, "summary")
+      })), [render.text("Summary")]),
+      render.element("button", render.props_merge(render.props_class("profile-panel-button"), render.props_on_click(fn() -> void {
+        let _ = reactive.set(mode, "editor")
+      })), [render.text("Editor")]),
+      show(reactive.get(mode) == "summary") {
+        key("summary") => render.element("section", props { class: "profile-panel" }, [
+          render.text("Summary stays keyed during hydration and panel swaps.")
+        ])
+      } else {
+        key("editor") => render.element("section", props { class: "profile-panel" }, [
+          render.text("Editor keeps its own keyed identity.")
+        ])
+      }
+    ]),
+    render.element("div", render.props_class("profile-queue-panel"), [
+      render.element("button", render.props_on_click(fn() -> void {
+        let _ = reactive.set(queue, "review -> publish -> draft")
+      }), [render.text("Rotate queue")]),
+      render.element("p", render.props_merge(render.props_class("profile-queue"), render.props_attr("aria-live", "polite")), [
+        render.text("Queue: "),
+        render.text(reactive.get(queue))
+      ])
+    ])
+  ])
+}
+
+pub fn main() -> void {
+  let container = dom_get_element_by_id("app");
+  let renderer = createDomRenderer();
+  let name = reactive.createSignal("");
+  let ready = reactive.createSignal(false);
+  let queue = reactive.createSignal("draft -> review -> publish");
+  let mode = reactive.createSignal("summary");
+  let draft = reactive.createSignal("draft");
+  let profile = render.createResource("example:profile", fn() -> Promise<any> { loadProfile() }, render.props_empty());
+  let _mounted = mount_reactive(renderer, container, || ProfileWorkspace("Profile workspace", name, ready, queue, mode, draft, profile));
+}
+
+main();
+`;
+const tabsPreviewSource = `import { render } from "@std";
+import { createSignal } from "@std/reactive";
+import { createDomRenderer, dom_get_element_by_id, mount_reactive } from "@std/render";
+
+fn panelCard(title: string, copy: string) -> VNode {
+  render.element("article", render.props_class("play-card"), [
+    render.element("h2", render.props_class("play-card-title"), [render.text(title)]),
+    render.element("p", render.props_class("play-copy"), [render.text(copy)])
+  ])
+}
+
+fn tabsView(active: Signal<string>) -> VNode {
+  render.tabsRoot(active, || [
+    render.element("main", render.props_class("play-surface play-surface-teal"), [
+      render.element("section", render.props_class("play-shell"), [
+        render.element("header", render.props_class("play-stack"), [
+          render.element("p", render.props_class("play-eyebrow"), [render.text("Reactive tabs")]),
+          render.element("h1", render.props_class("play-title"), [render.text("Lumina product workspace")]),
+          render.element("p", render.props_class("play-copy"), [
+            render.text("Switch tabs to see one Signal drive both the selected control and visible panel.")
+          ])
+        ]),
+        render.tabsList(render.props_class("play-row"), || [
+          render.tabsTrigger("overview", 0, [render.text("Overview")]),
+          render.tabsTrigger("activity", 0, [render.text("Activity")]),
+          render.tabsTrigger("settings", 0, [render.text("Settings")])
+        ]),
+        render.tabsPanel("overview", 0, [
+          panelCard("Overview", "This single-source example models a tabbed workspace with Lumina Signals.")
+        ]),
+        render.tabsPanel("activity", 0, [
+          panelCard("Activity", "Keyboard-friendly state changes keep the selected tab and rendered panel in sync.")
+        ]),
+        render.tabsPanel("settings", 0, [
+          panelCard("Settings", "Styling stays local to the app while the playground preview owns the DOM runtime.")
+        ]),
+        render.element("p", render.props_class("play-muted"), [
+          render.text("Active tab: "),
+          render.text(render.get(active))
+        ])
+      ])
+    ])
+  ])
+}
+
+pub fn main() -> void {
+  let container = dom_get_element_by_id("app");
+  let renderer = createDomRenderer();
+  let active = createSignal("overview");
+  let _mounted = mount_reactive(renderer, container, || tabsView(active));
+}
+
+main();
+`;
+const uiShowcasePreviewSource = `import { render } from "@std";
+import { createDomRenderer, dom_get_element_by_id, mount_reactive } from "@std/render";
+
+fn metric(label: string, value: string, accentClass: string) -> VNode {
+  render.element("article", render.props_class("play-metric"), [
+    render.element("p", render.props_class("play-metric-label"), [render.text(label)]),
+    render.element("strong", render.props_class(accentClass), [render.text(value)])
+  ])
+}
+
+fn insight() -> VNode {
+  render.element("details", render.props_class("play-insight"), [
+    render.element("summary", render.props_class("play-insight-title"), [render.text("Toggle insight")]),
+    render.element("p", render.props_class("play-copy"), [
+      render.text("This catalog version keeps the UI Showcase single-source and self-contained for the sandboxed preview.")
+    ])
+  ])
+}
+
+fn app() -> VNode {
+  render.element("main", render.props_class("play-surface play-surface-blue"), [
+    render.element("section", render.props_class("play-shell"), [
+      render.element("header", render.props_class("play-stack"), [
+        render.element("p", render.props_class("play-eyebrow blue"), [render.text("Lumina UI")]),
+        render.element("h1", render.props_class("play-title"), [render.text("Styled headless workspace")]),
+        render.element("p", render.props_class("play-copy"), [
+          render.text("A compact preview of cards, actions, reactive state, and educational layout primitives.")
+        ])
+      ]),
+      render.element("div", render.props_class("play-row"), [
+        metric("Signals", "3", "play-number teal"),
+        metric("Panels", "2", "play-number blue"),
+        metric("Mode", "UI", "play-number violet")
+      ]),
+      insight()
+    ])
+  ])
+}
+
+pub fn main() -> void {
+  let container = dom_get_element_by_id("app");
+  let renderer = createDomRenderer();
+  let _mounted = mount_reactive(renderer, container, || app());
 }
 
 main();
@@ -234,8 +472,11 @@ export const exampleGroups: ExampleGroup[] = [
     label: 'Reactive UI',
     description: 'Signals, reactive rendering, and DOM preview composition.',
     examples: [
-      example('REACTIVE_UI', 'counter', 'Counter', 'Signal-backed counter', counterSource, 'js', 'ui', true),
+      example('REACTIVE_UI', 'counter', 'Counter', 'Signal-backed counter', counterPreviewSource, 'js', 'ui', true),
       example('REACTIVE_UI', 'reactive-greeting', 'Reactive Greeting', 'Signal-driven text rendered into the preview', reactiveGreetingSource, 'js', 'ui'),
+      example('REACTIVE_UI', 'tabs', 'Tabs', 'Headless tabs rendered with reactive state and ARIA wiring', tabsPreviewSource, 'js', 'ui'),
+      example('REACTIVE_UI', 'forms-store-resource', 'Forms + Resource', 'Forms, draft state, and async resource UI in the preview', formsStoreResourcePreviewSource, 'js', 'ui'),
+      example('REACTIVE_UI', 'ui-showcase', 'UI Showcase', 'Styled headless UI composition rendered in the preview', uiShowcasePreviewSource, 'js', 'ui'),
     ],
   },
   {
@@ -252,10 +493,10 @@ export const exampleGroups: ExampleGroup[] = [
     label: 'Advanced',
     description: 'Concurrency, async flows, channels, and worker-oriented patterns.',
     examples: [
-      example('ADVANCED', 'channels-mpsc', 'Concurrency', 'MPSC channel pattern', channelsSource, 'js', 'run', true),
-      example('ADVANCED', 'thread-channel-producer-consumer', 'Producer Consumer', 'Bounded channel producer/consumer flow', threadChannelSource, 'js', 'run'),
-      example('ADVANCED', 'thread-patterns', 'Thread Patterns', 'Worker pool pattern', threadPatternsSource, 'js', 'run'),
-      example('ADVANCED', 'parallel-fibonacci', 'Parallel Fibonacci', 'Spawn workers and join typed results', parallelFibSource, 'js', 'run'),
+      example('ADVANCED', 'channels-mpsc', 'Concurrency', 'MPSC channel pattern for host runtimes', channelsSource, 'js', 'js', true),
+      example('ADVANCED', 'thread-channel-producer-consumer', 'Producer Consumer', 'Bounded channel producer/consumer flow for host runtimes', threadChannelSource, 'js', 'js'),
+      example('ADVANCED', 'thread-patterns', 'Thread Patterns', 'Worker pool pattern for host runtimes', threadPatternsSource, 'js', 'js'),
+      example('ADVANCED', 'parallel-fibonacci', 'Parallel Fibonacci', 'Spawn workers and join typed results in a host runtime', parallelFibSource, 'js', 'js'),
     ],
   },
 ];
