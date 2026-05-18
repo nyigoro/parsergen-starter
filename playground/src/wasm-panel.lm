@@ -47,9 +47,11 @@ pub fn wasm_panel() -> VNode {
     vnode("div", attrs3(props_class("wasm-content"), props_id("wasm-content-root"), props_attr("hidden", "")), [
       vnode("section", attrs2(props_class("wasm-section-block stack-sm"), props_id("wasm-wat-section")), [
         vnode("div", props_class("panel-heading-row"), [
-          vnode("div", props_class("panel-title"), [text("WAT Viewer")]),
+          vnode("div", props_class("wasm-heading-stack"), [
+            vnode("div", props_class("panel-title"), [text("WAT")]),
+            vnode("span", props_class("muted-chip"), [text("Readable Text Format")])
+          ]),
           vnode("div", props_class("tool-row compact-tools"), [
-            vnode("span", props_class("muted-chip"), [text("readable text format")]),
             button_node("copy-wat-button", "Copy WAT"),
             button_node("download-wasm-button", "Download")
           ])
