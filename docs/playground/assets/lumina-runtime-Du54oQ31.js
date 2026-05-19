@@ -9695,6 +9695,17 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
 }, "createHeadlessPrimitivesRuntime");
 
 // src/runtime/system-runtime.ts
+var padTimePart = /* @__PURE__ */ __name((value) => String(Math.trunc(value)).padStart(2, "0"), "padTimePart");
+var localDateString = /* @__PURE__ */ __name((date) => `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())}`, "localDateString");
+var localTimeString = /* @__PURE__ */ __name((date) => `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}`, "localTimeString");
+var localClockMs = /* @__PURE__ */ __name((date) => date.getHours() * 60 * 60 * 1e3 + date.getMinutes() * 60 * 1e3 + date.getSeconds() * 1e3 + date.getMilliseconds(), "localClockMs");
+var localTimeZoneName = /* @__PURE__ */ __name(() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time";
+  } catch {
+    return "Local time";
+  }
+}, "localTimeZoneName");
 var blockedHttpHosts = /* @__PURE__ */ new Set([
   "localhost",
   "127.0.0.1",
@@ -10574,6 +10585,10 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
   const time2 = {
     nowMs: /* @__PURE__ */ __name(() => Math.trunc(Date.now()), "nowMs"),
     nowIso: /* @__PURE__ */ __name(() => (/* @__PURE__ */ new Date()).toISOString(), "nowIso"),
+    localDate: /* @__PURE__ */ __name(() => localDateString(/* @__PURE__ */ new Date()), "localDate"),
+    localTime: /* @__PURE__ */ __name(() => localTimeString(/* @__PURE__ */ new Date()), "localTime"),
+    localClockMs: /* @__PURE__ */ __name(() => Math.trunc(localClockMs(/* @__PURE__ */ new Date())), "localClockMs"),
+    timeZone: /* @__PURE__ */ __name(() => localTimeZoneName(), "timeZone"),
     instantNow: /* @__PURE__ */ __name(() => Math.trunc(getMonotonicNow()), "instantNow"),
     elapsedMs: /* @__PURE__ */ __name((since) => Math.max(0, Math.trunc(getMonotonicNow()) - Math.trunc(since)), "elapsedMs"),
     sleep: /* @__PURE__ */ __name(async (ms) => await new Promise((resolve) => {
