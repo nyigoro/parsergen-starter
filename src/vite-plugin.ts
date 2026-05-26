@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readLockfileSync, LOCKFILE_FILENAME, LEGACY_LOCKFILE_FILENAME } from './lumina/lockfile.js';
+import {
+  parsePackageSpecifier,
+  selectLockfilePackage,
+  type NormalizedLockfile,
+  type NormalizedLockfilePackage,
+} from './lumina/lockfile-format.js';
 
 type ViteModuleNode = {
   importers: Set<ViteModuleNode>;
@@ -70,6 +77,7 @@ const runtimeImport = new Function('specifier', 'return import(specifier)') as (
   specifier: string
 ) => Promise<CompilerModule>;
 const cwdRequire = createRequire(path.join(process.cwd(), '__lumina_vite_probe__.cjs'));
+const modulePath = fileURLToPath(import.meta.url);
 
 const defaultFileExtensions = ['.lm', '.lumina'];
 const importStatementRegex = /^\s*import\s+.+?from\s+["']([^"']+)["'];?\s*$/gm;
@@ -78,6 +86,7 @@ const resolvedRouteManifestVirtualId = '\0virtual:lumina-routes';
 
 const findPackageRoot = (): string => {
   const candidates = [
+    path.resolve(path.dirname(modulePath), '..'),
     process.cwd(),
     path.resolve(process.cwd(), '..'),
     path.resolve(process.cwd(), '../..'),
@@ -98,7 +107,7 @@ const findPackageRoot = (): string => {
   try {
     return path.dirname(cwdRequire.resolve('lumina-lang/package.json'));
   } catch {
-    return process.cwd();
+    throw new Error('Unable to locate lumina-lang package assets for the Vite plugin.');
   }
 };
 
@@ -209,19 +218,6 @@ const filterImportStatementNames = (statement: string, excludedNames: Set<string
   return `${match[1]} ${kept.join(', ')} ${match[3]}`.trim();
 };
 
-const parsePackageSpecifier = (specifier: string): { pkgName: string; subpath: string | null } => {
-  if (specifier.startsWith('@')) {
-    const parts = specifier.split('/');
-    if (parts.length < 2) return { pkgName: specifier, subpath: null };
-    const pkgName = `${parts[0]}/${parts[1]}`;
-    const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
-    return { pkgName, subpath };
-  }
-  const slash = specifier.indexOf('/');
-  if (slash === -1) return { pkgName: specifier, subpath: null };
-  return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
-};
-
 const findLockfileRoot = (fromPath: string, projectRoot: string): string | null => {
   let current = path.dirname(path.resolve(fromPath));
   while (true) {
@@ -275,6 +271,45 @@ const resolveWithExtensions = (resolved: string, extensions: string[]): string |
   return null;
 };
 
+const toNormalizedLockfile = (lockfileRoot: string): NormalizedLockfile => {
+  const raw = readLockfileSync(lockfileRoot);
+  const packages: NormalizedLockfile['packages'] = {};
+  for (const [key, entry] of raw.packages.entries()) {
+    packages[key] = {
+      name: entry.name,
+      version: entry.version,
+      resolved: entry.resolved,
+      path: entry.path,
+      integrity: entry.integrity,
+      lumina: entry.lumina,
+      deps: Object.fromEntries(entry.deps.entries()),
+      resolvedDeps:
+        entry.resolvedDeps && entry.resolvedDeps.size > 0
+          ? Object.fromEntries(entry.resolvedDeps.entries())
+          : undefined,
+    };
+  }
+  return { version: raw.version, packages };
+};
+
+const packageRootFor = (lockfileRoot: string, pkg: NormalizedLockfilePackage): string => {
+  const packageRoot = pkg.path ?? pkg.resolved;
+  return path.isAbsolute(packageRoot) ? path.resolve(packageRoot) : path.resolve(lockfileRoot, packageRoot);
+};
+
+const containingPackage = (
+  lockfile: NormalizedLockfile,
+  lockfileRoot: string,
+  importer: string
+): NormalizedLockfilePackage | null => {
+  const importerPath = path.resolve(importer);
+  const matches = Object.values(lockfile.packages)
+    .map((pkg) => ({ pkg, root: packageRootFor(lockfileRoot, pkg) }))
+    .filter(({ root }) => importerPath === root || importerPath.startsWith(`${root}${path.sep}`))
+    .sort((left, right) => right.root.length - left.root.length);
+  return matches[0]?.pkg ?? null;
+};
+
 const resolveBarePackageImport = (
   specifier: string,
   importer: string,
@@ -283,9 +318,10 @@ const resolveBarePackageImport = (
 ): string | null => {
   const lockfileRoot = findLockfileRoot(importer, projectRoot);
   if (!lockfileRoot) return null;
-  const lockfile = readLockfileSync(lockfileRoot);
+  const lockfile = toNormalizedLockfile(lockfileRoot);
   const { pkgName, subpath } = parsePackageSpecifier(specifier);
-  const entry = Array.from(lockfile.packages.values()).find((pkg) => pkg.name === pkgName);
+  const selected = selectLockfilePackage(lockfile, pkgName, containingPackage(lockfile, lockfileRoot, importer));
+  const entry = 'entry' in selected ? selected.entry : null;
   if (!entry?.lumina) return null;
 
   let luminaEntry: string | undefined;
@@ -300,10 +336,7 @@ const resolveBarePackageImport = (
   }
   if (!luminaEntry) return null;
 
-  let packagePath = entry.path ?? entry.resolved;
-  if (!path.isAbsolute(packagePath)) {
-    packagePath = path.resolve(lockfileRoot, packagePath);
-  }
+  const packagePath = packageRootFor(lockfileRoot, entry);
   return resolveWithExtensions(path.resolve(packagePath, luminaEntry), extensions);
 };
 

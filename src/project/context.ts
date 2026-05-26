@@ -14,15 +14,18 @@ import { buildModuleNamespaceFromSymbols } from '../lumina/module-utils.js';
 import {
   LEGACY_LOCKFILE_FILENAME,
   LOCKFILE_FILENAME,
+  parsePackageSpecifier,
   normalizeLockfileObject,
+  selectLockfilePackage,
   type NormalizedLockfile,
+  type NormalizedLockfilePackage,
 } from '../lumina/lockfile-format.js';
 
 type LuminaLockfile = NormalizedLockfile;
 
 type BareResolveResult =
   | { resolved: string }
-  | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004'; message: string } };
+  | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004' | 'PKG-005'; message: string } };
 
 const defaultLocation: Location = {
   start: { line: 1, column: 1, offset: 0 },
@@ -782,17 +785,22 @@ export class ProjectContext {
     }
   }
 
-  private parsePackageSpecifier(specifier: string): { pkgName: string; subpath: string | null } {
-    if (specifier.startsWith('@')) {
-      const parts = specifier.split('/');
-      if (parts.length < 2) return { pkgName: specifier, subpath: null };
-      const pkgName = `${parts[0]}/${parts[1]}`;
-      const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
-      return { pkgName, subpath };
-    }
-    const slash = specifier.indexOf('/');
-    if (slash === -1) return { pkgName: specifier, subpath: null };
-    return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
+  private packageRoot(root: string, pkg: NormalizedLockfilePackage): string {
+    const pkgRoot = pkg.path ?? pkg.resolved;
+    return path.isAbsolute(pkgRoot) ? path.resolve(pkgRoot) : path.resolve(root, pkgRoot);
+  }
+
+  private containingPackage(
+    lockfile: LuminaLockfile,
+    root: string,
+    fromFsPath: string
+  ): NormalizedLockfilePackage | null {
+    const importer = path.resolve(fromFsPath);
+    const matches = Object.values(lockfile.packages)
+      .map((pkg) => ({ pkg, root: this.packageRoot(root, pkg) }))
+      .filter(({ root: pkgRoot }) => importer === pkgRoot || importer.startsWith(`${pkgRoot}${path.sep}`))
+      .sort((left, right) => right.root.length - left.root.length);
+    return matches[0]?.pkg ?? null;
   }
 
   private resolveBareSpecifier(fromFsPath: string, specifier: string): string | null {
@@ -814,11 +822,17 @@ export class ProjectContext {
         error: { code: 'PKG-004', message: `Cannot resolve package imports: ${LOCKFILE_FILENAME} not found` },
       };
     }
-    const { pkgName, subpath } = this.parsePackageSpecifier(specifier);
-    const pkg = lockfile.packages?.[pkgName];
-    if (!pkg) {
-      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in ${LOCKFILE_FILENAME}` } };
+    const { pkgName, subpath } = parsePackageSpecifier(specifier);
+    const selected = selectLockfilePackage(lockfile, pkgName, this.containingPackage(lockfile, root, fromFsPath));
+    if ('error' in selected) {
+      return {
+        error: {
+          code: selected.error === 'ambiguous' ? 'PKG-005' : 'PKG-001',
+          message: selected.message,
+        },
+      };
     }
+    const pkg = selected.entry;
     const lumina = pkg.lumina;
     if (!lumina) {
       return {
@@ -847,10 +861,7 @@ export class ProjectContext {
     if (!entry) {
       return { error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '.'` } };
     }
-    let pkgRoot = pkg.path ?? pkg.resolved;
-    if (!path.isAbsolute(pkgRoot)) {
-      pkgRoot = path.resolve(root, pkgRoot);
-    }
+    const pkgRoot = this.packageRoot(root, pkg);
     const absolute = path.resolve(pkgRoot, entry);
     const withExt = this.ensureExtension(absolute);
     return { resolved: withExt };

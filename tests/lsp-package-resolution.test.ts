@@ -109,4 +109,36 @@ describe('LSP package resolution', () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].code).toBe('PKG-003');
   });
+
+  test('emits an intentional ambiguity diagnostic for duplicate root package versions', () => {
+    const dir = createTempDir();
+    writeLockfile(dir, {
+      version: 1,
+      packages: {
+        'foo@1.0.0': {
+          name: 'foo',
+          version: '1.0.0',
+          resolved: 'node_modules/foo-1',
+          lumina: './lib.lm',
+        },
+        'foo@2.0.0': {
+          name: 'foo',
+          version: '2.0.0',
+          resolved: 'node_modules/foo-2',
+          lumina: './lib.lm',
+        },
+      },
+    });
+    const filePath = path.join(dir, 'main.lm');
+    const source = 'import { foo } from "foo";\nfn main() { }\n';
+    fs.writeFileSync(filePath, source, 'utf-8');
+    const project = new ProjectContext(parser);
+    project.addOrUpdateDocument(filePath, source);
+    const diagnostics = project
+      .getDiagnostics(filePath)
+      .filter((diag) => typeof diag.code === 'string' && diag.code.startsWith('PKG-'));
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].code).toBe('PKG-005');
+    expect(diagnostics[0].message).toContain('multiple locked versions');
+  });
 });

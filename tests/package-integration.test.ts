@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { compileGrammar } from '../src/grammar/index.js';
@@ -9,6 +10,19 @@ import { extractImports } from '../src/project/imports.js';
 const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
+const tempDirs: string[] = [];
+
+const createTempDir = (): string => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumina-pkg-integration-'));
+  tempDirs.push(dir);
+  return dir;
+};
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0, tempDirs.length)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 function bundleForTest(entryPath: string, ctx: ProjectContext) {
   const visited = new Set<string>();
@@ -77,5 +91,86 @@ describe('Package integration (fixtures)', () => {
     expect(generated).toContain('function foo');
     expect(generated).toContain('function util');
     expect(generated).toContain('function main');
+  });
+
+  test('resolves transitive package imports through lockfile dependency metadata', () => {
+    const root = createTempDir();
+    const fooRoot = path.join(root, '.lumina', 'packages', 'foo@1.0.0');
+    const barRoot = path.join(root, '.lumina', 'packages', 'bar@1.0.0');
+    const newerBarRoot = path.join(root, '.lumina', 'packages', 'bar@1.2.0');
+    const entry = path.join(root, 'main.lm');
+    fs.mkdirSync(path.join(fooRoot, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(barRoot, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(newerBarRoot, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(barRoot, 'src', 'bar.lm'), 'pub fn bar() -> int { 7 }\n', 'utf-8');
+    fs.writeFileSync(path.join(newerBarRoot, 'src', 'bar.lm'), 'pub fn bar() -> int { 12 }\n', 'utf-8');
+    fs.writeFileSync(
+      path.join(fooRoot, 'src', 'foo.lm'),
+      'import { bar } from "bar";\npub fn foo() -> int { bar() }\n',
+      'utf-8'
+    );
+    fs.writeFileSync(entry, 'import { foo } from "foo";\nfn main() -> int { foo() }\n', 'utf-8');
+    fs.writeFileSync(
+      path.join(root, 'lumina.lock'),
+      JSON.stringify(
+        {
+          version: 1,
+          packages: {
+            'foo@1.0.0': {
+              name: 'foo',
+              version: '1.0.0',
+              resolved: 'https://registry.example.dev/foo-1.0.0.tgz',
+              path: './.lumina/packages/foo@1.0.0',
+              integrity: 'sha256:foo',
+              lumina: './src/foo.lm',
+              deps: { bar: '^1.0.0' },
+              resolvedDeps: { bar: 'bar@1.0.0' },
+            },
+            'bar@1.0.0': {
+              name: 'bar',
+              version: '1.0.0',
+              resolved: 'https://registry.example.dev/bar-1.0.0.tgz',
+              path: './.lumina/packages/bar@1.0.0',
+              integrity: 'sha256:bar',
+              lumina: './src/bar.lm',
+              deps: {},
+            },
+            'bar@1.2.0': {
+              name: 'bar',
+              version: '1.2.0',
+              resolved: 'https://registry.example.dev/bar-1.2.0.tgz',
+              path: './.lumina/packages/bar@1.2.0',
+              integrity: 'sha256:bar12',
+              lumina: './src/bar.lm',
+              deps: {},
+            },
+          },
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    );
+
+    const source = fs.readFileSync(entry, 'utf-8');
+    const ctx = new ProjectContext(parser);
+    ctx.addOrUpdateDocument(entry, source);
+
+    const diagnostics = ctx.getDiagnostics().filter((diag) => diag.severity === 'error');
+    expect(diagnostics).toHaveLength(0);
+    const deps = ctx.getDependencies(path.join(fooRoot, 'src', 'foo.lm'));
+    expect(deps.some((dep) => dep.includes('bar@1.0.0'))).toBe(true);
+    expect(deps.some((dep) => dep.includes('bar@1.2.0'))).toBe(false);
+
+    const bundled = bundleForTest(entry, ctx);
+    const generated = generateJSFromAst(bundled as never, {
+      target: 'esm',
+      sourceMap: false,
+      sourceFile: entry,
+      sourceContent: source,
+    }).code;
+
+    expect(generated).toContain('function bar');
+    expect(generated).toContain('function foo');
   });
 });

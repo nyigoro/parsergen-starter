@@ -6,7 +6,15 @@ import { extractImports } from '../project/imports.js';
 import type { LuminaProgram } from './ast.js';
 import type { IRProgram } from './ir.js';
 import type { Diagnostic } from '../parser/index.js';
-import { LEGACY_LOCKFILE_FILENAME, LOCKFILE_FILENAME } from './lockfile-format.js';
+import {
+  LEGACY_LOCKFILE_FILENAME,
+  LOCKFILE_FILENAME,
+  normalizeLockfileObject,
+  parsePackageSpecifier,
+  selectLockfilePackage,
+  type NormalizedLockfile,
+  type NormalizedLockfilePackage,
+} from './lockfile-format.js';
 
 const EXTERNAL_NODE_KINDS = new Set<ModuleKind>(['std', 'std-root']);
 const STD_PREFIX = '@std/';
@@ -76,38 +84,7 @@ export type ModuleGraph = {
   buildOptions: BuildModuleGraphOptions;
 };
 
-type LockfilePackage = {
-  version: string;
-  resolved: string;
-  path?: string;
-  integrity?: string;
-  lumina?: string | Record<string, string>;
-};
-
-type LegacyLockfileData = {
-  lockfileVersion?: number;
-  packages?: Record<string, LockfilePackage>;
-};
-
-type ModernLockfileData = {
-  version?: number;
-  packages?: Record<
-    string,
-    {
-      name?: string;
-      version?: string;
-      resolved?: string;
-      path?: string;
-      integrity?: string;
-      lumina?: string | Record<string, string>;
-    }
-  >;
-};
-
-type LockfileData = {
-  lockfileVersion: number;
-  packages: Record<string, LockfilePackage>;
-};
+type LockfileData = NormalizedLockfile;
 
 type ResolvedImport =
   | { kind: 'file'; key: string; path: string }
@@ -210,40 +187,6 @@ const findLockfileRoot = (fromPath: string): string | null => {
   }
 };
 
-const normalizeLockfile = (parsed: LegacyLockfileData | ModernLockfileData): LockfileData | null => {
-  if (!parsed || typeof parsed !== 'object' || typeof parsed.packages !== 'object') return null;
-  const modern = parsed as ModernLockfileData;
-  const modernEntries = Object.values(modern.packages ?? {});
-  const isModern =
-    typeof modern.version === 'number' ||
-    modernEntries.some((entry) => !!entry && typeof entry === 'object' && typeof entry.name === 'string');
-  if (isModern) {
-    const packages: Record<string, LockfilePackage> = {};
-    for (const [key, entry] of Object.entries(modern.packages ?? {})) {
-      if (!entry || typeof entry !== 'object') continue;
-      const fallbackName = key.startsWith('@') ? key.slice(0, key.lastIndexOf('@')) : key.split('@')[0];
-      const name = typeof entry.name === 'string' ? entry.name : fallbackName;
-      if (!name || typeof entry.version !== 'string' || typeof entry.resolved !== 'string') continue;
-      packages[name] = {
-        version: entry.version,
-        resolved: entry.resolved,
-        path: typeof entry.path === 'string' ? entry.path : undefined,
-        integrity: typeof entry.integrity === 'string' ? entry.integrity : undefined,
-        lumina: typeof entry.lumina === 'string' || typeof entry.lumina === 'object' ? entry.lumina : undefined,
-      };
-    }
-    return {
-      lockfileVersion: typeof modern.version === 'number' ? modern.version : 1,
-      packages,
-    };
-  }
-  const legacy = parsed as LegacyLockfileData;
-  return {
-    lockfileVersion: legacy.lockfileVersion ?? 1,
-    packages: (legacy.packages ?? {}) as Record<string, LockfilePackage>,
-  };
-};
-
 const readLockfile = (root: string | null | undefined): LockfileData | null => {
   if (!root) return null;
   const modernPath = path.join(root, LOCKFILE_FILENAME);
@@ -251,24 +194,28 @@ const readLockfile = (root: string | null | undefined): LockfileData | null => {
   const candidate = existsSync(modernPath) ? modernPath : existsSync(legacyPath) ? legacyPath : null;
   if (!candidate) return null;
   try {
-    const parsed = JSON.parse(readFileSync(candidate, 'utf-8')) as LegacyLockfileData | ModernLockfileData;
-    return normalizeLockfile(parsed);
+    return normalizeLockfileObject(JSON.parse(readFileSync(candidate, 'utf-8')));
   } catch {
     return null;
   }
 };
 
-const parsePackageSpecifier = (specifier: string): { pkgName: string; subpath: string | null } => {
-  if (specifier.startsWith('@')) {
-    const parts = specifier.split('/');
-    if (parts.length < 2) return { pkgName: specifier, subpath: null };
-    const pkgName = `${parts[0]}/${parts[1]}`;
-    const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
-    return { pkgName, subpath };
-  }
-  const slash = specifier.indexOf('/');
-  if (slash === -1) return { pkgName: specifier, subpath: null };
-  return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
+const packageRootFor = (lockfileRoot: string, pkg: NormalizedLockfilePackage): string => {
+  const packageRoot = pkg.path ?? pkg.resolved;
+  return path.isAbsolute(packageRoot) ? path.resolve(packageRoot) : path.resolve(lockfileRoot, packageRoot);
+};
+
+const containingPackage = (
+  lockfile: LockfileData,
+  lockfileRoot: string,
+  fromPath: string
+): NormalizedLockfilePackage | null => {
+  const importer = path.resolve(fromPath);
+  const matches = Object.values(lockfile.packages)
+    .map((pkg) => ({ pkg, root: packageRootFor(lockfileRoot, pkg) }))
+    .filter(({ root }) => importer === root || importer.startsWith(`${root}${path.sep}`))
+    .sort((left, right) => right.root.length - left.root.length);
+  return matches[0]?.pkg ?? null;
 };
 
 const resolveBareImport = (
@@ -282,9 +229,14 @@ const resolveBareImport = (
     return { kind: 'error', message: `Cannot resolve package import '${spec}': lockfile not found` };
   }
   const { pkgName, subpath } = parsePackageSpecifier(spec);
-  const pkg = lockfile.packages[pkgName];
+  const selected = selectLockfilePackage(lockfile, pkgName, containingPackage(lockfile, lockfileRoot, fromPath));
+  const pkg = 'entry' in selected ? selected.entry : null;
   if (!pkg || !pkg.lumina) {
-    return { kind: 'error', message: `Cannot resolve package import '${spec}': package '${pkgName}' not found` };
+    const message =
+      selected && 'error' in selected
+        ? selected.message
+        : `Cannot resolve package import '${spec}': package '${pkgName}' not found`;
+    return { kind: 'error', message };
   }
   const lumina = pkg.lumina;
   let entry: string | undefined;
@@ -298,8 +250,7 @@ const resolveBareImport = (
   if (!entry) {
     return { kind: 'error', message: `Cannot resolve package import '${spec}': missing lumina entry` };
   }
-  let packageRoot = pkg.path ?? pkg.resolved;
-  if (!path.isAbsolute(packageRoot)) packageRoot = path.resolve(lockfileRoot, packageRoot);
+  const packageRoot = packageRootFor(lockfileRoot, pkg);
   const absolutePath = ensureExtension(path.resolve(packageRoot, entry), extensions);
   const sub = toPosix(path.relative(packageRoot, absolutePath));
   const key = `pkg:${pkgName}@${pkg.version}:${sub || '.'}`;

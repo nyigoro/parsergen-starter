@@ -1,6 +1,42 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { luminaPlugin } from '../demo/vite-plugin-lumina.js';
+import { pathToFileURL } from 'node:url';
+
+const repoRoot = path.resolve(__dirname, '..');
+const distPluginUrl = pathToFileURL(path.join(repoRoot, 'dist', 'vite-plugin.js')).href;
+
+const runDistPluginProbe = (scriptBody: string, options: { cwd?: string; root?: string } = {}): string => {
+  const cwd = options.cwd ?? process.cwd();
+  const root = options.root ?? cwd;
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
+        import { luminaPlugin } from ${JSON.stringify(distPluginUrl)};
+        const plugin = luminaPlugin();
+        plugin.configResolved?.({ root: ${JSON.stringify(root)} });
+        const errorContext = {
+          error(message) {
+            throw new Error(message);
+          },
+        };
+        ${scriptBody}
+      `,
+    ],
+    {
+      cwd,
+      encoding: 'utf-8',
+      env: { ...process.env, JEST_WORKER_ID: undefined },
+    }
+  );
+  if (result.status !== 0) {
+    throw new Error(`${result.stderr}\n${result.stdout}`.trim());
+  }
+  return result.stdout.trim();
+};
 
 describe('demo vite plugin', () => {
   test('keeps the static home shell off router stdlib compilation path', () => {
@@ -41,7 +77,6 @@ describe('demo vite plugin', () => {
   });
 
   test('resolves source-backed std modules beyond router', async () => {
-    const plugin = luminaPlugin();
     const importer = path.resolve(__dirname, '../demo/main.lm');
     const routerPath = path.resolve(__dirname, '../std/router.lm');
     const testingPath = path.resolve(__dirname, '../std/testing.lm');
@@ -76,36 +111,50 @@ describe('demo vite plugin', () => {
     );
 
     try {
-      expect(plugin.resolveId?.('@std/router', importer)).toBe(routerPath);
-      expect(plugin.resolveId?.('@std/testing', importer)).toBe(testingPath);
-      expect(plugin.resolveId?.('@std/ui', importer)).toBe(uiPath);
-      expect(plugin.resolveId?.('@std/devtools', importer)).toBe(devtoolsPath);
-      expect(plugin.resolveId?.('@std/ssg', importer)).toBe(ssgPath);
-      expect(plugin.resolveId?.('@std/render', importer)).toBe(renderPath);
-
-      const code = await plugin.load?.call(
-        {
-          error(message: string) {
-            throw new Error(message);
-          },
-        },
-        entryPath
+      const output = runDistPluginProbe(
+        `
+          const code = await plugin.load.call(errorContext, ${JSON.stringify(entryPath)});
+          console.log(JSON.stringify({
+            router: plugin.resolveId?.('@std/router', ${JSON.stringify(importer)}),
+            testing: plugin.resolveId?.('@std/testing', ${JSON.stringify(importer)}),
+            ui: plugin.resolveId?.('@std/ui', ${JSON.stringify(importer)}),
+            devtools: plugin.resolveId?.('@std/devtools', ${JSON.stringify(importer)}),
+            ssg: plugin.resolveId?.('@std/ssg', ${JSON.stringify(importer)}),
+            render: plugin.resolveId?.('@std/render', ${JSON.stringify(importer)}),
+            code,
+          }));
+        `,
+        { root: workspace }
       );
+      const result = JSON.parse(output) as {
+        router: string;
+        testing: string;
+        ui: string;
+        devtools: string;
+        ssg: string;
+        render: string;
+        code: string;
+      };
 
-      expect(typeof code).toBe('string');
-      expect(code).toContain('export {');
-      expect(code).toContain('createDomHarness');
-      expect(code).toContain('localValue');
-      expect(code).toContain('./helper.lm');
-      expect(code).toContain('lumina-runtime.js');
-      expect(code).not.toContain('std/render.lm');
+      expect(result.router).toBe(routerPath);
+      expect(result.testing).toBe(testingPath);
+      expect(result.ui).toBe(uiPath);
+      expect(result.devtools).toBe(devtoolsPath);
+      expect(result.ssg).toBe(ssgPath);
+      expect(result.render).toBe(renderPath);
+      expect(typeof result.code).toBe('string');
+      expect(result.code).toContain('export {');
+      expect(result.code).toContain('createDomHarness');
+      expect(result.code).toContain('localValue');
+      expect(result.code).toContain('./helper.lm');
+      expect(result.code).toContain('lumina-runtime.js');
+      expect(result.code).not.toContain('std/render.lm');
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
 
   test('resolves extensionless local Lumina imports through the plugin path', async () => {
-    const plugin = luminaPlugin();
     const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-ext-'));
     const entryPath = path.join(workspace, 'main.lm');
     const helperPath = path.join(workspace, 'helper.lm');
@@ -127,24 +176,26 @@ describe('demo vite plugin', () => {
     );
 
     try {
-      expect(plugin.resolveId?.('./helper', entryPath)).toBe(helperPath);
-      const code = await plugin.load?.call(
-        {
-          error(message: string) {
-            throw new Error(message);
-          },
-        },
-        entryPath
+      const output = runDistPluginProbe(
+        `
+          const code = await plugin.load.call(errorContext, ${JSON.stringify(entryPath)});
+          console.log(JSON.stringify({
+            resolved: plugin.resolveId?.('./helper', ${JSON.stringify(entryPath)}),
+            code,
+          }));
+        `,
+        { root: workspace }
       );
-      expect(typeof code).toBe('string');
-      expect(code).toContain('localValue');
+      const result = JSON.parse(output) as { resolved: string; code: string };
+      expect(result.resolved).toBe(helperPath);
+      expect(typeof result.code).toBe('string');
+      expect(result.code).toContain('localValue');
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
 
   test('resolves bare package imports from lumina.lock during Vite compilation', async () => {
-    const plugin = luminaPlugin();
     const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-pkg-'));
     const entryPath = path.join(workspace, 'main.lm');
     const pkgRoot = path.join(workspace, '.lumina', 'packages', 'json-utils@1.2.3');
@@ -187,36 +238,38 @@ describe('demo vite plugin', () => {
     );
 
     try {
-      expect(plugin.resolveId?.('json-utils', entryPath)).toBe(pkgEntry);
-      const code = await plugin.load?.call(
-        {
-          error(message: string) {
-            throw new Error(message);
-          },
-        },
-        entryPath
+      const output = runDistPluginProbe(
+        `
+          const code = await plugin.load.call(errorContext, ${JSON.stringify(entryPath)});
+          console.log(JSON.stringify({
+            resolved: plugin.resolveId?.('json-utils', ${JSON.stringify(entryPath)}),
+            code,
+          }));
+        `,
+        { root: workspace }
       );
-      expect(typeof code).toBe('string');
-      expect(code).toContain('.lumina/packages/json-utils@1.2.3/src/lib.lm');
-      expect(code).not.toContain('from "json-utils"');
+      const result = JSON.parse(output) as { resolved: string; code: string };
+      expect(result.resolved).toBe(pkgEntry);
+      expect(typeof result.code).toBe('string');
+      expect(result.code).toContain('.lumina/packages/json-utils@1.2.3/src/lib.lm');
+      expect(result.code).not.toContain('from "json-utils"');
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
 
   test('compiles the source-backed router std module without stalling', async () => {
-    const plugin = luminaPlugin();
     const routerPath = path.resolve(__dirname, '../std/router.lm');
     const startedAt = Date.now();
 
-    const code = await plugin.load?.call(
-      {
-        error(message: string) {
-          throw new Error(message);
-        },
-      },
-      routerPath
+    const output = runDistPluginProbe(
+      `
+        const code = await plugin.load.call(errorContext, ${JSON.stringify(routerPath)});
+        console.log(JSON.stringify({ code }));
+      `,
+      { root: repoRoot }
     );
+    const { code } = JSON.parse(output) as { code: string };
 
     expect(Date.now() - startedAt).toBeLessThan(10000);
     expect(typeof code).toBe('string');
@@ -226,7 +279,6 @@ describe('demo vite plugin', () => {
   }, 15000);
 
   test('exposes a virtual route manifest with lazy route imports', async () => {
-    const plugin = luminaPlugin();
     const workspace = fs.mkdtempSync(path.join(process.cwd(), '.tmp-demo-vite-plugin-routes-'));
     const appPath = path.join(workspace, 'src', 'app.lm');
     const settingsPath = path.join(workspace, 'src', 'routes', 'settings.lm');
@@ -249,19 +301,17 @@ describe('demo vite plugin', () => {
     );
 
     try {
-      plugin.configResolved?.({ root: workspace });
-      const resolved = await plugin.resolveId?.('virtual:lumina-routes');
-      expect(resolved).toBe('\0virtual:lumina-routes');
-
-      const code = await plugin.load?.call(
-        {
-          error(message: string) {
-            throw new Error(message);
-          },
-        },
-        String(resolved)
+      const output = runDistPluginProbe(
+        `
+          const resolved = await plugin.resolveId?.('virtual:lumina-routes');
+          const code = await plugin.load.call(errorContext, String(resolved));
+          console.log(JSON.stringify({ resolved, code }));
+        `,
+        { root: workspace }
       );
+      const { resolved, code } = JSON.parse(output) as { resolved: string; code: string };
 
+      expect(resolved).toBe('\0virtual:lumina-routes');
       expect(typeof code).toBe('string');
       expect(code).toContain('export const routes');
       expect(code).toContain('"id": "home"');

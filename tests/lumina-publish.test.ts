@@ -170,6 +170,69 @@ describe('lumina publish', () => {
     expect(publishPackage).not.toHaveBeenCalled();
   });
 
+  it('accepts private registry auth from LUMINA_REGISTRY_TOKEN', async () => {
+    const cwd = createTempProject();
+    fs.writeFileSync(path.join(cwd, 'src/main.lm'), 'fn main() -> i32 { 0 }\n', 'utf-8');
+    const manifest = {
+      ...baseManifest(),
+      registry: { url: 'https://registry.internal.example', token: null },
+    };
+    const seenConfigs: Array<{ url: string; token: string | null }> = [];
+
+    await runLuminaPublish([], {
+      cwd,
+      env: { ...process.env, LUMINA_REGISTRY_TOKEN: 'private-token' },
+      deps: {
+        readManifest: async () => manifest,
+        validateManifest: () => [],
+        getPackageInfo: async (_name, config) => {
+          seenConfigs.push(config);
+          throw new Error('404');
+        },
+        publishPackage: async (_tarball, _manifest, config) => {
+          seenConfigs.push(config);
+          return { url: 'https://registry.internal.example/pkg' };
+        },
+        publishCDNArtifact: async () => ({ url: '', integrity: '', provider: 'lumina' }),
+        writeManifest: async () => {},
+        scanDirectory: async () => ({ findings: [], scanned: 1 }),
+      },
+      runCompileCheck: async () => {},
+      stdout: { log: () => {} },
+    });
+
+    expect(seenConfigs).toEqual([
+      { url: 'https://registry.internal.example', token: 'private-token' },
+      { url: 'https://registry.internal.example', token: 'private-token' },
+    ]);
+  });
+
+  it('points private registry auth failures at registry token variables', async () => {
+    const cwd = createTempProject();
+    fs.writeFileSync(path.join(cwd, 'src/main.lm'), 'fn main() -> i32 { 0 }\n', 'utf-8');
+
+    await expect(
+      runLuminaPublish([], {
+        cwd,
+        deps: {
+          readManifest: async () => ({
+            ...baseManifest(),
+            registry: { url: 'https://registry.internal.example', token: null },
+          }),
+          validateManifest: () => [],
+          getPackageInfo: async () => {
+            throw new Error('unreachable');
+          },
+          publishPackage: async () => ({ url: 'https://registry.internal.example/pkg' }),
+          publishCDNArtifact: async () => ({ url: '', integrity: '', provider: 'lumina' }),
+          writeManifest: async () => {},
+          scanDirectory: async () => ({ findings: [], scanned: 1 }),
+        },
+        runCompileCheck: async () => {},
+      })
+    ).rejects.toThrow('LUMINA_REGISTRY_TOKEN or LUMINA_TOKEN');
+  });
+
   it('publishes cdn artifacts after bundle generation when --cdn is enabled', async () => {
     const cwd = createTempProject();
     fs.writeFileSync(path.join(cwd, 'src/main.lm'), 'fn main() -> i32 { 0 }\n', 'utf-8');

@@ -3,7 +3,13 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { readManifest } from '../lumina/package-manifest.js';
-import { integrityStatus, isOutOfSync, readLockfile, type LockfileData } from '../lumina/lockfile.js';
+import {
+  integrityStatus,
+  isOutOfSync,
+  readLockfile,
+  validatePeerDependencies,
+  type LockfileData,
+} from '../lumina/lockfile.js';
 import { downloadTarball, resolveRegistryConfig, type RegistryClientConfig } from '../lumina/registry-client.js';
 
 type InstallDependencies = {
@@ -49,6 +55,15 @@ const decodePublishedPayload = (tarball: Buffer): PackagePayload | null => {
   }
 };
 
+const resolvePayloadPath = (installDir: string, payloadPath: string): string | null => {
+  const normalized = payloadPath.replace(/\\/g, '/');
+  if (path.isAbsolute(normalized)) return null;
+  const abs = path.resolve(installDir, normalized);
+  const relative = path.relative(installDir, abs);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return abs;
+};
+
 const materializePackage = async (
   installDir: string,
   name: string,
@@ -64,9 +79,8 @@ const materializePackage = async (
   if (payload) {
     for (const file of payload.files ?? []) {
       if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') continue;
-      const normalized = file.path.replace(/\\/g, '/').replace(/^\/+/, '');
-      const abs = path.resolve(installDir, normalized);
-      if (!abs.startsWith(installDir)) continue;
+      const abs = resolvePayloadPath(installDir, file.path);
+      if (!abs) continue;
       await fs.mkdir(path.dirname(abs), { recursive: true });
       await fs.writeFile(abs, Buffer.from(file.content, 'base64'));
     }
@@ -104,6 +118,10 @@ export async function runLuminaInstall(argv: string[], options: InstallOptions =
   const outOfSync = dependencies.isOutOfSync(manifest, lockfile);
   if (frozen && outOfSync.length > 0) {
     throw new Error(`Lockfile is out of sync for: ${outOfSync.join(', ')}`);
+  }
+  const peerDiagnostics = validatePeerDependencies(manifest, lockfile);
+  if (peerDiagnostics.length > 0) {
+    throw new Error(`Peer dependency validation failed:\n${peerDiagnostics.join('\n')}`);
   }
 
   const config: RegistryClientConfig = dependencies.resolveRegistryConfig(manifest, env);

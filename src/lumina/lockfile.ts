@@ -29,6 +29,8 @@ export type LockfileEntry = {
   esm?: string | null;
   wasm?: string | null;
   deps: Map<string, string>;
+  resolvedDeps?: Map<string, string>;
+  peerDeps?: Map<string, string>;
 };
 
 export type LockfileData = {
@@ -65,6 +67,7 @@ type LegacyLockfile = {
       esm?: string | null;
       wasm?: string | null;
       deps?: Record<string, string>;
+      peerDeps?: Record<string, string>;
     }
   >;
 };
@@ -162,6 +165,8 @@ const toSerializable = (data: LockfileData): {
       esm?: string | null;
       wasm?: string | null;
       deps: Record<string, string>;
+      resolvedDeps?: Record<string, string>;
+      peerDeps?: Record<string, string>;
     }
   >;
 } => {
@@ -179,6 +184,8 @@ const toSerializable = (data: LockfileData): {
       esm?: string | null;
       wasm?: string | null;
       deps: Record<string, string>;
+      resolvedDeps?: Record<string, string>;
+      peerDeps?: Record<string, string>;
     }
   > = {};
   for (const [key, entry] of data.packages.entries()) {
@@ -194,6 +201,14 @@ const toSerializable = (data: LockfileData): {
       esm: entry.esm ?? null,
       wasm: entry.wasm ?? null,
       deps: Object.fromEntries(entry.deps.entries()),
+      resolvedDeps:
+        entry.resolvedDeps && entry.resolvedDeps.size > 0
+          ? Object.fromEntries(entry.resolvedDeps.entries())
+          : undefined,
+      peerDeps:
+        entry.peerDeps && entry.peerDeps.size > 0
+          ? Object.fromEntries(entry.peerDeps.entries())
+          : undefined,
     };
   }
   return { version: data.version, packages };
@@ -216,6 +231,8 @@ const parseModernLockfile = (raw: string): LockfileData => {
         esm?: string | null;
         wasm?: string | null;
         deps?: Record<string, string>;
+        resolvedDeps?: Record<string, string>;
+        peerDeps?: Record<string, string>;
       }
     >;
   };
@@ -237,6 +254,12 @@ const parseModernLockfile = (raw: string): LockfileData => {
       wasm: typeof value.wasm === 'string' ? value.wasm : null,
       deps: new Map(
         Object.entries(value.deps ?? {}).filter(([, depVersion]) => typeof depVersion === 'string') as Array<[string, string]>
+      ),
+      resolvedDeps: new Map(
+        Object.entries(value.resolvedDeps ?? {}).filter(([, depKey]) => typeof depKey === 'string') as Array<[string, string]>
+      ),
+      peerDeps: new Map(
+        Object.entries(value.peerDeps ?? {}).filter(([, depVersion]) => typeof depVersion === 'string') as Array<[string, string]>
       ),
     });
   }
@@ -260,6 +283,8 @@ const migrateLegacyLockfile = (legacy: LegacyLockfile): LockfileData => {
       esm: typeof value.esm === 'string' ? value.esm : null,
       wasm: typeof value.wasm === 'string' ? value.wasm : null,
       deps: new Map(Object.entries(value.deps ?? {})),
+      resolvedDeps: new Map(),
+      peerDeps: new Map(Object.entries(value.peerDeps ?? {})),
     });
   }
   return { version: LOCKFILE_VERSION, packages };
@@ -320,6 +345,8 @@ export function addEntry(data: LockfileData, entry: LockfileEntry): LockfileData
     esm: entry.esm ?? null,
     wasm: entry.wasm ?? null,
     deps: new Map(entry.deps),
+    resolvedDeps: new Map(entry.resolvedDeps ?? []),
+    peerDeps: new Map(entry.peerDeps ?? []),
   });
   return { version: data.version || LOCKFILE_VERSION, packages };
 }
@@ -336,7 +363,8 @@ export function isOutOfSync(manifest: PackageManifest, lockfile: LockfileData): 
     versions.push(entry.version);
     versionsByName.set(entry.name, versions);
   }
-  for (const [name, constraint] of manifest.dependencies.entries()) {
+  const manifestDeps = new Map([...manifest.dependencies.entries(), ...manifest.devDeps.entries()]);
+  for (const [name, constraint] of manifestDeps.entries()) {
     const versions = versionsByName.get(name);
     if (!versions || versions.length === 0) {
       mismatches.push(name);
@@ -346,6 +374,49 @@ export function isOutOfSync(manifest: PackageManifest, lockfile: LockfileData): 
     if (!match) mismatches.push(name);
   }
   return mismatches;
+}
+
+export function validatePeerDependencies(manifest: PackageManifest, lockfile: LockfileData): string[] {
+  const diagnostics: string[] = [];
+  const rootDeps = new Map([...manifest.dependencies.entries(), ...manifest.devDeps.entries()]);
+  const versionsByName = new Map<string, string[]>();
+  for (const entry of lockfile.packages.values()) {
+    const versions = versionsByName.get(entry.name) ?? [];
+    versions.push(entry.version);
+    versionsByName.set(entry.name, versions);
+  }
+
+  for (const entry of lockfile.packages.values()) {
+    for (const [peerName, peerConstraint] of entry.peerDeps ?? []) {
+      const rootConstraint = rootDeps.get(peerName);
+      if (!rootConstraint) {
+        diagnostics.push(
+          `${entry.name}@${entry.version} requires peer dependency ${peerName}@${peerConstraint}, but it is not listed in dependencies or dev-dependencies`
+        );
+        continue;
+      }
+      const versions = versionsByName.get(peerName) ?? [];
+      const rootSelectedVersions = versions.filter((version) => matchesConstraint(version, rootConstraint));
+      const sortedRootVersions = rootSelectedVersions.sort(compareVersions);
+      if (sortedRootVersions.length !== 1) {
+        const available = sortedRootVersions.length > 0
+          ? sortedRootVersions.join(', ')
+          : 'none matching root constraint';
+        diagnostics.push(
+          `${entry.name}@${entry.version} requires peer dependency ${peerName}@${peerConstraint}, but root ${peerName}@${rootConstraint} resolves ambiguously to ${available}`
+        );
+        continue;
+      }
+      const [selectedVersion] = sortedRootVersions;
+      if (!matchesConstraint(selectedVersion, peerConstraint)) {
+        diagnostics.push(
+          `${entry.name}@${entry.version} requires peer dependency ${peerName}@${peerConstraint}, but root ${peerName}@${rootConstraint} resolves to ${selectedVersion}`
+        );
+      }
+    }
+  }
+
+  return diagnostics;
 }
 
 const parseBrowserLock = (raw: string): BrowserLock => {
@@ -390,7 +461,8 @@ export function generateBrowserLock(data: LockfileData): BrowserLock {
       esm,
       wasm,
       integrity: normalizeIntegrity(entry.integrity),
-      deps: Array.from(entry.deps.keys()).sort((a, b) => a.localeCompare(b)),
+      deps: Array.from((entry.resolvedDeps && entry.resolvedDeps.size > 0 ? entry.resolvedDeps.values() : entry.deps.keys()))
+        .sort((a, b) => a.localeCompare(b)),
     });
   }
   return { version: data.version || LOCKFILE_VERSION, packages };

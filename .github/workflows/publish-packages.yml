@@ -1,0 +1,208 @@
+name: Publish Ecosystem Packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/http/**'
+      - 'packages/github-client/**'
+      - 'packages/json-parser/**'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to publish'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - http
+          - github-client
+          - json-parser
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      http: ${{ steps.detect.outputs.http }}
+      github_client: ${{ steps.detect.outputs.github_client }}
+      json_parser: ${{ steps.detect.outputs.json_parser }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed packages
+        id: detect
+        run: |
+          set -euo pipefail
+
+          mark_package() {
+            local name="$1"
+            echo "$name=true" >> "$GITHUB_OUTPUT"
+          }
+
+          skip_package() {
+            local name="$1"
+            echo "$name=false" >> "$GITHUB_OUTPUT"
+          }
+
+          skip_package http
+          skip_package github_client
+          skip_package json_parser
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            selected="${{ inputs.package }}"
+            if [ "$selected" = "all" ]; then
+              mark_package http
+              mark_package github_client
+              mark_package json_parser
+            elif [ "$selected" = "github-client" ]; then
+              mark_package github_client
+            elif [ "$selected" = "json-parser" ]; then
+              mark_package json_parser
+            else
+              mark_package "$selected"
+            fi
+            exit 0
+          fi
+
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git rev-parse --verify "$base" >/dev/null 2>&1; then
+            base="$(git rev-list --max-parents=0 "$head")"
+          fi
+
+          changed="$(git diff --name-only "$base" "$head")"
+          if echo "$changed" | grep -q '^packages/http/'; then
+            mark_package http
+          fi
+          if echo "$changed" | grep -q '^packages/github-client/'; then
+            mark_package github_client
+          fi
+          if echo "$changed" | grep -q '^packages/json-parser/'; then
+            mark_package json_parser
+          fi
+
+  publish-http:
+    needs: changes
+    if: needs.changes.outputs.http == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.17.0'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify package contents
+        working-directory: packages/http
+        run: npm pack --dry-run
+
+      - name: Check published version
+        id: exists
+        working-directory: packages/http
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "exists=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip publish
+        if: steps.exists.outputs.exists == '1'
+        working-directory: packages/http
+        run: echo "$(node -p "require('./package.json').name")@$(node -p "require('./package.json').version") already published; skipping."
+
+      - name: Publish package
+        if: steps.exists.outputs.exists != '1'
+        working-directory: packages/http
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-github-client:
+    needs:
+      - changes
+      - publish-http
+      - publish-json-parser
+    if: always() && needs.changes.outputs.github_client == 'true' && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.17.0'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify package contents
+        working-directory: packages/github-client
+        run: npm pack --dry-run
+
+      - name: Check published version
+        id: exists
+        working-directory: packages/github-client
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "exists=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip publish
+        if: steps.exists.outputs.exists == '1'
+        working-directory: packages/github-client
+        run: echo "$(node -p "require('./package.json').name")@$(node -p "require('./package.json').version") already published; skipping."
+
+      - name: Publish package
+        if: steps.exists.outputs.exists != '1'
+        working-directory: packages/github-client
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-json-parser:
+    needs: changes
+    if: needs.changes.outputs.json_parser == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.17.0'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify package contents
+        working-directory: packages/json-parser
+        run: npm pack --dry-run
+
+      - name: Check published version
+        id: exists
+        working-directory: packages/json-parser
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "exists=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip publish
+        if: steps.exists.outputs.exists == '1'
+        working-directory: packages/json-parser
+        run: echo "$(node -p "require('./package.json').name")@$(node -p "require('./package.json').version") already published; skipping."
+
+      - name: Publish package
+        if: steps.exists.outputs.exists != '1'
+        working-directory: packages/json-parser
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

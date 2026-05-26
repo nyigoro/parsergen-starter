@@ -4,12 +4,47 @@ import path from 'node:path';
 
 export type RuntimeTarget = 'esm' | 'cjs';
 
+const REQUIRED_RUNTIME_EXPORTS = [
+  'io',
+  'str',
+  'math',
+  'list',
+  'vec',
+  'hashmap',
+  'hashset',
+  'render',
+  'reactive',
+  'fs',
+  'http',
+  'Result',
+  'Option',
+  '__set',
+  '__lumina_index',
+  '__lumina_fixed_array',
+  '__lumina_array_bounds_check',
+  '__lumina_array_literal',
+  '__lumina_clone',
+  '__lumina_eq',
+  '__lumina_struct',
+  '__lumina_register_trait_impl',
+  'LuminaPanic',
+];
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 
 function resolveRuntimeSource(fileName: string): string | null {
+  if (typeof __dirname === 'string') {
+    const candidates = [
+      path.resolve(__dirname, '..', fileName),
+      path.resolve(__dirname, '..', '..', 'dist', fileName),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
   const argvPath = process.argv[1];
   if (argvPath) {
     const candidate = path.resolve(path.dirname(argvPath), '..', fileName);
@@ -32,29 +67,70 @@ export async function ensureRuntimeForOutput(outPath: string, target: RuntimeTar
   const fileName = target === 'cjs' ? 'lumina-runtime.cjs' : 'lumina-runtime.js';
   const source = resolveRuntimeSource(fileName);
   const dest = path.join(path.dirname(outPath), fileName);
-  if (fs.existsSync(dest)) return;
   if (source) {
-    let lastError: unknown = null;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      try {
-        await fsp.copyFile(source, dest);
-        return;
-      } catch (error) {
-        const code = (error as { code?: unknown } | null)?.code;
-        if (code !== 'EBUSY' && code !== 'EPERM') {
-          throw error;
-        }
-        lastError = error;
-        await sleep(20 * (attempt + 1));
-      }
+    if (fs.existsSync(dest)) {
+      const [sourceText, destText] = await Promise.all([
+        readRuntimeText(source),
+        readRuntimeText(dest),
+      ]);
+      if (sourceText === destText) return;
     }
-    if (lastError) {
-      throw lastError;
-    }
+    await copyRuntimeSource(source, dest);
     return;
   }
+  if (fs.existsSync(dest)) {
+    const existing = await readRuntimeText(dest);
+    if (runtimeHasRequiredExports(existing)) return;
+  }
   const fallback = target === 'cjs' ? runtimeFallbackCjs() : runtimeFallbackEsm();
-  await fsp.writeFile(dest, fallback, 'utf-8');
+  if (runtimeHasRequiredExports(fallback)) {
+    await fsp.writeFile(dest, fallback, 'utf-8');
+    return;
+  }
+  throw new Error(
+    `Unable to locate ${fileName}; run npm run build or install the published lumina-lang package before emitting standalone output.`
+  );
+}
+
+async function copyRuntimeSource(source: string, dest: string): Promise<void> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await fsp.copyFile(source, dest);
+      return;
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code !== 'EBUSY' && code !== 'EPERM') {
+        throw error;
+      }
+      lastError = error;
+      await sleep(20 * (attempt + 1));
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
+}
+
+async function readRuntimeText(filePath: string): Promise<string> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return await fsp.readFile(filePath, 'utf-8');
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code !== 'EBUSY' && code !== 'EPERM') {
+        throw error;
+      }
+      lastError = error;
+      await sleep(20 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
+function runtimeHasRequiredExports(content: string): boolean {
+  return REQUIRED_RUNTIME_EXPORTS.every((name) => content.includes(name));
 }
 
 function runtimeFallbackBody(): string {

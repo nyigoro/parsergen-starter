@@ -2,8 +2,21 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import { addDependency, readManifest, writeManifest, type PackageManifest } from '../lumina/package-manifest.js';
-import { addEntry, integrityStatus, readLockfile, writeLockfile, type LockfileData } from '../lumina/lockfile.js';
+import {
+  addDependency,
+  addDevDependency,
+  readManifest,
+  writeManifest,
+  type PackageManifest,
+} from '../lumina/package-manifest.js';
+import {
+  addEntry,
+  integrityStatus,
+  readLockfile,
+  validatePeerDependencies,
+  writeLockfile,
+  type LockfileData,
+} from '../lumina/lockfile.js';
 import {
   downloadTarball,
   getVersionInfo,
@@ -72,6 +85,15 @@ const decodePublishedPayload = (tarball: Buffer): PackagePayload | null => {
   }
 };
 
+const resolvePayloadPath = (installDir: string, payloadPath: string): string | null => {
+  const normalized = payloadPath.replace(/\\/g, '/');
+  if (path.isAbsolute(normalized)) return null;
+  const abs = path.resolve(installDir, normalized);
+  const relative = path.relative(installDir, abs);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return abs;
+};
+
 const materializePackage = async (cwd: string, name: string, version: string, tarball: Buffer): Promise<string> => {
   const installDir = packageInstallDir(cwd, name, version);
   await fs.rm(installDir, { recursive: true, force: true });
@@ -81,9 +103,8 @@ const materializePackage = async (cwd: string, name: string, version: string, ta
   if (payload) {
     for (const file of payload.files ?? []) {
       if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') continue;
-      const normalized = file.path.replace(/\\/g, '/').replace(/^\/+/, '');
-      const abs = path.resolve(installDir, normalized);
-      if (!abs.startsWith(installDir)) continue;
+      const abs = resolvePayloadPath(installDir, file.path);
+      if (!abs) continue;
       await fs.mkdir(path.dirname(abs), { recursive: true });
       await fs.writeFile(abs, Buffer.from(file.content, 'base64'));
     }
@@ -147,7 +168,8 @@ const updateLock = (
   lockfile: LockfileData,
   info: RegistryVersionInfo,
   installDir: string,
-  luminaEntry?: string | Record<string, string>
+  luminaEntry?: string | Record<string, string>,
+  resolvedDeps: Map<string, string> = new Map()
 ): LockfileData =>
   addEntry(lockfile, {
     name: info.name,
@@ -161,7 +183,62 @@ const updateLock = (
     esm: info.esm ?? null,
     wasm: info.wasm ?? null,
     deps: new Map(info.deps),
+    peerDeps: new Map(info.peerDeps ?? []),
+    resolvedDeps,
   });
+
+const installPackageGraph = async (
+  cwd: string,
+  name: string,
+  constraint: string,
+  config: RegistryClientConfig,
+  lockfile: LockfileData,
+  dependencies: AddDependencies,
+  stderr: Pick<Console, 'error'>,
+  installed = new Set<string>()
+): Promise<{ lockfile: LockfileData; info: RegistryVersionInfo }> => {
+  const resolvedVersion = await dependencies.resolveVersion(name, constraint, config);
+  const info = await dependencies.getVersionInfo(name, resolvedVersion, config);
+  const key = `${info.name}@${info.version}`;
+  let nextLockfile = lockfile;
+
+  if (installed.has(key)) return { lockfile: nextLockfile, info };
+  installed.add(key);
+
+  const tarball = await dependencies.downloadTarball(info.resolved, config);
+  const status = dependencies.integrityStatus(tarball, info.integrity);
+  if (status !== 'ok') {
+    if (status === 'missing') {
+      stderr.error(`SECURITY: missing integrity for ${info.name}@${info.version}`);
+      throw new Error(`Missing integrity for ${info.name}@${info.version}`);
+    }
+    stderr.error(`SECURITY: integrity check failed for ${info.name}@${info.version}`);
+    throw new Error(`Integrity mismatch for ${info.name}@${info.version}`);
+  }
+
+  const installDir = await materializePackage(cwd, info.name, info.version, tarball);
+  const luminaEntry = await inferLuminaEntry(installDir, info.lumina);
+  const resolvedDeps = new Map<string, string>();
+
+  for (const [depName, depConstraint] of info.deps.entries()) {
+    const result = await installPackageGraph(
+      cwd,
+      depName,
+      depConstraint,
+      config,
+      nextLockfile,
+      dependencies,
+      stderr,
+      installed
+    );
+    nextLockfile = result.lockfile;
+    resolvedDeps.set(depName, `${result.info.name}@${result.info.version}`);
+  }
+
+  nextLockfile = updateLock(cwd, nextLockfile, info, installDir, luminaEntry, resolvedDeps);
+
+  return { lockfile: nextLockfile, info };
+};
 
 export async function runLuminaAdd(argv: string[], options: AddOptions = {}): Promise<void> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
@@ -170,35 +247,36 @@ export async function runLuminaAdd(argv: string[], options: AddOptions = {}): Pr
   const stderr = options.stderr ?? console;
   const dependencies: AddDependencies = { ...DEFAULT_DEPENDENCIES, ...(options.deps ?? {}) };
 
+  const dev = argv.includes('--dev');
   const args = argv.filter((arg) => !arg.startsWith('--'));
   if (args.length === 0) {
-    throw new Error('Usage: lumina add <pkg[@version]>');
+    throw new Error('Usage: lumina add [--dev] <pkg[@version]>');
   }
 
   for (const spec of args) {
     const { name, constraint } = parsePackageSpec(spec);
     const manifest = await ensureManifest(cwd, dependencies);
     const config: RegistryClientConfig = dependencies.resolveRegistryConfig(manifest, env);
-    const resolvedVersion = await dependencies.resolveVersion(name, constraint, config);
-    const info = await dependencies.getVersionInfo(name, resolvedVersion, config);
-    const tarball = await dependencies.downloadTarball(info.resolved, config);
-    const status = dependencies.integrityStatus(tarball, info.integrity);
-    if (status !== 'ok') {
-      if (status === 'missing') {
-        stderr.error(`SECURITY: missing integrity for ${name}@${resolvedVersion}`);
-        throw new Error(`Missing integrity for ${name}@${resolvedVersion}`);
-      }
-      stderr.error(`SECURITY: integrity check failed for ${name}@${resolvedVersion}`);
-      throw new Error(`Integrity mismatch for ${name}@${resolvedVersion}`);
-    }
-    const installDir = await materializePackage(cwd, info.name, info.version, tarball);
-    const luminaEntry = await inferLuminaEntry(installDir, info.lumina);
-
-    const updatedManifest = addDependency(manifest, name, constraint === 'latest' ? `^${resolvedVersion}` : constraint);
     const lockfile = await dependencies.readLockfile(cwd);
-    const updatedLockfile = updateLock(cwd, lockfile, info, installDir, luminaEntry);
+    const { lockfile: updatedLockfile, info } = await installPackageGraph(
+      cwd,
+      name,
+      constraint,
+      config,
+      lockfile,
+      dependencies,
+      stderr
+    );
+    const manifestConstraint = constraint === 'latest' ? `^${info.version}` : constraint;
+    const updatedManifest = dev
+      ? addDevDependency(manifest, name, manifestConstraint)
+      : addDependency(manifest, name, manifestConstraint);
+    const peerDiagnostics = validatePeerDependencies(updatedManifest, updatedLockfile);
+    if (peerDiagnostics.length > 0) {
+      throw new Error(`Peer dependency validation failed:\n${peerDiagnostics.join('\n')}`);
+    }
     await dependencies.writeManifest(cwd, updatedManifest);
     await dependencies.writeLockfile(cwd, updatedLockfile);
-    stdout.log(`added ${info.name}@${info.version}`);
+    stdout.log(`added ${info.name}@${info.version}${dev ? ' (dev)' : ''}`);
   }
 }

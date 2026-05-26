@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { runLuminaInstall } from '../src/bin/lumina-install.js';
 import type { PackageManifest } from '../src/lumina/package-manifest.js';
 import type { LockfileData } from '../src/lumina/lockfile.js';
@@ -63,6 +64,22 @@ describe('lumina install', () => {
     ).rejects.toThrow(/out of sync/);
   });
 
+  it('checks devDeps during frozen sync validation', async () => {
+    const cwd = createTempDir();
+    const manifest = makeManifest();
+    manifest.devDeps.set('test-helper', '^0.2.0');
+
+    await expect(
+      runLuminaInstall(['--frozen'], {
+        cwd,
+        deps: {
+          readManifest: async () => manifest,
+          readLockfile: async () => lockfileWithJsonUtils(),
+        },
+      })
+    ).rejects.toThrow(/test-helper/);
+  });
+
   it('skips already cached packages', async () => {
     const cwd = createTempDir();
     const cachedDir = path.join(cwd, '.lumina', 'packages', 'json-utils@1.2.3');
@@ -84,6 +101,36 @@ describe('lumina install', () => {
       stdout: { log: () => {} },
     });
     expect(downloads).toBe(0);
+  });
+
+  it('does not materialize tarball payload paths outside the install directory', async () => {
+    const cwd = createTempDir();
+    await runLuminaInstall([], {
+      cwd,
+      deps: {
+        readManifest: async () => makeManifest(),
+        readLockfile: async () => lockfileWithJsonUtils(),
+        isOutOfSync: () => [],
+        resolveRegistryConfig: () => ({ url: 'https://registry.example.dev', token: null }),
+        downloadTarball: async () =>
+          gzipSync(
+            Buffer.from(
+              JSON.stringify({
+                files: [
+                  { path: 'src/lib.lm', content: Buffer.from('pub fn ok() -> int { 1 }\n').toString('base64') },
+                  { path: '../json-utils@1.2.3-evil/pwn.lm', content: Buffer.from('pwn').toString('base64') },
+                ],
+              }),
+              'utf-8'
+            )
+          ),
+        integrityStatus: () => 'ok',
+      },
+      stdout: { log: () => {} },
+    });
+
+    expect(fs.existsSync(path.join(cwd, '.lumina', 'packages', 'json-utils@1.2.3', 'src', 'lib.lm'))).toBe(true);
+    expect(fs.existsSync(path.join(cwd, '.lumina', 'packages', 'json-utils@1.2.3-evil', 'pwn.lm'))).toBe(false);
   });
 
   it('fails cleanly when lockfile entry is missing integrity', async () => {
@@ -133,6 +180,36 @@ describe('lumina install', () => {
         },
       })
     ).rejects.toThrow(/integrity check failed/i);
+  });
+
+  it('validates locked peer dependency requirements before installing', async () => {
+    const cwd = createTempDir();
+    await expect(
+      runLuminaInstall([], {
+        cwd,
+        deps: {
+          readManifest: async () => makeManifest(),
+          readLockfile: async () => ({
+            version: 1,
+            packages: new Map([
+              [
+                'json-utils@1.2.3',
+                {
+                  name: 'json-utils',
+                  version: '1.2.3',
+                  resolved: 'https://registry.example.dev/json-utils-1.2.3.tgz',
+                  path: '.lumina/packages/json-utils@1.2.3',
+                  integrity: 'sha256:abc',
+                  deps: new Map(),
+                  peerDeps: new Map([['host-runtime', '^2.0.0']]),
+                },
+              ],
+            ]),
+          }),
+          isOutOfSync: () => [],
+        },
+      })
+    ).rejects.toThrow(/json-utils@1.2.3 requires peer dependency host-runtime@\^2.0.0/);
   });
 
   it('migrates legacy lockfile through readLockfile dependency path', async () => {

@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
+  BROWSER_LOCKFILE_FILENAME,
   generateBrowserLock,
   readBrowserLockfile,
   readLockfile,
@@ -30,11 +32,20 @@ const parseFlag = (argv: string[], name: string): string | null => {
 export function generateImportMap(browserLock: BrowserLock): ImportMap {
   const imports: Record<string, string> = {};
   const integrity: Record<string, string> = {};
-  const sorted = Array.from(browserLock.packages.values()).sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = Array.from(browserLock.packages.values()).sort((a, b) =>
+    a.name.localeCompare(b.name) || a.version.localeCompare(b.version)
+  );
+  const nameCounts = new Map<string, number>();
+  for (const entry of sorted) {
+    nameCounts.set(entry.name, (nameCounts.get(entry.name) ?? 0) + 1);
+  }
   for (const entry of sorted) {
     const target = entry.esm ?? entry.wasm;
     if (!target) continue;
-    imports[entry.name] = target;
+    imports[`${entry.name}@${entry.version}`] = target;
+    if (nameCounts.get(entry.name) === 1) {
+      imports[entry.name] = target;
+    }
     integrity[target] = entry.integrity;
   }
   return { imports, integrity };
@@ -57,10 +68,11 @@ export async function runLuminaImportmap(argv: string[], options: ImportMapOptio
 
   const outArg = parseFlag(argv, '--out');
   const outPath = path.resolve(cwd, outArg ?? 'dist/import-map.json');
+  const browserLockPath = path.join(cwd, BROWSER_LOCKFILE_FILENAME);
   let browserLock: BrowserLock;
-  try {
+  if (existsSync(browserLockPath)) {
     browserLock = await readBrowserLockfile(cwd);
-  } catch {
+  } else {
     const lock = await readLockfile(cwd);
     browserLock = generateBrowserLock(lock);
     if (argv.includes('--write-browser-lock')) {

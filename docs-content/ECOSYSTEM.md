@@ -113,13 +113,19 @@ Versioning:
 
 ## 7. Publishing Guidance
 
-For npm publishing:
+For individual npm packages:
 
 ```bash
 npm version patch
 git push origin main --tags
 npm publish --access public
 ```
+
+Official ecosystem packages under `packages/http/`, `packages/github-client/`, and
+`packages/json-parser/` are published by `.github/workflows/publish-packages.yml`
+when their own package directories change on `main`. Version bumps remain manual
+in each package's `package.json`; the workflow checks whether that exact version
+already exists before publishing.
 
 If publish fails with auth/ownership errors:
 

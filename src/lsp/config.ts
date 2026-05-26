@@ -13,7 +13,7 @@ export const defaultSettings: LuminaLspSettings = {
   grammarPath: undefined,
   maxDiagnostics: 200,
   enableTrace: false,
-  fileExtensions: ['.lum', '.lumina'],
+  fileExtensions: ['.lm', '.lum', '.lumina'],
   maxIndexFiles: 2000,
   renameConflictMode: 'all',
   renamePreviewMode: 'popup',

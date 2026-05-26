@@ -296,7 +296,7 @@ function indexWorkspaceFiles() {
   if (!project) return;
   const roots = workspaceRoots.length > 0 ? workspaceRoots : workspaceRoot ? [workspaceRoot] : [];
   if (roots.length === 0) return;
-  const extensions = settings.fileExtensions ?? ['.lum', '.lumina'];
+  const extensions = settings.fileExtensions ?? defaultSettings.fileExtensions ?? ['.lm', '.lum', '.lumina'];
   const maxFiles = settings.maxIndexFiles ?? 2000;
   for (const root of roots) {
     const files = scanWorkspace(root, extensions, maxFiles);
@@ -356,7 +356,7 @@ connection.onInitialize((params: InitializeParams) => {
 
 connection.onInitialized(() => {
   connection.client.register(DidChangeConfigurationNotification.type);
-  const extensions = settings.fileExtensions ?? ['.lum', '.lumina'];
+  const extensions = settings.fileExtensions ?? defaultSettings.fileExtensions ?? ['.lm', '.lum', '.lumina'];
   const sanitized = extensions.map((ext) => ext.replace(/^\./, '')).filter(Boolean);
   const globPattern = sanitized.length > 0 ? `**/*.{${sanitized.join(',')}}` : '**/*.lum';
   connection.client.register(DidChangeWatchedFilesNotification.type, {

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   addDependency,
+  addDevDependency,
   readManifest,
   validateManifest,
   writeManifest,
@@ -42,30 +43,53 @@ describe('package manifest', () => {
     fs.writeFileSync(path.join(dir, 'src', 'main.lm'), 'fn main() { }\n');
     const manifest = baseManifest();
     manifest.dependencies.set('json-utils', '^1.2.0');
+    manifest.peerDeps = new Map([['host-runtime', '^2.0.0']]);
     await writeManifest(dir, manifest);
     const loaded = await readManifest(dir);
     expect(loaded.name).toBe('demo');
     expect(loaded.dependencies.get('json-utils')).toBe('^1.2.0');
+    expect(loaded.peerDeps?.get('host-runtime')).toBe('^2.0.0');
   });
 
   it('falls back to package.json when lumina.toml is absent', async () => {
     const dir = createTempDir();
     fs.writeFileSync(
       path.join(dir, 'package.json'),
-      JSON.stringify({ name: 'legacy-demo', version: '0.2.0', lumina: 'src/entry.lm' }, null, 2),
+      JSON.stringify(
+        {
+          name: 'legacy-demo',
+          version: '0.2.0',
+          lumina: 'src/entry.lm',
+          peerDependencies: { 'host-runtime': '^2.0.0' },
+        },
+        null,
+        2
+      ),
       'utf-8'
     );
     const loaded = await readManifest(dir);
     expect(loaded.name).toBe('legacy-demo');
     expect(loaded.version).toBe('0.2.0');
     expect(loaded.entry).toBe('src/entry.lm');
+    expect(loaded.peerDeps?.get('host-runtime')).toBe('^2.0.0');
   });
 
   it('adds dependency immutably', () => {
     const manifest = baseManifest();
+    manifest.devDeps.set('json-utils', '^0.9.0');
     const updated = addDependency(manifest, 'json-utils', '^1.0.0');
     expect(manifest.dependencies.has('json-utils')).toBe(false);
     expect(updated.dependencies.get('json-utils')).toBe('^1.0.0');
+    expect(updated.devDeps.has('json-utils')).toBe(false);
+  });
+
+  it('adds dev dependency immutably and removes regular duplicate', () => {
+    const manifest = baseManifest();
+    manifest.dependencies.set('json-utils', '^0.9.0');
+    const updated = addDevDependency(manifest, 'json-utils', '^1.0.0');
+    expect(manifest.devDeps.has('json-utils')).toBe(false);
+    expect(updated.dependencies.has('json-utils')).toBe(false);
+    expect(updated.devDeps.get('json-utils')).toBe('^1.0.0');
   });
 
   it('validates required fields', () => {

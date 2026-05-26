@@ -24,6 +24,7 @@ export type RegistryVersionInfo = {
   esm?: string | null;
   wasm?: string | null;
   deps: Map<string, string>;
+  peerDeps?: Map<string, string>;
 };
 
 export type SearchResultEntry = {
@@ -153,6 +154,14 @@ const headersFor = (config: RegistryClientConfig, extra: HeadersInit = {}): Head
   ...extra,
 });
 
+const redactRegistryMessage = (message: string, config: RegistryClientConfig): string => {
+  let redacted = message;
+  if (config.token) {
+    redacted = redacted.split(config.token).join('[redacted]');
+  }
+  return redacted.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [redacted]');
+};
+
 async function requestJson<T>(url: string, config: RegistryClientConfig, init: RequestInit = {}): Promise<T> {
   const response = await withTimeout(
     fetch(url, {
@@ -163,7 +172,8 @@ async function requestJson<T>(url: string, config: RegistryClientConfig, init: R
   );
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`Registry request failed (${response.status}): ${body || response.statusText}`);
+    const detail = redactRegistryMessage(body || response.statusText, config);
+    throw new Error(`Registry request failed (${response.status}): ${detail}`);
   }
   return response.json() as Promise<T>;
 }
@@ -198,6 +208,8 @@ export async function getVersionInfo(name: string, version: string, config: Regi
     esm?: string | null;
     wasm?: string | null;
     deps?: Record<string, string>;
+    peerDeps?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
   }>(joinUrl(config.url, `/packages/${encodedName}/${encodedVersion}`), config);
   return {
     name: payload.name,
@@ -210,6 +222,7 @@ export async function getVersionInfo(name: string, version: string, config: Regi
     esm: typeof payload.esm === 'string' ? payload.esm : null,
     wasm: typeof payload.wasm === 'string' ? payload.wasm : null,
     deps: new Map(Object.entries(payload.deps ?? {})),
+    peerDeps: new Map(Object.entries(payload.peerDeps ?? payload.peerDependencies ?? {})),
   };
 }
 
@@ -217,7 +230,8 @@ export async function resolveVersion(name: string, constraint: string, config: R
   const info = await getPackageInfo(name, config);
   const matched = info.versions.filter((version) => satisfiesSemverConstraint(version, constraint));
   if (matched.length === 0) {
-    throw new Error(`No versions for '${name}' satisfy '${constraint}'`);
+    const available = info.versions.length > 0 ? info.versions.sort(compareVersions).join(', ') : 'none';
+    throw new Error(`No versions for '${name}' satisfy '${constraint}' (available: ${available})`);
   }
   return matched.sort((a, b) => compareVersions(b, a))[0];
 }
@@ -257,6 +271,8 @@ export async function publishPackage(
       description: manifest.description,
       license: manifest.license,
       authors: manifest.authors,
+      deps: Object.fromEntries(manifest.dependencies),
+      peerDeps: Object.fromEntries(manifest.peerDeps ?? []),
     },
     tarball: tarball.toString('base64'),
   };
@@ -371,20 +387,18 @@ const resolveTokenReference = (token: string, env: NodeJS.ProcessEnv): string | 
 };
 
 export function resolveRegistryConfig(manifest: PackageManifest, env: NodeJS.ProcessEnv): RegistryClientConfig {
-  const envToken = env.LUMINA_TOKEN;
+  const envUrl = env.LUMINA_REGISTRY_URL;
+  const url = typeof envUrl === 'string' && envUrl.trim().length > 0
+    ? envUrl.trim()
+    : manifest.registry?.url ?? DEFAULT_REGISTRY_URL;
+  const envToken = env.LUMINA_REGISTRY_TOKEN ?? env.LUMINA_TOKEN;
   if (typeof envToken === 'string' && envToken.length > 0) {
-    return {
-      url: manifest.registry?.url ?? DEFAULT_REGISTRY_URL,
-      token: envToken,
-    };
+    return { url, token: envToken };
   }
   const manifestTokenRaw = manifest.registry?.token ?? null;
   const manifestToken =
     typeof manifestTokenRaw === 'string' && manifestTokenRaw.length > 0
       ? resolveTokenReference(manifestTokenRaw, env)
       : null;
-  return {
-    url: manifest.registry?.url ?? DEFAULT_REGISTRY_URL,
-    token: manifestToken,
-  };
+  return { url, token: manifestToken };
 }

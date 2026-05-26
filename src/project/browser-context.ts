@@ -13,7 +13,10 @@ import {
   LEGACY_LOCKFILE_FILENAME,
   LOCKFILE_FILENAME,
   normalizeLockfileObject,
+  parsePackageSpecifier,
+  selectLockfilePackage,
   type NormalizedLockfile,
+  type NormalizedLockfilePackage,
 } from '../lumina/lockfile-format.js';
 
 export interface BrowserSourceDocument {
@@ -68,7 +71,7 @@ type LuminaLockfile = NormalizedLockfile;
 
 type BareResolveResult =
   | { resolved: string }
-  | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004'; message: string } };
+  | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004' | 'PKG-005'; message: string } };
 
 type LocationInfo = {
   startLine: number;
@@ -561,17 +564,23 @@ export class BrowserProjectContext {
     }
   }
 
-  private parsePackageSpecifier(specifier: string): { pkgName: string; subpath: string | null } {
-    if (specifier.startsWith('@')) {
-      const parts = specifier.split('/');
-      if (parts.length < 2) return { pkgName: specifier, subpath: null };
-      const pkgName = `${parts[0]}/${parts[1]}`;
-      const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
-      return { pkgName, subpath };
-    }
-    const slash = specifier.indexOf('/');
-    if (slash === -1) return { pkgName: specifier, subpath: null };
-    return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
+  private packageRoot(lockDir: string, pkg: NormalizedLockfilePackage): string {
+    const pkgRoot = this.normalizeVirtualSpec(pkg.path ?? pkg.resolved);
+    if (pkgRoot.startsWith('/')) return pkgRoot;
+    return lockDir ? this.normalizeVirtualSpec(`${lockDir}/${pkgRoot}`) : pkgRoot;
+  }
+
+  private containingPackage(
+    lockfile: LuminaLockfile,
+    lockDir: string,
+    fromUri: string
+  ): NormalizedLockfilePackage | null {
+    const importer = this.normalizeVirtualSpec(fromUri);
+    const matches = Object.values(lockfile.packages)
+      .map((pkg) => ({ pkg, root: this.packageRoot(lockDir, pkg) }))
+      .filter(({ root }) => importer === root || importer.startsWith(`${root}/`))
+      .sort((left, right) => right.root.length - left.root.length);
+    return matches[0]?.pkg ?? null;
   }
 
   private resolveBareSpecifier(fromUri: string, specifier: string): string | null {
@@ -593,11 +602,18 @@ export class BrowserProjectContext {
         error: { code: 'PKG-004', message: `Cannot resolve package imports: ${LOCKFILE_FILENAME} not found` },
       };
     }
-    const { pkgName, subpath } = this.parsePackageSpecifier(specifier);
-    const pkg = lockfile.packages?.[pkgName];
-    if (!pkg) {
-      return { error: { code: 'PKG-001', message: `Package '${pkgName}' not found in ${LOCKFILE_FILENAME}` } };
+    const { pkgName, subpath } = parsePackageSpecifier(specifier);
+    const lockDir = lockSpec.includes('/') ? lockSpec.slice(0, lockSpec.lastIndexOf('/')) : '';
+    const selected = selectLockfilePackage(lockfile, pkgName, this.containingPackage(lockfile, lockDir, fromUri));
+    if ('error' in selected) {
+      return {
+        error: {
+          code: selected.error === 'ambiguous' ? 'PKG-005' : 'PKG-001',
+          message: selected.message,
+        },
+      };
     }
+    const pkg = selected.entry;
     const lumina = pkg.lumina;
     if (!lumina) {
       return {
@@ -626,11 +642,7 @@ export class BrowserProjectContext {
     if (!entry) {
       return { error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '.'` } };
     }
-    const lockDir = lockSpec.includes('/') ? lockSpec.slice(0, lockSpec.lastIndexOf('/')) : '';
-    let pkgRoot = pkg.path ?? pkg.resolved;
-    if (!pkgRoot.startsWith('/')) {
-      pkgRoot = lockDir ? `${lockDir}/${pkgRoot}` : pkgRoot;
-    }
+    const pkgRoot = this.packageRoot(lockDir, pkg);
     const absolute = pkgRoot.endsWith('/') ? `${pkgRoot}${entry}` : `${pkgRoot}/${entry}`;
     return { resolved: this.ensureVirtualExtension(absolute) };
   }

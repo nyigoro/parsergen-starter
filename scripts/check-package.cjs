@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const binDir = path.join(__dirname, '..', 'dist', 'bin');
-const bins = ['cli.js', 'lumina.js', 'lumina-lsp.js'];
+const bins = ['cli.js', 'lumina.js', 'lumina-lsp.js', 'lumina-repl.js'];
 
 let ok = true;
 for (const name of bins) {

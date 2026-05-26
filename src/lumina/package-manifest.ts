@@ -27,6 +27,7 @@ export type PackageManifest = {
   license: string | null;
   dependencies: Map<string, string>;
   devDeps: Map<string, string>;
+  peerDeps?: Map<string, string>;
   registry: RegistryConfig | null;
   cdn?: CdnConfig | null;
 };
@@ -69,6 +70,7 @@ function parseTomlManifest(source: string): PackageManifest {
   const packageFields: Record<string, string> = {};
   const dependencies = new Map<string, string>();
   const devDeps = new Map<string, string>();
+  const peerDeps = new Map<string, string>();
   const registryFields: Record<string, string> = {};
   const cdnFields: Record<string, string> = {};
   const arrays: Record<string, string[]> = {};
@@ -93,6 +95,8 @@ function parseTomlManifest(source: string): PackageManifest {
       dependencies.set(key, quoted);
     } else if ((section === 'dev-dependencies' || section === 'dev_dependencies') && quoted !== null) {
       devDeps.set(key, quoted);
+    } else if ((section === 'peer-dependencies' || section === 'peer_dependencies') && quoted !== null) {
+      peerDeps.set(key, quoted);
     } else if (section === 'registry' && quoted !== null) {
       registryFields[key] = quoted;
     } else if (section === 'cdn' && quoted !== null) {
@@ -124,6 +128,7 @@ function parseTomlManifest(source: string): PackageManifest {
     license: packageFields.license ?? null,
     dependencies,
     devDeps,
+    peerDeps,
     registry,
     cdn,
   };
@@ -152,6 +157,7 @@ export async function readManifest(dir: string): Promise<PackageManifest> {
       lumina?: string;
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
     };
     return {
       name: parsed.name ?? '',
@@ -162,6 +168,7 @@ export async function readManifest(dir: string): Promise<PackageManifest> {
       license: parsed.license ?? null,
       dependencies: toDependencyMap(parsed.dependencies),
       devDeps: toDependencyMap(parsed.devDependencies),
+      peerDeps: toDependencyMap(parsed.peerDependencies),
       registry: null,
       cdn: null,
     };
@@ -190,6 +197,8 @@ export async function writeManifest(dir: string, manifest: PackageManifest): Pro
   lines.push(...toTomlMap(manifest.dependencies));
   lines.push('', '[dev-dependencies]');
   lines.push(...toTomlMap(manifest.devDeps));
+  lines.push('', '[peer-dependencies]');
+  lines.push(...toTomlMap(manifest.peerDeps ?? new Map()));
   if (manifest.registry) {
     lines.push('', '[registry]');
     lines.push(`url = "${manifest.registry.url.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
@@ -212,8 +221,18 @@ export async function writeManifest(dir: string, manifest: PackageManifest): Pro
 
 export function addDependency(manifest: PackageManifest, name: string, constraint: string): PackageManifest {
   const deps = new Map(manifest.dependencies);
+  const devDeps = new Map(manifest.devDeps);
   deps.set(name, constraint);
-  return { ...manifest, dependencies: deps };
+  devDeps.delete(name);
+  return { ...manifest, dependencies: deps, devDeps };
+}
+
+export function addDevDependency(manifest: PackageManifest, name: string, constraint: string): PackageManifest {
+  const dependencies = new Map(manifest.dependencies);
+  const devDeps = new Map(manifest.devDeps);
+  dependencies.delete(name);
+  devDeps.set(name, constraint);
+  return { ...manifest, dependencies, devDeps };
 }
 
 export function validateManifest(manifest: PackageManifest, dir: string = process.cwd()): ValidationError[] {
@@ -242,6 +261,14 @@ export function validateManifest(manifest: PackageManifest, dir: string = proces
     }
     if (!SEMVER_PATTERN.test(constraint)) {
       errors.push({ field: `dev-dependencies.${name}`, message: `Invalid version constraint: ${constraint}` });
+    }
+  }
+  for (const [name, constraint] of manifest.peerDeps ?? []) {
+    if (!NAME_PATTERN.test(name)) {
+      errors.push({ field: `peer-dependencies.${name}`, message: 'Peer dependency name is invalid.' });
+    }
+    if (!SEMVER_PATTERN.test(constraint)) {
+      errors.push({ field: `peer-dependencies.${name}`, message: `Invalid version constraint: ${constraint}` });
     }
   }
   if (manifest.registry && manifest.registry.url.trim().length === 0) {

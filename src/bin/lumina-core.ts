@@ -58,7 +58,14 @@ import { runLuminaBundle } from './lumina-bundle.js';
 import { runLuminaImportmap } from './lumina-importmap.js';
 import { readManifest } from '../lumina/package-manifest.js';
 import { resolveRegistryConfig, search as searchRegistry } from '../lumina/registry-client.js';
-import { LEGACY_LOCKFILE_FILENAME, LOCKFILE_FILENAME, readLockfileSync } from '../lumina/lockfile.js';
+import { LEGACY_LOCKFILE_FILENAME, LOCKFILE_FILENAME } from '../lumina/lockfile.js';
+import {
+  normalizeLockfileObject,
+  parsePackageSpecifier,
+  selectLockfilePackage,
+  type NormalizedLockfile,
+  type NormalizedLockfilePackage,
+} from '../lumina/lockfile-format.js';
 import { scanDirectory } from '../lumina/secret-scan.js';
 import { generateExportsMap } from '../lumina/dual-output.js';
 import { type AnalyzeTarget } from '../lumina/target-profiles.js';
@@ -368,18 +375,11 @@ type BuildConfig = {
   cacheDir: string;
 };
 
-type LuminaLockfile = {
-  lockfileVersion: number;
-  packages: Record<string, LockfilePackage>;
-};
+type LuminaLockfile = NormalizedLockfile;
 
-type LockfilePackage = {
-  version: string;
-  resolved: string;
-  path?: string;
-  integrity?: string;
-  lumina?: string | Record<string, string>;
-};
+type BareResolveResult =
+  | { resolved: string }
+  | { error: { code: 'PKG-001' | 'PKG-002' | 'PKG-003' | 'PKG-004' | 'PKG-005'; message: string } };
 
 type FileCacheEntry = {
   hash: string;
@@ -633,30 +633,15 @@ function findLockfileRoot(fromPath: string): string | null {
 
 function loadLockfile(root: string): LuminaLockfile | null {
   const modernLock = path.join(root, LOCKFILE_FILENAME);
-  if (existsSync(modernLock)) {
-    const modern = readLockfileSync(root);
-    const packages: Record<string, LockfilePackage> = {};
-    for (const entry of modern.packages.values()) {
-      packages[entry.name] = {
-        version: entry.version,
-        resolved: entry.resolved,
-        path: entry.path,
-        integrity: entry.integrity,
-        lumina: entry.lumina,
-      };
-    }
-    return {
-      lockfileVersion: modern.version,
-      packages,
-    };
-  }
   const lockPath = path.join(root, LEGACY_LOCKFILE_FILENAME);
+  const candidate = existsSync(modernLock) ? modernLock : lockPath;
   try {
-    const stat = statSync(lockPath);
+    const stat = statSync(candidate);
     const cached = lockfileCache.get(root);
     if (cached && cached.mtimeMs === stat.mtimeMs) return cached.data;
-    const raw = readFileSync(lockPath, 'utf-8');
-    const parsed = JSON.parse(raw) as LuminaLockfile;
+    const raw = readFileSync(candidate, 'utf-8');
+    const parsed = normalizeLockfileObject(JSON.parse(raw));
+    if (!parsed) return null;
     lockfileCache.set(root, { mtimeMs: stat.mtimeMs, data: parsed });
     return parsed;
   } catch {
@@ -664,17 +649,80 @@ function loadLockfile(root: string): LuminaLockfile | null {
   }
 }
 
-function parsePackageSpecifier(specifier: string): { pkgName: string; subpath: string | null } {
-  if (specifier.startsWith('@')) {
-    const parts = specifier.split('/');
-    if (parts.length < 2) return { pkgName: specifier, subpath: null };
-    const pkgName = `${parts[0]}/${parts[1]}`;
-    const subpath = parts.length > 2 ? `./${parts.slice(2).join('/')}` : null;
-    return { pkgName, subpath };
+function packageRootFor(root: string, pkg: NormalizedLockfilePackage): string {
+  const pkgRoot = pkg.path ?? pkg.resolved;
+  return path.isAbsolute(pkgRoot) ? path.resolve(pkgRoot) : path.resolve(root, pkgRoot);
+}
+
+function containingPackage(
+  lockfile: LuminaLockfile,
+  root: string,
+  fromPath: string
+): NormalizedLockfilePackage | null {
+  const importer = path.resolve(fromPath);
+  const matches = Object.values(lockfile.packages)
+    .map((pkg) => ({ pkg, root: packageRootFor(root, pkg) }))
+    .filter(({ root: pkgRoot }) => importer === pkgRoot || importer.startsWith(`${pkgRoot}${path.sep}`))
+    .sort((left, right) => right.root.length - left.root.length);
+  return matches[0]?.pkg ?? null;
+}
+
+function resolveBareImportDetailed(
+  fromPath: string,
+  spec: string,
+  extensions: string[],
+  lockfileRoot?: string | null
+): BareResolveResult {
+  const root = lockfileRoot ?? findLockfileRoot(fromPath);
+  if (!root) {
+    return {
+      error: { code: 'PKG-004', message: `Cannot resolve package import '${spec}': ${LOCKFILE_FILENAME} not found` },
+    };
   }
-  const slash = specifier.indexOf('/');
-  if (slash === -1) return { pkgName: specifier, subpath: null };
-  return { pkgName: specifier.slice(0, slash), subpath: `./${specifier.slice(slash + 1)}` };
+  const lockfile = loadLockfile(root);
+  if (!lockfile) {
+    return {
+      error: { code: 'PKG-004', message: `Cannot resolve package import '${spec}': ${LOCKFILE_FILENAME} not found` },
+    };
+  }
+  const { pkgName, subpath } = parsePackageSpecifier(spec);
+  const selected = selectLockfilePackage(lockfile, pkgName, containingPackage(lockfile, root, fromPath));
+  if ('error' in selected) {
+    return {
+      error: {
+        code: selected.error === 'ambiguous' ? 'PKG-005' : 'PKG-001',
+        message: selected.message,
+      },
+    };
+  }
+  const pkg = selected.entry;
+  if (!pkg.lumina) {
+    return {
+      error: { code: 'PKG-002', message: `Package '${pkgName}' missing 'lumina' field in ${LOCKFILE_FILENAME}` },
+    };
+  }
+  const lumina = pkg.lumina;
+  let entry: string | undefined;
+  if (subpath) {
+    if (typeof lumina === 'object') {
+      entry = lumina[subpath];
+    }
+    if (!entry) {
+      return {
+        error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '${subpath}'` },
+      };
+    }
+  } else if (typeof lumina === 'string') {
+    entry = lumina;
+  } else if (typeof lumina === 'object') {
+    entry = lumina['.'];
+  }
+  if (!entry) {
+    return { error: { code: 'PKG-003', message: `Package '${pkgName}' does not export '.'` } };
+  }
+  const pkgRoot = packageRootFor(root, pkg);
+  const absolute = path.resolve(pkgRoot, entry);
+  return { resolved: ensureExtension(absolute, extensions) };
 }
 
 function resolveBareImport(
@@ -683,31 +731,30 @@ function resolveBareImport(
   extensions: string[],
   lockfileRoot?: string | null
 ): string | null {
-  const root = lockfileRoot ?? findLockfileRoot(fromPath);
-  if (!root) return null;
-  const lockfile = loadLockfile(root);
-  if (!lockfile) return null;
-  const { pkgName, subpath } = parsePackageSpecifier(spec);
-  const pkg = lockfile.packages?.[pkgName];
-  if (!pkg || !pkg.lumina) return null;
-  const lumina = pkg.lumina;
-  let entry: string | undefined;
-  if (subpath) {
-    if (typeof lumina === 'object') {
-      entry = lumina[subpath];
-    }
-  } else if (typeof lumina === 'string') {
-    entry = lumina;
-  } else if (typeof lumina === 'object') {
-    entry = lumina['.'];
+  const result = resolveBareImportDetailed(fromPath, spec, extensions, lockfileRoot);
+  return 'resolved' in result ? result.resolved : null;
+}
+
+function collectPackageImportDiagnostics(
+  filePath: string,
+  source: string,
+  parser: ReturnType<typeof compileGrammar>,
+  extensions: string[],
+  lockfileRoot?: string | null
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  for (const imp of extractImports(source, { parser, grammarSource: filePath })) {
+    if (imp.startsWith('.') || imp === '@std' || imp.startsWith('@std/')) continue;
+    const result = resolveBareImportDetailed(filePath, imp, extensions, lockfileRoot);
+    if ('resolved' in result) continue;
+    diagnostics.push({
+      severity: 'error',
+      code: result.error.code,
+      message: result.error.message,
+      source: 'lumina',
+    });
   }
-  if (!entry) return null;
-  let pkgRoot = pkg.path ?? pkg.resolved;
-  if (!path.isAbsolute(pkgRoot)) {
-    pkgRoot = path.resolve(root, pkgRoot);
-  }
-  const absolute = path.resolve(pkgRoot, entry);
-  return ensureExtension(absolute, extensions);
+  return diagnostics;
 }
 
 function buildDepGraph(): Map<string, string[]> {
@@ -1663,6 +1710,11 @@ async function bundleProgram(
     if (parseError) return false;
     if (diagnostics.length > 0) {
       formatDiagnosticsWithSnippet(text, diagnostics);
+      return false;
+    }
+    const packageDiagnostics = collectPackageImportDiagnostics(filePath, text, parser, extensions, lockfileRoot);
+    if (packageDiagnostics.length > 0) {
+      formatDiagnosticsWithSnippet(text, packageDiagnostics);
       return false;
     }
     if (!ast) return false;
@@ -2682,6 +2734,17 @@ async function checkLumina(
     return { ok: false };
   }
   if (!ast) {
+    return { ok: false };
+  }
+  const packageDiagnostics = collectPackageImportDiagnostics(
+    sourcePath,
+    source,
+    parser,
+    configFileExtensions,
+    lockfileRoot
+  );
+  if (packageDiagnostics.length > 0) {
+    reportDiagnosticsAndFail(source, packageDiagnostics);
     return { ok: false };
   }
   let programForAnalysis: unknown = ast;

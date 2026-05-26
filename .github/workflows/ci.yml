@@ -13,12 +13,17 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '22.17.0'
           cache: 'npm'
       - run: npm ci
       - run: npm --prefix demo ci
+      - name: Install WABT
+        run: sudo apt-get update && sudo apt-get install -y wabt && wat2wasm --version
       - run: npm run lint:check
+      - run: npm run typecheck
       - run: npm run build
+      - run: npm run build:verify
+      - run: npm run pack:check
       - run: npm run web:build
       - run: npm test
 
@@ -32,7 +37,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '22.17.0'
           cache: 'npm'
       - run: npm ci
       - run: npm --prefix demo ci

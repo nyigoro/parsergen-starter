@@ -226,7 +226,7 @@ export async function runLuminaPublish(argv: string[], options: PublishOptions =
 
   const config = dependencies.resolveRegistryConfig(manifest, env);
   if (!config.token) {
-    throw new Error('AUTH: registry requires authentication, set LUMINA_TOKEN');
+    throw new Error('AUTH: registry requires authentication, set LUMINA_REGISTRY_TOKEN or LUMINA_TOKEN');
   }
 
   try {

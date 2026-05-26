@@ -41,6 +41,10 @@ describe('browser lock generation', () => {
               ['tiny-vec', '^0.1.0'],
               ['parse-core', '^0.2.0'],
             ]),
+            resolvedDeps: new Map([
+              ['tiny-vec', 'tiny-vec@0.1.0'],
+              ['parse-core', 'parse-core@0.2.5'],
+            ]),
           },
         ],
       ]),
@@ -50,7 +54,7 @@ describe('browser lock generation', () => {
     const entry = browser.packages.get('json-utils@1.2.3');
     expect(entry?.esm).toBe('https://cdn.luminalang.dev/json-utils@1.2.3/index.js');
     expect(entry?.wasm).toBe('https://cdn.luminalang.dev/json-utils@1.2.3/index.wasm');
-    expect(entry?.deps).toEqual(['parse-core', 'tiny-vec']);
+    expect(entry?.deps).toEqual(['parse-core@0.2.5', 'tiny-vec@0.1.0']);
   });
 
   it('writes and reads lumina.browser.lock', async () => {
