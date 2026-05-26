@@ -1,8 +1,3 @@
-var __defProp = Object.defineProperty;
-var __defNormalProp = (obj, key2, value) => key2 in obj ? __defProp(obj, key2, { enumerable: true, configurable: true, writable: true, value }) : obj[key2] = value;
-var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
-var __publicField = (obj, key2, value) => __defNormalProp(obj, typeof key2 !== "symbol" ? key2 + "" : key2, value);
-
 // src/frame-manager.ts
 var nextContextId = 1;
 function createContextToken(defaultValue) {
@@ -12,21 +7,19 @@ function createContextToken(defaultValue) {
     hasDefault: arguments.length > 0
   };
 }
-__name(createContextToken, "createContextToken");
-var frameName = /* @__PURE__ */ __name((frame) => {
+var frameName = (frame) => {
   if (!frame) return "unknown";
   if (!frame.componentFn) return "root";
   const name = frame.componentFn.name?.trim();
   return name && name.length > 0 ? name : "<anonymous component>";
-}, "frameName");
-var slotErrorPrefix = /* @__PURE__ */ __name((frame) => `Component '${frameName(frame)}' rendered an inconsistent local slot layout`, "slotErrorPrefix");
-var _FrameManager = class _FrameManager {
+};
+var slotErrorPrefix = (frame) => `Component '${frameName(frame)}' rendered an inconsistent local slot layout`;
+var FrameManager = class {
   constructor() {
-    __publicField(this, "renderEpoch", 0);
-    __publicField(this, "currentFrame", null);
-    __publicField(this, "rootFrame");
-    __publicField(this, "nextFrameId", 1);
-    __publicField(this, "currentContextScope", null);
+    this.renderEpoch = 0;
+    this.currentFrame = null;
+    this.nextFrameId = 1;
+    this.currentContextScope = null;
     this.rootFrame = this.createFrame(null, null, null);
     this.rootFrame.expectedSlotCount = 0;
   }
@@ -54,10 +47,7 @@ var _FrameManager = class _FrameManager {
     frame.contextScope = this.currentContextScope;
     frame.seenEpoch = this.renderEpoch;
     const result = this.renderFrame(frame, () => componentFn(props));
-    return {
-      frame,
-      result
-    };
+    return { frame, result };
   }
   withContext(context, value, render2) {
     const previousScope = this.currentContextScope;
@@ -95,12 +85,16 @@ var _FrameManager = class _FrameManager {
     if (slotIndex < frame.slots.length) {
       const slot3 = frame.slots[slotIndex];
       if (slot3.kind !== kind) {
-        throw new Error(`${slotErrorPrefix(frame)}: slot ${slotIndex} was '${slot3.kind}' before but is now '${kind}'`);
+        throw new Error(
+          `${slotErrorPrefix(frame)}: slot ${slotIndex} was '${slot3.kind}' before but is now '${kind}'`
+        );
       }
       return slot3.value;
     }
     if (frame.expectedSlotCount !== null) {
-      throw new Error(`${slotErrorPrefix(frame)}: expected ${frame.expectedSlotCount} slot(s), but render tried to allocate slot ${slotIndex + 1}`);
+      throw new Error(
+        `${slotErrorPrefix(frame)}: expected ${frame.expectedSlotCount} slot(s), but render tried to allocate slot ${slotIndex + 1}`
+      );
     }
     const value = initializer();
     const slot2 = {
@@ -193,7 +187,9 @@ var _FrameManager = class _FrameManager {
     if (frame.expectedSlotCount === null) {
       frame.expectedSlotCount = frame.slotCursor;
     } else if (frame.slotCursor !== frame.expectedSlotCount) {
-      throw new Error(`${slotErrorPrefix(frame)}: expected ${frame.expectedSlotCount} slot(s), but render finished with ${frame.slotCursor}`);
+      throw new Error(
+        `${slotErrorPrefix(frame)}: expected ${frame.expectedSlotCount} slot(s), but render finished with ${frame.slotCursor}`
+      );
     }
     this.sweepChildren(frame);
   }
@@ -215,19 +211,17 @@ var _FrameManager = class _FrameManager {
     };
   }
 };
-__name(_FrameManager, "FrameManager");
-var FrameManager = _FrameManager;
 
 // src/runtime/custom-elements.ts
-var readCustomElementAttributes = /* @__PURE__ */ __name((host, observedAttributes) => {
+var readCustomElementAttributes = (host, observedAttributes) => {
   const attrs = {};
   const element = host;
   for (const name of observedAttributes) {
     attrs[name] = typeof element.getAttribute === "function" ? element.getAttribute(name) : null;
   }
   return attrs;
-}, "readCustomElementAttributes");
-var buildCustomElementProps = /* @__PURE__ */ __name((host, options) => {
+};
+var buildCustomElementProps = (host, options) => {
   const attrs = readCustomElementAttributes(host, options?.observedAttributes ?? []);
   if (typeof options?.mapProps === "function") {
     return options.mapProps(attrs, host);
@@ -236,20 +230,18 @@ var buildCustomElementProps = /* @__PURE__ */ __name((host, options) => {
     ...options?.props ?? {},
     ...attrs
   };
-}, "buildCustomElementProps");
-var ensureCustomElementTarget = /* @__PURE__ */ __name((host, options) => {
+};
+var ensureCustomElementTarget = (host, options) => {
   const element = host;
   if (!options?.useShadow) return host;
   if (element.shadowRoot) return element.shadowRoot;
   if (typeof element.attachShadow === "function") {
-    return element.attachShadow({
-      mode: "open"
-    });
+    return element.attachShadow({ mode: "open" });
   }
   return host;
-}, "ensureCustomElementTarget");
-var createCustomElementsRuntime = /* @__PURE__ */ __name((hooks) => ({
-  mountCustomElementHost: /* @__PURE__ */ __name((host, componentFn, options) => {
+};
+var createCustomElementsRuntime = (hooks) => ({
+  mountCustomElementHost: (host, componentFn, options) => {
     const documentLike = host.ownerDocument ?? hooks.getGlobalDocument();
     if (!documentLike) {
       throw new Error("mountCustomElement requires a document-like host");
@@ -263,37 +255,30 @@ var createCustomElementsRuntime = /* @__PURE__ */ __name((hooks) => ({
       props,
       host,
       target,
-      updateProps: /* @__PURE__ */ __name((next) => {
+      updateProps: (next) => {
         hooks.setSignal(props, next);
         return hooks.getSignal(props);
-      }, "updateProps"),
-      syncAttributes: /* @__PURE__ */ __name(() => {
+      },
+      syncAttributes: () => {
         const next = buildCustomElementProps(host, options);
         hooks.setSignal(props, next);
         return hooks.getSignal(props);
-      }, "syncAttributes"),
-      disconnect: /* @__PURE__ */ __name(() => {
+      },
+      disconnect: () => {
         if (hooks.isDisposableLike(root)) {
           hooks.disposeReactive(root);
         }
-      }, "disconnect")
+      }
     };
-  }, "mountCustomElementHost"),
-  defineCustomElementClass: /* @__PURE__ */ __name((tagName, componentFn, options) => {
-    var _a2;
-    const BaseCtor = options?.baseClass ?? globalThis.HTMLElement ?? class {
-    };
+  },
+  defineCustomElementClass: (tagName, componentFn, options) => {
+    const BaseCtor = options?.baseClass ?? (globalThis.HTMLElement ?? class {
+    });
     const registry = options?.registry ?? globalThis.customElements;
     const runtime = createCustomElementsRuntime(hooks);
-    const CustomElement = (_a2 = class extends BaseCtor {
-      constructor() {
-        super(...arguments);
-        __publicField(this, "__luminaController");
-      }
+    const CustomElement = class LuminaCustomElement extends BaseCtor {
       static get observedAttributes() {
-        return [
-          ...options?.observedAttributes ?? []
-        ];
+        return [...options?.observedAttributes ?? []];
       }
       connectedCallback() {
         if (!this.__luminaController) {
@@ -309,7 +294,7 @@ var createCustomElementsRuntime = /* @__PURE__ */ __name((hooks) => ({
         this.__luminaController?.disconnect();
         this.__luminaController = void 0;
       }
-    }, __name(_a2, "LuminaCustomElement"), _a2);
+    };
     if (registry?.define) {
       const existing = typeof registry.get === "function" ? registry.get(tagName) : void 0;
       if (!existing) {
@@ -317,27 +302,19 @@ var createCustomElementsRuntime = /* @__PURE__ */ __name((hooks) => ({
       }
     }
     return CustomElement;
-  }, "defineCustomElementClass")
-}), "createCustomElementsRuntime");
+  }
+});
 
 // src/runtime/ssg.ts
-var asRecord = /* @__PURE__ */ __name((value) => value && typeof value === "object" ? value : {}, "asRecord");
-var coerceSsgPageOptions = /* @__PURE__ */ __name((options) => {
+var asRecord = (value) => value && typeof value === "object" ? value : {};
+var coerceSsgPageOptions = (options) => {
   const candidate = asRecord(options);
   const headValue = candidate.head;
-  const head = Array.isArray(headValue) ? headValue.map((entry) => String(entry)) : headValue == null ? [] : [
-    String(headValue)
-  ];
+  const head = Array.isArray(headValue) ? headValue.map((entry) => String(entry)) : headValue == null ? [] : [String(headValue)];
   const lifecycleState = candidate.loaderState == null && candidate.islandState == null && candidate.deferredData == null ? null : {
-    ...candidate.loaderState == null ? {} : {
-      loaderState: candidate.loaderState
-    },
-    ...candidate.islandState == null ? {} : {
-      islandState: candidate.islandState
-    },
-    ...candidate.deferredData == null ? {} : {
-      deferredData: candidate.deferredData
-    }
+    ...candidate.loaderState == null ? {} : { loaderState: candidate.loaderState },
+    ...candidate.islandState == null ? {} : { islandState: candidate.islandState },
+    ...candidate.deferredData == null ? {} : { deferredData: candidate.deferredData }
   };
   return {
     title: typeof candidate.title === "string" ? candidate.title : "",
@@ -354,10 +331,10 @@ var coerceSsgPageOptions = /* @__PURE__ */ __name((options) => {
     requestId: typeof candidate.requestId === "string" ? candidate.requestId : "",
     deferredData: candidate.deferredData ?? null
   };
-}, "coerceSsgPageOptions");
-var serializeHydrationState = /* @__PURE__ */ __name((value) => JSON.stringify(value ?? null).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"), "serializeHydrationState");
-var createSsgApi = /* @__PURE__ */ __name((deps) => {
-  const renderPage = /* @__PURE__ */ __name((body, options) => {
+};
+var serializeHydrationState = (value) => JSON.stringify(value ?? null).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+var createSsgApi = (deps) => {
+  const renderPage = (body, options) => {
     const normalized = coerceSsgPageOptions(options);
     const bodyContent = deps.isVNode(body) ? deps.renderToString(body) : Array.isArray(body) || body && typeof body === "object" ? deps.renderToString(deps.coerceRenderableToVNode(body)) : String(body ?? "");
     const head = [
@@ -372,34 +349,32 @@ var createSsgApi = /* @__PURE__ */ __name((deps) => {
     const appClass = normalized.appClassName ? ` class="${deps.escapeHtml(normalized.appClassName)}"` : "";
     const hydrationAttrs = normalized.hydrateModule || normalized.hydrationState !== null ? ` data-lumina-hydration="${deps.escapeHtml(normalized.hydrationBoundary)}"${normalized.hydrationState !== null ? ` data-lumina-state="${deps.escapeHtml(normalized.hydrationStateId)}"` : ""}${normalized.requestId ? ` data-lumina-request-id="${deps.escapeHtml(normalized.requestId)}"` : ""}` : "";
     return `<!DOCTYPE html><html lang="${deps.escapeHtml(normalized.lang)}"><head>${head}</head><body${bodyClass}><div id="${deps.escapeHtml(normalized.appId)}"${appClass}${hydrationAttrs}>${bodyContent}</div>${hydrationStateScript}${hydrateScript}</body></html>`;
-  }, "renderPage");
-  const writePage = /* @__PURE__ */ __name((filePath, body, options) => {
+  };
+  const writePage = (filePath, body, options) => {
     const resolvedPath = deps.resolvePath(filePath);
     const fsModule = deps.getNodeBuiltinModule("node:fs");
     if (!fsModule?.mkdirSync || !fsModule.writeFileSync) {
       throw new Error("SSG write requires Node.js file system support");
     }
-    fsModule.mkdirSync(deps.dirnamePath(resolvedPath), {
-      recursive: true
-    });
+    fsModule.mkdirSync(deps.dirnamePath(resolvedPath), { recursive: true });
     fsModule.writeFileSync(resolvedPath, renderPage(body, options), "utf-8");
     return resolvedPath;
-  }, "writePage");
-  const renderAppPage = /* @__PURE__ */ __name((componentFn, props, options) => renderPage(deps.renderApp(componentFn, props), options), "renderAppPage");
-  const writeAppPage = /* @__PURE__ */ __name((filePath, componentFn, props, options) => writePage(filePath, deps.renderApp(componentFn, props), options), "writeAppPage");
+  };
+  const renderAppPage = (componentFn, props, options) => renderPage(deps.renderApp(componentFn, props), options);
+  const writeAppPage = (filePath, componentFn, props, options) => writePage(filePath, deps.renderApp(componentFn, props), options);
   return {
     renderPage,
     writePage,
     renderAppPage,
     writeAppPage
   };
-}, "createSsgApi");
+};
 
 // src/testing-dom.ts
-var createNodeListView = /* @__PURE__ */ __name((items) => {
+var createNodeListView = (items) => {
   const view = {
     length: items.length,
-    item: /* @__PURE__ */ __name((index) => items[index] ?? null, "item"),
+    item: (index) => items[index] ?? null,
     [Symbol.iterator]: function* () {
       yield* items;
     }
@@ -408,12 +383,12 @@ var createNodeListView = /* @__PURE__ */ __name((items) => {
     view[index] = item;
   });
   return view;
-}, "createNodeListView");
-var _TestingNode = class _TestingNode {
+};
+var TestingNode = class {
   constructor() {
-    __publicField(this, "textContent", "");
-    __publicField(this, "nodes", []);
-    __publicField(this, "parentNode", null);
+    this.textContent = "";
+    this.nodes = [];
+    this.parentNode = null;
   }
   get childNodes() {
     return createNodeListView(this.nodes);
@@ -475,12 +450,9 @@ var _TestingNode = class _TestingNode {
     return oldChild;
   }
 };
-__name(_TestingNode, "TestingNode");
-var TestingNode = _TestingNode;
-var _TestingDocument = class _TestingDocument {
+var TestingDocument = class {
   constructor() {
-    __publicField(this, "activeElement", null);
-    __publicField(this, "body");
+    this.activeElement = null;
     this.body = new TestingElement("body", this);
   }
   createElement(tag) {
@@ -490,7 +462,7 @@ var _TestingDocument = class _TestingDocument {
     return new TestingTextNode(value);
   }
   getElementById(id) {
-    const visit = /* @__PURE__ */ __name((node) => {
+    const visit = (node) => {
       for (const child of node.childNodes) {
         if (child instanceof TestingElement && child.getAttribute("id") === id) {
           return child;
@@ -499,7 +471,7 @@ var _TestingDocument = class _TestingDocument {
         if (found) return found;
       }
       return null;
-    }, "visit");
+    };
     return visit(this.body);
   }
   querySelector(selector) {
@@ -508,39 +480,26 @@ var _TestingDocument = class _TestingDocument {
     return null;
   }
 };
-__name(_TestingDocument, "TestingDocument");
-var TestingDocument = _TestingDocument;
-var _TestingElement = class _TestingElement extends TestingNode {
+var TestingElement = class _TestingElement extends TestingNode {
   constructor(tagName, ownerDocument) {
     super();
-    __publicField(this, "tagName");
-    __publicField(this, "attributes", /* @__PURE__ */ new Map());
-    __publicField(this, "listeners", /* @__PURE__ */ new Map());
-    __publicField(this, "ownerDocument");
-    __publicField(this, "style");
-    __publicField(this, "boundingRect");
-    __publicField(this, "value", "");
-    __publicField(this, "checked", false);
-    __publicField(this, "disabled", false);
-    __publicField(this, "hidden", false);
-    __publicField(this, "name", "");
-    __publicField(this, "type", "");
-    __publicField(this, "className", "");
-    __publicField(this, "shadowRoot", null);
+    this.attributes = /* @__PURE__ */ new Map();
+    this.listeners = /* @__PURE__ */ new Map();
+    this.value = "";
+    this.checked = false;
+    this.disabled = false;
+    this.hidden = false;
+    this.name = "";
+    this.type = "";
+    this.className = "";
+    this.shadowRoot = null;
     this.tagName = tagName.toLowerCase();
     this.ownerDocument = ownerDocument;
-    this.boundingRect = {
-      left: 0,
-      top: 0,
-      right: 0,
-      bottom: 0,
-      width: 0,
-      height: 0
-    };
+    this.boundingRect = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
     this.style = {
-      setProperty: /* @__PURE__ */ __name((name, value) => {
+      setProperty: (name, value) => {
         this.style[name] = value;
-      }, "setProperty")
+      }
     };
   }
   setAttribute(name, value) {
@@ -567,9 +526,7 @@ var _TestingElement = class _TestingElement extends TestingNode {
     }
   }
   getBoundingClientRect() {
-    return {
-      ...this.boundingRect
-    };
+    return { ...this.boundingRect };
   }
   attachShadow(_options) {
     if (!this.shadowRoot) {
@@ -579,18 +536,14 @@ var _TestingElement = class _TestingElement extends TestingNode {
     return this.shadowRoot;
   }
 };
-__name(_TestingElement, "TestingElement");
-var TestingElement = _TestingElement;
-var _TestingTextNode = class _TestingTextNode extends TestingNode {
+var TestingTextNode = class extends TestingNode {
   constructor(value) {
     super();
     this.textContent = value;
   }
 };
-__name(_TestingTextNode, "TestingTextNode");
-var TestingTextNode = _TestingTextNode;
-var asTestingElement = /* @__PURE__ */ __name((value) => value instanceof TestingElement ? value : null, "asTestingElement");
-var resolveTestingRoot = /* @__PURE__ */ __name((value) => {
+var asTestingElement = (value) => value instanceof TestingElement ? value : null;
+var resolveTestingRoot = (value) => {
   if (value instanceof TestingNode) return value;
   if (value && typeof value === "object") {
     const harnessBody = value.document?.body;
@@ -599,14 +552,14 @@ var resolveTestingRoot = /* @__PURE__ */ __name((value) => {
     if (harnessContainer instanceof TestingElement) return harnessContainer;
   }
   return null;
-}, "resolveTestingRoot");
-var walkTestingTree = /* @__PURE__ */ __name((root, visit) => {
+};
+var walkTestingTree = (root, visit) => {
   visit(root);
   for (const child of root.childNodes) {
     walkTestingTree(child, visit);
   }
-}, "walkTestingTree");
-var implicitRoleForElement = /* @__PURE__ */ __name((element) => {
+};
+var implicitRoleForElement = (element) => {
   if (element.tagName === "button") return "button";
   if (element.tagName === "a" && !!element.getAttribute("href")) return "link";
   if (element.tagName === "input") {
@@ -618,30 +571,22 @@ var implicitRoleForElement = /* @__PURE__ */ __name((element) => {
   if (element.tagName === "textarea") return "textbox";
   if (element.tagName === "select") return "combobox";
   return null;
-}, "implicitRoleForElement");
-var labelableTags = /* @__PURE__ */ new Set([
-  "button",
-  "input",
-  "meter",
-  "output",
-  "progress",
-  "select",
-  "textarea"
-]);
-var isDescendantOfTestingElement = /* @__PURE__ */ __name((node, ancestor) => {
+};
+var labelableTags = /* @__PURE__ */ new Set(["button", "input", "meter", "output", "progress", "select", "textarea"]);
+var isDescendantOfTestingElement = (node, ancestor) => {
   let current = node;
   while (current) {
     if (current === ancestor) return true;
     current = current.parentNode;
   }
   return false;
-}, "isDescendantOfTestingElement");
-var labelMatchesElement = /* @__PURE__ */ __name((label, element) => {
+};
+var labelMatchesElement = (label, element) => {
   const forId = label.getAttribute("for");
   if (forId && element.getAttribute("id") === forId) return true;
   return isDescendantOfTestingElement(element, label);
-}, "labelMatchesElement");
-var findLabelsForElement = /* @__PURE__ */ __name((element) => {
+};
+var findLabelsForElement = (element) => {
   const labels = [];
   walkTestingTree(element.ownerDocument.body, (node) => {
     if (node instanceof TestingElement && node.tagName === "label" && labelMatchesElement(node, element)) {
@@ -649,8 +594,8 @@ var findLabelsForElement = /* @__PURE__ */ __name((element) => {
     }
   });
   return labels;
-}, "findLabelsForElement");
-var getTestingAccessibleName = /* @__PURE__ */ __name((element) => {
+};
+var getTestingAccessibleName = (element) => {
   const ariaLabel = element.getAttribute("aria-label");
   if (ariaLabel) return ariaLabel;
   const labelledBy = element.getAttribute("aria-labelledby");
@@ -661,8 +606,8 @@ var getTestingAccessibleName = /* @__PURE__ */ __name((element) => {
   const labels = findLabelsForElement(element).map((label) => getTestingTextContent(label)).join(" ").trim();
   if (labels) return labels;
   return getTestingTextContent(element).trim();
-}, "getTestingAccessibleName");
-var createEventBase = /* @__PURE__ */ __name((target) => ({
+};
+var createEventBase = (target) => ({
   currentTarget: target,
   target,
   defaultPrevented: false,
@@ -671,20 +616,17 @@ var createEventBase = /* @__PURE__ */ __name((target) => ({
   },
   stopPropagation() {
   }
-}), "createEventBase");
-var createTestingDomHarness = /* @__PURE__ */ __name(() => {
+});
+var createTestingDomHarness = () => {
   const document = new TestingDocument();
   const container = document.createElement("div");
   document.body.appendChild(container);
-  return {
-    document,
-    container
-  };
-}, "createTestingDomHarness");
-var getTestingHarnessContainer = /* @__PURE__ */ __name((harness) => harness && typeof harness === "object" && harness.container instanceof TestingElement ? harness.container : null, "getTestingHarnessContainer");
-var getTestingHarnessBody = /* @__PURE__ */ __name((harness) => harness && typeof harness === "object" && harness.document instanceof TestingDocument ? harness.document.body : null, "getTestingHarnessBody");
-var getTestingHarnessById = /* @__PURE__ */ __name((harness, id) => harness && typeof harness === "object" && harness.document instanceof TestingDocument ? harness.document.getElementById(id) : null, "getTestingHarnessById");
-var getTestingHarnessByText = /* @__PURE__ */ __name((scope, value) => {
+  return { document, container };
+};
+var getTestingHarnessContainer = (harness) => harness && typeof harness === "object" && harness.container instanceof TestingElement ? harness.container : null;
+var getTestingHarnessBody = (harness) => harness && typeof harness === "object" && harness.document instanceof TestingDocument ? harness.document.body : null;
+var getTestingHarnessById = (harness, id) => harness && typeof harness === "object" && harness.document instanceof TestingDocument ? harness.document.getElementById(id) : null;
+var getTestingHarnessByText = (scope, value) => {
   const root = resolveTestingRoot(scope);
   if (!root) return null;
   let found = null;
@@ -695,8 +637,8 @@ var getTestingHarnessByText = /* @__PURE__ */ __name((scope, value) => {
     }
   });
   return found;
-}, "getTestingHarnessByText");
-var queryTestingHarnessByRole = /* @__PURE__ */ __name((scope, role, name) => {
+};
+var queryTestingHarnessByRole = (scope, role, name) => {
   const root = resolveTestingRoot(scope);
   if (!root) return [];
   const matches = [];
@@ -709,8 +651,8 @@ var queryTestingHarnessByRole = /* @__PURE__ */ __name((scope, role, name) => {
     }
   });
   return matches;
-}, "queryTestingHarnessByRole");
-var getTestingHarnessByLabel = /* @__PURE__ */ __name((scope, label) => {
+};
+var getTestingHarnessByLabel = (scope, label) => {
   const root = resolveTestingRoot(scope);
   if (!root) return null;
   let found = null;
@@ -721,8 +663,8 @@ var getTestingHarnessByLabel = /* @__PURE__ */ __name((scope, label) => {
     }
   });
   return found;
-}, "getTestingHarnessByLabel");
-var getTestingHarnessByPlaceholder = /* @__PURE__ */ __name((scope, placeholder) => {
+};
+var getTestingHarnessByPlaceholder = (scope, placeholder) => {
   const root = resolveTestingRoot(scope);
   if (!root) return null;
   let found = null;
@@ -731,8 +673,8 @@ var getTestingHarnessByPlaceholder = /* @__PURE__ */ __name((scope, placeholder)
     if ((node.getAttribute("placeholder") ?? "") === placeholder) found = node;
   });
   return found;
-}, "getTestingHarnessByPlaceholder");
-var getTestingTextContent = /* @__PURE__ */ __name((node) => {
+};
+var getTestingTextContent = (node) => {
   if (node == null) return "";
   if (typeof node === "string") return node;
   if (!(node instanceof TestingNode)) {
@@ -747,8 +689,8 @@ var getTestingTextContent = /* @__PURE__ */ __name((node) => {
     out += getTestingTextContent(child);
   }
   return out;
-}, "getTestingTextContent");
-var dispatchTestingClick = /* @__PURE__ */ __name((node) => {
+};
+var dispatchTestingClick = (node) => {
   const element = asTestingElement(node);
   if (!element) return;
   if (element.disabled || element.getAttribute("disabled") !== null) return;
@@ -767,8 +709,8 @@ var dispatchTestingClick = /* @__PURE__ */ __name((node) => {
     }
     parent = parent.parentNode;
   }
-}, "dispatchTestingClick");
-var dispatchTestingInput = /* @__PURE__ */ __name((node, value) => {
+};
+var dispatchTestingInput = (node, value) => {
   const element = asTestingElement(node);
   if (!element) return;
   element.value = value;
@@ -776,8 +718,8 @@ var dispatchTestingInput = /* @__PURE__ */ __name((node, value) => {
     ...createEventBase(element),
     target: element
   });
-}, "dispatchTestingInput");
-var dispatchTestingCheckedChange = /* @__PURE__ */ __name((node, checked) => {
+};
+var dispatchTestingCheckedChange = (node, checked) => {
   const element = asTestingElement(node);
   if (!element) return;
   element.checked = checked;
@@ -785,8 +727,8 @@ var dispatchTestingCheckedChange = /* @__PURE__ */ __name((node, checked) => {
     ...createEventBase(element),
     target: element
   });
-}, "dispatchTestingCheckedChange");
-var dispatchTestingKeydown = /* @__PURE__ */ __name((node, key2, shiftKey = false) => {
+};
+var dispatchTestingKeydown = (node, key2, shiftKey = false) => {
   const element = asTestingElement(node);
   if (!element) return;
   element.listeners.get("keydown")?.({
@@ -794,65 +736,55 @@ var dispatchTestingKeydown = /* @__PURE__ */ __name((node, key2, shiftKey = fals
     key: key2,
     shiftKey
   });
-}, "dispatchTestingKeydown");
-var dispatchTestingSubmit = /* @__PURE__ */ __name((node) => {
+};
+var dispatchTestingSubmit = (node) => {
   const element = asTestingElement(node);
   if (!element) return;
   element.listeners.get("submit")?.(createEventBase(element));
-}, "dispatchTestingSubmit");
+};
 
 // src/runtime/testing-facade.ts
-var sleep = /* @__PURE__ */ __name((ms) => new Promise((resolve) => setTimeout(resolve, ms)), "sleep");
-var settleTestingAttempt = /* @__PURE__ */ __name(async (check, timeoutMs) => {
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var settleTestingAttempt = async (check, timeoutMs) => {
   const pending = Promise.resolve().then(check);
   pending.catch(() => void 0);
-  const timeout2 = sleep(timeoutMs).then(() => ({
-    __timeout: true
-  }));
-  const value = await Promise.race([
-    pending,
-    timeout2
-  ]);
+  const timeout2 = sleep(timeoutMs).then(() => ({ __timeout: true }));
+  const value = await Promise.race([pending, timeout2]);
   if (value && typeof value === "object" && value.__timeout === true) {
-    return {
-      settled: false
-    };
+    return { settled: false };
   }
-  return {
-    settled: true,
-    value
-  };
-}, "settleTestingAttempt");
-var createTestingFacade = /* @__PURE__ */ __name((deps) => ({
-  testing_create_dom_harness: /* @__PURE__ */ __name(() => {
+  return { settled: true, value };
+};
+var createTestingFacade = (deps) => ({
+  testing_create_dom_harness: () => {
     const harness = createTestingDomHarness();
     harness.renderer = deps.createRenderer(harness.document);
     return harness;
-  }, "testing_create_dom_harness"),
-  testing_mount_app: /* @__PURE__ */ __name((harness, componentFn, props) => deps.mountApp(harness, componentFn, props, false), "testing_mount_app"),
-  testing_hydrate_app: /* @__PURE__ */ __name((harness, componentFn, props) => deps.mountApp(harness, componentFn, props, true), "testing_hydrate_app"),
-  testing_container: /* @__PURE__ */ __name((harness) => getTestingHarnessContainer(harness), "testing_container"),
-  testing_body: /* @__PURE__ */ __name((harness) => getTestingHarnessBody(harness), "testing_body"),
-  testing_get_by_id: /* @__PURE__ */ __name((harness, id) => getTestingHarnessById(harness, id), "testing_get_by_id"),
-  testing_get_by_text: /* @__PURE__ */ __name((scope, value) => getTestingHarnessByText(scope, value), "testing_get_by_text"),
-  testing_get_by_role: /* @__PURE__ */ __name((scope, role) => queryTestingHarnessByRole(scope, role)[0] ?? null, "testing_get_by_role"),
-  testing_get_by_role_name: /* @__PURE__ */ __name((scope, role, name) => queryTestingHarnessByRole(scope, role, name)[0] ?? null, "testing_get_by_role_name"),
-  testing_query_all_by_role: /* @__PURE__ */ __name((scope, role) => queryTestingHarnessByRole(scope, role), "testing_query_all_by_role"),
-  testing_get_by_label: /* @__PURE__ */ __name((scope, label) => getTestingHarnessByLabel(scope, label), "testing_get_by_label"),
-  testing_get_by_placeholder: /* @__PURE__ */ __name((scope, placeholder) => getTestingHarnessByPlaceholder(scope, placeholder), "testing_get_by_placeholder"),
-  testing_text_content: /* @__PURE__ */ __name((node) => getTestingTextContent(node), "testing_text_content"),
-  testing_click: /* @__PURE__ */ __name((node) => dispatchTestingClick(node), "testing_click"),
-  testing_input: /* @__PURE__ */ __name((node, value) => dispatchTestingInput(node, value), "testing_input"),
-  testing_change_checked: /* @__PURE__ */ __name((node, checked) => dispatchTestingCheckedChange(node, checked), "testing_change_checked"),
-  testing_keydown: /* @__PURE__ */ __name((node, key2, shiftKey) => dispatchTestingKeydown(node, key2, shiftKey ?? false), "testing_keydown"),
-  testing_submit: /* @__PURE__ */ __name((node) => dispatchTestingSubmit(node), "testing_submit"),
-  testing_flush: /* @__PURE__ */ __name(async () => {
+  },
+  testing_mount_app: (harness, componentFn, props) => deps.mountApp(harness, componentFn, props, false),
+  testing_hydrate_app: (harness, componentFn, props) => deps.mountApp(harness, componentFn, props, true),
+  testing_container: (harness) => getTestingHarnessContainer(harness),
+  testing_body: (harness) => getTestingHarnessBody(harness),
+  testing_get_by_id: (harness, id) => getTestingHarnessById(harness, id),
+  testing_get_by_text: (scope, value) => getTestingHarnessByText(scope, value),
+  testing_get_by_role: (scope, role) => queryTestingHarnessByRole(scope, role)[0] ?? null,
+  testing_get_by_role_name: (scope, role, name) => queryTestingHarnessByRole(scope, role, name)[0] ?? null,
+  testing_query_all_by_role: (scope, role) => queryTestingHarnessByRole(scope, role),
+  testing_get_by_label: (scope, label) => getTestingHarnessByLabel(scope, label),
+  testing_get_by_placeholder: (scope, placeholder) => getTestingHarnessByPlaceholder(scope, placeholder),
+  testing_text_content: (node) => getTestingTextContent(node),
+  testing_click: (node) => dispatchTestingClick(node),
+  testing_input: (node, value) => dispatchTestingInput(node, value),
+  testing_change_checked: (node, checked) => dispatchTestingCheckedChange(node, checked),
+  testing_keydown: (node, key2, shiftKey) => dispatchTestingKeydown(node, key2, shiftKey ?? false),
+  testing_submit: (node) => dispatchTestingSubmit(node),
+  testing_flush: async () => {
     await Promise.resolve();
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.resolve();
-  }, "testing_flush"),
-  testing_wait_for: /* @__PURE__ */ __name(async (check, attempts = 5) => {
+  },
+  testing_wait_for: async (check, attempts = 5) => {
     const limit = Math.max(1, Math.trunc(Number(attempts) || 1));
     let lastError = null;
     for (let i = 0; i < limit; i += 1) {
@@ -870,28 +802,24 @@ var createTestingFacade = /* @__PURE__ */ __name((deps) => ({
     }
     if (lastError) throw lastError;
     return null;
-  }, "testing_wait_for")
-}), "createTestingFacade");
+  }
+});
 
 // src/runtime/app-runtime.ts
-var createAppRuntime = /* @__PURE__ */ __name((deps) => {
-  const renderAppVNode = /* @__PURE__ */ __name((componentFn, props) => deps.runWithFrameManager(deps.createFrameManager(), () => deps.component(componentFn, props)), "renderAppVNode");
-  const mountReactiveApp = /* @__PURE__ */ __name((renderer, container, componentFn, props) => deps.mountReactive(renderer, container, () => deps.component(componentFn, props)), "mountReactiveApp");
-  const hydrateReactiveApp = /* @__PURE__ */ __name((renderer, container, componentFn, props) => deps.hydrateReactive(renderer, container, () => deps.component(componentFn, props)), "hydrateReactiveApp");
-  const mountTestingApp = /* @__PURE__ */ __name((harness, componentFn, props, hydrate = false) => {
-    const renderer = harness.renderer ?? deps.createDomRenderer({
-      document: harness.document
-    });
+var createAppRuntime = (deps) => {
+  const renderAppVNode = (componentFn, props) => deps.runWithFrameManager(deps.createFrameManager(), () => deps.component(componentFn, props));
+  const mountReactiveApp = (renderer, container, componentFn, props) => deps.mountReactive(renderer, container, () => deps.component(componentFn, props));
+  const hydrateReactiveApp = (renderer, container, componentFn, props) => deps.hydrateReactive(renderer, container, () => deps.component(componentFn, props));
+  const mountTestingApp = (harness, componentFn, props, hydrate = false) => {
+    const renderer = harness.renderer ?? deps.createDomRenderer({ document: harness.document });
     harness.renderer = renderer;
     const root = hydrate ? hydrateReactiveApp(renderer, harness.container, componentFn, props) : mountReactiveApp(renderer, harness.container, componentFn, props);
     harness.root = root;
     return root;
-  }, "mountTestingApp");
+  };
   const testingFacade = createTestingFacade({
-    createRenderer: /* @__PURE__ */ __name((documentLike) => deps.createDomRenderer({
-      document: documentLike
-    }), "createRenderer"),
-    mountApp: /* @__PURE__ */ __name((harness, componentFn, props, hydrate) => mountTestingApp(harness, componentFn, props, hydrate), "mountApp")
+    createRenderer: (documentLike) => deps.createDomRenderer({ document: documentLike }),
+    mountApp: (harness, componentFn, props, hydrate) => mountTestingApp(harness, componentFn, props, hydrate)
   });
   const ssgApi = createSsgApi({
     isVNode: deps.isVNode,
@@ -901,23 +829,32 @@ var createAppRuntime = /* @__PURE__ */ __name((deps) => {
     resolvePath: deps.resolvePath,
     dirnamePath: deps.dirnamePath,
     getNodeBuiltinModule: deps.getNodeBuiltinModule,
-    renderApp: /* @__PURE__ */ __name((componentFn, props) => renderAppVNode(componentFn, props), "renderApp")
+    renderApp: (componentFn, props) => renderAppVNode(componentFn, props)
   });
   const customElementsRuntime = createCustomElementsRuntime({
-    createRenderer: /* @__PURE__ */ __name((documentLike) => deps.createDomRenderer({
-      document: documentLike
-    }), "createRenderer"),
+    createRenderer: (documentLike) => deps.createDomRenderer({ document: documentLike }),
     createSignal: deps.createSignal,
     getSignal: deps.getSignal,
     setSignal: deps.setSignal,
-    createView: /* @__PURE__ */ __name((componentFn, propsSignal) => () => deps.component(componentFn, deps.getSignal(propsSignal)), "createView"),
+    createView: (componentFn, propsSignal) => () => deps.component(
+      componentFn,
+      deps.getSignal(propsSignal)
+    ),
     mountReactive: deps.mountReactive,
     isDisposableLike: deps.isDisposableLike,
     disposeReactive: deps.disposeReactive,
     getGlobalDocument: deps.getGlobalDocument
   });
-  const mountCustomElementInternal = /* @__PURE__ */ __name((host, componentFn, options) => customElementsRuntime.mountCustomElementHost(host, componentFn, options), "mountCustomElementInternal");
-  const defineCustomElementInternal = /* @__PURE__ */ __name((tagName, componentFn, options) => customElementsRuntime.defineCustomElementClass(tagName, componentFn, options), "defineCustomElementInternal");
+  const mountCustomElementInternal = (host, componentFn, options) => customElementsRuntime.mountCustomElementHost(
+    host,
+    componentFn,
+    options
+  );
+  const defineCustomElementInternal = (tagName, componentFn, options) => customElementsRuntime.defineCustomElementClass(
+    tagName,
+    componentFn,
+    options
+  );
   return {
     renderAppVNode,
     mountReactiveApp,
@@ -927,22 +864,20 @@ var createAppRuntime = /* @__PURE__ */ __name((deps) => {
     mountCustomElementInternal,
     defineCustomElementInternal
   };
-}, "createAppRuntime");
+};
 
 // src/runtime/devtools.ts
-var snapshotComponentFrame = /* @__PURE__ */ __name((frame) => ({
+var snapshotComponentFrame = (frame) => ({
   id: frame.id,
   name: frame.componentFn?.name?.trim() || (frame.componentFn ? "<anonymous component>" : "root"),
   key: frame.key ?? null,
-  slots: frame.slots.map((slot2) => ({
-    kind: slot2.kind
-  })),
+  slots: frame.slots.map((slot2) => ({ kind: slot2.kind })),
   children: [
     ...Array.from(frame.keyedChildren.values()).map(snapshotComponentFrame),
     ...frame.unkeyedChildren.map(snapshotComponentFrame)
   ]
-}), "snapshotComponentFrame");
-var cloneDevtoolsValue = /* @__PURE__ */ __name((value) => {
+});
+var cloneDevtoolsValue = (value) => {
   if (value === null || value === void 0) return value;
   if (typeof globalThis.structuredClone === "function") {
     try {
@@ -955,12 +890,12 @@ var cloneDevtoolsValue = /* @__PURE__ */ __name((value) => {
   } catch {
     return value;
   }
-}, "cloneDevtoolsValue");
-var cloneTimelineEvent = /* @__PURE__ */ __name((event) => Object.freeze({
+};
+var cloneTimelineEvent = (event) => Object.freeze({
   ...event,
   detail: cloneDevtoolsValue(event.detail)
-}), "cloneTimelineEvent");
-var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
+});
+var createDevtoolsController = (deps) => {
   let nextSignalId = 1;
   let nextRootId = 1;
   let nextEventId = 1;
@@ -970,7 +905,7 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
   const rootIds = /* @__PURE__ */ new WeakMap();
   const listeners = /* @__PURE__ */ new Set();
   const timeline = [];
-  const recordEvent = /* @__PURE__ */ __name((type, label, detail = null) => {
+  const recordEvent = (type, label, detail = null) => {
     const event = {
       id: nextEventId++,
       type,
@@ -984,8 +919,8 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
     }
     scheduleNotify();
     return cloneTimelineEvent(event);
-  }, "recordEvent");
-  const snapshot = /* @__PURE__ */ __name(() => ({
+  };
+  const snapshot = () => ({
     roots: Array.from(roots.entries()).map(([id, root]) => deps.snapshotRoot(root, id)),
     resources: deps.snapshotResources(),
     signals: Array.from(signalEntries.entries()).map(([id, entry]) => ({
@@ -994,8 +929,8 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
       value: entry.source.peek()
     })),
     timeline: timeline.map(cloneTimelineEvent)
-  }), "snapshot");
-  const scheduleNotify = /* @__PURE__ */ __name(() => {
+  });
+  const scheduleNotify = () => {
     if (listeners.size === 0 || notifyPending) return;
     notifyPending = true;
     deps.scheduleMicrotask(() => {
@@ -1008,21 +943,18 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
         }
       }
     });
-  }, "scheduleNotify");
-  const subscribe = /* @__PURE__ */ __name((listener) => {
+  };
+  const subscribe = (listener) => {
     listeners.add(listener);
     listener(snapshot());
     return () => {
       listeners.delete(listener);
     };
-  }, "subscribe");
+  };
   return {
     registerSignal(kind, source) {
       const id = nextSignalId++;
-      signalEntries.set(id, {
-        kind,
-        source
-      });
+      signalEntries.set(id, { kind, source });
       scheduleNotify();
       return id;
     },
@@ -1061,30 +993,30 @@ var createDevtoolsController = /* @__PURE__ */ __name((deps) => {
       const globalRecord = globalThis;
       const handle = {
         version: "beta",
-        snapshot: /* @__PURE__ */ __name(() => snapshot(), "snapshot"),
+        snapshot: () => snapshot(),
         subscribe,
-        timeline: /* @__PURE__ */ __name(() => timeline.map(cloneTimelineEvent), "timeline"),
+        timeline: () => timeline.map(cloneTimelineEvent),
         recordEvent,
-        clearTimeline: /* @__PURE__ */ __name(() => {
+        clearTimeline: () => {
           timeline.splice(0, timeline.length);
           scheduleNotify();
-        }, "clearTimeline")
+        }
       };
       globalRecord[key2] = handle;
       return handle;
     },
     scheduleNotify
   };
-}, "createDevtoolsController");
+};
 
 // src/runtime/browser-runtime.ts
-var isUrlRecord = /* @__PURE__ */ __name((value) => !!value && typeof value === "object" && typeof value.href === "string" && typeof value.origin === "string", "isUrlRecord");
-var normalizeProtocol = /* @__PURE__ */ __name((value) => {
+var isUrlRecord = (value) => !!value && typeof value === "object" && typeof value.href === "string" && typeof value.origin === "string";
+var normalizeProtocol = (value) => {
   const base = String(value ?? "").trim();
   if (!base) return "";
   return base.endsWith(":") ? base : `${base}:`;
-}, "normalizeProtocol");
-var toUrlRecord = /* @__PURE__ */ __name((raw) => ({
+};
+var toUrlRecord = (raw) => ({
   href: raw.href,
   origin: raw.origin,
   protocol: raw.protocol,
@@ -1092,8 +1024,8 @@ var toUrlRecord = /* @__PURE__ */ __name((raw) => ({
   pathname: raw.pathname,
   search: raw.search,
   hash: raw.hash
-}), "toUrlRecord");
-var emptyUrlRecord = /* @__PURE__ */ __name(() => ({
+});
+var emptyUrlRecord = () => ({
   href: "",
   origin: "",
   protocol: "",
@@ -1101,8 +1033,8 @@ var emptyUrlRecord = /* @__PURE__ */ __name(() => ({
   pathname: "",
   search: "",
   hash: ""
-}), "emptyUrlRecord");
-var coerceToUrl = /* @__PURE__ */ __name((value) => {
+});
+var coerceToUrl = (value) => {
   if (typeof URL !== "function") return null;
   if (typeof value === "string") {
     try {
@@ -1119,16 +1051,16 @@ var coerceToUrl = /* @__PURE__ */ __name((value) => {
     }
   }
   return null;
-}, "coerceToUrl");
-var asStorageLike = /* @__PURE__ */ __name((value) => {
+};
+var asStorageLike = (value) => {
   if (!value || typeof value !== "object") return null;
   const candidate = value;
   if (typeof candidate.getItem !== "function" || typeof candidate.setItem !== "function" || typeof candidate.removeItem !== "function" || typeof candidate.clear !== "function") {
     return null;
   }
   return candidate;
-}, "asStorageLike");
-var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
+};
+var createBrowserRuntime = (deps) => {
   const webStorageLocalFallback = /* @__PURE__ */ new Map();
   const webStorageSessionFallback = /* @__PURE__ */ new Map();
   let domNextHandle = 1;
@@ -1137,9 +1069,9 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
   const domElementHandles = /* @__PURE__ */ new WeakMap();
   const domEvents = /* @__PURE__ */ new Map();
   const routerPopStateHandlers = /* @__PURE__ */ new Map();
-  const browserLocalStorage = /* @__PURE__ */ __name(() => asStorageLike(globalThis.localStorage), "browserLocalStorage");
-  const browserSessionStorage = /* @__PURE__ */ __name(() => asStorageLike(globalThis.sessionStorage), "browserSessionStorage");
-  const webStorageGet = /* @__PURE__ */ __name((scope, key2) => {
+  const browserLocalStorage = () => asStorageLike(globalThis.localStorage);
+  const browserSessionStorage = () => asStorageLike(globalThis.sessionStorage);
+  const webStorageGet = (scope, key2) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
@@ -1151,8 +1083,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     }
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
     return fallback.has(String(key2)) ? deps.optionSome(fallback.get(String(key2)) ?? "") : deps.optionNone;
-  }, "webStorageGet");
-  const webStorageSet = /* @__PURE__ */ __name((scope, key2, value) => {
+  };
+  const webStorageSet = (scope, key2, value) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
@@ -1165,8 +1097,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
     fallback.set(String(key2), String(value));
     return deps.resultOk(void 0);
-  }, "webStorageSet");
-  const webStorageRemove = /* @__PURE__ */ __name((scope, key2) => {
+  };
+  const webStorageRemove = (scope, key2) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
@@ -1177,8 +1109,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     }
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
     fallback.delete(String(key2));
-  }, "webStorageRemove");
-  const webStorageClear = /* @__PURE__ */ __name((scope) => {
+  };
+  const webStorageClear = (scope) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
@@ -1189,8 +1121,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     }
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
     fallback.clear();
-  }, "webStorageClear");
-  const webStorageLength = /* @__PURE__ */ __name((scope) => {
+  };
+  const webStorageLength = (scope) => {
     const storage = scope === "local" ? browserLocalStorage() : browserSessionStorage();
     if (storage) {
       try {
@@ -1201,13 +1133,13 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     }
     const fallback = scope === "local" ? webStorageLocalFallback : webStorageSessionFallback;
     return fallback.size;
-  }, "webStorageLength");
-  const getDocumentHandle = /* @__PURE__ */ __name(() => {
+  };
+  const getDocumentHandle = () => {
     const doc = globalThis.document;
     if (!doc || typeof doc.querySelector !== "function") return null;
     return doc;
-  }, "getDocumentHandle");
-  const toDomHandle = /* @__PURE__ */ __name((element) => {
+  };
+  const toDomHandle = (element) => {
     if (!element || typeof element !== "object") return 0;
     const existing = domElementHandles.get(element);
     if (existing) return existing;
@@ -1215,32 +1147,32 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     domElementHandles.set(element, next);
     domElements.set(next, element);
     return next;
-  }, "toDomHandle");
-  const fromDomHandle = /* @__PURE__ */ __name((handle) => domElements.get(Math.trunc(handle)) ?? null, "fromDomHandle");
-  const createDomStubElement = /* @__PURE__ */ __name(() => {
+  };
+  const fromDomHandle = (handle) => domElements.get(Math.trunc(handle)) ?? null;
+  const createDomStubElement = () => {
     const attrs = /* @__PURE__ */ new Map();
     const children2 = [];
     return {
       textContent: "",
       innerHTML: "",
       style: {},
-      getAttribute: /* @__PURE__ */ __name((name) => attrs.get(String(name)) ?? null, "getAttribute"),
-      setAttribute: /* @__PURE__ */ __name((name, value) => {
+      getAttribute: (name) => attrs.get(String(name)) ?? null,
+      setAttribute: (name, value) => {
         attrs.set(String(name), String(value));
-      }, "setAttribute"),
-      removeAttribute: /* @__PURE__ */ __name((name) => {
+      },
+      removeAttribute: (name) => {
         attrs.delete(String(name));
-      }, "removeAttribute"),
-      appendChild: /* @__PURE__ */ __name((child) => {
+      },
+      appendChild: (child) => {
         children2.push(child);
-      }, "appendChild"),
-      removeChild: /* @__PURE__ */ __name((child) => {
+      },
+      removeChild: (child) => {
         const idx = children2.indexOf(child);
         if (idx >= 0) children2.splice(idx, 1);
-      }, "removeChild")
+      }
     };
-  }, "createDomStubElement");
-  const getRouterWindowHandle = /* @__PURE__ */ __name(() => {
+  };
+  const getRouterWindowHandle = () => {
     const windowHandle = globalThis.window;
     if (windowHandle && typeof windowHandle === "object") return windowHandle;
     const globalHandle = globalThis;
@@ -1248,47 +1180,47 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       return globalHandle;
     }
     return null;
-  }, "getRouterWindowHandle");
-  const getRouterLocationHandle = /* @__PURE__ */ __name(() => {
+  };
+  const getRouterLocationHandle = () => {
     const windowHandle = getRouterWindowHandle();
     if (windowHandle?.location) return windowHandle.location;
     const locationHandle = globalThis.location;
     return locationHandle && typeof locationHandle === "object" ? locationHandle : null;
-  }, "getRouterLocationHandle");
-  const getRouterHistoryHandle = /* @__PURE__ */ __name(() => {
+  };
+  const getRouterHistoryHandle = () => {
     const windowHandle = getRouterWindowHandle();
     if (windowHandle?.history) return windowHandle.history;
     const historyHandle = globalThis.history;
     return historyHandle && typeof historyHandle === "object" ? historyHandle : null;
-  }, "getRouterHistoryHandle");
-  const readRouterPathname = /* @__PURE__ */ __name(() => String(getRouterLocationHandle()?.pathname ?? "/"), "readRouterPathname");
-  const readRouterHash = /* @__PURE__ */ __name(() => String(getRouterLocationHandle()?.hash ?? ""), "readRouterHash");
-  const readRouterSearch = /* @__PURE__ */ __name(() => String(getRouterLocationHandle()?.search ?? ""), "readRouterSearch");
-  const trimRouterTrailingSlash = /* @__PURE__ */ __name((value) => {
+  };
+  const readRouterPathname = () => String(getRouterLocationHandle()?.pathname ?? "/");
+  const readRouterHash = () => String(getRouterLocationHandle()?.hash ?? "");
+  const readRouterSearch = () => String(getRouterLocationHandle()?.search ?? "");
+  const trimRouterTrailingSlash = (value) => {
     if (value.length <= 1) return value || "/";
     return value.endsWith("/") ? value.slice(0, -1) : value;
-  }, "trimRouterTrailingSlash");
-  const normalizeRouterPath = /* @__PURE__ */ __name((value) => {
+  };
+  const normalizeRouterPath = (value) => {
     const text2 = String(value || "/");
     const withLeadingSlash = text2.startsWith("/") ? text2 : `/${text2}`;
     return trimRouterTrailingSlash(withLeadingSlash);
-  }, "normalizeRouterPath");
-  const splitRouterSegments = /* @__PURE__ */ __name((value) => normalizeRouterPath(value).split("/").filter((segment) => segment.length > 0), "splitRouterSegments");
-  const decodeRouterComponent = /* @__PURE__ */ __name((value) => {
+  };
+  const splitRouterSegments = (value) => normalizeRouterPath(value).split("/").filter((segment) => segment.length > 0);
+  const decodeRouterComponent = (value) => {
     try {
       return decodeURIComponent(value);
     } catch {
       return value;
     }
-  }, "decodeRouterComponent");
-  const createRouterParamMap = /* @__PURE__ */ __name((entries) => {
+  };
+  const createRouterParamMap = (entries) => {
     const out = deps.createHashMap();
     for (const [key2, value] of entries) {
       if (key2.length > 0) out.insert(key2, value);
     }
     return out;
-  }, "createRouterParamMap");
-  const matchRouterPattern = /* @__PURE__ */ __name((pattern, path2) => {
+  };
+  const matchRouterPattern = (pattern, path2) => {
     if (pattern === "*") return true;
     const patternSegments = splitRouterSegments(pattern);
     const pathSegments = splitRouterSegments(path2);
@@ -1300,8 +1232,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       if (expected !== actual) return false;
     }
     return patternSegments.length === pathSegments.length;
-  }, "matchRouterPattern");
-  const extractRouterParams = /* @__PURE__ */ __name((pattern, path2) => {
+  };
+  const extractRouterParams = (pattern, path2) => {
     if (pattern === "*") return deps.createHashMap();
     const patternSegments = splitRouterSegments(pattern);
     const pathSegments = splitRouterSegments(path2);
@@ -1311,10 +1243,7 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       const actual = pathSegments[i] ?? "";
       if (expected === "*" || expected.startsWith("*")) {
         const name = expected.startsWith("*") && expected.length > 1 ? expected.slice(1) : "splat";
-        entries.push([
-          name,
-          pathSegments.slice(i).map(decodeRouterComponent).join("/")
-        ]);
+        entries.push([name, pathSegments.slice(i).map(decodeRouterComponent).join("/")]);
         return createRouterParamMap(entries);
       }
       if (actual.length === 0) return deps.createHashMap();
@@ -1322,28 +1251,22 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         if (expected !== actual) return deps.createHashMap();
         continue;
       }
-      entries.push([
-        expected.slice(1),
-        decodeRouterComponent(actual)
-      ]);
+      entries.push([expected.slice(1), decodeRouterComponent(actual)]);
       continue;
     }
     if (!matchRouterPattern(pattern, path2)) {
       return deps.createHashMap();
     }
     return createRouterParamMap(entries);
-  }, "extractRouterParams");
-  const parseRouterSearchParams = /* @__PURE__ */ __name((search) => {
+  };
+  const parseRouterSearchParams = (search) => {
     const text2 = String(search ?? "");
     const body = text2.startsWith("?") ? text2.slice(1) : text2;
     if (body.length === 0) return deps.createHashMap();
     const entries = [];
     if (typeof URLSearchParams === "function") {
       for (const [key2, value] of new URLSearchParams(body)) {
-        if (key2.length > 0) entries.push([
-          key2,
-          value
-        ]);
+        if (key2.length > 0) entries.push([key2, value]);
       }
       return createRouterParamMap(entries);
     }
@@ -1351,14 +1274,11 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       if (!pair) continue;
       const [rawKey, rawValue = ""] = pair.split("=");
       if (!rawKey) continue;
-      entries.push([
-        decodeRouterComponent(rawKey),
-        decodeRouterComponent(rawValue.replace(/\+/g, " "))
-      ]);
+      entries.push([decodeRouterComponent(rawKey), decodeRouterComponent(rawValue.replace(/\+/g, " "))]);
     }
     return createRouterParamMap(entries);
-  }, "parseRouterSearchParams");
-  const updateRouterLocationValue = /* @__PURE__ */ __name((nextPath) => {
+  };
+  const updateRouterLocationValue = (nextPath) => {
     const locationHandle = getRouterLocationHandle();
     if (!locationHandle) return;
     try {
@@ -1368,14 +1288,12 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       locationHandle.hash = parsed?.hash ?? "";
     } catch {
     }
-  }, "updateRouterLocationValue");
-  const createRouterPopStateEvent = /* @__PURE__ */ __name(() => {
+  };
+  const createRouterPopStateEvent = () => {
     try {
       const PopStateEventCtor = globalThis.PopStateEvent;
       if (typeof PopStateEventCtor === "function") {
-        return new PopStateEventCtor("popstate", {
-          state: getRouterHistoryHandle()?.state
-        });
+        return new PopStateEventCtor("popstate", { state: getRouterHistoryHandle()?.state });
       }
     } catch {
     }
@@ -1386,11 +1304,9 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       }
     } catch {
     }
-    return {
-      type: "popstate"
-    };
-  }, "createRouterPopStateEvent");
-  const dispatchRouterPopState = /* @__PURE__ */ __name(() => {
+    return { type: "popstate" };
+  };
+  const dispatchRouterPopState = () => {
     const windowHandle = getRouterWindowHandle();
     if (windowHandle && typeof windowHandle.dispatchEvent === "function") {
       try {
@@ -1406,8 +1322,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       } catch {
       }
     }
-  }, "dispatchRouterPopState");
-  const readRouterBasePath = /* @__PURE__ */ __name(() => {
+  };
+  const readRouterBasePath = () => {
     const documentHandle = globalThis.document;
     const baseURI = typeof documentHandle?.baseURI === "string" ? documentHandle.baseURI : "";
     if (!baseURI) return "/";
@@ -1419,30 +1335,26 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     } catch {
     }
     return baseURI;
-  }, "readRouterBasePath");
-  const supportsRouterNavigationApi = /* @__PURE__ */ __name(() => {
+  };
+  const supportsRouterNavigationApi = () => {
     const windowHandle = getRouterWindowHandle();
     return typeof (windowHandle?.navigation ?? globalThis.navigation) === "object";
-  }, "supportsRouterNavigationApi");
-  const supportsRouterViewTransition = /* @__PURE__ */ __name(() => {
+  };
+  const supportsRouterViewTransition = () => {
     const documentHandle = globalThis.document;
     return typeof documentHandle?.startViewTransition === "function";
-  }, "supportsRouterViewTransition");
-  const supportsRouterUrlPattern = /* @__PURE__ */ __name(() => typeof globalThis.URLPattern === "function", "supportsRouterUrlPattern");
-  const matchRouterUrlPattern = /* @__PURE__ */ __name((pattern, path2) => {
+  };
+  const supportsRouterUrlPattern = () => typeof globalThis.URLPattern === "function";
+  const matchRouterUrlPattern = (pattern, path2) => {
     const URLPatternCtor = globalThis.URLPattern;
     if (typeof URLPatternCtor !== "function") return matchRouterPattern(pattern, path2);
     try {
-      return new URLPatternCtor({
-        pathname: pattern
-      }).test({
-        pathname: normalizeRouterPath(path2)
-      });
+      return new URLPatternCtor({ pathname: pattern }).test({ pathname: normalizeRouterPath(path2) });
     } catch {
       return matchRouterPattern(pattern, path2);
     }
-  }, "matchRouterUrlPattern");
-  const startRouterViewTransition = /* @__PURE__ */ __name((update) => {
+  };
+  const startRouterViewTransition = (update) => {
     if (typeof update !== "function") return false;
     const documentHandle = globalThis.document;
     if (typeof documentHandle?.startViewTransition === "function") {
@@ -1451,18 +1363,18 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     }
     update();
     return false;
-  }, "startRouterViewTransition");
+  };
   const url2 = {
-    is_available: /* @__PURE__ */ __name(() => typeof URL === "function", "is_available"),
-    parse: /* @__PURE__ */ __name((raw) => {
+    is_available: () => typeof URL === "function",
+    parse: (raw) => {
       if (typeof URL !== "function") return deps.resultErr("URL API is not available in this runtime");
       try {
         return deps.resultOk(toUrlRecord(new URL(String(raw))));
       } catch (error) {
         return deps.resultErr(error instanceof Error ? error.message : String(error));
       }
-    }, "parse"),
-    build: /* @__PURE__ */ __name((config) => {
+    },
+    build: (config) => {
       if (typeof URL !== "function") return deps.resultErr("URL API is not available in this runtime");
       const protocol = normalizeProtocol(config?.protocol);
       const host = String(config?.host ?? "").trim();
@@ -1488,48 +1400,48 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return deps.resultErr(error instanceof Error ? error.message : String(error));
       }
-    }, "build"),
-    get_origin: /* @__PURE__ */ __name((value) => coerceToUrl(value)?.origin ?? "", "get_origin"),
-    get_pathname: /* @__PURE__ */ __name((value) => coerceToUrl(value)?.pathname ?? "", "get_pathname"),
-    get_search: /* @__PURE__ */ __name((value) => coerceToUrl(value)?.search ?? "", "get_search"),
-    get_hash: /* @__PURE__ */ __name((value) => coerceToUrl(value)?.hash ?? "", "get_hash"),
-    set_pathname: /* @__PURE__ */ __name((value, pathname) => {
+    },
+    get_origin: (value) => coerceToUrl(value)?.origin ?? "",
+    get_pathname: (value) => coerceToUrl(value)?.pathname ?? "",
+    get_search: (value) => coerceToUrl(value)?.search ?? "",
+    get_hash: (value) => coerceToUrl(value)?.hash ?? "",
+    set_pathname: (value, pathname) => {
       const next = coerceToUrl(value);
       if (!next) return emptyUrlRecord();
       const text2 = String(pathname ?? "");
       next.pathname = text2.startsWith("/") ? text2 : `/${text2}`;
       return toUrlRecord(next);
-    }, "set_pathname"),
-    set_search: /* @__PURE__ */ __name((value, search) => {
+    },
+    set_search: (value, search) => {
       const next = coerceToUrl(value);
       if (!next) return emptyUrlRecord();
       const text2 = String(search ?? "");
       next.search = !text2 ? "" : text2.startsWith("?") ? text2 : `?${text2}`;
       return toUrlRecord(next);
-    }, "set_search"),
-    append_param: /* @__PURE__ */ __name((value, key2, paramValue) => {
+    },
+    append_param: (value, key2, paramValue) => {
       const next = coerceToUrl(value);
       if (!next) return emptyUrlRecord();
       next.searchParams.append(String(key2), String(paramValue));
       return toUrlRecord(next);
-    }, "append_param")
+    }
   };
   const web_storage2 = {
-    is_available: /* @__PURE__ */ __name(() => browserLocalStorage() !== null && browserSessionStorage() !== null, "is_available"),
-    local_get: /* @__PURE__ */ __name((key2) => webStorageGet("local", key2), "local_get"),
-    local_set: /* @__PURE__ */ __name((key2, value) => webStorageSet("local", key2, value), "local_set"),
-    local_remove: /* @__PURE__ */ __name((key2) => webStorageRemove("local", key2), "local_remove"),
-    local_clear: /* @__PURE__ */ __name(() => webStorageClear("local"), "local_clear"),
-    local_length: /* @__PURE__ */ __name(() => webStorageLength("local"), "local_length"),
-    session_get: /* @__PURE__ */ __name((key2) => webStorageGet("session", key2), "session_get"),
-    session_set: /* @__PURE__ */ __name((key2, value) => webStorageSet("session", key2, value), "session_set"),
-    session_remove: /* @__PURE__ */ __name((key2) => webStorageRemove("session", key2), "session_remove"),
-    session_clear: /* @__PURE__ */ __name(() => webStorageClear("session"), "session_clear"),
-    session_length: /* @__PURE__ */ __name(() => webStorageLength("session"), "session_length")
+    is_available: () => browserLocalStorage() !== null && browserSessionStorage() !== null,
+    local_get: (key2) => webStorageGet("local", key2),
+    local_set: (key2, value) => webStorageSet("local", key2, value),
+    local_remove: (key2) => webStorageRemove("local", key2),
+    local_clear: () => webStorageClear("local"),
+    local_length: () => webStorageLength("local"),
+    session_get: (key2) => webStorageGet("session", key2),
+    session_set: (key2, value) => webStorageSet("session", key2, value),
+    session_remove: (key2) => webStorageRemove("session", key2),
+    session_clear: () => webStorageClear("session"),
+    session_length: () => webStorageLength("session")
   };
   const dom2 = {
-    is_available: /* @__PURE__ */ __name(() => getDocumentHandle() !== null, "is_available"),
-    call_global_1: /* @__PURE__ */ __name((name, arg) => {
+    is_available: () => getDocumentHandle() !== null,
+    call_global_1: (name, arg) => {
       const key2 = String(name);
       const fn = globalThis[key2];
       if (typeof fn !== "function") {
@@ -1537,12 +1449,7 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
           ok: false,
           js: "",
           output: `// Missing global function: ${key2}`,
-          diagnostics: [
-            {
-              severity: "error",
-              message: `Missing global function: ${key2}`
-            }
-          ]
+          diagnostics: [{ severity: "error", message: `Missing global function: ${key2}` }]
         };
       }
       try {
@@ -1553,16 +1460,11 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
           ok: false,
           js: "",
           output: `// ${message}`,
-          diagnostics: [
-            {
-              severity: "error",
-              message
-            }
-          ]
+          diagnostics: [{ severity: "error", message }]
         };
       }
-    }, "call_global_1"),
-    call_global_1_string: /* @__PURE__ */ __name((name, arg) => {
+    },
+    call_global_1_string: (name, arg) => {
       const value = dom2.call_global_1(name, arg);
       if (typeof value === "string") return value;
       if (value && typeof value === "object") {
@@ -1571,64 +1473,64 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         if (typeof record.message === "string") return record.message;
       }
       return value == null ? "" : String(value);
-    }, "call_global_1_string"),
-    query: /* @__PURE__ */ __name((selector) => {
+    },
+    query: (selector) => {
       const doc = getDocumentHandle();
       if (!doc) return deps.optionNone;
       const element = doc.querySelector(String(selector));
       return element ? deps.optionSome(toDomHandle(element)) : deps.optionNone;
-    }, "query"),
-    query_all: /* @__PURE__ */ __name((selector) => {
+    },
+    query_all: (selector) => {
       const doc = getDocumentHandle();
       if (!doc) return [];
       return Array.from(doc.querySelectorAll(String(selector))).map((entry) => toDomHandle(entry));
-    }, "query_all"),
-    create: /* @__PURE__ */ __name((tag) => {
+    },
+    create: (tag) => {
       const doc = getDocumentHandle();
       if (!doc) return toDomHandle(createDomStubElement());
       return toDomHandle(doc.createElement(String(tag)));
-    }, "create"),
-    get_attr: /* @__PURE__ */ __name((elementHandle, name) => {
+    },
+    get_attr: (elementHandle, name) => {
       const element = fromDomHandle(elementHandle);
       if (!element || typeof element.getAttribute !== "function") return deps.optionNone;
       const value = element.getAttribute(String(name));
       return value == null ? deps.optionNone : deps.optionSome(value);
-    }, "get_attr"),
-    set_attr: /* @__PURE__ */ __name((elementHandle, name, value) => {
+    },
+    set_attr: (elementHandle, name, value) => {
       const element = fromDomHandle(elementHandle);
       if (!element || typeof element.setAttribute !== "function") return;
       element.setAttribute(String(name), String(value));
-    }, "set_attr"),
-    remove_attr: /* @__PURE__ */ __name((elementHandle, name) => {
+    },
+    remove_attr: (elementHandle, name) => {
       const element = fromDomHandle(elementHandle);
       if (!element || typeof element.removeAttribute !== "function") return;
       element.removeAttribute(String(name));
-    }, "remove_attr"),
-    get_text: /* @__PURE__ */ __name((elementHandle) => {
+    },
+    get_text: (elementHandle) => {
       const element = fromDomHandle(elementHandle);
       return element?.textContent ?? "";
-    }, "get_text"),
-    set_text: /* @__PURE__ */ __name((elementHandle, text2) => {
+    },
+    set_text: (elementHandle, text2) => {
       const element = fromDomHandle(elementHandle);
       if (!element) return;
       element.textContent = String(text2);
-    }, "set_text"),
-    get_html: /* @__PURE__ */ __name((elementHandle) => {
+    },
+    get_html: (elementHandle) => {
       const element = fromDomHandle(elementHandle);
       return element?.innerHTML ?? "";
-    }, "get_html"),
-    set_html: /* @__PURE__ */ __name((elementHandle, html) => {
+    },
+    set_html: (elementHandle, html) => {
       const element = fromDomHandle(elementHandle);
       if (!element) return;
       element.innerHTML = String(html);
-    }, "set_html"),
-    append_child: /* @__PURE__ */ __name((parentHandle, childHandle) => {
+    },
+    append_child: (parentHandle, childHandle) => {
       const parent = fromDomHandle(parentHandle);
       const child = fromDomHandle(childHandle);
       if (!parent || !child || typeof parent.appendChild !== "function") return;
       parent.appendChild(child);
-    }, "append_child"),
-    remove_child: /* @__PURE__ */ __name((parentHandle, childHandle) => {
+    },
+    remove_child: (parentHandle, childHandle) => {
       const parent = fromDomHandle(parentHandle);
       const child = fromDomHandle(childHandle);
       if (!parent || !child || typeof parent.removeChild !== "function") return;
@@ -1636,36 +1538,32 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         parent.removeChild(child);
       } catch {
       }
-    }, "remove_child"),
-    add_event: /* @__PURE__ */ __name((elementHandle, event, handler) => {
+    },
+    add_event: (elementHandle, event, handler) => {
       const element = fromDomHandle(elementHandle);
       if (!element || typeof handler !== "function") return 0;
-      const listener = /* @__PURE__ */ __name(() => {
+      const listener = () => {
         try {
           handler();
         } catch {
         }
-      }, "listener");
+      };
       if (typeof element.addEventListener === "function") {
         element.addEventListener(String(event), listener);
       }
       const handle = domNextEventHandle++;
-      domEvents.set(handle, {
-        element,
-        event: String(event),
-        listener
-      });
+      domEvents.set(handle, { element, event: String(event), listener });
       return handle;
-    }, "add_event"),
-    remove_event: /* @__PURE__ */ __name((eventHandle) => {
+    },
+    remove_event: (eventHandle) => {
       const entry = domEvents.get(Math.trunc(eventHandle));
       if (!entry) return;
       if (typeof entry.element.removeEventListener === "function") {
         entry.element.removeEventListener(entry.event, entry.listener);
       }
       domEvents.delete(Math.trunc(eventHandle));
-    }, "remove_event"),
-    get_style: /* @__PURE__ */ __name((elementHandle, prop) => {
+    },
+    get_style: (elementHandle, prop) => {
       const element = fromDomHandle(elementHandle);
       if (!element) return "";
       const key2 = String(prop);
@@ -1673,25 +1571,25 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
       if (!styleObj) return "";
       const value = styleObj[key2];
       return typeof value === "string" ? value : "";
-    }, "get_style"),
-    set_style: /* @__PURE__ */ __name((elementHandle, prop, value) => {
+    },
+    set_style: (elementHandle, prop, value) => {
       const element = fromDomHandle(elementHandle);
       if (!element || !element.style) return;
       element.style[String(prop)] = String(value);
-    }, "set_style")
+    }
   };
   const router2 = {
-    getCurrentPath: /* @__PURE__ */ __name(() => readRouterPathname(), "getCurrentPath"),
-    getCurrentHash: /* @__PURE__ */ __name(() => readRouterHash(), "getCurrentHash"),
-    getCurrentSearch: /* @__PURE__ */ __name(() => readRouterSearch(), "getCurrentSearch"),
-    supportsNavigationApi: /* @__PURE__ */ __name(() => supportsRouterNavigationApi(), "supportsNavigationApi"),
-    supportsViewTransition: /* @__PURE__ */ __name(() => supportsRouterViewTransition(), "supportsViewTransition"),
-    supportsUrlPattern: /* @__PURE__ */ __name(() => supportsRouterUrlPattern(), "supportsUrlPattern"),
-    matchRoute: /* @__PURE__ */ __name((pattern, path2) => matchRouterPattern(pattern, path2), "matchRoute"),
-    matchUrlPattern: /* @__PURE__ */ __name((pattern, path2) => matchRouterUrlPattern(pattern, path2), "matchUrlPattern"),
-    extractParams: /* @__PURE__ */ __name((pattern, path2) => extractRouterParams(pattern, path2), "extractParams"),
-    parseSearchParams: /* @__PURE__ */ __name((search) => parseRouterSearchParams(search), "parseSearchParams"),
-    push: /* @__PURE__ */ __name((path2) => {
+    getCurrentPath: () => readRouterPathname(),
+    getCurrentHash: () => readRouterHash(),
+    getCurrentSearch: () => readRouterSearch(),
+    supportsNavigationApi: () => supportsRouterNavigationApi(),
+    supportsViewTransition: () => supportsRouterViewTransition(),
+    supportsUrlPattern: () => supportsRouterUrlPattern(),
+    matchRoute: (pattern, path2) => matchRouterPattern(pattern, path2),
+    matchUrlPattern: (pattern, path2) => matchRouterUrlPattern(pattern, path2),
+    extractParams: (pattern, path2) => extractRouterParams(pattern, path2),
+    parseSearchParams: (search) => parseRouterSearchParams(search),
+    push: (path2) => {
       const normalized = String(path2);
       const historyHandle = getRouterHistoryHandle();
       if (historyHandle && typeof historyHandle.pushState === "function") {
@@ -1705,8 +1603,8 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         updateRouterLocationValue(normalized);
       }
       dispatchRouterPopState();
-    }, "push"),
-    replace: /* @__PURE__ */ __name((path2) => {
+    },
+    replace: (path2) => {
       const normalized = String(path2);
       const historyHandle = getRouterHistoryHandle();
       if (historyHandle && typeof historyHandle.replaceState === "function") {
@@ -1720,23 +1618,23 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         updateRouterLocationValue(normalized);
       }
       dispatchRouterPopState();
-    }, "replace"),
-    onPopState: /* @__PURE__ */ __name((handler) => {
+    },
+    onPopState: (handler) => {
       if (typeof handler !== "function") return;
       router2.offPopState(handler);
-      const listener = /* @__PURE__ */ __name(() => {
+      const listener = () => {
         try {
           handler(readRouterPathname());
         } catch {
         }
-      }, "listener");
+      };
       routerPopStateHandlers.set(handler, listener);
       const windowHandle = getRouterWindowHandle();
       if (windowHandle && typeof windowHandle.addEventListener === "function") {
         windowHandle.addEventListener("popstate", listener);
       }
-    }, "onPopState"),
-    offPopState: /* @__PURE__ */ __name((handler) => {
+    },
+    offPopState: (handler) => {
       if (typeof handler !== "function") return;
       const listener = routerPopStateHandlers.get(handler);
       if (!listener) return;
@@ -1745,13 +1643,13 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         windowHandle.removeEventListener("popstate", listener);
       }
       routerPopStateHandlers.delete(handler);
-    }, "offPopState"),
-    getBasePath: /* @__PURE__ */ __name(() => readRouterBasePath(), "getBasePath"),
-    getScrollRestoration: /* @__PURE__ */ __name(() => {
+    },
+    getBasePath: () => readRouterBasePath(),
+    getScrollRestoration: () => {
       const value = getRouterHistoryHandle()?.scrollRestoration;
       return typeof value === "string" ? value : "";
-    }, "getScrollRestoration"),
-    setScrollRestoration: /* @__PURE__ */ __name((mode) => {
+    },
+    setScrollRestoration: (mode) => {
       const historyHandle = getRouterHistoryHandle();
       if (!historyHandle) return;
       const normalized = String(mode) === "manual" ? "manual" : "auto";
@@ -1759,15 +1657,15 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
         historyHandle.scrollRestoration = normalized;
       } catch {
       }
-    }, "setScrollRestoration"),
-    scrollToTop: /* @__PURE__ */ __name(() => {
+    },
+    scrollToTop: () => {
       const windowHandle = getRouterWindowHandle();
       try {
         windowHandle?.scrollTo?.(0, 0);
       } catch {
       }
-    }, "scrollToTop"),
-    startViewTransition: /* @__PURE__ */ __name((update) => startRouterViewTransition(update), "startViewTransition")
+    },
+    startViewTransition: (update) => startRouterViewTransition(update)
   };
   return {
     url: url2,
@@ -1775,24 +1673,24 @@ var createBrowserRuntime = /* @__PURE__ */ __name((deps) => {
     dom: dom2,
     router: router2
   };
-}, "createBrowserRuntime");
+};
 
 // src/runtime/channel-runtime.ts
 var channelRuntimeConfig = null;
-var requireChannelRuntimeConfig = /* @__PURE__ */ __name(() => {
+var requireChannelRuntimeConfig = () => {
   if (!channelRuntimeConfig) {
     throw new Error("Channel runtime is not configured");
   }
   return channelRuntimeConfig;
-}, "requireChannelRuntimeConfig");
-var isChannelValue = /* @__PURE__ */ __name((value) => !!value && typeof value === "object" && "__lumina_channel_value" in value, "isChannelValue");
-var isChannelClose = /* @__PURE__ */ __name((value) => !!value && typeof value === "object" && value.__lumina_channel_close === true, "isChannelClose");
-var isChannelAck = /* @__PURE__ */ __name((value) => !!value && typeof value === "object" && typeof value.__lumina_channel_ack === "number", "isChannelAck");
-var resolveMessageChannel = /* @__PURE__ */ __name(() => {
+};
+var isChannelValue = (value) => !!value && typeof value === "object" && "__lumina_channel_value" in value;
+var isChannelClose = (value) => !!value && typeof value === "object" && value.__lumina_channel_close === true;
+var isChannelAck = (value) => !!value && typeof value === "object" && typeof value.__lumina_channel_ack === "number";
+var resolveMessageChannel = () => {
   if (typeof MessageChannel === "function") return MessageChannel;
   return null;
-}, "resolveMessageChannel");
-var createSenderSharedState = /* @__PURE__ */ __name((port, capacity) => ({
+};
+var createSenderSharedState = (port, capacity) => ({
   port,
   credits: capacity,
   refs: 1,
@@ -1800,16 +1698,14 @@ var createSenderSharedState = /* @__PURE__ */ __name((port, capacity) => ({
   receiverClosed: false,
   pending: [],
   flushing: false
-}), "createSenderSharedState");
-var senderPostNow = /* @__PURE__ */ __name((state2, value) => {
+});
+var senderPostNow = (state2, value) => {
   if (state2.closed || state2.receiverClosed) return false;
   if (state2.credits !== null && state2.credits <= 0) return false;
   if (state2.credits !== null) {
     state2.credits -= 1;
   }
-  const payload = {
-    __lumina_channel_value: value
-  };
+  const payload = { __lumina_channel_value: value };
   try {
     state2.port.postMessage(payload);
     return true;
@@ -1817,8 +1713,8 @@ var senderPostNow = /* @__PURE__ */ __name((state2, value) => {
     state2.closed = true;
     return false;
   }
-}, "senderPostNow");
-var drainPendingSends = /* @__PURE__ */ __name((state2) => {
+};
+var drainPendingSends = (state2) => {
   if (state2.flushing) return;
   state2.flushing = true;
   try {
@@ -1840,12 +1736,11 @@ var drainPendingSends = /* @__PURE__ */ __name((state2) => {
   } finally {
     state2.flushing = false;
   }
-}, "drainPendingSends");
-var _Sender = class _Sender {
+};
+var Sender = class _Sender {
   constructor(shared) {
-    __publicField(this, "shared");
-    __publicField(this, "closedLocal", false);
     this.shared = shared;
+    this.closedLocal = false;
   }
   static create(port, capacity) {
     const shared = createSenderSharedState(port, capacity);
@@ -1892,10 +1787,7 @@ var _Sender = class _Sender {
       return Promise.resolve(false);
     }
     return new Promise((resolve) => {
-      this.shared.pending.push({
-        value,
-        resolve
-      });
+      this.shared.pending.push({ value, resolve });
       drainPendingSends(this.shared);
     });
   }
@@ -1932,9 +1824,7 @@ var _Sender = class _Sender {
       if (item) item.resolve(false);
     }
     if (shouldSendClose) {
-      const payload = {
-        __lumina_channel_close: true
-      };
+      const payload = { __lumina_channel_close: true };
       try {
         this.shared.port.postMessage(payload);
       } catch {
@@ -1946,18 +1836,13 @@ var _Sender = class _Sender {
     }
   }
 };
-__name(_Sender, "Sender");
-var Sender = _Sender;
-var _Receiver = class _Receiver {
+var Receiver = class {
   constructor(port, capacity) {
-    __publicField(this, "port");
-    __publicField(this, "queue", []);
-    __publicField(this, "waiters", []);
-    __publicField(this, "closed", false);
-    __publicField(this, "errorMessage", null);
-    __publicField(this, "capacity");
-    __publicField(this, "ackOnConsume");
     this.port = port;
+    this.queue = [];
+    this.waiters = [];
+    this.closed = false;
+    this.errorMessage = null;
     this.capacity = capacity;
     this.ackOnConsume = this.capacity !== null && this.capacity > 0;
     this.port.onmessage = (event) => {
@@ -1992,9 +1877,7 @@ var _Receiver = class _Receiver {
   }
   sendAckIfNeeded() {
     if (!this.ackOnConsume) return;
-    const payload = {
-      __lumina_channel_ack: 1
-    };
+    const payload = { __lumina_channel_ack: 1 };
     this.port.postMessage(payload);
   }
   recv() {
@@ -2010,9 +1893,7 @@ var _Receiver = class _Receiver {
     return new Promise((resolve) => {
       this.waiters.push(resolve);
       if (this.capacity === 0) {
-        const payload = {
-          __lumina_channel_ack: 1
-        };
+        const payload = { __lumina_channel_ack: 1 };
         this.port.postMessage(payload);
       }
     });
@@ -2054,9 +1935,7 @@ var _Receiver = class _Receiver {
   close() {
     if (this.closed) return;
     this.closed = true;
-    const payload = {
-      __lumina_channel_close: true
-    };
+    const payload = { __lumina_channel_close: true };
     try {
       this.port.postMessage(payload);
     } catch {
@@ -2065,14 +1944,12 @@ var _Receiver = class _Receiver {
     this.flushWaiters(requireChannelRuntimeConfig().getOption().None);
   }
 };
-__name(_Receiver, "Receiver");
-var Receiver = _Receiver;
-var createChannelRuntime = /* @__PURE__ */ __name((deps) => {
+var createChannelRuntime = (deps) => {
   channelRuntimeConfig = deps;
   const channel2 = {
-    is_available: /* @__PURE__ */ __name(() => resolveMessageChannel() !== null, "is_available"),
-    new: /* @__PURE__ */ __name(() => channel2.bounded(-1), "new"),
-    bounded: /* @__PURE__ */ __name((capacity) => {
+    is_available: () => resolveMessageChannel() !== null,
+    new: () => channel2.bounded(-1),
+    bounded: (capacity) => {
       const ChannelCtor = resolveMessageChannel();
       if (!ChannelCtor) {
         throw new Error("MessageChannel is not available in this environment");
@@ -2080,46 +1957,43 @@ var createChannelRuntime = /* @__PURE__ */ __name((deps) => {
       const normalized = Number.isFinite(capacity) ? Math.trunc(capacity) : -1;
       const cap = normalized < 0 ? null : normalized;
       const { port1, port2 } = new ChannelCtor();
-      return {
-        sender: Sender.create(port1, cap),
-        receiver: new Receiver(port2, cap)
-      };
-    }, "bounded"),
-    send: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "send"),
-    try_send: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "try_send"),
-    send_async: /* @__PURE__ */ __name((sender, value) => sender.send(value), "send_async"),
-    send_result: /* @__PURE__ */ __name((sender, value) => sender.send_result(value), "send_result"),
-    send_async_result: /* @__PURE__ */ __name((sender, value) => sender.send_async_result(value), "send_async_result"),
-    clone_sender: /* @__PURE__ */ __name((sender) => sender.clone(), "clone_sender"),
-    recv: /* @__PURE__ */ __name((receiver) => receiver.recv(), "recv"),
-    try_recv: /* @__PURE__ */ __name((receiver) => receiver.try_recv(), "try_recv"),
-    recv_result: /* @__PURE__ */ __name((receiver) => receiver.recv_result(), "recv_result"),
-    try_recv_result: /* @__PURE__ */ __name((receiver) => receiver.try_recv_result(), "try_recv_result"),
-    is_sender_closed: /* @__PURE__ */ __name((sender) => sender.is_closed(), "is_sender_closed"),
-    is_receiver_closed: /* @__PURE__ */ __name((receiver) => receiver.is_closed(), "is_receiver_closed"),
-    close_sender: /* @__PURE__ */ __name((sender) => sender.close(), "close_sender"),
-    close_receiver: /* @__PURE__ */ __name((receiver) => receiver.close(), "close_receiver"),
-    drop_sender: /* @__PURE__ */ __name((sender) => sender.drop(), "drop_sender"),
-    drop_receiver: /* @__PURE__ */ __name((receiver) => receiver.drop(), "drop_receiver"),
-    close: /* @__PURE__ */ __name((ch) => {
+      return { sender: Sender.create(port1, cap), receiver: new Receiver(port2, cap) };
+    },
+    send: (sender, value) => sender.try_send(value),
+    try_send: (sender, value) => sender.try_send(value),
+    send_async: (sender, value) => sender.send(value),
+    send_result: (sender, value) => sender.send_result(value),
+    send_async_result: (sender, value) => sender.send_async_result(value),
+    clone_sender: (sender) => sender.clone(),
+    recv: (receiver) => receiver.recv(),
+    try_recv: (receiver) => receiver.try_recv(),
+    recv_result: (receiver) => receiver.recv_result(),
+    try_recv_result: (receiver) => receiver.try_recv_result(),
+    is_sender_closed: (sender) => sender.is_closed(),
+    is_receiver_closed: (receiver) => receiver.is_closed(),
+    close_sender: (sender) => sender.close(),
+    close_receiver: (receiver) => receiver.close(),
+    drop_sender: (sender) => sender.drop(),
+    drop_receiver: (receiver) => receiver.drop(),
+    close: (ch) => {
       ch.sender.close();
       ch.receiver.close();
-    }, "close")
+    }
   };
   return channel2;
-}, "createChannelRuntime");
+};
 
 // src/runtime/node-platform.ts
 var cachedNodeRequire;
 var cachedNodePath;
 var cachedReadFileSync;
 var cachedSpawnSync;
-var isNodeRuntime = /* @__PURE__ */ __name(() => typeof globalThis.process !== "undefined" && typeof globalThis.process?.versions?.node === "string", "isNodeRuntime");
-var getNodeProcess = /* @__PURE__ */ __name(() => {
+var isNodeRuntime = () => typeof globalThis.process !== "undefined" && typeof globalThis.process?.versions?.node === "string";
+var getNodeProcess = () => {
   const candidate = globalThis.process;
   return candidate ?? null;
-}, "getNodeProcess");
-var getNodeRequire = /* @__PURE__ */ __name(() => {
+};
+var getNodeRequire = () => {
   if (cachedNodeRequire !== void 0) return cachedNodeRequire;
   const fromGlobal = globalThis.__luminaRequire ?? globalThis.require;
   if (typeof fromGlobal === "function") {
@@ -2141,8 +2015,8 @@ var getNodeRequire = /* @__PURE__ */ __name(() => {
   }
   cachedNodeRequire = null;
   return cachedNodeRequire;
-}, "getNodeRequire");
-var getNodeBuiltinModule = /* @__PURE__ */ __name((id) => {
+};
+var getNodeBuiltinModule = (id) => {
   const proc = getNodeProcess();
   const getter = proc?.getBuiltinModule;
   if (typeof getter === "function") {
@@ -2156,8 +2030,8 @@ var getNodeBuiltinModule = /* @__PURE__ */ __name((id) => {
   } catch {
     return null;
   }
-}, "getNodeBuiltinModule");
-var getNodePath = /* @__PURE__ */ __name(() => {
+};
+var getNodePath = () => {
   if (cachedNodePath !== void 0) return cachedNodePath;
   const req = getNodeRequire();
   if (!req && !getNodeProcess()?.getBuiltinModule) {
@@ -2172,8 +2046,8 @@ var getNodePath = /* @__PURE__ */ __name(() => {
     cachedNodePath = null;
     return cachedNodePath;
   }
-}, "getNodePath");
-var getNodeReadFileSync = /* @__PURE__ */ __name(() => {
+};
+var getNodeReadFileSync = () => {
   if (cachedReadFileSync !== void 0) return cachedReadFileSync;
   if (!getNodeRequire() && !getNodeProcess()?.getBuiltinModule) {
     cachedReadFileSync = null;
@@ -2187,8 +2061,8 @@ var getNodeReadFileSync = /* @__PURE__ */ __name(() => {
     cachedReadFileSync = null;
     return cachedReadFileSync;
   }
-}, "getNodeReadFileSync");
-var getNodeSpawnSync = /* @__PURE__ */ __name(() => {
+};
+var getNodeSpawnSync = () => {
   if (cachedSpawnSync !== void 0) return cachedSpawnSync;
   if (!getNodeRequire() && !getNodeProcess()?.getBuiltinModule) {
     cachedSpawnSync = null;
@@ -2202,9 +2076,9 @@ var getNodeSpawnSync = /* @__PURE__ */ __name(() => {
     cachedSpawnSync = null;
     return cachedSpawnSync;
   }
-}, "getNodeSpawnSync");
-var pathSeparator = /* @__PURE__ */ __name(() => (getNodeProcess()?.platform ?? "").startsWith("win") ? "\\" : "/", "pathSeparator");
-var normalizePathBasic = /* @__PURE__ */ __name((value) => {
+};
+var pathSeparator = () => (getNodeProcess()?.platform ?? "").startsWith("win") ? "\\" : "/";
+var normalizePathBasic = (value) => {
   const sep = pathSeparator();
   const replaced = String(value).replace(/[\\/]+/g, sep);
   const isAbs = sep === "\\" ? /^[A-Za-z]:\\/.test(replaced) || replaced.startsWith("\\\\") : replaced.startsWith("/");
@@ -2223,38 +2097,38 @@ var normalizePathBasic = /* @__PURE__ */ __name((value) => {
   const prefix = drive ? `${drive}${sep}` : isAbs ? sep : "";
   const joined = out.join(sep);
   return `${prefix}${joined}` || (isAbs ? sep : ".");
-}, "normalizePathBasic");
-var joinPathBasic = /* @__PURE__ */ __name((left, right) => normalizePathBasic(`${String(left)}${pathSeparator()}${String(right)}`), "joinPathBasic");
-var isAbsolutePathBasic = /* @__PURE__ */ __name((value) => {
+};
+var joinPathBasic = (left, right) => normalizePathBasic(`${String(left)}${pathSeparator()}${String(right)}`);
+var isAbsolutePathBasic = (value) => {
   const text2 = String(value);
   if (pathSeparator() === "\\") return /^[A-Za-z]:[\\/]/.test(text2) || text2.startsWith("\\\\");
   return text2.startsWith("/");
-}, "isAbsolutePathBasic");
-var dirnamePathBasic = /* @__PURE__ */ __name((value) => {
+};
+var dirnamePathBasic = (value) => {
   const normalized = normalizePathBasic(String(value));
   const sep = pathSeparator();
   const idx = normalized.lastIndexOf(sep);
   if (idx <= 0) return ".";
   return normalized.slice(0, idx);
-}, "dirnamePathBasic");
-var basenamePathBasic = /* @__PURE__ */ __name((value) => {
+};
+var basenamePathBasic = (value) => {
   const normalized = normalizePathBasic(String(value));
   const sep = pathSeparator();
   const idx = normalized.lastIndexOf(sep);
   return idx === -1 ? normalized : normalized.slice(idx + 1);
-}, "basenamePathBasic");
-var extnamePathBasic = /* @__PURE__ */ __name((value) => {
+};
+var extnamePathBasic = (value) => {
   const base = basenamePathBasic(value);
   const idx = base.lastIndexOf(".");
   if (idx <= 0 || idx === base.length - 1) return "";
   return base.slice(idx);
-}, "extnamePathBasic");
-var resolvePathBasic = /* @__PURE__ */ __name((value) => {
+};
+var resolvePathBasic = (value) => {
   const text2 = String(value);
   if (isAbsolutePathBasic(text2)) return normalizePathBasic(text2);
   const cwd = getNodeProcess()?.cwd?.() ?? ".";
   return normalizePathBasic(`${cwd}${pathSeparator()}${text2}`);
-}, "resolvePathBasic");
+};
 
 // src/runtime/value-runtime.ts
 var runtimeTraitImpls = {
@@ -2262,18 +2136,18 @@ var runtimeTraitImpls = {
   Eq: /* @__PURE__ */ new Map(),
   Ord: /* @__PURE__ */ new Map()
 };
-var normalizeTraitTypeName = /* @__PURE__ */ __name((typeName) => {
+var normalizeTraitTypeName = (typeName) => {
   const trimmed = typeName.trim();
   const idx = trimmed.indexOf("<");
   return idx === -1 ? trimmed : trimmed.slice(0, idx).trim();
-}, "normalizeTraitTypeName");
-var isEnumLike = /* @__PURE__ */ __name((value) => {
+};
+var isEnumLike = (value) => {
   if (!value || typeof value !== "object") return false;
   const v = value;
   return typeof v.$tag === "string" || typeof v.tag === "string";
-}, "isEnumLike");
-var getEnumTag = /* @__PURE__ */ __name((value) => value.$tag ?? value.tag ?? "Unknown", "getEnumTag");
-var getEnumPayload = /* @__PURE__ */ __name((value) => {
+};
+var getEnumTag = (value) => value.$tag ?? value.tag ?? "Unknown";
+var getEnumPayload = (value) => {
   if (value.$payload !== void 0) {
     return value.$payload;
   }
@@ -2281,13 +2155,13 @@ var getEnumPayload = /* @__PURE__ */ __name((value) => {
   if (!values) return void 0;
   if (Array.isArray(values) && values.length === 1) return values[0];
   return values;
-}, "getEnumPayload");
-var getRuntimeTypeTag = /* @__PURE__ */ __name((value) => {
+};
+var getRuntimeTypeTag = (value) => {
   if (!value || typeof value !== "object") return null;
   const candidate = value.__lumina_type;
   return typeof candidate === "string" ? candidate : null;
-}, "getRuntimeTypeTag");
-var __lumina_register_trait_impl = /* @__PURE__ */ __name((traitName, forType, impl) => {
+};
+var __lumina_register_trait_impl = (traitName, forType, impl) => {
   const targetType = normalizeTraitTypeName(forType);
   if (!targetType) return;
   if (traitName === "Hash" && typeof impl === "function") {
@@ -2301,13 +2175,13 @@ var __lumina_register_trait_impl = /* @__PURE__ */ __name((traitName, forType, i
   if (traitName === "Ord" && typeof impl === "function") {
     runtimeTraitImpls.Ord.set(targetType, impl);
   }
-}, "__lumina_register_trait_impl");
-var supportsColor = /* @__PURE__ */ __name(() => {
+};
+var supportsColor = () => {
   if (typeof window !== "undefined") return false;
   if (!isNodeRuntime()) return false;
   const stdout = getNodeProcess()?.stdout;
   return Boolean(stdout && stdout.isTTY);
-}, "supportsColor");
+};
 var colors = {
   reset: "\x1B[0m",
   cyan: "\x1B[36m",
@@ -2316,32 +2190,27 @@ var colors = {
   magenta: "\x1B[35m",
   gray: "\x1B[90m"
 };
-var colorize = /* @__PURE__ */ __name((text2, color, enabled) => {
+var colorize = (text2, color, enabled) => {
   if (!enabled || !color) return text2;
   return `${color}${text2}${colors.reset}`;
-}, "colorize");
+};
 var defaultFormatOptions = {
   indent: 2,
   maxDepth: 6,
   color: supportsColor()
 };
 function formatValue(value, options = {}) {
-  const config = {
-    ...defaultFormatOptions,
-    ...options
-  };
+  const config = { ...defaultFormatOptions, ...options };
   const seen = /* @__PURE__ */ new WeakSet();
-  const formatEnum = /* @__PURE__ */ __name((tag, payload, depth) => {
+  const formatEnum = (tag, payload, depth) => {
     if (payload === void 0) return colorize(tag, colors.cyan, config.color);
     if (Array.isArray(payload)) {
       const inner = payload.map((item) => format(item, depth + 1));
       return formatEnumPayload(tag, inner, depth);
     }
-    return formatEnumPayload(tag, [
-      format(payload, depth + 1)
-    ], depth);
-  }, "formatEnum");
-  const formatEnumPayload = /* @__PURE__ */ __name((tag, parts, depth) => {
+    return formatEnumPayload(tag, [format(payload, depth + 1)], depth);
+  };
+  const formatEnumPayload = (tag, parts, depth) => {
     const name = colorize(tag, colors.cyan, config.color);
     const multiline = parts.some((part) => part.includes("\n")) || parts.join(", ").length > 60;
     if (!multiline) {
@@ -2353,8 +2222,8 @@ function formatValue(value, options = {}) {
 ${indent}${parts.join(`,
 ${indent}`)}
 ${closing})`;
-  }, "formatEnumPayload");
-  const formatArray = /* @__PURE__ */ __name((items, depth) => {
+  };
+  const formatArray = (items, depth) => {
     if (items.length === 0) return "[]";
     if (depth >= config.maxDepth) return "[...]";
     const rendered = items.map((item) => format(item, depth + 1));
@@ -2366,8 +2235,8 @@ ${closing})`;
 ${indent}${rendered.join(`,
 ${indent}`)}
 ${closing}]`;
-  }, "formatArray");
-  const formatObject = /* @__PURE__ */ __name((obj, depth) => {
+  };
+  const formatObject = (obj, depth) => {
     const entries = Object.entries(obj);
     if (entries.length === 0) return "{}";
     if (depth >= config.maxDepth) return "{...}";
@@ -2380,8 +2249,8 @@ ${closing}]`;
 ${indent}${rendered.join(`,
 ${indent}`)}
 ${closing}}`;
-  }, "formatObject");
-  const format = /* @__PURE__ */ __name((val, depth) => {
+  };
+  const format = (val, depth) => {
     if (val === null || val === void 0) return colorize(String(val), colors.gray, config.color);
     if (typeof val === "string") return colorize(val, colors.green, config.color);
     if (typeof val === "number" || typeof val === "bigint") return colorize(String(val), colors.yellow, config.color);
@@ -2403,14 +2272,11 @@ ${closing}}`;
     } catch {
       return "[unprintable]";
     }
-  }, "format");
+  };
   return format(value, 0);
 }
-__name(formatValue, "formatValue");
-var __lumina_stringify = /* @__PURE__ */ __name((value) => formatValue(value, {
-  color: false
-}), "__lumina_stringify");
-var __lumina_struct = /* @__PURE__ */ __name((typeName, fields) => {
+var __lumina_stringify = (value) => formatValue(value, { color: false });
+var __lumina_struct = (typeName, fields) => {
   try {
     Object.defineProperty(fields, "__lumina_type", {
       value: normalizeTraitTypeName(typeName),
@@ -2422,8 +2288,8 @@ var __lumina_struct = /* @__PURE__ */ __name((typeName, fields) => {
     fields.__lumina_type = normalizeTraitTypeName(typeName);
   }
   return fields;
-}, "__lumina_struct");
-var normalizeRuntimeValue = /* @__PURE__ */ __name((value) => {
+};
+var normalizeRuntimeValue = (value) => {
   if (value === null || value === void 0) return value;
   if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "bigint") return value.toString();
@@ -2433,10 +2299,7 @@ var normalizeRuntimeValue = /* @__PURE__ */ __name((value) => {
     if (isEnumLike(value)) {
       const tag = getEnumTag(value);
       const payload = getEnumPayload(value);
-      return {
-        $enum: tag,
-        value: normalizeRuntimeValue(payload)
-      };
+      return { $enum: tag, value: normalizeRuntimeValue(payload) };
     }
     const typeTag = getRuntimeTypeTag(value);
     const obj = value;
@@ -2449,9 +2312,9 @@ var normalizeRuntimeValue = /* @__PURE__ */ __name((value) => {
     return out;
   }
   return String(value);
-}, "normalizeRuntimeValue");
-var stableRuntimeHash = /* @__PURE__ */ __name((value) => JSON.stringify(normalizeRuntimeValue(value)), "stableRuntimeHash");
-var deepRuntimeEqual = /* @__PURE__ */ __name((a, b) => {
+};
+var stableRuntimeHash = (value) => JSON.stringify(normalizeRuntimeValue(value));
+var deepRuntimeEqual = (a, b) => {
   if (a === b) return true;
   if (a == null || b == null) return false;
   if (typeof a !== typeof b) return false;
@@ -2486,8 +2349,8 @@ var deepRuntimeEqual = /* @__PURE__ */ __name((a, b) => {
     if (!deepRuntimeEqual(aObj[key2], bObj[key2])) return false;
   }
   return true;
-}, "deepRuntimeEqual");
-var runtimeHashValue = /* @__PURE__ */ __name((value) => {
+};
+var runtimeHashValue = (value) => {
   const typeTag = getRuntimeTypeTag(value);
   if (typeTag) {
     const hashImpl = runtimeTraitImpls.Hash.get(typeTag);
@@ -2500,8 +2363,8 @@ var runtimeHashValue = /* @__PURE__ */ __name((value) => {
     }
   }
   return stableRuntimeHash(value);
-}, "runtimeHashValue");
-var runtimeEquals = /* @__PURE__ */ __name((left, right) => {
+};
+var runtimeEquals = (left, right) => {
   if (left === right) return true;
   const leftTag = getRuntimeTypeTag(left);
   const rightTag = getRuntimeTypeTag(right);
@@ -2516,13 +2379,13 @@ var runtimeEquals = /* @__PURE__ */ __name((left, right) => {
     }
   }
   return deepRuntimeEqual(left, right);
-}, "runtimeEquals");
+};
 var FAST_CLONE_UNSUPPORTED = /* @__PURE__ */ Symbol("lumina.fast-clone-unsupported");
-var isPlainCloneableObject = /* @__PURE__ */ __name((value) => {
+var isPlainCloneableObject = (value) => {
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
-}, "isPlainCloneableObject");
-var cloneFast = /* @__PURE__ */ __name((value, seen = /* @__PURE__ */ new WeakMap()) => {
+};
+var cloneFast = (value, seen = /* @__PURE__ */ new WeakMap()) => {
   if (value === null || value === void 0) return value;
   if (typeof value !== "object") return value;
   if (Array.isArray(value)) {
@@ -2570,8 +2433,8 @@ var cloneFast = /* @__PURE__ */ __name((value, seen = /* @__PURE__ */ new WeakMa
     }
   }
   return out;
-}, "cloneFast");
-var cloneFallback = /* @__PURE__ */ __name((value) => {
+};
+var cloneFallback = (value) => {
   const fast = cloneFast(value);
   if (fast !== FAST_CLONE_UNSUPPORTED) {
     return fast;
@@ -2597,8 +2460,8 @@ var cloneFallback = /* @__PURE__ */ __name((value) => {
     }
   }
   return out;
-}, "cloneFallback");
-var __lumina_clone = /* @__PURE__ */ __name((value) => {
+};
+var __lumina_clone = (value) => {
   const fast = cloneFast(value);
   if (fast !== FAST_CLONE_UNSUPPORTED) {
     return fast;
@@ -2611,12 +2474,10 @@ var __lumina_clone = /* @__PURE__ */ __name((value) => {
     }
   }
   return cloneFallback(value);
-}, "__lumina_clone");
-var __lumina_debug = /* @__PURE__ */ __name((value) => formatValue(value, {
-  color: false
-}), "__lumina_debug");
-var __lumina_eq = /* @__PURE__ */ __name((left, right) => runtimeEquals(left, right), "__lumina_eq");
-var orderingToNumber = /* @__PURE__ */ __name((value) => {
+};
+var __lumina_debug = (value) => formatValue(value, { color: false });
+var __lumina_eq = (left, right) => runtimeEquals(left, right);
+var orderingToNumber = (value) => {
   if (typeof value === "number") return value < 0 ? -1 : value > 0 ? 1 : 0;
   if (typeof value === "bigint") return value < 0n ? -1 : value > 0n ? 1 : 0;
   if (typeof value === "string") {
@@ -2632,8 +2493,8 @@ var orderingToNumber = /* @__PURE__ */ __name((value) => {
     if (tag === "greater") return 1;
   }
   return 0;
-}, "orderingToNumber");
-var compareRuntimeValues = /* @__PURE__ */ __name((left, right) => {
+};
+var compareRuntimeValues = (left, right) => {
   if (left === right) return 0;
   const leftTag = getRuntimeTypeTag(left);
   const rightTag = getRuntimeTypeTag(right);
@@ -2655,33 +2516,29 @@ var compareRuntimeValues = /* @__PURE__ */ __name((left, right) => {
     const rightComparable = right;
     return leftComparable < rightComparable ? -1 : 1;
   }
-  const leftText = formatValue(left, {
-    color: false
-  });
-  const rightText = formatValue(right, {
-    color: false
-  });
+  const leftText = formatValue(left, { color: false });
+  const rightText = formatValue(right, { color: false });
   if (leftText === rightText) return 0;
   return leftText < rightText ? -1 : 1;
-}, "compareRuntimeValues");
+};
 
 // src/runtime/collections-runtime.ts
 var collectionsRuntimeConfig = null;
-var requireCollectionsRuntimeConfig = /* @__PURE__ */ __name(() => {
+var requireCollectionsRuntimeConfig = () => {
   if (!collectionsRuntimeConfig) {
     throw new Error("Collections runtime is not configured");
   }
   return collectionsRuntimeConfig;
-}, "requireCollectionsRuntimeConfig");
-var Option = /* @__PURE__ */ __name(() => requireCollectionsRuntimeConfig().getOption(), "Option");
-var normalizeCount = /* @__PURE__ */ __name((value) => Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0, "normalizeCount");
-var compareOrder = /* @__PURE__ */ __name((left, right) => {
+};
+var Option = () => requireCollectionsRuntimeConfig().getOption();
+var normalizeCount = (value) => Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+var compareOrder = (left, right) => {
   if (left === right) return 0;
   const leftComparable = left;
   const rightComparable = right;
   return leftComparable < rightComparable ? -1 : 1;
-}, "compareOrder");
-var toIterableValues = /* @__PURE__ */ __name((value) => {
+};
+var toIterableValues = (value) => {
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object") {
     const iteratorFn = value[Symbol.iterator];
@@ -2690,29 +2547,28 @@ var toIterableValues = /* @__PURE__ */ __name((value) => {
     }
   }
   return [];
-}, "toIterableValues");
-var configureCollectionsRuntime = /* @__PURE__ */ __name((deps) => {
+};
+var configureCollectionsRuntime = (deps) => {
   collectionsRuntimeConfig = deps;
-}, "configureCollectionsRuntime");
+};
 var list = {
-  map: /* @__PURE__ */ __name((f, xs) => xs.map(f), "map"),
-  filter: /* @__PURE__ */ __name((pred, xs) => xs.filter(pred), "filter"),
-  fold: /* @__PURE__ */ __name((f, init, xs) => xs.reduce((acc, val) => f(acc, val), init), "fold"),
-  reverse: /* @__PURE__ */ __name((xs) => xs.slice().reverse(), "reverse"),
-  length: /* @__PURE__ */ __name((xs) => xs.length, "length"),
-  append: /* @__PURE__ */ __name((xs, ys) => xs.concat(ys), "append"),
-  take: /* @__PURE__ */ __name((n, xs) => xs.slice(0, Math.max(0, n)), "take"),
-  drop: /* @__PURE__ */ __name((n, xs) => xs.slice(Math.max(0, n)), "drop"),
-  find: /* @__PURE__ */ __name((pred, xs) => {
+  map: (f, xs) => xs.map(f),
+  filter: (pred, xs) => xs.filter(pred),
+  fold: (f, init, xs) => xs.reduce((acc, val) => f(acc, val), init),
+  reverse: (xs) => xs.slice().reverse(),
+  length: (xs) => xs.length,
+  append: (xs, ys) => xs.concat(ys),
+  take: (n, xs) => xs.slice(0, Math.max(0, n)),
+  drop: (n, xs) => xs.slice(Math.max(0, n)),
+  find: (pred, xs) => {
     const found = xs.find(pred);
     return found === void 0 ? Option().None : Option().Some(found);
-  }, "find"),
-  any: /* @__PURE__ */ __name((pred, xs) => xs.some(pred), "any"),
-  all: /* @__PURE__ */ __name((pred, xs) => xs.every(pred), "all")
+  },
+  any: (pred, xs) => xs.some(pred),
+  all: (pred, xs) => xs.every(pred)
 };
-var _Vec = class _Vec {
+var Vec = class _Vec {
   constructor() {
-    __publicField(this, "data");
     this.data = [];
   }
   static new() {
@@ -2720,9 +2576,7 @@ var _Vec = class _Vec {
   }
   static from(items) {
     const next = new _Vec();
-    next.data = Array.isArray(items) ? [
-      ...items
-    ] : [];
+    next.data = Array.isArray(items) ? [...items] : [];
     return next;
   }
   push(value) {
@@ -2804,20 +2658,14 @@ var _Vec = class _Vec {
     const out = _Vec.new();
     const size = Math.min(this.data.length, other.data.length);
     for (let i = 0; i < size; i += 1) {
-      out.push([
-        this.data[i],
-        other.data[i]
-      ]);
+      out.push([this.data[i], other.data[i]]);
     }
     return out;
   }
   enumerate() {
     const out = _Vec.new();
     for (let i = 0; i < this.data.length; i += 1) {
-      out.push([
-        i,
-        this.data[i]
-      ]);
+      out.push([i, this.data[i]]);
     }
     return out;
   }
@@ -2825,59 +2673,57 @@ var _Vec = class _Vec {
     return this.data[Symbol.iterator]();
   }
 };
-__name(_Vec, "Vec");
-var Vec = _Vec;
-var timeout = /* @__PURE__ */ __name(async (ms) => {
+var timeout = async (ms) => {
   await requireCollectionsRuntimeConfig().timeSleep(ms);
-}, "timeout");
-var join_all = /* @__PURE__ */ __name(async (values) => {
+};
+var join_all = async (values) => {
   const resolved = await Promise.all(toIterableValues(values).map((item) => Promise.resolve(item)));
   return Vec.from(resolved);
-}, "join_all");
+};
 var vec = {
-  new: /* @__PURE__ */ __name(() => Vec.new(), "new"),
-  from: /* @__PURE__ */ __name((items) => Vec.from(items), "from"),
-  push: /* @__PURE__ */ __name((v, value) => v.push(value), "push"),
-  get: /* @__PURE__ */ __name((v, index) => v.get(index), "get"),
-  len: /* @__PURE__ */ __name((v) => v.len(), "len"),
-  pop: /* @__PURE__ */ __name((v) => v.pop(), "pop"),
-  clear: /* @__PURE__ */ __name((v) => v.clear(), "clear"),
-  map: /* @__PURE__ */ __name((v, f) => v.map(f), "map"),
-  filter: /* @__PURE__ */ __name((v, pred) => v.filter(pred), "filter"),
-  fold: /* @__PURE__ */ __name((v, init, f) => v.fold(init, f), "fold"),
-  for_each: /* @__PURE__ */ __name((v, f) => v.for_each(f), "for_each"),
-  any: /* @__PURE__ */ __name((v, pred) => v.any(pred), "any"),
-  all: /* @__PURE__ */ __name((v, pred) => v.all(pred), "all"),
-  find: /* @__PURE__ */ __name((v, pred) => v.find(pred), "find"),
-  position: /* @__PURE__ */ __name((v, pred) => v.position(pred), "position"),
-  take: /* @__PURE__ */ __name((v, n) => v.take(n), "take"),
-  skip: /* @__PURE__ */ __name((v, n) => v.skip(n), "skip"),
-  zip: /* @__PURE__ */ __name((v, other) => v.zip(other), "zip"),
-  enumerate: /* @__PURE__ */ __name((v) => v.enumerate(), "enumerate"),
-  fused_filter_map_fold: /* @__PURE__ */ __name((v, pred, mapper, init, folder) => {
+  new: () => Vec.new(),
+  from: (items) => Vec.from(items),
+  push: (v, value) => v.push(value),
+  get: (v, index) => v.get(index),
+  len: (v) => v.len(),
+  pop: (v) => v.pop(),
+  clear: (v) => v.clear(),
+  map: (v, f) => v.map(f),
+  filter: (v, pred) => v.filter(pred),
+  fold: (v, init, f) => v.fold(init, f),
+  for_each: (v, f) => v.for_each(f),
+  any: (v, pred) => v.any(pred),
+  all: (v, pred) => v.all(pred),
+  find: (v, pred) => v.find(pred),
+  position: (v, pred) => v.position(pred),
+  take: (v, n) => v.take(n),
+  skip: (v, n) => v.skip(n),
+  zip: (v, other) => v.zip(other),
+  enumerate: (v) => v.enumerate(),
+  fused_filter_map_fold: (v, pred, mapper, init, folder) => {
     let acc = init;
     for (const item of v) {
       if (!pred(item)) continue;
       acc = folder(acc, mapper(item));
     }
     return acc;
-  }, "fused_filter_map_fold"),
-  fused_map_fold: /* @__PURE__ */ __name((v, mapper, init, folder) => {
+  },
+  fused_map_fold: (v, mapper, init, folder) => {
     let acc = init;
     for (const item of v) {
       acc = folder(acc, mapper(item));
     }
     return acc;
-  }, "fused_map_fold"),
-  fused_filter_fold: /* @__PURE__ */ __name((v, pred, init, folder) => {
+  },
+  fused_filter_fold: (v, pred, init, folder) => {
     let acc = init;
     for (const item of v) {
       if (!pred(item)) continue;
       acc = folder(acc, item);
     }
     return acc;
-  }, "fused_filter_fold"),
-  fused_pipeline: /* @__PURE__ */ __name((v, stages, init, folder) => {
+  },
+  fused_pipeline: (v, stages, init, folder) => {
     let acc = init;
     for (const item of v) {
       let current = item;
@@ -2899,28 +2745,28 @@ var vec = {
       acc = folder(acc, current);
     }
     return acc;
-  }, "fused_pipeline")
+  }
 };
 var iter = {
-  map_vec: /* @__PURE__ */ __name((values, mapper) => vec.map(values, mapper), "map_vec"),
-  filter_vec: /* @__PURE__ */ __name((values, pred) => vec.filter(values, pred), "filter_vec"),
-  filter_option: /* @__PURE__ */ __name((value, pred) => {
+  map_vec: (values, mapper) => vec.map(values, mapper),
+  filter_vec: (values, pred) => vec.filter(values, pred),
+  filter_option: (value, pred) => {
     const tag = value && typeof value === "object" && isEnumLike(value) ? getEnumTag(value) : "";
     if (tag !== "Some") return Option().None;
     const payload = getEnumPayload(value);
     return pred(payload) ? Option().Some(payload) : Option().None;
-  }, "filter_option"),
-  zip_vec: /* @__PURE__ */ __name((left, right) => vec.zip(left, right), "zip_vec"),
-  enumerate_vec: /* @__PURE__ */ __name((values) => vec.enumerate(values), "enumerate_vec"),
-  flatten_vec: /* @__PURE__ */ __name((values) => {
+  },
+  zip_vec: (left, right) => vec.zip(left, right),
+  enumerate_vec: (values) => vec.enumerate(values),
+  flatten_vec: (values) => {
     const out = Vec.new();
     for (const inner of values) {
       if (!(inner instanceof Vec)) continue;
       for (const value of inner) out.push(value);
     }
     return out;
-  }, "flatten_vec"),
-  flat_map_vec: /* @__PURE__ */ __name((values, mapper) => {
+  },
+  flat_map_vec: (values, mapper) => {
     const out = Vec.new();
     for (const value of values) {
       const mapped = mapper(value);
@@ -2928,8 +2774,8 @@ var iter = {
       for (const inner of mapped) out.push(inner);
     }
     return out;
-  }, "flat_map_vec"),
-  chunk_vec: /* @__PURE__ */ __name((values, size) => {
+  },
+  chunk_vec: (values, size) => {
     const out = Vec.new();
     const chunkSize = normalizeCount(size);
     if (chunkSize <= 0) return out;
@@ -2946,8 +2792,8 @@ var iter = {
     }
     if (current.len() > 0) out.push(current);
     return out;
-  }, "chunk_vec"),
-  window_vec: /* @__PURE__ */ __name((values, size) => {
+  },
+  window_vec: (values, size) => {
     const out = Vec.new();
     const windowSize = normalizeCount(size);
     if (windowSize <= 0 || windowSize > values.len()) return out;
@@ -2960,28 +2806,25 @@ var iter = {
       out.push(window2);
     }
     return out;
-  }, "window_vec"),
-  partition_vec: /* @__PURE__ */ __name((values, pred) => {
+  },
+  partition_vec: (values, pred) => {
     const pass = Vec.new();
     const fail = Vec.new();
     for (const value of values) {
       if (pred(value)) pass.push(value);
       else fail.push(value);
     }
-    return [
-      pass,
-      fail
-    ];
-  }, "partition_vec"),
-  take_vec: /* @__PURE__ */ __name((values, n) => vec.take(values, n), "take_vec"),
-  skip_vec: /* @__PURE__ */ __name((values, n) => vec.skip(values, n), "skip_vec"),
-  any_vec: /* @__PURE__ */ __name((values, pred) => vec.any(values, pred), "any_vec"),
-  all_vec: /* @__PURE__ */ __name((values, pred) => vec.all(values, pred), "all_vec"),
-  find_vec: /* @__PURE__ */ __name((values, pred) => vec.find(values, pred), "find_vec"),
-  count_vec: /* @__PURE__ */ __name((values) => vec.len(values), "count_vec"),
-  sum_vec: /* @__PURE__ */ __name((values) => vec.fold(values, 0, (acc, value) => acc + value), "sum_vec"),
-  sum_vec_f64: /* @__PURE__ */ __name((values) => vec.fold(values, 0, (acc, value) => acc + value), "sum_vec_f64"),
-  unique_vec: /* @__PURE__ */ __name((values) => {
+    return [pass, fail];
+  },
+  take_vec: (values, n) => vec.take(values, n),
+  skip_vec: (values, n) => vec.skip(values, n),
+  any_vec: (values, pred) => vec.any(values, pred),
+  all_vec: (values, pred) => vec.all(values, pred),
+  find_vec: (values, pred) => vec.find(values, pred),
+  count_vec: (values) => vec.len(values),
+  sum_vec: (values) => vec.fold(values, 0, (acc, value) => acc + value),
+  sum_vec_f64: (values) => vec.fold(values, 0, (acc, value) => acc + value),
+  unique_vec: (values) => {
     const out = Vec.new();
     for (const value of values) {
       let seen = false;
@@ -2994,12 +2837,12 @@ var iter = {
       if (!seen) out.push(value);
     }
     return out;
-  }, "unique_vec"),
-  reverse_vec: /* @__PURE__ */ __name((values) => Vec.from(Array.from(values).reverse()), "reverse_vec"),
-  sort_vec: /* @__PURE__ */ __name((values, cmp) => Vec.from(Array.from(values).sort((left, right) => cmp(left, right))), "sort_vec"),
-  sort_by_vec: /* @__PURE__ */ __name((values, key2) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key2(left), key2(right)))), "sort_by_vec"),
-  sort_by_desc_vec: /* @__PURE__ */ __name((values, key2) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key2(right), key2(left)))), "sort_by_desc_vec"),
-  group_by_vec: /* @__PURE__ */ __name((values, key2) => {
+  },
+  reverse_vec: (values) => Vec.from(Array.from(values).reverse()),
+  sort_vec: (values, cmp) => Vec.from(Array.from(values).sort((left, right) => cmp(left, right))),
+  sort_by_vec: (values, key2) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key2(left), key2(right)))),
+  sort_by_desc_vec: (values, key2) => Vec.from(Array.from(values).sort((left, right) => compareOrder(key2(right), key2(left)))),
+  group_by_vec: (values, key2) => {
     const out = HashMap.new();
     for (const value of values) {
       const groupKey = key2(value);
@@ -3014,8 +2857,8 @@ var iter = {
       bucket.push(value);
     }
     return out;
-  }, "group_by_vec"),
-  intersperse_vec: /* @__PURE__ */ __name((values, sep) => {
+  },
+  intersperse_vec: (values, sep) => {
     const out = Vec.new();
     let first = true;
     for (const value of values) {
@@ -3024,22 +2867,19 @@ var iter = {
       first = false;
     }
     return out;
-  }, "intersperse_vec"),
-  join_vec: /* @__PURE__ */ __name((left, right, left_key, right_key) => {
+  },
+  join_vec: (left, right, left_key, right_key) => {
     const out = Vec.new();
     for (const leftValue of left) {
       const leftKey = left_key(leftValue);
       for (const rightValue of right) {
         if (runtimeEquals(leftKey, right_key(rightValue))) {
-          out.push([
-            leftValue,
-            rightValue
-          ]);
+          out.push([leftValue, rightValue]);
         }
       }
     }
     return out;
-  }, "join_vec")
+  }
 };
 var map_vec = iter.map_vec;
 var filter_vec = iter.filter_vec;
@@ -3067,38 +2907,30 @@ var sort_by_desc_vec = iter.sort_by_desc_vec;
 var group_by_vec = iter.group_by_vec;
 var intersperse_vec = iter.intersperse_vec;
 var join_vec = iter.join_vec;
-var query = /* @__PURE__ */ __name((items) => ({
-  items
-}), "query");
-var where_q = /* @__PURE__ */ __name((q, pred) => ({
+var query = (items) => ({ items });
+var where_q = (q, pred) => ({
   items: iter.filter_vec(q.items, pred)
-}), "where_q");
-var select_q = /* @__PURE__ */ __name((q, mapper) => ({
+});
+var select_q = (q, mapper) => ({
   items: iter.map_vec(q.items, mapper)
-}), "select_q");
-var order_by_q = /* @__PURE__ */ __name((q, key2) => ({
+});
+var order_by_q = (q, key2) => ({
   items: iter.sort_by_vec(q.items, key2)
-}), "order_by_q");
-var order_by_desc_q = /* @__PURE__ */ __name((q, key2) => ({
+});
+var order_by_desc_q = (q, key2) => ({
   items: iter.sort_by_desc_vec(q.items, key2)
-}), "order_by_desc_q");
-var limit_q = /* @__PURE__ */ __name((q, n) => ({
-  items: iter.take_vec(q.items, n)
-}), "limit_q");
-var offset_q = /* @__PURE__ */ __name((q, n) => ({
-  items: iter.skip_vec(q.items, n)
-}), "offset_q");
-var group_by_q = /* @__PURE__ */ __name((q, key2) => iter.group_by_vec(q.items, key2), "group_by_q");
-var count_q = /* @__PURE__ */ __name((q) => iter.count_vec(q.items), "count_q");
-var first_q = /* @__PURE__ */ __name((q) => vec.get(q.items, 0), "first_q");
-var to_vec_q = /* @__PURE__ */ __name((q) => q.items, "to_vec_q");
-var join_q = /* @__PURE__ */ __name((left, right, left_key, right_key) => ({
+});
+var limit_q = (q, n) => ({ items: iter.take_vec(q.items, n) });
+var offset_q = (q, n) => ({ items: iter.skip_vec(q.items, n) });
+var group_by_q = (q, key2) => iter.group_by_vec(q.items, key2);
+var count_q = (q) => iter.count_vec(q.items);
+var first_q = (q) => vec.get(q.items, 0);
+var to_vec_q = (q) => q.items;
+var join_q = (left, right, left_key, right_key) => ({
   items: iter.join_vec(left.items, right.items, left_key, right_key)
-}), "join_q");
-var _HashMap = class _HashMap {
+});
+var HashMap = class _HashMap {
   constructor() {
-    __publicField(this, "buckets");
-    __publicField(this, "sizeValue");
     this.buckets = /* @__PURE__ */ new Map();
     this.sizeValue = 0;
   }
@@ -3127,10 +2959,7 @@ var _HashMap = class _HashMap {
         return Option().Some(old);
       }
     }
-    bucket.push({
-      key: key2,
-      value
-    });
+    bucket.push({ key: key2, value });
     this.sizeValue += 1;
     return Option().None;
   }
@@ -3192,22 +3021,19 @@ var _HashMap = class _HashMap {
     return v;
   }
 };
-__name(_HashMap, "HashMap");
-var HashMap = _HashMap;
 var hashmap = {
-  new: /* @__PURE__ */ __name(() => HashMap.new(), "new"),
-  insert: /* @__PURE__ */ __name((m, k, v) => m.insert(k, v), "insert"),
-  get: /* @__PURE__ */ __name((m, k) => m.get(k), "get"),
-  remove: /* @__PURE__ */ __name((m, k) => m.remove(k), "remove"),
-  contains_key: /* @__PURE__ */ __name((m, k) => m.contains_key(k), "contains_key"),
-  len: /* @__PURE__ */ __name((m) => m.len(), "len"),
-  clear: /* @__PURE__ */ __name((m) => m.clear(), "clear"),
-  keys: /* @__PURE__ */ __name((m) => m.keys(), "keys"),
-  values: /* @__PURE__ */ __name((m) => m.values(), "values")
+  new: () => HashMap.new(),
+  insert: (m, k, v) => m.insert(k, v),
+  get: (m, k) => m.get(k),
+  remove: (m, k) => m.remove(k),
+  contains_key: (m, k) => m.contains_key(k),
+  len: (m) => m.len(),
+  clear: (m) => m.clear(),
+  keys: (m) => m.keys(),
+  values: (m) => m.values()
 };
-var _HashSet = class _HashSet {
+var HashSet = class _HashSet {
   constructor() {
-    __publicField(this, "map");
     this.map = HashMap.new();
   }
   static new() {
@@ -3234,20 +3060,17 @@ var _HashSet = class _HashSet {
     return this.map.keys();
   }
 };
-__name(_HashSet, "HashSet");
-var HashSet = _HashSet;
 var hashset = {
-  new: /* @__PURE__ */ __name(() => HashSet.new(), "new"),
-  insert: /* @__PURE__ */ __name((s, v) => s.insert(v), "insert"),
-  contains: /* @__PURE__ */ __name((s, v) => s.contains(v), "contains"),
-  remove: /* @__PURE__ */ __name((s, v) => s.remove(v), "remove"),
-  len: /* @__PURE__ */ __name((s) => s.len(), "len"),
-  clear: /* @__PURE__ */ __name((s) => s.clear(), "clear"),
-  values: /* @__PURE__ */ __name((s) => s.values(), "values")
+  new: () => HashSet.new(),
+  insert: (s, v) => s.insert(v),
+  contains: (s, v) => s.contains(v),
+  remove: (s, v) => s.remove(v),
+  len: (s) => s.len(),
+  clear: (s) => s.clear(),
+  values: (s) => s.values()
 };
-var _Deque = class _Deque {
+var Deque = class _Deque {
   constructor() {
-    __publicField(this, "data");
     this.data = [];
   }
   static new() {
@@ -3276,20 +3099,17 @@ var _Deque = class _Deque {
     this.data = [];
   }
 };
-__name(_Deque, "Deque");
-var Deque = _Deque;
 var deque = {
-  new: /* @__PURE__ */ __name(() => Deque.new(), "new"),
-  push_front: /* @__PURE__ */ __name((d, value) => d.push_front(value), "push_front"),
-  push_back: /* @__PURE__ */ __name((d, value) => d.push_back(value), "push_back"),
-  pop_front: /* @__PURE__ */ __name((d) => d.pop_front(), "pop_front"),
-  pop_back: /* @__PURE__ */ __name((d) => d.pop_back(), "pop_back"),
-  len: /* @__PURE__ */ __name((d) => d.len(), "len"),
-  clear: /* @__PURE__ */ __name((d) => d.clear(), "clear")
+  new: () => Deque.new(),
+  push_front: (d, value) => d.push_front(value),
+  push_back: (d, value) => d.push_back(value),
+  pop_front: (d) => d.pop_front(),
+  pop_back: (d) => d.pop_back(),
+  len: (d) => d.len(),
+  clear: (d) => d.clear()
 };
-var _BTreeMap = class _BTreeMap {
+var BTreeMap = class _BTreeMap {
   constructor() {
-    __publicField(this, "records");
     this.records = [];
   }
   static new() {
@@ -3312,10 +3132,7 @@ var _BTreeMap = class _BTreeMap {
       this.records[idx].value = value;
       return Option().Some(previous);
     }
-    this.records.splice(idx, 0, {
-      key: key2,
-      value
-    });
+    this.records.splice(idx, 0, { key: key2, value });
     return Option().None;
   }
   get(key2) {
@@ -3350,29 +3167,23 @@ var _BTreeMap = class _BTreeMap {
     return Vec.from(this.records.map((entry) => entry.value));
   }
   entries() {
-    return Vec.from(this.records.map((entry) => [
-      entry.key,
-      entry.value
-    ]));
+    return Vec.from(this.records.map((entry) => [entry.key, entry.value]));
   }
 };
-__name(_BTreeMap, "BTreeMap");
-var BTreeMap = _BTreeMap;
 var btreemap = {
-  new: /* @__PURE__ */ __name(() => BTreeMap.new(), "new"),
-  insert: /* @__PURE__ */ __name((m, k, v) => m.insert(k, v), "insert"),
-  get: /* @__PURE__ */ __name((m, k) => m.get(k), "get"),
-  remove: /* @__PURE__ */ __name((m, k) => m.remove(k), "remove"),
-  contains_key: /* @__PURE__ */ __name((m, k) => m.contains_key(k), "contains_key"),
-  len: /* @__PURE__ */ __name((m) => m.len(), "len"),
-  clear: /* @__PURE__ */ __name((m) => m.clear(), "clear"),
-  keys: /* @__PURE__ */ __name((m) => m.keys(), "keys"),
-  values: /* @__PURE__ */ __name((m) => m.values(), "values"),
-  entries: /* @__PURE__ */ __name((m) => m.entries(), "entries")
+  new: () => BTreeMap.new(),
+  insert: (m, k, v) => m.insert(k, v),
+  get: (m, k) => m.get(k),
+  remove: (m, k) => m.remove(k),
+  contains_key: (m, k) => m.contains_key(k),
+  len: (m) => m.len(),
+  clear: (m) => m.clear(),
+  keys: (m) => m.keys(),
+  values: (m) => m.values(),
+  entries: (m) => m.entries()
 };
-var _BTreeSet = class _BTreeSet {
+var BTreeSet = class _BTreeSet {
   constructor() {
-    __publicField(this, "map");
     this.map = BTreeMap.new();
   }
   static new() {
@@ -3397,20 +3208,17 @@ var _BTreeSet = class _BTreeSet {
     return this.map.keys();
   }
 };
-__name(_BTreeSet, "BTreeSet");
-var BTreeSet = _BTreeSet;
 var btreeset = {
-  new: /* @__PURE__ */ __name(() => BTreeSet.new(), "new"),
-  insert: /* @__PURE__ */ __name((s, v) => s.insert(v), "insert"),
-  contains: /* @__PURE__ */ __name((s, v) => s.contains(v), "contains"),
-  remove: /* @__PURE__ */ __name((s, v) => s.remove(v), "remove"),
-  len: /* @__PURE__ */ __name((s) => s.len(), "len"),
-  clear: /* @__PURE__ */ __name((s) => s.clear(), "clear"),
-  values: /* @__PURE__ */ __name((s) => s.values(), "values")
+  new: () => BTreeSet.new(),
+  insert: (s, v) => s.insert(v),
+  contains: (s, v) => s.contains(v),
+  remove: (s, v) => s.remove(v),
+  len: (s) => s.len(),
+  clear: (s) => s.clear(),
+  values: (s) => s.values()
 };
-var _PriorityQueue = class _PriorityQueue {
+var PriorityQueue = class _PriorityQueue {
   constructor() {
-    __publicField(this, "heap");
     this.heap = [];
   }
   static new() {
@@ -3420,10 +3228,7 @@ var _PriorityQueue = class _PriorityQueue {
     while (index > 0) {
       const parent = index - 1 >> 1;
       if (compareRuntimeValues(this.heap[parent], this.heap[index]) <= 0) break;
-      [this.heap[parent], this.heap[index]] = [
-        this.heap[index],
-        this.heap[parent]
-      ];
+      [this.heap[parent], this.heap[index]] = [this.heap[index], this.heap[parent]];
       index = parent;
     }
   }
@@ -3436,10 +3241,7 @@ var _PriorityQueue = class _PriorityQueue {
       if (left < length && compareRuntimeValues(this.heap[left], this.heap[smallest]) < 0) smallest = left;
       if (right < length && compareRuntimeValues(this.heap[right], this.heap[smallest]) < 0) smallest = right;
       if (smallest === index) break;
-      [this.heap[index], this.heap[smallest]] = [
-        this.heap[smallest],
-        this.heap[index]
-      ];
+      [this.heap[index], this.heap[smallest]] = [this.heap[smallest], this.heap[index]];
       index = smallest;
     }
   }
@@ -3467,19 +3269,17 @@ var _PriorityQueue = class _PriorityQueue {
     this.heap = [];
   }
 };
-__name(_PriorityQueue, "PriorityQueue");
-var PriorityQueue = _PriorityQueue;
 var priority_queue = {
-  new: /* @__PURE__ */ __name(() => PriorityQueue.new(), "new"),
-  push: /* @__PURE__ */ __name((q, value) => q.push(value), "push"),
-  pop: /* @__PURE__ */ __name((q) => q.pop(), "pop"),
-  peek: /* @__PURE__ */ __name((q) => q.peek(), "peek"),
-  len: /* @__PURE__ */ __name((q) => q.len(), "len"),
-  clear: /* @__PURE__ */ __name((q) => q.clear(), "clear")
+  new: () => PriorityQueue.new(),
+  push: (q, value) => q.push(value),
+  pop: (q) => q.pop(),
+  peek: (q) => q.peek(),
+  len: (q) => q.len(),
+  clear: (q) => q.clear()
 };
 
 // src/runtime/algebra-runtime.ts
-var mapHashMapValues = /* @__PURE__ */ __name((map, mapper) => {
+var mapHashMapValues = (map, mapper) => {
   const out = HashMap.new();
   for (const key2 of map.keys()) {
     const current = map.get(key2);
@@ -3488,13 +3288,13 @@ var mapHashMapValues = /* @__PURE__ */ __name((map, mapper) => {
     }
   }
   return out;
-}, "mapHashMapValues");
-var pureHashMap = /* @__PURE__ */ __name((key2, value) => {
+};
+var pureHashMap = (key2, value) => {
   const out = HashMap.new();
   out.insert(key2, value);
   return out;
-}, "pureHashMap");
-var apHashMapValues = /* @__PURE__ */ __name((fns, values) => {
+};
+var apHashMapValues = (fns, values) => {
   const out = HashMap.new();
   for (const key2 of fns.keys()) {
     const fnEntry = fns.get(key2);
@@ -3507,8 +3307,8 @@ var apHashMapValues = /* @__PURE__ */ __name((fns, values) => {
     out.insert(key2, fn(valueEntry.$payload));
   }
   return out;
-}, "apHashMapValues");
-var flatMapHashMapValues = /* @__PURE__ */ __name((values, mapper) => {
+};
+var flatMapHashMapValues = (values, mapper) => {
   const out = HashMap.new();
   for (const key2 of values.keys()) {
     const current = values.get(key2);
@@ -3523,30 +3323,28 @@ var flatMapHashMapValues = /* @__PURE__ */ __name((values, mapper) => {
     }
   }
   return out;
-}, "flatMapHashMapValues");
-var createAlgebraRuntime = /* @__PURE__ */ __name(({ Option: Option3, Result: Result2, isEnumLike: isEnumLike2, getEnumTag: getEnumTag2, getEnumPayload: getEnumPayload2 }) => {
+};
+var createAlgebraRuntime = ({ Option: Option3, Result: Result2, isEnumLike: isEnumLike2, getEnumTag: getEnumTag2, getEnumPayload: getEnumPayload2 }) => {
   const functor2 = {
-    map_option: /* @__PURE__ */ __name((value, mapper) => Option3.map(mapper, value), "map_option"),
-    map_result: /* @__PURE__ */ __name((value, mapper) => Result2.map(mapper, value), "map_result"),
-    map_vec: /* @__PURE__ */ __name((values, mapper) => vec.map(values, mapper), "map_vec"),
-    map_hashmap_values: /* @__PURE__ */ __name((values, mapper) => mapHashMapValues(values, mapper), "map_hashmap_values")
+    map_option: (value, mapper) => Option3.map(mapper, value),
+    map_result: (value, mapper) => Result2.map(mapper, value),
+    map_vec: (values, mapper) => vec.map(values, mapper),
+    map_hashmap_values: (values, mapper) => mapHashMapValues(values, mapper)
   };
   const applicative2 = {
-    pure_option: /* @__PURE__ */ __name((value) => Option3.Some(value), "pure_option"),
-    pure_result: /* @__PURE__ */ __name((value) => Result2.Ok(value), "pure_result"),
-    pure_vec: /* @__PURE__ */ __name((value) => Vec.from([
-      value
-    ]), "pure_vec"),
-    pure_hashmap: /* @__PURE__ */ __name((key2, value) => pureHashMap(key2, value), "pure_hashmap"),
-    ap_option: /* @__PURE__ */ __name((fns, value) => {
+    pure_option: (value) => Option3.Some(value),
+    pure_result: (value) => Result2.Ok(value),
+    pure_vec: (value) => Vec.from([value]),
+    pure_hashmap: (key2, value) => pureHashMap(key2, value),
+    ap_option: (fns, value) => {
       const fnTag = fns && typeof fns === "object" && isEnumLike2(fns) ? getEnumTag2(fns) : "";
       const valueTag = value && typeof value === "object" && isEnumLike2(value) ? getEnumTag2(value) : "";
       if (fnTag !== "Some" || valueTag !== "Some") return Option3.None;
       const fn = getEnumPayload2(fns);
       if (typeof fn !== "function") return Option3.None;
       return Option3.Some(fn(getEnumPayload2(value)));
-    }, "ap_option"),
-    ap_result: /* @__PURE__ */ __name((fns, value) => {
+    },
+    ap_result: (fns, value) => {
       const fnTag = fns && typeof fns === "object" && isEnumLike2(fns) ? getEnumTag2(fns) : "";
       if (fnTag !== "Ok") return fns;
       const valueTag = value && typeof value === "object" && isEnumLike2(value) ? getEnumTag2(value) : "";
@@ -3554,8 +3352,8 @@ var createAlgebraRuntime = /* @__PURE__ */ __name(({ Option: Option3, Result: Re
       const fn = getEnumPayload2(fns);
       if (typeof fn !== "function") return Result2.Err("Result ap expected Ok(function)");
       return Result2.Ok(fn(getEnumPayload2(value)));
-    }, "ap_result"),
-    ap_vec: /* @__PURE__ */ __name((fns, values) => {
+    },
+    ap_vec: (fns, values) => {
       const out = Vec.new();
       for (const fn of fns) {
         for (const value of values) {
@@ -3563,13 +3361,13 @@ var createAlgebraRuntime = /* @__PURE__ */ __name(({ Option: Option3, Result: Re
         }
       }
       return out;
-    }, "ap_vec"),
-    ap_hashmap_values: /* @__PURE__ */ __name((fns, values) => apHashMapValues(fns, values), "ap_hashmap_values")
+    },
+    ap_hashmap_values: (fns, values) => apHashMapValues(fns, values)
   };
   const monad2 = {
-    flat_map_option: /* @__PURE__ */ __name((value, mapper) => Option3.and_then(mapper, value), "flat_map_option"),
-    flat_map_result: /* @__PURE__ */ __name((value, mapper) => Result2.and_then(mapper, value), "flat_map_result"),
-    flat_map_vec: /* @__PURE__ */ __name((values, mapper) => {
+    flat_map_option: (value, mapper) => Option3.and_then(mapper, value),
+    flat_map_result: (value, mapper) => Result2.and_then(mapper, value),
+    flat_map_vec: (values, mapper) => {
       const out = Vec.new();
       for (const value of values) {
         const mapped = mapper(value);
@@ -3577,42 +3375,42 @@ var createAlgebraRuntime = /* @__PURE__ */ __name(({ Option: Option3, Result: Re
         for (const inner of mapped) out.push(inner);
       }
       return out;
-    }, "flat_map_vec"),
-    flat_map_hashmap_values: /* @__PURE__ */ __name((values, mapper) => flatMapHashMapValues(values, mapper), "flat_map_hashmap_values"),
-    join_option: /* @__PURE__ */ __name((value) => Option3.and_then((v) => v, value), "join_option"),
-    join_result: /* @__PURE__ */ __name((value) => Result2.and_then((v) => v, value), "join_result"),
-    join_vec: /* @__PURE__ */ __name((values) => {
+    },
+    flat_map_hashmap_values: (values, mapper) => flatMapHashMapValues(values, mapper),
+    join_option: (value) => Option3.and_then((v) => v, value),
+    join_result: (value) => Result2.and_then((v) => v, value),
+    join_vec: (values) => {
       const out = Vec.new();
       for (const inner of values) {
         if (!(inner instanceof Vec)) continue;
         for (const value of inner) out.push(value);
       }
       return out;
-    }, "join_vec"),
-    join_hashmap_values: /* @__PURE__ */ __name((values) => flatMapHashMapValues(values, (inner) => inner), "join_hashmap_values")
+    },
+    join_hashmap_values: (values) => flatMapHashMapValues(values, (inner) => inner)
   };
   const foldable2 = {
-    fold_option: /* @__PURE__ */ __name((value, init, folder) => {
+    fold_option: (value, init, folder) => {
       const tag = value && typeof value === "object" && isEnumLike2(value) ? getEnumTag2(value) : "";
       if (tag !== "Some") return init;
       return folder(init, getEnumPayload2(value));
-    }, "fold_option"),
-    fold_result: /* @__PURE__ */ __name((value, init, folder) => {
+    },
+    fold_result: (value, init, folder) => {
       const tag = value && typeof value === "object" && isEnumLike2(value) ? getEnumTag2(value) : "";
       if (tag !== "Ok") return init;
       return folder(init, getEnumPayload2(value));
-    }, "fold_result"),
-    fold_vec: /* @__PURE__ */ __name((values, init, folder) => vec.fold(values, init, folder), "fold_vec"),
-    fold_hashmap_values: /* @__PURE__ */ __name((values, init, folder) => {
+    },
+    fold_vec: (values, init, folder) => vec.fold(values, init, folder),
+    fold_hashmap_values: (values, init, folder) => {
       let acc = init;
       for (const value of values.values()) {
         acc = folder(acc, value);
       }
       return acc;
-    }, "fold_hashmap_values")
+    }
   };
   const traversable2 = {
-    traverse_vec_option: /* @__PURE__ */ __name((values, mapper) => {
+    traverse_vec_option: (values, mapper) => {
       const out = Vec.new();
       for (const value of values) {
         const mapped = mapper(value);
@@ -3621,8 +3419,8 @@ var createAlgebraRuntime = /* @__PURE__ */ __name(({ Option: Option3, Result: Re
         out.push(getEnumPayload2(mapped));
       }
       return Option3.Some(out);
-    }, "traverse_vec_option"),
-    traverse_vec_result: /* @__PURE__ */ __name((values, mapper) => {
+    },
+    traverse_vec_result: (values, mapper) => {
       const out = Vec.new();
       for (const value of values) {
         const mapped = mapper(value);
@@ -3631,30 +3429,20 @@ var createAlgebraRuntime = /* @__PURE__ */ __name(({ Option: Option3, Result: Re
         out.push(getEnumPayload2(mapped));
       }
       return Result2.Ok(out);
-    }, "traverse_vec_result"),
-    sequence_vec_option: /* @__PURE__ */ __name((values) => traversable2.traverse_vec_option(values, (item) => item), "sequence_vec_option"),
-    sequence_vec_result: /* @__PURE__ */ __name((values) => traversable2.traverse_vec_result(values, (item) => item), "sequence_vec_result")
+    },
+    sequence_vec_option: (values) => traversable2.traverse_vec_option(values, (item) => item),
+    sequence_vec_result: (values) => traversable2.traverse_vec_result(values, (item) => item)
   };
-  return {
-    functor: functor2,
-    applicative: applicative2,
-    monad: monad2,
-    foldable: foldable2,
-    traversable: traversable2
-  };
-}, "createAlgebraRuntime");
+  return { functor: functor2, applicative: applicative2, monad: monad2, foldable: foldable2, traversable: traversable2 };
+};
 
 // src/runtime/core-runtime.ts
-var __lumina_range = /* @__PURE__ */ __name((start, end, inclusive, hasStart, hasEnd) => {
+var __lumina_range = (start, end, inclusive, hasStart, hasEnd) => {
   const startValue = hasStart ? Number(start) : null;
   const endValue = hasEnd ? Number(end) : null;
-  return {
-    start: startValue,
-    end: endValue,
-    inclusive: !!inclusive
-  };
-}, "__lumina_range");
-var __lumina_slice = /* @__PURE__ */ __name((str2, start, end, inclusive) => {
+  return { start: startValue, end: endValue, inclusive: !!inclusive };
+};
+var __lumina_slice = (str2, start, end, inclusive) => {
   const actualStart = start ?? 0;
   const actualEnd = end ?? str2.length;
   const finalEnd = inclusive ? actualEnd + 1 : actualEnd;
@@ -3665,10 +3453,10 @@ var __lumina_slice = /* @__PURE__ */ __name((str2, start, end, inclusive) => {
     throw new Error(`String slice end index ${finalEnd} out of bounds`);
   }
   return str2.substring(actualStart, finalEnd);
-}, "__lumina_slice");
-var isRangeValue = /* @__PURE__ */ __name((value) => !!value && typeof value === "object" && "start" in value && "end" in value && "inclusive" in value, "isRangeValue");
-var clampIndex = /* @__PURE__ */ __name((value, min, max) => Math.min(Math.max(value, min), max), "clampIndex");
-var __lumina_fixed_array = /* @__PURE__ */ __name((size, initializer) => {
+};
+var isRangeValue = (value) => !!value && typeof value === "object" && "start" in value && "end" in value && "inclusive" in value;
+var clampIndex = (value, min, max) => Math.min(Math.max(value, min), max);
+var __lumina_fixed_array = (size, initializer) => {
   const normalized = Math.max(0, Math.trunc(size));
   const arr = new Array(normalized);
   if (initializer) {
@@ -3677,30 +3465,28 @@ var __lumina_fixed_array = /* @__PURE__ */ __name((size, initializer) => {
     }
   }
   return arr;
-}, "__lumina_fixed_array");
-var __lumina_array_bounds_check = /* @__PURE__ */ __name((array, index, expectedSize) => {
+};
+var __lumina_array_bounds_check = (array, index, expectedSize) => {
   if (expectedSize !== void 0 && array.length !== expectedSize) {
     throw new Error(`Array size mismatch: expected ${expectedSize}, got ${array.length}`);
   }
   if (index < 0 || index >= array.length) {
     throw new Error(`Array index out of bounds: ${index} (array length: ${array.length})`);
   }
-}, "__lumina_array_bounds_check");
-var __lumina_array_literal = /* @__PURE__ */ __name((elements, expectedSize) => {
+};
+var __lumina_array_literal = (elements, expectedSize) => {
   if (expectedSize !== void 0 && elements.length !== expectedSize) {
     throw new Error(`Array literal has wrong size: expected ${expectedSize}, got ${elements.length}`);
   }
   return elements;
-}, "__lumina_array_literal");
+};
 function __set(obj, prop, value) {
   obj[prop] = value;
   return value;
 }
-__name(__set, "__set");
-var _LuminaPanic = class _LuminaPanic extends Error {
+var LuminaPanic = class _LuminaPanic extends Error {
   constructor(message, value) {
     super(message);
-    __publicField(this, "value");
     this.name = "LuminaPanic";
     this.value = value;
     if (Error.captureStackTrace) {
@@ -3708,10 +3494,8 @@ var _LuminaPanic = class _LuminaPanic extends Error {
     }
   }
 };
-__name(_LuminaPanic, "LuminaPanic");
-var LuminaPanic = _LuminaPanic;
-var createCoreRuntime = /* @__PURE__ */ __name(({ formatValue: formatValue2, isEnumLike: isEnumLike2, getEnumTag: getEnumTag2, getEnumPayload: getEnumPayload2 }) => {
-  const __lumina_index2 = /* @__PURE__ */ __name((target, index, expectedSize) => {
+var createCoreRuntime = ({ formatValue: formatValue2, isEnumLike: isEnumLike2, getEnumTag: getEnumTag2, getEnumPayload: getEnumPayload2 }) => {
+  const __lumina_index2 = (target, index, expectedSize) => {
     if (typeof target === "string" && isRangeValue(index)) {
       const length = target.length;
       const start = index.start == null ? 0 : clampIndex(Math.trunc(index.start), 0, length);
@@ -3737,44 +3521,39 @@ var createCoreRuntime = /* @__PURE__ */ __name(({ formatValue: formatValue2, isE
       return target[String(index)];
     }
     return void 0;
-  }, "__lumina_index");
+  };
   const Option3 = {
-    Some: /* @__PURE__ */ __name((value) => ({
-      $tag: "Some",
-      $payload: value
-    }), "Some"),
-    None: {
-      $tag: "None"
-    },
-    map: /* @__PURE__ */ __name((fn, opt) => {
+    Some: (value) => ({ $tag: "Some", $payload: value }),
+    None: { $tag: "None" },
+    map: (fn, opt) => {
       const tag = opt && typeof opt === "object" && isEnumLike2(opt) ? getEnumTag2(opt) : "";
       if (tag === "Some") return Option3.Some(fn(getEnumPayload2(opt)));
       return Option3.None;
-    }, "map"),
-    and_then: /* @__PURE__ */ __name((fn, opt) => {
+    },
+    and_then: (fn, opt) => {
       const tag = opt && typeof opt === "object" && isEnumLike2(opt) ? getEnumTag2(opt) : "";
       if (tag === "Some") return fn(getEnumPayload2(opt));
       return Option3.None;
-    }, "and_then"),
-    or_else: /* @__PURE__ */ __name((fallback, opt) => {
+    },
+    or_else: (fallback, opt) => {
       const tag = opt && typeof opt === "object" && isEnumLike2(opt) ? getEnumTag2(opt) : "";
       if (tag === "Some") return opt;
       return fallback();
-    }, "or_else"),
-    unwrap_or: /* @__PURE__ */ __name((fallback, opt) => {
+    },
+    unwrap_or: (fallback, opt) => {
       const tag = opt && typeof opt === "object" && isEnumLike2(opt) ? getEnumTag2(opt) : "";
       if (tag === "Some") return getEnumPayload2(opt);
       return fallback;
-    }, "unwrap_or"),
-    is_some: /* @__PURE__ */ __name((opt) => {
+    },
+    is_some: (opt) => {
       const tag = opt && typeof opt === "object" && isEnumLike2(opt) ? getEnumTag2(opt) : "";
       return tag === "Some";
-    }, "is_some"),
-    is_none: /* @__PURE__ */ __name((opt) => {
+    },
+    is_none: (opt) => {
       const tag = opt && typeof opt === "object" && isEnumLike2(opt) ? getEnumTag2(opt) : "";
       return tag !== "Some";
-    }, "is_none"),
-    unwrap: /* @__PURE__ */ __name((opt, message) => {
+    },
+    unwrap: (opt, message) => {
       const tag = opt && typeof opt === "object" && isEnumLike2(opt) ? getEnumTag2(opt) : "";
       if (tag === "Some") return getEnumPayload2(opt);
       const rendered = formatValue2(opt);
@@ -3784,73 +3563,63 @@ var createCoreRuntime = /* @__PURE__ */ __name(({ formatValue: formatValue2, isE
         Error.captureStackTrace(err, Option3.unwrap);
       }
       throw err;
-    }, "unwrap")
+    }
   };
   const Result2 = {
-    Ok: /* @__PURE__ */ __name((value) => ({
-      $tag: "Ok",
-      $payload: value
-    }), "Ok"),
-    Err: /* @__PURE__ */ __name((error) => ({
-      $tag: "Err",
-      $payload: error
-    }), "Err"),
-    map: /* @__PURE__ */ __name((fn, res) => {
+    Ok: (value) => ({ $tag: "Ok", $payload: value }),
+    Err: (error) => ({ $tag: "Err", $payload: error }),
+    map: (fn, res) => {
       const tag = res && typeof res === "object" && isEnumLike2(res) ? getEnumTag2(res) : "";
       if (tag === "Ok") return Result2.Ok(fn(getEnumPayload2(res)));
       return res;
-    }, "map"),
-    and_then: /* @__PURE__ */ __name((fn, res) => {
+    },
+    and_then: (fn, res) => {
       const tag = res && typeof res === "object" && isEnumLike2(res) ? getEnumTag2(res) : "";
       if (tag === "Ok") return fn(getEnumPayload2(res));
       return res;
-    }, "and_then"),
-    or_else: /* @__PURE__ */ __name((fn, res) => {
+    },
+    or_else: (fn, res) => {
       const tag = res && typeof res === "object" && isEnumLike2(res) ? getEnumTag2(res) : "";
       if (tag === "Ok") return res;
       return fn(getEnumPayload2(res));
-    }, "or_else"),
-    unwrap_or: /* @__PURE__ */ __name((fallback, res) => {
+    },
+    unwrap_or: (fallback, res) => {
       const tag = res && typeof res === "object" && isEnumLike2(res) ? getEnumTag2(res) : "";
       if (tag === "Ok") return getEnumPayload2(res);
       return fallback;
-    }, "unwrap_or"),
-    is_ok: /* @__PURE__ */ __name((res) => {
+    },
+    is_ok: (res) => {
       const tag = res && typeof res === "object" && isEnumLike2(res) ? getEnumTag2(res) : "";
       return tag === "Ok";
-    }, "is_ok"),
-    is_err: /* @__PURE__ */ __name((res) => {
+    },
+    is_err: (res) => {
       const tag = res && typeof res === "object" && isEnumLike2(res) ? getEnumTag2(res) : "";
       return tag !== "Ok";
-    }, "is_err")
+    }
   };
-  return {
-    __lumina_index: __lumina_index2,
-    Option: Option3,
-    Result: Result2
-  };
-}, "createCoreRuntime");
+  return { __lumina_index: __lumina_index2, Option: Option3, Result: Result2 };
+};
 
 // src/runtime/concurrency-runtime.ts
-var formatError = /* @__PURE__ */ __name((error) => {
+var formatError = (error) => {
   if (error instanceof Error && error.message) return error.message;
   return String(error);
-}, "formatError");
-var isUrlLike = /* @__PURE__ */ __name((specifier) => /^[a-z]+:/i.test(specifier), "isUrlLike");
-var toWorkerMessageString = /* @__PURE__ */ __name((value) => {
+};
+var isUrlLike = (specifier) => /^[a-z]+:/i.test(specifier);
+var toWorkerMessageString = (value) => {
   if (typeof value === "string") return value;
   try {
     return JSON.stringify(value);
   } catch {
     return String(value);
   }
-}, "toWorkerMessageString");
-var toByteNumber = /* @__PURE__ */ __name((value) => {
+};
+var toByteNumber = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return 0;
   return Math.max(0, Math.min(255, Math.trunc(num)));
-}, "toByteNumber");
-var toByteArray = /* @__PURE__ */ __name((value) => {
+};
+var toByteArray = (value) => {
   if (value instanceof Uint8Array) return value;
   if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
     return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
@@ -3864,19 +3633,19 @@ var toByteArray = /* @__PURE__ */ __name((value) => {
     }
   }
   return new Uint8Array(0);
-}, "toByteArray");
-var decodeTextFromBytes = /* @__PURE__ */ __name((bytes) => {
+};
+var decodeTextFromBytes = (bytes) => {
   const data = Uint8Array.from(bytes);
   if (typeof TextDecoder === "function") {
     return new TextDecoder().decode(data);
   }
   return String.fromCharCode(...Array.from(data));
-}, "decodeTextFromBytes");
+};
 var STREAM_DEFAULT_CHUNK_SIZE = 16 * 1024;
-var _AtomicI32 = class _AtomicI32 {
+var AtomicI32 = class {
   constructor(initial) {
-    __publicField(this, "storage", null);
-    __publicField(this, "fallback", 0);
+    this.storage = null;
+    this.fallback = 0;
     const value = Math.trunc(initial) | 0;
     const hasSharedMemory = typeof SharedArrayBuffer === "function" && typeof Atomics !== "undefined";
     if (hasSharedMemory) {
@@ -3931,19 +3700,15 @@ var _AtomicI32 = class _AtomicI32 {
     return Atomics.compareExchange(this.storage, 0, exp, rep);
   }
 };
-__name(_AtomicI32, "AtomicI32");
-var AtomicI32 = _AtomicI32;
-var _Thread = class _Thread {
+var Thread = class {
   constructor(entry, option) {
-    __publicField(this, "entry");
-    __publicField(this, "option");
-    __publicField(this, "queue", []);
-    __publicField(this, "waiters", []);
-    __publicField(this, "closed", false);
-    __publicField(this, "exitCode", null);
-    __publicField(this, "joinWaiters", []);
     this.entry = entry;
     this.option = option;
+    this.queue = [];
+    this.waiters = [];
+    this.closed = false;
+    this.exitCode = null;
+    this.joinWaiters = [];
     if (entry.kind === "node") {
       entry.worker.on("message", (value) => this.onMessage(value));
       entry.worker.on("error", () => this.finish(-1));
@@ -4021,86 +3786,63 @@ var _Thread = class _Thread {
     });
   }
 };
-__name(_Thread, "Thread");
-var Thread = _Thread;
-var _ThreadHandle = class _ThreadHandle {
+var ThreadHandle = class {
   constructor(task, resultRuntime) {
-    __publicField(this, "resultRuntime");
-    __publicField(this, "result");
     this.resultRuntime = resultRuntime;
-    this.result = Promise.resolve().then(() => task()).then((value) => this.resultRuntime.Ok(value), (error) => this.resultRuntime.Err(error instanceof Error ? error.message : String(error)));
+    this.result = Promise.resolve().then(() => task()).then(
+      (value) => this.resultRuntime.Ok(value),
+      (error) => this.resultRuntime.Err(error instanceof Error ? error.message : String(error))
+    );
   }
   join() {
     return this.result;
   }
 };
-__name(_ThreadHandle, "ThreadHandle");
-var ThreadHandle = _ThreadHandle;
-var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
-  var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+var createConcurrencyRuntime = (deps) => {
   let webWorkerNextHandle = 1;
   const webWorkerHandles = /* @__PURE__ */ new Map();
   let runtimeStreamNextHandle = 1;
   const runtimeStreams = /* @__PURE__ */ new Map();
-  const option = /* @__PURE__ */ __name(() => deps.getOption(), "option");
-  const result = /* @__PURE__ */ __name(() => deps.getResult(), "result");
-  const channel2 = /* @__PURE__ */ __name(() => deps.getChannel(), "channel");
-  const resolveNodeWorkerSpecifier = /* @__PURE__ */ __name((specifier) => {
+  const option = () => deps.getOption();
+  const result = () => deps.getResult();
+  const channel2 = () => deps.getChannel();
+  const resolveNodeWorkerSpecifier = (specifier) => {
     if (isUrlLike(specifier)) return specifier;
     const nodePath = getNodePath();
     return nodePath ? nodePath.resolve(specifier) : resolvePathBasic(specifier);
-  }, "resolveNodeWorkerSpecifier");
-  const createThreadWorker = /* @__PURE__ */ __name(async (specifier) => {
+  };
+  const createThreadWorker = async (specifier) => {
     if (isNodeRuntime()) {
       try {
         const nodeWorkers = await import("worker_threads");
         const WorkerCtor = nodeWorkers.Worker;
         if (typeof WorkerCtor === "function") {
-          const worker = new WorkerCtor(resolveNodeWorkerSpecifier(specifier), {
-            type: "module"
-          });
-          return {
-            kind: "node",
-            worker
-          };
+          const worker = new WorkerCtor(resolveNodeWorkerSpecifier(specifier), { type: "module" });
+          return { kind: "node", worker };
         }
       } catch {
       }
     }
     if (typeof Worker === "function") {
-      const worker = new Worker(specifier, {
-        type: "module"
-      });
-      return {
-        kind: "web",
-        worker
-      };
+      const worker = new Worker(specifier, { type: "module" });
+      return { kind: "web", worker };
     }
     throw new Error("Worker API is not available in this environment");
-  }, "createThreadWorker");
-  const getWebWorkerRecord = /* @__PURE__ */ __name((handle) => webWorkerHandles.get(Math.trunc(handle)) ?? null, "getWebWorkerRecord");
-  const registerWebWorker = /* @__PURE__ */ __name((entry, inlineUrl = null) => {
+  };
+  const getWebWorkerRecord = (handle) => webWorkerHandles.get(Math.trunc(handle)) ?? null;
+  const registerWebWorker = (entry, inlineUrl = null) => {
     const id = webWorkerNextHandle++;
-    webWorkerHandles.set(id, {
-      id,
-      entry,
-      inlineUrl
-    });
+    webWorkerHandles.set(id, { id, entry, inlineUrl });
     return id;
-  }, "registerWebWorker");
-  const createInlineWorker = /* @__PURE__ */ __name(async (source) => {
+  };
+  const createInlineWorker = async (source) => {
     if (isNodeRuntime()) {
       try {
         const nodeWorkers = await import("worker_threads");
         const WorkerCtor = nodeWorkers.Worker;
         if (typeof WorkerCtor === "function") {
           return {
-            worker: {
-              kind: "node",
-              worker: new WorkerCtor(String(source), {
-                eval: true
-              })
-            },
+            worker: { kind: "node", worker: new WorkerCtor(String(source), { eval: true }) },
             inlineUrl: null
           };
         }
@@ -4108,26 +3850,14 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       }
     }
     if (typeof Worker === "function" && typeof Blob === "function" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
-      const blob = new Blob([
-        String(source)
-      ], {
-        type: "application/javascript"
-      });
+      const blob = new Blob([String(source)], { type: "application/javascript" });
       const inlineUrl = URL.createObjectURL(blob);
-      const worker = new Worker(inlineUrl, {
-        type: "module"
-      });
-      return {
-        worker: {
-          kind: "web",
-          worker
-        },
-        inlineUrl
-      };
+      const worker = new Worker(inlineUrl, { type: "module" });
+      return { worker: { kind: "web", worker }, inlineUrl };
     }
     throw new Error("Worker API is not available in this environment");
-  }, "createInlineWorker");
-  const cleanupWebWorkerRecord = /* @__PURE__ */ __name((record) => {
+  };
+  const cleanupWebWorkerRecord = (record) => {
     if (!record) return;
     webWorkerHandles.delete(record.id);
     if (record.inlineUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
@@ -4136,22 +3866,19 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       } catch {
       }
     }
-  }, "cleanupWebWorkerRecord");
-  const isWorkerContextBrowser = /* @__PURE__ */ __name(() => typeof WorkerGlobalScope !== "undefined" && typeof self !== "undefined" && self instanceof WorkerGlobalScope, "isWorkerContextBrowser");
-  const isWorkerContextNode = /* @__PURE__ */ __name(() => {
+  };
+  const isWorkerContextBrowser = () => typeof WorkerGlobalScope !== "undefined" && typeof self !== "undefined" && self instanceof WorkerGlobalScope;
+  const isWorkerContextNode = () => {
     if (!isNodeRuntime()) return false;
     const workerThreads = getNodeBuiltinModule("node:worker_threads");
     return workerThreads != null && typeof workerThreads.isMainThread === "boolean" ? !workerThreads.isMainThread : false;
-  }, "isWorkerContextNode");
-  const registerRuntimeStream = /* @__PURE__ */ __name((state2) => {
+  };
+  const registerRuntimeStream = (state2) => {
     const id = runtimeStreamNextHandle++;
-    runtimeStreams.set(id, {
-      id,
-      state: state2
-    });
+    runtimeStreams.set(id, { id, state: state2 });
     return id;
-  }, "registerRuntimeStream");
-  const cleanupRuntimeStreamHandle = /* @__PURE__ */ __name((handle, seen = /* @__PURE__ */ new Set()) => {
+  };
+  const cleanupRuntimeStreamHandle = (handle, seen = /* @__PURE__ */ new Set()) => {
     const normalized = Math.trunc(handle);
     if (seen.has(normalized)) return;
     seen.add(normalized);
@@ -4167,58 +3894,34 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
     if (record.state.kind === "pipe") {
       cleanupRuntimeStreamHandle(record.state.sourceHandle, seen);
     }
-  }, "cleanupRuntimeStreamHandle");
-  const readChunkFromRuntimeStream = /* @__PURE__ */ __name(async (handle, seen = /* @__PURE__ */ new Set()) => {
+  };
+  const readChunkFromRuntimeStream = async (handle, seen = /* @__PURE__ */ new Set()) => {
     const normalized = Math.trunc(handle);
     if (seen.has(normalized)) {
-      return {
-        ok: false,
-        error: "Detected cyclic stream pipeline"
-      };
+      return { ok: false, error: "Detected cyclic stream pipeline" };
     }
     const record = runtimeStreams.get(normalized);
-    if (!record) return {
-      ok: false,
-      error: `Unknown stream handle ${handle}`
-    };
+    if (!record) return { ok: false, error: `Unknown stream handle ${handle}` };
     if (record.state.kind === "buffer") {
       const state2 = record.state;
-      if (state2.offset >= state2.data.length) return {
-        ok: true,
-        chunk: null
-      };
+      if (state2.offset >= state2.data.length) return { ok: true, chunk: null };
       const nextEnd = Math.min(state2.data.length, state2.offset + state2.chunkSize);
       const chunk = Array.from(state2.data.subarray(state2.offset, nextEnd));
       state2.offset = nextEnd;
-      return {
-        ok: true,
-        chunk
-      };
+      return { ok: true, chunk };
     }
     if (record.state.kind === "reader") {
       const state2 = record.state;
-      if (state2.done) return {
-        ok: true,
-        chunk: null
-      };
+      if (state2.done) return { ok: true, chunk: null };
       try {
         const next = await state2.reader.read();
         if (next.done) {
           state2.done = true;
-          return {
-            ok: true,
-            chunk: null
-          };
+          return { ok: true, chunk: null };
         }
-        return {
-          ok: true,
-          chunk: Array.from(toByteArray(next.value))
-        };
+        return { ok: true, chunk: Array.from(toByteArray(next.value)) };
       } catch (error) {
-        return {
-          ok: false,
-          error: formatError(error)
-        };
+        return { ok: false, error: formatError(error) };
       }
     }
     const pipeState = record.state;
@@ -4228,24 +3931,18 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
     if (!source.ok) return source;
     if (source.chunk == null) return source;
     try {
-      return {
-        ok: true,
-        chunk: Array.from(toByteArray(pipeState.transform(source.chunk)))
-      };
+      return { ok: true, chunk: Array.from(toByteArray(pipeState.transform(source.chunk))) };
     } catch (error) {
-      return {
-        ok: false,
-        error: formatError(error)
-      };
+      return { ok: false, error: formatError(error) };
     }
-  }, "readChunkFromRuntimeStream");
-  const sabYield = /* @__PURE__ */ __name(async () => {
+  };
+  const sabYield = async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-  }, "sabYield");
-  let Mutex = (_a2 = class {
+  };
+  class Mutex {
     constructor() {
-      __publicField(this, "locked", false);
-      __publicField(this, "waiters", []);
+      this.locked = false;
+      this.waiters = [];
     }
     async acquire() {
       if (!this.locked) {
@@ -4274,11 +3971,10 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
     is_locked() {
       return this.locked;
     }
-  }, __name(_a2, "Mutex"), _a2);
-  let Semaphore = (_b = class {
+  }
+  class Semaphore {
     constructor(initialPermits) {
-      __publicField(this, "permits");
-      __publicField(this, "waiters", []);
+      this.waiters = [];
       this.permits = Math.max(0, Math.trunc(initialPermits));
     }
     async acquire() {
@@ -4309,25 +4005,25 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
     available() {
       return this.permits;
     }
-  }, __name(_b, "Semaphore"), _b);
+  }
   const sync2 = {
-    mutex_new: /* @__PURE__ */ __name(() => new Mutex(), "mutex_new"),
-    mutex_acquire: /* @__PURE__ */ __name(async (mutex) => mutex.acquire(), "mutex_acquire"),
-    mutex_try_acquire: /* @__PURE__ */ __name((mutex) => mutex.try_acquire(), "mutex_try_acquire"),
-    mutex_release: /* @__PURE__ */ __name((mutex) => mutex.release(), "mutex_release"),
-    mutex_is_locked: /* @__PURE__ */ __name((mutex) => mutex.is_locked(), "mutex_is_locked"),
-    semaphore_new: /* @__PURE__ */ __name((permits) => new Semaphore(permits), "semaphore_new"),
-    semaphore_acquire: /* @__PURE__ */ __name(async (semaphore) => semaphore.acquire(), "semaphore_acquire"),
-    semaphore_try_acquire: /* @__PURE__ */ __name((semaphore) => semaphore.try_acquire(), "semaphore_try_acquire"),
-    semaphore_release: /* @__PURE__ */ __name((semaphore, count = 1) => semaphore.release(count), "semaphore_release"),
-    semaphore_available: /* @__PURE__ */ __name((semaphore) => semaphore.available(), "semaphore_available"),
-    atomic_i32_new: /* @__PURE__ */ __name((initial) => new AtomicI32(initial), "atomic_i32_new"),
-    atomic_i32_is_available: /* @__PURE__ */ __name(() => AtomicI32.is_available(), "atomic_i32_is_available"),
-    atomic_i32_load: /* @__PURE__ */ __name((value) => value.load(), "atomic_i32_load"),
-    atomic_i32_store: /* @__PURE__ */ __name((value, next) => value.store(next), "atomic_i32_store"),
-    atomic_i32_add: /* @__PURE__ */ __name((value, delta) => value.add(delta), "atomic_i32_add"),
-    atomic_i32_sub: /* @__PURE__ */ __name((value, delta) => value.sub(delta), "atomic_i32_sub"),
-    atomic_i32_compare_exchange: /* @__PURE__ */ __name((value, expected, replacement) => value.compare_exchange(expected, replacement), "atomic_i32_compare_exchange")
+    mutex_new: () => new Mutex(),
+    mutex_acquire: async (mutex) => mutex.acquire(),
+    mutex_try_acquire: (mutex) => mutex.try_acquire(),
+    mutex_release: (mutex) => mutex.release(),
+    mutex_is_locked: (mutex) => mutex.is_locked(),
+    semaphore_new: (permits) => new Semaphore(permits),
+    semaphore_acquire: async (semaphore) => semaphore.acquire(),
+    semaphore_try_acquire: (semaphore) => semaphore.try_acquire(),
+    semaphore_release: (semaphore, count = 1) => semaphore.release(count),
+    semaphore_available: (semaphore) => semaphore.available(),
+    atomic_i32_new: (initial) => new AtomicI32(initial),
+    atomic_i32_is_available: () => AtomicI32.is_available(),
+    atomic_i32_load: (value) => value.load(),
+    atomic_i32_store: (value, next) => value.store(next),
+    atomic_i32_add: (value, delta) => value.add(delta),
+    atomic_i32_sub: (value, delta) => value.sub(delta),
+    atomic_i32_compare_exchange: (value, expected, replacement) => value.compare_exchange(expected, replacement)
   };
   const SAB_HEAD = 0;
   const SAB_TAIL = 1;
@@ -4337,8 +4033,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
   const SAB_CLOSE_FLAG = 5;
   const SAB_CONTROL_WORDS = 6;
   const SAB_DATA_OFFSET_BYTES = Int32Array.BYTES_PER_ELEMENT * SAB_CONTROL_WORDS;
-  const sabElementSize = /* @__PURE__ */ __name((kind) => kind === "f64" ? 8 : 4, "sabElementSize");
-  const normalizeSabValue = /* @__PURE__ */ __name((kind, value) => {
+  const sabElementSize = (kind) => kind === "f64" ? 8 : 4;
+  const normalizeSabValue = (kind, value) => {
     const n = Number(value);
     switch (kind) {
       case "u32":
@@ -4351,8 +4047,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       default:
         return Math.trunc(n) | 0;
     }
-  }, "normalizeSabValue");
-  const createSABChannelState = /* @__PURE__ */ __name((capacity, kind) => {
+  };
+  const createSABChannelState = (capacity, kind) => {
     const cap = Math.max(1, Math.trunc(capacity));
     if (AtomicI32.is_available()) {
       const totalBytes = SAB_DATA_OFFSET_BYTES + cap * sabElementSize(kind);
@@ -4364,12 +4060,7 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       Atomics.store(control, SAB_SENDER_CLOSED, 0);
       Atomics.store(control, SAB_RECEIVER_CLOSED, 0);
       Atomics.store(control, SAB_CLOSE_FLAG, 0);
-      const state2 = {
-        mode: "sab",
-        kind,
-        capacity: cap,
-        control
-      };
+      const state2 = { mode: "sab", kind, capacity: cap, control };
       if (kind === "i32") {
         state2.dataI32 = new Int32Array(buffer, SAB_DATA_OFFSET_BYTES, cap);
       } else if (kind === "u32") {
@@ -4392,8 +4083,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       };
     }
     throw new Error("SharedArrayBuffer + Atomics or MessageChannel fallback is not available in this environment");
-  }, "createSABChannelState");
-  const writeSabStateValue = /* @__PURE__ */ __name((state2, index, value) => {
+  };
+  const writeSabStateValue = (state2, index, value) => {
     const normalized = normalizeSabValue(state2.kind, value);
     switch (state2.kind) {
       case "u32":
@@ -4409,8 +4100,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       default:
         state2.dataI32[index] = Math.trunc(normalized) | 0;
     }
-  }, "writeSabStateValue");
-  const readSabStateValue = /* @__PURE__ */ __name((state2, index) => {
+  };
+  const readSabStateValue = (state2, index) => {
     switch (state2.kind) {
       case "u32":
         return state2.dataU32[index] >>> 0;
@@ -4422,10 +4113,9 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       default:
         return Math.trunc(state2.dataI32[index]) | 0;
     }
-  }, "readSabStateValue");
-  let SABSenderBase = (_c = class {
+  };
+  class SABSenderBase {
     constructor(state2) {
-      __publicField(this, "state");
       this.state = state2;
     }
     try_send(value) {
@@ -4484,10 +4174,9 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
     drop() {
       this.close();
     }
-  }, __name(_c, "SABSenderBase"), _c);
-  let SABReceiverBase = (_d = class {
+  }
+  class SABReceiverBase {
     constructor(state2) {
-      __publicField(this, "state");
       this.state = state2;
     }
     try_recv() {
@@ -4550,119 +4239,107 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
     drop() {
       this.close();
     }
-  }, __name(_d, "SABReceiverBase"), _d);
-  let SABSenderI32 = (_e = class extends SABSenderBase {
-  }, __name(_e, "SABSenderI32"), _e);
-  let SABReceiverI32 = (_f = class extends SABReceiverBase {
-  }, __name(_f, "SABReceiverI32"), _f);
-  let SABSenderU32 = (_g = class extends SABSenderBase {
-  }, __name(_g, "SABSenderU32"), _g);
-  let SABReceiverU32 = (_h = class extends SABReceiverBase {
-  }, __name(_h, "SABReceiverU32"), _h);
-  let SABSenderF32 = (_i = class extends SABSenderBase {
-  }, __name(_i, "SABSenderF32"), _i);
-  let SABReceiverF32 = (_j = class extends SABReceiverBase {
-  }, __name(_j, "SABReceiverF32"), _j);
-  let SABSenderF64 = (_k = class extends SABSenderBase {
-  }, __name(_k, "SABSenderF64"), _k);
-  let SABReceiverF64 = (_l = class extends SABReceiverBase {
-  }, __name(_l, "SABReceiverF64"), _l);
+  }
+  class SABSenderI32 extends SABSenderBase {
+  }
+  class SABReceiverI32 extends SABReceiverBase {
+  }
+  class SABSenderU32 extends SABSenderBase {
+  }
+  class SABReceiverU32 extends SABReceiverBase {
+  }
+  class SABSenderF32 extends SABSenderBase {
+  }
+  class SABReceiverF32 extends SABReceiverBase {
+  }
+  class SABSenderF64 extends SABSenderBase {
+  }
+  class SABReceiverF64 extends SABReceiverBase {
+  }
   const sab_channel2 = {
-    is_available: /* @__PURE__ */ __name(() => AtomicI32.is_available() || channel2().is_available(), "is_available"),
-    bounded_i32: /* @__PURE__ */ __name((capacity) => {
+    is_available: () => AtomicI32.is_available() || channel2().is_available(),
+    bounded_i32: (capacity) => {
       const state2 = createSABChannelState(capacity, "i32");
-      return {
-        sender: new SABSenderI32(state2),
-        receiver: new SABReceiverI32(state2)
-      };
-    }, "bounded_i32"),
-    bounded_u32: /* @__PURE__ */ __name((capacity) => {
+      return { sender: new SABSenderI32(state2), receiver: new SABReceiverI32(state2) };
+    },
+    bounded_u32: (capacity) => {
       const state2 = createSABChannelState(capacity, "u32");
-      return {
-        sender: new SABSenderU32(state2),
-        receiver: new SABReceiverU32(state2)
-      };
-    }, "bounded_u32"),
-    bounded_f32: /* @__PURE__ */ __name((capacity) => {
+      return { sender: new SABSenderU32(state2), receiver: new SABReceiverU32(state2) };
+    },
+    bounded_f32: (capacity) => {
       const state2 = createSABChannelState(capacity, "f32");
-      return {
-        sender: new SABSenderF32(state2),
-        receiver: new SABReceiverF32(state2)
-      };
-    }, "bounded_f32"),
-    bounded_f64: /* @__PURE__ */ __name((capacity) => {
+      return { sender: new SABSenderF32(state2), receiver: new SABReceiverF32(state2) };
+    },
+    bounded_f64: (capacity) => {
       const state2 = createSABChannelState(capacity, "f64");
-      return {
-        sender: new SABSenderF64(state2),
-        receiver: new SABReceiverF64(state2)
-      };
-    }, "bounded_f64"),
-    send_i32: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "send_i32"),
-    try_send_i32: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "try_send_i32"),
-    send_async_i32: /* @__PURE__ */ __name((sender, value) => sender.send(value), "send_async_i32"),
-    send_timeout_i32: /* @__PURE__ */ __name((sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs), "send_timeout_i32"),
-    recv_i32: /* @__PURE__ */ __name((receiver) => receiver.recv(), "recv_i32"),
-    try_recv_i32: /* @__PURE__ */ __name((receiver) => receiver.try_recv(), "try_recv_i32"),
-    close_sender_i32: /* @__PURE__ */ __name((sender) => sender.close(), "close_sender_i32"),
-    close_receiver_i32: /* @__PURE__ */ __name((receiver) => receiver.close(), "close_receiver_i32"),
-    is_sender_closed_i32: /* @__PURE__ */ __name((sender) => sender.is_closed(), "is_sender_closed_i32"),
-    is_receiver_closed_i32: /* @__PURE__ */ __name((receiver) => receiver.is_closed(), "is_receiver_closed_i32"),
-    close_i32: /* @__PURE__ */ __name((ch) => {
+      return { sender: new SABSenderF64(state2), receiver: new SABReceiverF64(state2) };
+    },
+    send_i32: (sender, value) => sender.try_send(value),
+    try_send_i32: (sender, value) => sender.try_send(value),
+    send_async_i32: (sender, value) => sender.send(value),
+    send_timeout_i32: (sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs),
+    recv_i32: (receiver) => receiver.recv(),
+    try_recv_i32: (receiver) => receiver.try_recv(),
+    close_sender_i32: (sender) => sender.close(),
+    close_receiver_i32: (receiver) => receiver.close(),
+    is_sender_closed_i32: (sender) => sender.is_closed(),
+    is_receiver_closed_i32: (receiver) => receiver.is_closed(),
+    close_i32: (ch) => {
       ch.sender.close();
       ch.receiver.close();
-    }, "close_i32"),
-    send_u32: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "send_u32"),
-    try_send_u32: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "try_send_u32"),
-    send_async_u32: /* @__PURE__ */ __name((sender, value) => sender.send(value), "send_async_u32"),
-    send_timeout_u32: /* @__PURE__ */ __name((sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs), "send_timeout_u32"),
-    recv_u32: /* @__PURE__ */ __name((receiver) => receiver.recv(), "recv_u32"),
-    try_recv_u32: /* @__PURE__ */ __name((receiver) => receiver.try_recv(), "try_recv_u32"),
-    close_sender_u32: /* @__PURE__ */ __name((sender) => sender.close(), "close_sender_u32"),
-    close_receiver_u32: /* @__PURE__ */ __name((receiver) => receiver.close(), "close_receiver_u32"),
-    is_sender_closed_u32: /* @__PURE__ */ __name((sender) => sender.is_closed(), "is_sender_closed_u32"),
-    is_receiver_closed_u32: /* @__PURE__ */ __name((receiver) => receiver.is_closed(), "is_receiver_closed_u32"),
-    close_u32: /* @__PURE__ */ __name((ch) => {
+    },
+    send_u32: (sender, value) => sender.try_send(value),
+    try_send_u32: (sender, value) => sender.try_send(value),
+    send_async_u32: (sender, value) => sender.send(value),
+    send_timeout_u32: (sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs),
+    recv_u32: (receiver) => receiver.recv(),
+    try_recv_u32: (receiver) => receiver.try_recv(),
+    close_sender_u32: (sender) => sender.close(),
+    close_receiver_u32: (receiver) => receiver.close(),
+    is_sender_closed_u32: (sender) => sender.is_closed(),
+    is_receiver_closed_u32: (receiver) => receiver.is_closed(),
+    close_u32: (ch) => {
       ch.sender.close();
       ch.receiver.close();
-    }, "close_u32"),
-    send_f32: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "send_f32"),
-    try_send_f32: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "try_send_f32"),
-    send_async_f32: /* @__PURE__ */ __name((sender, value) => sender.send(value), "send_async_f32"),
-    send_timeout_f32: /* @__PURE__ */ __name((sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs), "send_timeout_f32"),
-    recv_f32: /* @__PURE__ */ __name((receiver) => receiver.recv(), "recv_f32"),
-    try_recv_f32: /* @__PURE__ */ __name((receiver) => receiver.try_recv(), "try_recv_f32"),
-    close_sender_f32: /* @__PURE__ */ __name((sender) => sender.close(), "close_sender_f32"),
-    close_receiver_f32: /* @__PURE__ */ __name((receiver) => receiver.close(), "close_receiver_f32"),
-    is_sender_closed_f32: /* @__PURE__ */ __name((sender) => sender.is_closed(), "is_sender_closed_f32"),
-    is_receiver_closed_f32: /* @__PURE__ */ __name((receiver) => receiver.is_closed(), "is_receiver_closed_f32"),
-    close_f32: /* @__PURE__ */ __name((ch) => {
+    },
+    send_f32: (sender, value) => sender.try_send(value),
+    try_send_f32: (sender, value) => sender.try_send(value),
+    send_async_f32: (sender, value) => sender.send(value),
+    send_timeout_f32: (sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs),
+    recv_f32: (receiver) => receiver.recv(),
+    try_recv_f32: (receiver) => receiver.try_recv(),
+    close_sender_f32: (sender) => sender.close(),
+    close_receiver_f32: (receiver) => receiver.close(),
+    is_sender_closed_f32: (sender) => sender.is_closed(),
+    is_receiver_closed_f32: (receiver) => receiver.is_closed(),
+    close_f32: (ch) => {
       ch.sender.close();
       ch.receiver.close();
-    }, "close_f32"),
-    send_f64: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "send_f64"),
-    try_send_f64: /* @__PURE__ */ __name((sender, value) => sender.try_send(value), "try_send_f64"),
-    send_async_f64: /* @__PURE__ */ __name((sender, value) => sender.send(value), "send_async_f64"),
-    send_timeout_f64: /* @__PURE__ */ __name((sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs), "send_timeout_f64"),
-    recv_f64: /* @__PURE__ */ __name((receiver) => receiver.recv(), "recv_f64"),
-    try_recv_f64: /* @__PURE__ */ __name((receiver) => receiver.try_recv(), "try_recv_f64"),
-    close_sender_f64: /* @__PURE__ */ __name((sender) => sender.close(), "close_sender_f64"),
-    close_receiver_f64: /* @__PURE__ */ __name((receiver) => receiver.close(), "close_receiver_f64"),
-    is_sender_closed_f64: /* @__PURE__ */ __name((sender) => sender.is_closed(), "is_sender_closed_f64"),
-    is_receiver_closed_f64: /* @__PURE__ */ __name((receiver) => receiver.is_closed(), "is_receiver_closed_f64"),
-    close_f64: /* @__PURE__ */ __name((ch) => {
+    },
+    send_f64: (sender, value) => sender.try_send(value),
+    try_send_f64: (sender, value) => sender.try_send(value),
+    send_async_f64: (sender, value) => sender.send(value),
+    send_timeout_f64: (sender, value, timeoutMs) => sender.send_timeout(value, timeoutMs),
+    recv_f64: (receiver) => receiver.recv(),
+    try_recv_f64: (receiver) => receiver.try_recv(),
+    close_sender_f64: (sender) => sender.close(),
+    close_receiver_f64: (receiver) => receiver.close(),
+    is_sender_closed_f64: (sender) => sender.is_closed(),
+    is_receiver_closed_f64: (receiver) => receiver.is_closed(),
+    close_f64: (ch) => {
       ch.sender.close();
       ch.receiver.close();
-    }, "close_f64")
+    }
   };
   const thread2 = {
-    is_available: /* @__PURE__ */ __name(() => isNodeRuntime() || typeof Worker === "function", "is_available"),
-    spawn: /* @__PURE__ */ __name((task) => {
+    is_available: () => isNodeRuntime() || typeof Worker === "function",
+    spawn: (task) => {
       if (typeof task === "function") {
         return new ThreadHandle(() => task(), result());
       }
       return thread2.spawn_worker(task);
-    }, "spawn"),
-    spawn_worker: /* @__PURE__ */ __name(async (specifier) => {
+    },
+    spawn_worker: async (specifier) => {
       if (typeof specifier !== "string" || specifier.length === 0) {
         return result().Err("Thread specifier must be a non-empty string");
       }
@@ -4672,23 +4349,23 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return result().Err(String(error));
       }
-    }, "spawn_worker"),
-    post: /* @__PURE__ */ __name((handle, value) => handle.post(value), "post"),
-    recv: /* @__PURE__ */ __name((handle) => handle.recv(), "recv"),
-    try_recv: /* @__PURE__ */ __name((handle) => handle.try_recv(), "try_recv"),
-    terminate: /* @__PURE__ */ __name(async (handle) => {
+    },
+    post: (handle, value) => handle.post(value),
+    recv: (handle) => handle.recv(),
+    try_recv: (handle) => handle.try_recv(),
+    terminate: async (handle) => {
       await handle.terminate();
-    }, "terminate"),
-    join: /* @__PURE__ */ __name((handle) => {
+    },
+    join: (handle) => {
       if (handle instanceof ThreadHandle) return handle.join();
       if (handle instanceof Thread) return handle.join();
       throw new Error("Invalid thread handle");
-    }, "join"),
-    join_worker: /* @__PURE__ */ __name((handle) => handle.join(), "join_worker")
+    },
+    join_worker: (handle) => handle.join()
   };
   const web_worker2 = {
-    is_available: /* @__PURE__ */ __name(() => isNodeRuntime() || typeof Worker === "function", "is_available"),
-    spawn: /* @__PURE__ */ __name(async (specifier) => {
+    is_available: () => isNodeRuntime() || typeof Worker === "function",
+    spawn: async (specifier) => {
       const input = String(specifier ?? "").trim();
       if (!input) return result().Err("Worker specifier must be a non-empty string");
       try {
@@ -4697,8 +4374,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return result().Err(formatError(error));
       }
-    }, "spawn"),
-    spawn_inline: /* @__PURE__ */ __name(async (source) => {
+    },
+    spawn_inline: async (source) => {
       const input = String(source ?? "");
       if (!input.trim()) return result().Err("Inline worker source must be a non-empty string");
       try {
@@ -4707,8 +4384,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return result().Err(formatError(error));
       }
-    }, "spawn_inline"),
-    post: /* @__PURE__ */ __name((handle, msg) => {
+    },
+    post: (handle, msg) => {
       const record = getWebWorkerRecord(handle);
       if (!record) return result().Err(`Unknown worker handle ${handle}`);
       try {
@@ -4717,8 +4394,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return result().Err(formatError(error));
       }
-    }, "post"),
-    on_message: /* @__PURE__ */ __name((handle, handler) => {
+    },
+    on_message: (handle, handler) => {
       const record = getWebWorkerRecord(handle);
       if (!record || typeof handler !== "function") return;
       if (record.entry.kind === "node") {
@@ -4730,8 +4407,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       record.entry.worker.addEventListener("message", (event) => {
         handler(toWorkerMessageString(event.data));
       });
-    }, "on_message"),
-    on_error: /* @__PURE__ */ __name((handle, handler) => {
+    },
+    on_error: (handle, handler) => {
       const record = getWebWorkerRecord(handle);
       if (!record || typeof handler !== "function") return;
       if (record.entry.kind === "node") {
@@ -4745,8 +4422,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
         const message = error instanceof Error ? error.message : event.message || String(error ?? "");
         handler(message);
       });
-    }, "on_error"),
-    terminate: /* @__PURE__ */ __name((handle) => {
+    },
+    terminate: (handle) => {
       const record = getWebWorkerRecord(handle);
       if (!record) return;
       try {
@@ -4758,9 +4435,9 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
       } finally {
         cleanupWebWorkerRecord(record);
       }
-    }, "terminate"),
-    is_worker_context: /* @__PURE__ */ __name(() => isWorkerContextBrowser() || isWorkerContextNode(), "is_worker_context"),
-    self_post: /* @__PURE__ */ __name((msg) => {
+    },
+    is_worker_context: () => isWorkerContextBrowser() || isWorkerContextNode(),
+    self_post: (msg) => {
       if (isWorkerContextBrowser() && typeof postMessage === "function") {
         postMessage(String(msg));
         return;
@@ -4771,8 +4448,8 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
           workerThreads.parentPort.postMessage(String(msg));
         }
       }
-    }, "self_post"),
-    self_on_message: /* @__PURE__ */ __name((handler) => {
+    },
+    self_on_message: (handler) => {
       if (typeof handler !== "function") return;
       if (isWorkerContextBrowser() && typeof addEventListener === "function") {
         addEventListener("message", (event) => {
@@ -4788,59 +4465,45 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
           });
         }
       }
-    }, "self_on_message")
+    }
   };
   const web_streams2 = {
-    is_available: /* @__PURE__ */ __name(() => typeof ReadableStream === "function" || typeof fetch === "function" || isNodeRuntime(), "is_available"),
-    from_fetch: /* @__PURE__ */ __name(async (url2) => {
+    is_available: () => typeof ReadableStream === "function" || typeof fetch === "function" || isNodeRuntime(),
+    from_fetch: async (url2) => {
       if (typeof fetch !== "function") return result().Err("Fetch API is not available in this environment");
       try {
         const response = await fetch(String(url2));
         const body = response.body;
         if (body && typeof body.getReader === "function") {
           const reader = body.getReader();
-          return result().Ok(registerRuntimeStream({
-            kind: "reader",
-            reader,
-            done: false
-          }));
+          return result().Ok(registerRuntimeStream({ kind: "reader", reader, done: false }));
         }
         if (typeof response.arrayBuffer === "function") {
           const bytes = new Uint8Array(await response.arrayBuffer());
-          return result().Ok(registerRuntimeStream({
-            kind: "buffer",
-            data: bytes,
-            offset: 0,
-            chunkSize: STREAM_DEFAULT_CHUNK_SIZE
-          }));
+          return result().Ok(registerRuntimeStream({ kind: "buffer", data: bytes, offset: 0, chunkSize: STREAM_DEFAULT_CHUNK_SIZE }));
         }
         return result().Err("Response body stream is not available");
       } catch (error) {
         return result().Err(formatError(error));
       }
-    }, "from_fetch"),
-    from_string: /* @__PURE__ */ __name((source) => {
+    },
+    from_string: (source) => {
       const bytes = typeof TextEncoder === "function" ? new TextEncoder().encode(String(source)) : Uint8Array.from(String(source).split("").map((ch) => ch.charCodeAt(0) & 255));
-      return registerRuntimeStream({
-        kind: "buffer",
-        data: bytes,
-        offset: 0,
-        chunkSize: STREAM_DEFAULT_CHUNK_SIZE
-      });
-    }, "from_string"),
-    from_bytes: /* @__PURE__ */ __name((data) => registerRuntimeStream({
+      return registerRuntimeStream({ kind: "buffer", data: bytes, offset: 0, chunkSize: STREAM_DEFAULT_CHUNK_SIZE });
+    },
+    from_bytes: (data) => registerRuntimeStream({
       kind: "buffer",
       data: toByteArray(data),
       offset: 0,
       chunkSize: STREAM_DEFAULT_CHUNK_SIZE
-    }), "from_bytes"),
-    read_chunk: /* @__PURE__ */ __name(async (streamHandle) => {
+    }),
+    read_chunk: async (streamHandle) => {
       const next = await readChunkFromRuntimeStream(streamHandle);
       if (!next.ok) return result().Err(next.error);
       if (next.chunk == null) return result().Ok(option().None);
       return result().Ok(option().Some(next.chunk));
-    }, "read_chunk"),
-    read_all: /* @__PURE__ */ __name(async (streamHandle) => {
+    },
+    read_all: async (streamHandle) => {
       const all = [];
       for (; ; ) {
         const next = await readChunkFromRuntimeStream(streamHandle);
@@ -4854,20 +4517,16 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
         }
         all.push(...next.chunk);
       }
-    }, "read_all"),
-    read_text: /* @__PURE__ */ __name(async (streamHandle) => {
+    },
+    read_text: async (streamHandle) => {
       const all = await web_streams2.read_all(streamHandle);
       if (!deps.isEnumLike(all) || deps.getEnumTag(all) !== "Ok") return all;
       return result().Ok(decodeTextFromBytes(deps.getEnumPayload(all)));
-    }, "read_text"),
-    pipe: /* @__PURE__ */ __name((sourceHandle, transform) => registerRuntimeStream({
-      kind: "pipe",
-      sourceHandle: Math.trunc(sourceHandle),
-      transform
-    }), "pipe"),
-    cancel: /* @__PURE__ */ __name((streamHandle) => {
+    },
+    pipe: (sourceHandle, transform) => registerRuntimeStream({ kind: "pipe", sourceHandle: Math.trunc(sourceHandle), transform }),
+    cancel: (streamHandle) => {
       cleanupRuntimeStreamHandle(streamHandle);
-    }, "cancel")
+    }
   };
   return {
     Thread,
@@ -4878,12 +4537,12 @@ var createConcurrencyRuntime = /* @__PURE__ */ __name((deps) => {
     web_worker: web_worker2,
     web_streams: web_streams2
   };
-}, "createConcurrencyRuntime");
+};
 
 // src/runtime/dom-accessibility.ts
-var elementRecord = /* @__PURE__ */ __name((element) => element, "elementRecord");
-var readChildNodes = /* @__PURE__ */ __name((node) => Array.from(node?.childNodes ?? []), "readChildNodes");
-var getDomAttribute = /* @__PURE__ */ __name((element, name) => {
+var elementRecord = (element) => element;
+var readChildNodes = (node) => Array.from(node?.childNodes ?? []);
+var getDomAttribute = (element, name) => {
   if (typeof element.getAttribute === "function") {
     const value2 = element.getAttribute(name);
     return value2 == null ? null : String(value2);
@@ -4895,8 +4554,8 @@ var getDomAttribute = /* @__PURE__ */ __name((element, name) => {
   }
   const value = elementRecord(element)[name];
   return value == null ? null : String(value);
-}, "getDomAttribute");
-var findDomElementById = /* @__PURE__ */ __name((root, id) => {
+};
+var findDomElementById = (root, id) => {
   if (!root) return null;
   for (const child of readChildNodes(root)) {
     const element = child;
@@ -4907,10 +4566,10 @@ var findDomElementById = /* @__PURE__ */ __name((root, id) => {
     if (nested) return nested;
   }
   return null;
-}, "findDomElementById");
-var isElementHidden = /* @__PURE__ */ __name((element) => elementRecord(element).hidden === true || getDomAttribute(element, "hidden") !== null, "isElementHidden");
-var isElementDisabled = /* @__PURE__ */ __name((element) => elementRecord(element).disabled === true || getDomAttribute(element, "disabled") !== null, "isElementDisabled");
-var isElementInert = /* @__PURE__ */ __name((element) => {
+};
+var isElementHidden = (element) => elementRecord(element).hidden === true || getDomAttribute(element, "hidden") !== null;
+var isElementDisabled = (element) => elementRecord(element).disabled === true || getDomAttribute(element, "disabled") !== null;
+var isElementInert = (element) => {
   let current = element;
   while (current) {
     const candidate = current;
@@ -4920,14 +4579,14 @@ var isElementInert = /* @__PURE__ */ __name((element) => {
     current = current.parentNode;
   }
   return false;
-}, "isElementInert");
-var getElementTabIndex = /* @__PURE__ */ __name((element) => {
+};
+var getElementTabIndex = (element) => {
   const raw = elementRecord(element).tabIndex ?? getDomAttribute(element, "tabIndex") ?? getDomAttribute(element, "tabindex");
   if (raw === null || raw === void 0 || raw === "") return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : null;
-}, "getElementTabIndex");
-var isFocusableElement = /* @__PURE__ */ __name((element) => {
+};
+var isFocusableElement = (element) => {
   if (isElementHidden(element) || isElementDisabled(element) || isElementInert(element)) return false;
   const tabIndex = getElementTabIndex(element);
   if (tabIndex !== null) {
@@ -4938,10 +4597,10 @@ var isFocusableElement = /* @__PURE__ */ __name((element) => {
     return getDomAttribute(element, "href") !== null;
   }
   return tag === "button" || tag === "input" || tag === "select" || tag === "textarea";
-}, "isFocusableElement");
-var collectFocusableDescendants = /* @__PURE__ */ __name((root) => {
+};
+var collectFocusableDescendants = (root) => {
   const focusable = [];
-  const visit = /* @__PURE__ */ __name((node) => {
+  const visit = (node) => {
     for (const child of readChildNodes(node)) {
       const element = child;
       if (isElementInert(element)) {
@@ -4954,17 +4613,17 @@ var collectFocusableDescendants = /* @__PURE__ */ __name((root) => {
         visit(child);
       }
     }
-  }, "visit");
+  };
   visit(root);
   return focusable;
-}, "collectFocusableDescendants");
-var findFirstFocusableDescendant = /* @__PURE__ */ __name((root) => collectFocusableDescendants(root)[0] ?? null, "findFirstFocusableDescendant");
-var getFocusTargetFromEvent = /* @__PURE__ */ __name((event) => {
+};
+var findFirstFocusableDescendant = (root) => collectFocusableDescendants(root)[0] ?? null;
+var getFocusTargetFromEvent = (event) => {
   if (!event || typeof event !== "object") return null;
   const target = event.currentTarget ?? event.target;
   return target && typeof target === "object" ? target : null;
-}, "getFocusTargetFromEvent");
-var trapDialogTabNavigation = /* @__PURE__ */ __name((event) => {
+};
+var trapDialogTabNavigation = (event) => {
   if (String(event?.key ?? "") !== "Tab") return false;
   const container = getFocusTargetFromEvent(event);
   if (!container) return false;
@@ -4992,10 +4651,10 @@ var trapDialogTabNavigation = /* @__PURE__ */ __name((event) => {
     return true;
   }
   return false;
-}, "trapDialogTabNavigation");
+};
 
 // src/runtime/dom-reconciler.ts
-var setChildren = /* @__PURE__ */ __name((container, children2) => {
+var setChildren = (container, children2) => {
   const current = readChildNodes(container);
   for (const child of current) {
     container.removeChild(child);
@@ -5003,8 +4662,8 @@ var setChildren = /* @__PURE__ */ __name((container, children2) => {
   for (const child of children2) {
     container.appendChild(child);
   }
-}, "setChildren");
-var findStableSequenceWindow = /* @__PURE__ */ __name((currentChildren, nextChildren, equals = (left, right) => left === right) => {
+};
+var findStableSequenceWindow = (currentChildren, nextChildren, equals = (left, right) => left === right) => {
   let currentStart = 0;
   let nextStart = 0;
   while (currentStart < currentChildren.length && nextStart < nextChildren.length && equals(currentChildren[currentStart], nextChildren[nextStart])) {
@@ -5020,22 +4679,14 @@ var findStableSequenceWindow = /* @__PURE__ */ __name((currentChildren, nextChil
   if (currentStart > currentEnd && nextStart > nextEnd) {
     return null;
   }
-  return {
-    currentStart,
-    currentEnd,
-    nextStart,
-    nextEnd
-  };
-}, "findStableSequenceWindow");
-var getTransitionAffectedRange = /* @__PURE__ */ __name((transition, length) => {
+  return { currentStart, currentEnd, nextStart, nextEnd };
+};
+var getTransitionAffectedRange = (transition, length) => {
   switch (transition.kind) {
     case "same_order":
       return null;
     case "adjacent_swap":
-      return {
-        start: transition.left,
-        end: transition.right
-      };
+      return { start: transition.left, end: transition.right };
     case "single_move":
       return {
         start: Math.min(transition.from, transition.to),
@@ -5043,18 +4694,12 @@ var getTransitionAffectedRange = /* @__PURE__ */ __name((transition, length) => 
       };
     case "complex_reorder":
       if (typeof transition.start === "number" && typeof transition.end === "number") {
-        return {
-          start: transition.start,
-          end: transition.end
-        };
+        return { start: transition.start, end: transition.end };
       }
-      return length > 0 ? {
-        start: 0,
-        end: length - 1
-      } : null;
+      return length > 0 ? { start: 0, end: length - 1 } : null;
   }
-}, "getTransitionAffectedRange");
-var findSingleMove = /* @__PURE__ */ __name((previous, next, equals, first, last) => {
+};
+var findSingleMove = (previous, next, equals, first, last) => {
   if (previous.length !== next.length || previous.length < 2 || last <= first) {
     return null;
   }
@@ -5075,10 +4720,7 @@ var findSingleMove = /* @__PURE__ */ __name((previous, next, equals, first, last
       }
     }
     if (matches) {
-      return {
-        from,
-        to: first
-      };
+      return { from, to: first };
     }
   }
   for (let to = first + 1; to <= last; to += 1) {
@@ -5098,19 +4740,14 @@ var findSingleMove = /* @__PURE__ */ __name((previous, next, equals, first, last
       }
     }
     if (matches) {
-      return {
-        from: first,
-        to
-      };
+      return { from: first, to };
     }
   }
   return null;
-}, "findSingleMove");
-var analyzeSequenceTransition = /* @__PURE__ */ __name((previous, next, equals) => {
+};
+var analyzeSequenceTransition = (previous, next, equals) => {
   if (previous.length !== next.length) {
-    return {
-      kind: "complex_reorder"
-    };
+    return { kind: "complex_reorder" };
   }
   let firstMismatch = -1;
   for (let index = 0; index < previous.length; index += 1) {
@@ -5120,9 +4757,7 @@ var analyzeSequenceTransition = /* @__PURE__ */ __name((previous, next, equals) 
     }
   }
   if (firstMismatch < 0) {
-    return {
-      kind: "same_order"
-    };
+    return { kind: "same_order" };
   }
   let lastMismatch = previous.length - 1;
   while (lastMismatch > firstMismatch && equals(previous[lastMismatch], next[lastMismatch])) {
@@ -5140,30 +4775,18 @@ var analyzeSequenceTransition = /* @__PURE__ */ __name((previous, next, equals) 
         }
       }
       if (restMatches) {
-        return {
-          kind: "adjacent_swap",
-          left,
-          right
-        };
+        return { kind: "adjacent_swap", left, right };
       }
     }
   }
   const singleMove = findSingleMove(previous, next, equals, firstMismatch, lastMismatch);
   if (singleMove) {
-    return {
-      kind: "single_move",
-      from: singleMove.from,
-      to: singleMove.to
-    };
+    return { kind: "single_move", from: singleMove.from, to: singleMove.to };
   }
-  return {
-    kind: "complex_reorder",
-    start: firstMismatch,
-    end: lastMismatch
-  };
-}, "analyzeSequenceTransition");
-var analyzeDomChildTransition = /* @__PURE__ */ __name((currentChildren, nextChildren) => analyzeSequenceTransition(currentChildren, nextChildren, (left, right) => left === right), "analyzeDomChildTransition");
-var longestIncreasingSubsequenceIndices = /* @__PURE__ */ __name((values) => {
+  return { kind: "complex_reorder", start: firstMismatch, end: lastMismatch };
+};
+var analyzeDomChildTransition = (currentChildren, nextChildren) => analyzeSequenceTransition(currentChildren, nextChildren, (left, right) => left === right);
+var longestIncreasingSubsequenceIndices = (values) => {
   const predecessors = new Array(values.length).fill(-1);
   const tails = [];
   for (let index = 0; index < values.length; index += 1) {
@@ -5196,8 +4819,8 @@ var longestIncreasingSubsequenceIndices = /* @__PURE__ */ __name((values) => {
     cursor = predecessors[cursor];
   }
   return result;
-}, "longestIncreasingSubsequenceIndices");
-var resolveComplexTransitionWindow = /* @__PURE__ */ __name((transition, currentLength, nextLength) => {
+};
+var resolveComplexTransitionWindow = (transition, currentLength, nextLength) => {
   if (transition.kind !== "complex_reorder" || typeof transition.start !== "number" || typeof transition.end !== "number" || currentLength !== nextLength || transition.start < 0 || transition.end < transition.start || transition.end >= currentLength) {
     return null;
   }
@@ -5207,8 +4830,8 @@ var resolveComplexTransitionWindow = /* @__PURE__ */ __name((transition, current
     nextStart: transition.start,
     nextEnd: transition.end
   };
-}, "resolveComplexTransitionWindow");
-var reorderChildren = /* @__PURE__ */ __name((container, children2, disposeChild, options) => {
+};
+var reorderChildren = (container, children2, disposeChild, options) => {
   if (typeof container.insertBefore !== "function") {
     setChildren(container, children2);
     return;
@@ -5245,7 +4868,12 @@ var reorderChildren = /* @__PURE__ */ __name((container, children2, disposeChild
   if (!window2) {
     return;
   }
-  const { currentStart, currentEnd, nextStart, nextEnd } = window2;
+  const {
+    currentStart,
+    currentEnd,
+    nextStart,
+    nextEnd
+  } = window2;
   const currentWindow = currentChildren.slice(currentStart, currentEnd + 1);
   const nextWindow = children2.slice(nextStart, nextEnd + 1);
   const currentOrder = /* @__PURE__ */ new Map();
@@ -5269,31 +4897,28 @@ var reorderChildren = /* @__PURE__ */ __name((container, children2, disposeChild
     container.insertBefore(nextChild, anchor);
     anchor = nextChild;
   }
-}, "reorderChildren");
+};
 
 // src/runtime/reactive-core.ts
 var defaultHooks = {
-  cloneValue: /* @__PURE__ */ __name((value) => value, "cloneValue"),
+  cloneValue: (value) => value,
   equalsValue: Object.is,
-  scheduleMicrotask: /* @__PURE__ */ __name((fn) => {
+  scheduleMicrotask: (fn) => {
     Promise.resolve().then(fn);
-  }, "scheduleMicrotask"),
-  registerSignal: /* @__PURE__ */ __name(() => 0, "registerSignal"),
-  unregisterSignal: /* @__PURE__ */ __name(() => void 0, "unregisterSignal"),
-  notifyDevtools: /* @__PURE__ */ __name(() => void 0, "notifyDevtools")
+  },
+  registerSignal: () => 0,
+  unregisterSignal: () => void 0,
+  notifyDevtools: () => void 0
 };
 var reactiveHooks = defaultHooks;
-var configureReactiveCore = /* @__PURE__ */ __name((hooks) => {
-  reactiveHooks = {
-    ...reactiveHooks,
-    ...hooks
-  };
-}, "configureReactiveCore");
+var configureReactiveCore = (hooks) => {
+  reactiveHooks = { ...reactiveHooks, ...hooks };
+};
 var activeComputation = null;
 var pendingEffects = /* @__PURE__ */ new Set();
 var effectFlushPending = false;
 var batchDepth = 0;
-var flushEffects = /* @__PURE__ */ __name(() => {
+var flushEffects = () => {
   if (pendingEffects.size === 0) return;
   const toRun = Array.from(pendingEffects);
   pendingEffects.clear();
@@ -5303,41 +4928,37 @@ var flushEffects = /* @__PURE__ */ __name(() => {
   if (pendingEffects.size > 0 && batchDepth === 0) {
     scheduleEffectsFlush();
   }
-}, "flushEffects");
-var scheduleEffectsFlush = /* @__PURE__ */ __name(() => {
+};
+var scheduleEffectsFlush = () => {
   if (batchDepth > 0 || effectFlushPending) return;
   effectFlushPending = true;
   reactiveHooks.scheduleMicrotask(() => {
     effectFlushPending = false;
     flushEffects();
   });
-}, "scheduleEffectsFlush");
-var trackReactiveSource = /* @__PURE__ */ __name((source) => {
+};
+var trackReactiveSource = (source) => {
   if (!activeComputation) return;
   if (activeComputation.isDisposed()) return;
   if (source.observers.has(activeComputation)) return;
   source.observers.add(activeComputation);
   activeComputation.dependencies.add(source);
-}, "trackReactiveSource");
-var clearComputationDependencies = /* @__PURE__ */ __name((computation) => {
+};
+var clearComputationDependencies = (computation) => {
   for (const dep of computation.dependencies) {
     dep.observers.delete(computation);
   }
   computation.dependencies.clear();
-}, "clearComputationDependencies");
-var _a;
-var ReactiveComputation = (_a = class {
+};
+var ReactiveComputation = class {
   constructor(runner, kind, onInvalidate) {
-    __publicField(this, "runner");
-    __publicField(this, "kind");
-    __publicField(this, "onInvalidate");
-    __publicField(this, "dependencies", /* @__PURE__ */ new Set());
-    __publicField(this, "cleanups", []);
-    __publicField(this, "disposed", false);
-    __publicField(this, "running", false);
     this.runner = runner;
     this.kind = kind;
     this.onInvalidate = onInvalidate;
+    this.dependencies = /* @__PURE__ */ new Set();
+    this.cleanups = [];
+    this.disposed = false;
+    this.running = false;
   }
   isDisposed() {
     return this.disposed;
@@ -5388,18 +5009,16 @@ var ReactiveComputation = (_a = class {
     this.runCleanups();
     clearComputationDependencies(this);
   }
-}, __name(_a, "ReactiveComputation"), _a);
-var notifyReactiveObservers = /* @__PURE__ */ __name((source) => {
+};
+var notifyReactiveObservers = (source) => {
   const observers = Array.from(source.observers);
   for (const observer of observers) {
     observer.invalidate();
   }
-}, "notifyReactiveObservers");
-var _Signal = class _Signal {
+};
+var Signal = class {
   constructor(initial) {
-    __publicField(this, "observers", /* @__PURE__ */ new Set());
-    __publicField(this, "__luminaDevtoolsId");
-    __publicField(this, "value");
+    this.observers = /* @__PURE__ */ new Set();
     this.__luminaDevtoolsId = reactiveHooks.registerSignal?.("signal", this) ?? 0;
     this.value = reactiveHooks.cloneValue(initial);
   }
@@ -5430,34 +5049,32 @@ var _Signal = class _Signal {
     return this.get();
   }
 };
-__name(_Signal, "Signal");
-var Signal = _Signal;
-var _Memo = class _Memo {
+var Memo = class {
   constructor(compute) {
-    __publicField(this, "observers", /* @__PURE__ */ new Set());
-    __publicField(this, "__luminaDevtoolsId");
-    __publicField(this, "compute");
-    __publicField(this, "computation");
-    __publicField(this, "value");
-    __publicField(this, "ready", false);
-    __publicField(this, "stale", true);
+    this.observers = /* @__PURE__ */ new Set();
+    this.ready = false;
+    this.stale = true;
     this.__luminaDevtoolsId = reactiveHooks.registerSignal?.("memo", this) ?? 0;
     this.compute = compute;
-    this.computation = new ReactiveComputation(() => {
-      const next = reactiveHooks.cloneValue(this.compute());
-      const changed = !this.ready || !reactiveHooks.equalsValue(this.value, next);
-      this.value = next;
-      this.ready = true;
-      this.stale = false;
-      reactiveHooks.notifyDevtools?.();
-      if (changed) {
+    this.computation = new ReactiveComputation(
+      () => {
+        const next = reactiveHooks.cloneValue(this.compute());
+        const changed = !this.ready || !reactiveHooks.equalsValue(this.value, next);
+        this.value = next;
+        this.ready = true;
+        this.stale = false;
+        reactiveHooks.notifyDevtools?.();
+        if (changed) {
+          notifyReactiveObservers(this);
+        }
+      },
+      "memo",
+      () => {
+        this.stale = true;
         notifyReactiveObservers(this);
+        reactiveHooks.notifyDevtools?.();
       }
-    }, "memo", () => {
-      this.stale = true;
-      notifyReactiveObservers(this);
-      reactiveHooks.notifyDevtools?.();
-    });
+    );
   }
   ensureFresh() {
     if (!this.ready || this.stale) {
@@ -5482,11 +5099,8 @@ var _Memo = class _Memo {
     reactiveHooks.notifyDevtools?.();
   }
 };
-__name(_Memo, "Memo");
-var Memo = _Memo;
-var _Effect = class _Effect {
+var Effect = class {
   constructor(effectFn) {
-    __publicField(this, "computation");
     this.computation = new ReactiveComputation((onCleanup) => {
       const cleanup = effectFn(onCleanup);
       if (typeof cleanup === "function") onCleanup(cleanup);
@@ -5497,9 +5111,7 @@ var _Effect = class _Effect {
     this.computation.dispose();
   }
 };
-__name(_Effect, "Effect");
-var Effect = _Effect;
-var batch = /* @__PURE__ */ __name((fn) => {
+var batch = (fn) => {
   batchDepth += 1;
   try {
     return fn();
@@ -5509,8 +5121,8 @@ var batch = /* @__PURE__ */ __name((fn) => {
       flushEffects();
     }
   }
-}, "batch");
-var untrack = /* @__PURE__ */ __name((fn) => {
+};
+var untrack = (fn) => {
   const previous = activeComputation;
   activeComputation = null;
   try {
@@ -5518,30 +5130,30 @@ var untrack = /* @__PURE__ */ __name((fn) => {
   } finally {
     activeComputation = previous;
   }
-}, "untrack");
-var createStaticSignal = /* @__PURE__ */ __name((value) => {
+};
+var createStaticSignal = (value) => {
   let current = reactiveHooks.cloneValue(value);
   return {
     observers: /* @__PURE__ */ new Set(),
     __luminaDevtoolsId: 0,
-    get: /* @__PURE__ */ __name(() => reactiveHooks.cloneValue(current), "get"),
-    peek: /* @__PURE__ */ __name(() => reactiveHooks.cloneValue(current), "peek"),
-    set: /* @__PURE__ */ __name((next) => {
+    get: () => reactiveHooks.cloneValue(current),
+    peek: () => reactiveHooks.cloneValue(current),
+    set: (next) => {
       current = reactiveHooks.cloneValue(next);
       return true;
-    }, "set"),
-    update: /* @__PURE__ */ __name((updater) => {
+    },
+    update: (updater) => {
       current = reactiveHooks.cloneValue(updater(reactiveHooks.cloneValue(current)));
       return reactiveHooks.cloneValue(current);
-    }, "update")
+    }
   };
-}, "createStaticSignal");
-var readSignalRaw = /* @__PURE__ */ __name((signal, tracked) => {
+};
+var readSignalRaw = (signal, tracked) => {
   if (tracked) {
     trackReactiveSource(signal);
   }
   return signal.value;
-}, "readSignalRaw");
+};
 
 // src/runtime/ssr-renderer.ts
 var LUMINA_HYDRATION_KEY_ATTR = "data-lumina-key";
@@ -5552,16 +5164,16 @@ var htmlEscapeMap = {
   '"': "&quot;",
   "'": "&#39;"
 };
-var escapeHtml = /* @__PURE__ */ __name((value) => String(value ?? "").replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char), "escapeHtml");
-var kebabCase = /* @__PURE__ */ __name((value) => value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, "-ms-"), "kebabCase");
-var normalizeHtmlPropName = /* @__PURE__ */ __name((name) => {
+var escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char);
+var kebabCase = (value) => value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`).replace(/^ms-/, "-ms-");
+var normalizeHtmlPropName = (name) => {
   if (name === "className") return "class";
   if (name === "htmlFor") return "for";
   return name;
-}, "normalizeHtmlPropName");
-var isSafeHtmlAttrName = /* @__PURE__ */ __name((name) => /^[A-Za-z_:-][A-Za-z0-9_.:-]*$/.test(name) && !/^on/i.test(name), "isSafeHtmlAttrName");
-var serializeStyleValue = /* @__PURE__ */ __name((value) => Object.entries(value).filter(([, entry]) => entry !== null && entry !== void 0).map(([key2, entry]) => `${kebabCase(key2)}:${String(entry)}`).join(";"), "serializeStyleValue");
-var serializePropsToHtml = /* @__PURE__ */ __name((props, hydrationKey) => {
+};
+var isSafeHtmlAttrName = (name) => /^[A-Za-z_:-][A-Za-z0-9_.:-]*$/.test(name) && !/^on/i.test(name);
+var serializeStyleValue = (value) => Object.entries(value).filter(([, entry]) => entry !== null && entry !== void 0).map(([key2, entry]) => `${kebabCase(key2)}:${String(entry)}`).join(";");
+var serializePropsToHtml = (props, hydrationKey) => {
   const propSource = props ?? {};
   const attrs = [];
   const keyForHydration = typeof hydrationKey === "string" || typeof hydrationKey === "number" ? hydrationKey : typeof propSource.key === "string" || typeof propSource.key === "number" ? propSource.key : void 0;
@@ -5586,7 +5198,7 @@ var serializePropsToHtml = /* @__PURE__ */ __name((props, hydrationKey) => {
     attrs.push(`${LUMINA_HYDRATION_KEY_ATTR}="${escapeHtml(String(keyForHydration))}"`);
   }
   return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
-}, "serializePropsToHtml");
+};
 var voidHtmlTags = /* @__PURE__ */ new Set([
   "area",
   "base",
@@ -5603,7 +5215,7 @@ var voidHtmlTags = /* @__PURE__ */ new Set([
   "track",
   "wbr"
 ]);
-var setContainerMarkup = /* @__PURE__ */ __name((container, output) => {
+var setContainerMarkup = (container, output) => {
   if (container && typeof container === "object") {
     const target = container;
     if (typeof target.write === "function") {
@@ -5624,9 +5236,9 @@ var setContainerMarkup = /* @__PURE__ */ __name((container, output) => {
     }
     target.html = output;
   }
-}, "setContainerMarkup");
-var createSsrRuntime = /* @__PURE__ */ __name((deps) => {
-  const vnodeToChunks = /* @__PURE__ */ __name(function* (node) {
+};
+var createSsrRuntime = (deps) => {
+  const vnodeToChunks = function* (node) {
     const normalized = deps.normalizeNodeForHtml(node);
     const kind = deps.getKind(normalized);
     if (kind === "text") {
@@ -5653,14 +5265,14 @@ var createSsrRuntime = /* @__PURE__ */ __name((deps) => {
     if (voidHtmlTags.has(tag.toLowerCase())) return;
     for (const child of deps.getChildren(normalized)) yield* vnodeToChunks(child);
     yield `</${tag}>`;
-  }, "vnodeToChunks");
-  const vnodeToHtml = /* @__PURE__ */ __name((node) => {
+  };
+  const vnodeToHtml = (node) => {
     return Array.from(vnodeToChunks(node)).join("");
-  }, "vnodeToHtml");
+  };
   return {
-    renderToString: /* @__PURE__ */ __name((node, _options) => vnodeToHtml(node), "renderToString"),
-    renderToChunks: /* @__PURE__ */ __name((node, _options) => vnodeToChunks(node), "renderToChunks"),
-    renderToReadableStream: /* @__PURE__ */ __name((node, _options) => {
+    renderToString: (node, _options) => vnodeToHtml(node),
+    renderToChunks: (node, _options) => vnodeToChunks(node),
+    renderToReadableStream: (node, _options) => {
       if (typeof ReadableStream !== "function") return null;
       return new ReadableStream({
         start(controller) {
@@ -5668,8 +5280,8 @@ var createSsrRuntime = /* @__PURE__ */ __name((deps) => {
           controller.close();
         }
       });
-    }, "renderToReadableStream"),
-    createRenderer: /* @__PURE__ */ __name(() => {
+    },
+    createRenderer: () => {
       let current = "";
       return {
         mount(node, container) {
@@ -5689,12 +5301,12 @@ var createSsrRuntime = /* @__PURE__ */ __name((deps) => {
           setContainerMarkup(container, "");
         }
       };
-    }, "createRenderer")
+    }
   };
-}, "createSsrRuntime");
+};
 
 // src/runtime/vnode-core.ts
-var normalizeVNodeChildren = /* @__PURE__ */ __name((input) => {
+var normalizeVNodeChildren = (input) => {
   if (Array.isArray(input)) {
     const out = [];
     for (const child of input) {
@@ -5714,36 +5326,32 @@ var normalizeVNodeChildren = /* @__PURE__ */ __name((input) => {
   }
   if (input === null || input === void 0 || input === false) return [];
   if (typeof input === "object" && input !== null && isVNode(input)) {
-    return [
-      input
-    ];
+    return [input];
   }
-  return [
-    vnodeText(input)
-  ];
-}, "normalizeVNodeChildren");
-var sanitizeProps = /* @__PURE__ */ __name((props) => {
+  return [vnodeText(input)];
+};
+var sanitizeProps = (props) => {
   if (!props) return {};
   const out = {};
   for (const [key2, value] of Object.entries(props)) {
     if (value !== void 0) out[key2] = value;
   }
   return out;
-}, "sanitizeProps");
-var isVNode = /* @__PURE__ */ __name((value) => {
+};
+var isVNode = (value) => {
   if (!value || typeof value !== "object") return false;
   const candidate = value;
   return candidate.kind === "text" || candidate.kind === "live_text" || candidate.kind === "index_list" || candidate.kind === "for_list" || candidate.kind === "element" || candidate.kind === "fragment" || candidate.kind === "portal";
-}, "isVNode");
-var vnodeText = /* @__PURE__ */ __name((value) => ({
+};
+var vnodeText = (value) => ({
   kind: "text",
   text: value == null ? "" : String(value)
-}), "vnodeText");
-var vnodeLiveText = /* @__PURE__ */ __name((signal) => ({
+});
+var vnodeLiveText = (signal) => ({
   kind: "live_text",
   signal
-}), "vnodeLiveText");
-var readIndexListValues = /* @__PURE__ */ __name((signal, tracked) => {
+});
+var readIndexListValues = (signal, tracked) => {
   const value = readSignalRaw(signal, tracked);
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object") {
@@ -5753,97 +5361,94 @@ var readIndexListValues = /* @__PURE__ */ __name((signal, tracked) => {
     }
   }
   return [];
-}, "readIndexListValues");
+};
 var indexListHostProps = {
-  style: {
-    display: "contents"
-  },
+  style: { display: "contents" },
   "data-lumina-index-list": "true"
 };
 var forListHostProps = {
-  style: {
-    display: "contents"
-  },
+  style: { display: "contents" },
   "data-lumina-for-list": "true"
 };
-var coerceListKey = /* @__PURE__ */ __name((value, index) => {
+var coerceListKey = (value, index) => {
   if (typeof value === "string" || typeof value === "number") {
     return value;
   }
   throw new Error(`List key at index ${index} must be a string or number`);
-}, "coerceListKey");
-var coerceVNodeKey = /* @__PURE__ */ __name((value, label = "VNode key") => {
+};
+var coerceVNodeKey = (value, label = "VNode key") => {
   if (typeof value === "string" || typeof value === "number") {
     return value;
   }
   throw new Error(`${label} must be a string or number`);
-}, "coerceVNodeKey");
-var getPropsKey = /* @__PURE__ */ __name((props) => {
+};
+var getPropsKey = (props) => {
   if (!props || !Object.prototype.hasOwnProperty.call(props, "key") || props.key === void 0) {
     return void 0;
   }
   return coerceVNodeKey(props.key);
-}, "getPropsKey");
-var vnodeIndexList = /* @__PURE__ */ __name((itemsSignal, renderItem) => ({
+};
+var vnodeIndexList = (itemsSignal, renderItem) => ({
   kind: "index_list",
   itemsSignal,
   listRender: renderItem
-}), "vnodeIndexList");
-var vnodeForList = /* @__PURE__ */ __name((itemsSignal, keyOf, renderItem) => ({
+});
+var vnodeForList = (itemsSignal, keyOf, renderItem) => ({
   kind: "for_list",
   itemsSignal,
   listKey: keyOf,
   listIndexedRender: renderItem
-}), "vnodeForList");
-var vnodeElement = /* @__PURE__ */ __name((tag, props, children2 = []) => ({
+});
+var vnodeElement = (tag, props, children2 = []) => ({
   kind: "element",
   tag,
   key: getPropsKey(props),
   props: sanitizeProps(props),
   children: normalizeVNodeChildren(children2)
-}), "vnodeElement");
-var vnodeFragment = /* @__PURE__ */ __name((children2 = []) => ({
+});
+var vnodeFragment = (children2 = []) => ({
   kind: "fragment",
   children: normalizeVNodeChildren(children2)
-}), "vnodeFragment");
-var vnodePortal = /* @__PURE__ */ __name((target, children2 = []) => ({
+});
+var vnodePortal = (target, children2 = []) => ({
   kind: "portal",
   target: target == null ? null : String(target),
   children: normalizeVNodeChildren(children2)
-}), "vnodePortal");
-var asVNodeChildren = /* @__PURE__ */ __name((node) => node.children ?? [], "asVNodeChildren");
-var coerceRenderableToVNode = /* @__PURE__ */ __name((input) => {
+});
+var asVNodeChildren = (node) => node.children ?? [];
+var coerceRenderableToVNode = (input) => {
   const children2 = normalizeVNodeChildren(input);
   if (children2.length === 1) {
     return children2[0];
   }
   return vnodeFragment(children2);
-}, "coerceRenderableToVNode");
-var applyVNodeKey = /* @__PURE__ */ __name((node, key2) => {
+};
+var applyVNodeKey = (node, key2) => {
   if (key2 === void 0 || key2 === null) {
     return node;
   }
   const nextKey = coerceVNodeKey(key2);
   if (node.key !== void 0) {
     if (node.key !== nextKey) {
-      throw new Error(`Conflicting keyed child: child already has key '${String(node.key)}' but parent assigned '${String(nextKey)}'`);
+      throw new Error(
+        `Conflicting keyed child: child already has key '${String(node.key)}' but parent assigned '${String(nextKey)}'`
+      );
     }
     return node;
   }
-  return {
-    ...node,
-    key: nextKey
-  };
-}, "applyVNodeKey");
-var materializeIndexListChildren = /* @__PURE__ */ __name((node, tracked) => {
+  return { ...node, key: nextKey };
+};
+var materializeIndexListChildren = (node, tracked) => {
   const source = node.itemsSignal;
   const renderItem = node.listRender;
   if (!source || typeof renderItem !== "function") {
     return [];
   }
-  return readIndexListValues(source, tracked).map((value, index) => coerceRenderableToVNode(renderItem(createStaticSignal(value), index)));
-}, "materializeIndexListChildren");
-var materializeForListChildren = /* @__PURE__ */ __name((node, tracked) => {
+  return readIndexListValues(source, tracked).map(
+    (value, index) => coerceRenderableToVNode(renderItem(createStaticSignal(value), index))
+  );
+};
+var materializeForListChildren = (node, tracked) => {
   const source = node.itemsSignal;
   const keyOf = node.listKey;
   const renderItem = node.listIndexedRender;
@@ -5860,8 +5465,8 @@ var materializeForListChildren = /* @__PURE__ */ __name((node, tracked) => {
     const vnode2 = coerceRenderableToVNode(renderItem(createStaticSignal(value), createStaticSignal(index)));
     return applyVNodeKey(vnode2, key2);
   });
-}, "materializeForListChildren");
-var snapshotVNode = /* @__PURE__ */ __name((node) => {
+};
+var snapshotVNode = (node) => {
   if (node.kind === "live_text") {
     return vnodeText(node.signal ? node.signal.get() : "");
   }
@@ -5878,31 +5483,31 @@ var snapshotVNode = /* @__PURE__ */ __name((node) => {
     };
   }
   return node;
-}, "snapshotVNode");
-var resolveChildrenInput = /* @__PURE__ */ __name((input) => typeof input === "function" ? input() : input, "resolveChildrenInput");
-var vnodeKeyed = /* @__PURE__ */ __name((key2, input) => applyVNodeKey(coerceRenderableToVNode(resolveChildrenInput(input)), key2), "vnodeKeyed");
-var serializeVNode = /* @__PURE__ */ __name((node) => JSON.stringify(snapshotVNode(node)), "serializeVNode");
-var parseVNode = /* @__PURE__ */ __name((json2) => {
+};
+var resolveChildrenInput = (input) => typeof input === "function" ? input() : input;
+var vnodeKeyed = (key2, input) => applyVNodeKey(coerceRenderableToVNode(resolveChildrenInput(input)), key2);
+var serializeVNode = (node) => JSON.stringify(snapshotVNode(node));
+var parseVNode = (json2) => {
   const parsed = JSON.parse(json2);
   if (!isVNode(parsed)) throw new Error("Invalid VNode payload");
   return parsed;
-}, "parseVNode");
+};
 
 // src/runtime/dom-renderer.ts
 var domTemplateCache = /* @__PURE__ */ new WeakMap();
 var dialogModalInertTargets = /* @__PURE__ */ new WeakMap();
 var inertCounts = /* @__PURE__ */ new WeakMap();
 var inertStates = /* @__PURE__ */ new WeakMap();
-var getDomDocument = /* @__PURE__ */ __name((options) => {
+var getDomDocument = (options) => {
   if (options?.document) return options.document;
   const doc = globalThis.document;
   if (!doc) {
     throw new Error("DOM renderer requires a document-like object");
   }
   return doc;
-}, "getDomDocument");
-var asDomChildren = /* @__PURE__ */ __name((node) => node.children ?? [], "asDomChildren");
-var serializeFingerprintProps = /* @__PURE__ */ __name((props) => {
+};
+var asDomChildren = (node) => node.children ?? [];
+var serializeFingerprintProps = (props) => {
   if (!props) {
     return "";
   }
@@ -5918,8 +5523,8 @@ var serializeFingerprintProps = /* @__PURE__ */ __name((props) => {
     out += `|${key2}:${String(value ?? "")}`;
   }
   return out;
-}, "serializeFingerprintProps");
-var getStablePatchFingerprint = /* @__PURE__ */ __name((node) => {
+};
+var getStablePatchFingerprint = (node) => {
   const fingerprinted = node;
   if (fingerprinted.__luminaPatchFingerprint !== void 0) {
     return fingerprinted.__luminaPatchFingerprint;
@@ -5948,14 +5553,14 @@ var getStablePatchFingerprint = /* @__PURE__ */ __name((node) => {
   }
   fingerprinted.__luminaPatchFingerprint = fingerprint;
   return fingerprint;
-}, "getStablePatchFingerprint");
-var isEventProp = /* @__PURE__ */ __name((name) => /^on[A-Z]/.test(name), "isEventProp");
-var isForcedAttributeProp = /* @__PURE__ */ __name((name) => name === "role" || name.startsWith("aria-") || name.startsWith("data-"), "isForcedAttributeProp");
-var isHiddenPropValue = /* @__PURE__ */ __name((value) => value === true || value === "true", "isHiddenPropValue");
-var isPortalHostElement = /* @__PURE__ */ __name((node) => node != null && String(node.tagName ?? "").toLowerCase() === "lumina-portal-host", "isPortalHostElement");
-var isDialogOverlayElement = /* @__PURE__ */ __name((node) => node != null && getDomAttribute(node, "data-lumina-dialog-overlay") === "true", "isDialogOverlayElement");
-var isModalDialogElement = /* @__PURE__ */ __name((element) => getDomAttribute(element, "role") === "dialog" && getDomAttribute(element, "aria-modal") === "true", "isModalDialogElement");
-var containsDomNode = /* @__PURE__ */ __name((root, target) => {
+};
+var isEventProp = (name) => /^on[A-Z]/.test(name);
+var isForcedAttributeProp = (name) => name === "role" || name.startsWith("aria-") || name.startsWith("data-");
+var isHiddenPropValue = (value) => value === true || value === "true";
+var isPortalHostElement = (node) => node != null && String(node.tagName ?? "").toLowerCase() === "lumina-portal-host";
+var isDialogOverlayElement = (node) => node != null && getDomAttribute(node, "data-lumina-dialog-overlay") === "true";
+var isModalDialogElement = (element) => getDomAttribute(element, "role") === "dialog" && getDomAttribute(element, "aria-modal") === "true";
+var containsDomNode = (root, target) => {
   if (!target) return false;
   if (root === target) return true;
   for (const child of readChildNodes(root)) {
@@ -5964,8 +5569,8 @@ var containsDomNode = /* @__PURE__ */ __name((root, target) => {
     }
   }
   return false;
-}, "containsDomNode");
-var findMarkedDialogInitialFocus = /* @__PURE__ */ __name((root) => {
+};
+var findMarkedDialogInitialFocus = (root) => {
   for (const child of readChildNodes(root)) {
     const element = child;
     if (getDomAttribute(element, "data-lumina-dialog-initial-focus") === "true") {
@@ -5977,8 +5582,8 @@ var findMarkedDialogInitialFocus = /* @__PURE__ */ __name((root) => {
     }
   }
   return null;
-}, "findMarkedDialogInitialFocus");
-var focusInitialDialogTarget = /* @__PURE__ */ __name((element) => {
+};
+var focusInitialDialogTarget = (element) => {
   const activeElement = element.ownerDocument?.activeElement;
   if (activeElement && activeElement !== element && containsDomNode(element, activeElement)) {
     return;
@@ -5994,8 +5599,8 @@ var focusInitialDialogTarget = /* @__PURE__ */ __name((element) => {
     return;
   }
   element.focus?.();
-}, "focusInitialDialogTarget");
-var setElementInert = /* @__PURE__ */ __name((element, active) => {
+};
+var setElementInert = (element, active) => {
   const record = element;
   if (active) {
     const count2 = inertCounts.get(element) ?? 0;
@@ -6029,8 +5634,8 @@ var setElementInert = /* @__PURE__ */ __name((element, active) => {
     return;
   }
   inertCounts.set(element, count - 1);
-}, "setElementInert");
-var collectModalInertTargets = /* @__PURE__ */ __name((dialog) => {
+};
+var collectModalInertTargets = (dialog) => {
   const parent = dialog.parentNode;
   if (!parent) return [];
   const scopeParent = isPortalHostElement(parent) && parent.parentNode ? parent.parentNode : parent;
@@ -6049,8 +5654,8 @@ var collectModalInertTargets = /* @__PURE__ */ __name((dialog) => {
     targets.push(element);
   }
   return targets;
-}, "collectModalInertTargets");
-var syncModalDialogInertState = /* @__PURE__ */ __name((dialog, active) => {
+};
+var syncModalDialogInertState = (dialog, active) => {
   const previousTargets = dialogModalInertTargets.get(dialog) ?? [];
   if (!active) {
     for (const target of previousTargets) {
@@ -6067,8 +5672,8 @@ var syncModalDialogInertState = /* @__PURE__ */ __name((dialog, active) => {
     setElementInert(target, true);
   }
   dialogModalInertTargets.set(dialog, targets);
-}, "syncModalDialogInertState");
-var cloneStaticTemplateElement = /* @__PURE__ */ __name((documentLike, html) => {
+};
+var cloneStaticTemplateElement = (documentLike, html) => {
   let cache = domTemplateCache.get(documentLike);
   if (!cache) {
     cache = /* @__PURE__ */ new Map();
@@ -6093,9 +5698,9 @@ var cloneStaticTemplateElement = /* @__PURE__ */ __name((documentLike, html) => 
   }
   const root = childNodes[0];
   return root && typeof root === "object" ? root : null;
-}, "cloneStaticTemplateElement");
-var normalizeEventName = /* @__PURE__ */ __name((name) => name.slice(2).toLowerCase(), "normalizeEventName");
-var setDomStyle = /* @__PURE__ */ __name((element, previous, next) => {
+};
+var normalizeEventName = (name) => name.slice(2).toLowerCase();
+var setDomStyle = (element, previous, next) => {
   const prev = previous ?? {};
   const nxt = next ?? {};
   const style = element.style;
@@ -6116,8 +5721,8 @@ var setDomStyle = /* @__PURE__ */ __name((element, previous, next) => {
       delete style[key2];
     }
   }
-}, "setDomStyle");
-var setDomStyleValue = /* @__PURE__ */ __name((element, previous, next) => {
+};
+var setDomStyleValue = (element, previous, next) => {
   if (typeof previous === "object" && previous !== null && typeof next !== "object") {
     setDomStyle(element, previous, void 0);
   }
@@ -6130,15 +5735,19 @@ var setDomStyleValue = /* @__PURE__ */ __name((element, previous, next) => {
   }
   if (next && typeof next === "object") {
     if (typeof previous === "string" && element.removeAttribute) element.removeAttribute("style");
-    setDomStyle(element, previous && typeof previous === "object" ? previous : void 0, next);
+    setDomStyle(
+      element,
+      previous && typeof previous === "object" ? previous : void 0,
+      next
+    );
     return;
   }
   if (typeof previous === "string" && element.removeAttribute) element.removeAttribute("style");
   if (element.style && "cssText" in element.style) {
     element.style.cssText = "";
   }
-}, "setDomStyleValue");
-var setDomProperty = /* @__PURE__ */ __name((element, name, value, eventStore) => {
+};
+var setDomProperty = (element, name, value, eventStore) => {
   if (name === "key") return;
   if (name === "autoFocus") {
     return;
@@ -6187,8 +5796,8 @@ var setDomProperty = /* @__PURE__ */ __name((element, name, value, eventStore) =
   } else {
     element[name] = value;
   }
-}, "setDomProperty");
-var updateDomProperties = /* @__PURE__ */ __name((element, previous, next, eventStore) => {
+};
+var updateDomProperties = (element, previous, next, eventStore) => {
   const prev = previous ?? {};
   const nxt = next ?? {};
   for (const key2 of Object.keys(prev)) {
@@ -6215,8 +5824,8 @@ var updateDomProperties = /* @__PURE__ */ __name((element, previous, next, event
       element.focus?.();
     }
   }
-}, "updateDomProperties");
-var setChildren2 = /* @__PURE__ */ __name((container, children2) => {
+};
+var setChildren2 = (container, children2) => {
   const current = readChildNodes(container);
   for (const child of current) {
     container.removeChild(child);
@@ -6232,8 +5841,8 @@ var setChildren2 = /* @__PURE__ */ __name((container, children2) => {
       }
     }
   }
-}, "setChildren");
-var resolvePortalTarget = /* @__PURE__ */ __name((node, documentLike) => {
+};
+var resolvePortalTarget = (node, documentLike) => {
   const target = node.target;
   if (target == null || target === "" || target === "body") {
     return documentLike.body ?? null;
@@ -6242,8 +5851,8 @@ var resolvePortalTarget = /* @__PURE__ */ __name((node, documentLike) => {
     return documentLike.querySelector(String(target));
   }
   return null;
-}, "resolvePortalTarget");
-var disposeDomNode = /* @__PURE__ */ __name((node, eventStore, portalStore, liveTextStore) => {
+};
+var disposeDomNode = (node, eventStore, portalStore, liveTextStore) => {
   if (node.getAttribute && isModalDialogElement(node)) {
     syncModalDialogInertState(node, false);
   }
@@ -6281,8 +5890,8 @@ var disposeDomNode = /* @__PURE__ */ __name((node, eventStore, portalStore, live
     disposeDomNode(child, eventStore, portalStore, liveTextStore);
   }
   eventStore.delete(node);
-}, "disposeDomNode");
-var replaceChildren = /* @__PURE__ */ __name((container, children2, eventStore, portalStore, liveTextStore) => {
+};
+var replaceChildren = (container, children2, eventStore, portalStore, liveTextStore) => {
   const current = readChildNodes(container);
   for (const child of current) {
     disposeDomNode(child, eventStore, portalStore, liveTextStore);
@@ -6299,58 +5908,54 @@ var replaceChildren = /* @__PURE__ */ __name((container, children2, eventStore, 
       }
     }
   }
-}, "replaceChildren");
-var vnodeKindTag = /* @__PURE__ */ __name((node) => `${node.kind}:${node.tag ?? ""}`, "vnodeKindTag");
-var hasVNodeKey = /* @__PURE__ */ __name((node) => typeof node.key === "string" || typeof node.key === "number", "hasVNodeKey");
-var hasKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasKeyedChildren");
-var getDomHydrationKey = /* @__PURE__ */ __name((node) => getDomAttribute(node, LUMINA_HYDRATION_KEY_ATTR), "getDomHydrationKey");
-var isDomTextNode = /* @__PURE__ */ __name((node) => {
+};
+var vnodeKindTag = (node) => `${node.kind}:${node.tag ?? ""}`;
+var hasVNodeKey = (node) => typeof node.key === "string" || typeof node.key === "number";
+var hasKeyedChildren = (children2) => children2.some((child) => hasVNodeKey(child));
+var getDomHydrationKey = (node) => getDomAttribute(node, LUMINA_HYDRATION_KEY_ATTR);
+var isDomTextNode = (node) => {
   const candidate = node;
   if (candidate.nodeType === 3 || candidate.nodeName === "#text") return true;
   return !("tagName" in node) && readChildNodes(node).length === 0;
-}, "isDomTextNode");
-var getDomHydrationLabel = /* @__PURE__ */ __name((node) => {
+};
+var getDomHydrationLabel = (node) => {
   const element = node;
   if (typeof element.tagName === "string" && element.tagName.length > 0) {
     return element.tagName.toLowerCase();
   }
   if (isDomTextNode(node)) return "#text";
   return "node";
-}, "getDomHydrationLabel");
-var childHydrationContext = /* @__PURE__ */ __name((hydration, segment) => hydration ? {
+};
+var childHydrationContext = (hydration, segment) => hydration ? {
   ...hydration,
   path: `${hydration.path}.${String(segment)}`
-} : void 0, "childHydrationContext");
-var reportHydrationMismatch = /* @__PURE__ */ __name((hydration, mismatch) => {
+} : void 0;
+var reportHydrationMismatch = (hydration, mismatch) => {
   if (!hydration) return;
-  const diagnostic = {
-    ...mismatch,
-    path: hydration.path
-  };
+  const diagnostic = { ...mismatch, path: hydration.path };
   hydration.onMismatch?.(diagnostic);
   if (hydration.strict) {
-    const details = [
-      diagnostic.expected && `expected ${diagnostic.expected}`,
-      diagnostic.actual && `actual ${diagnostic.actual}`
-    ].filter(Boolean).join(", ");
-    throw new Error(`Hydration mismatch at ${diagnostic.path}: ${diagnostic.kind}${details ? ` (${details})` : ""}`);
+    const details = [diagnostic.expected && `expected ${diagnostic.expected}`, diagnostic.actual && `actual ${diagnostic.actual}`].filter(Boolean).join(", ");
+    throw new Error(
+      `Hydration mismatch at ${diagnostic.path}: ${diagnostic.kind}${details ? ` (${details})` : ""}`
+    );
   }
-}, "reportHydrationMismatch");
-var isIgnorableHydrationNode = /* @__PURE__ */ __name((node) => {
+};
+var isIgnorableHydrationNode = (node) => {
   const candidate = node;
   if (candidate.nodeType === 8) return true;
   return isDomTextNode(node) && (candidate.textContent ?? "").trim() === "";
-}, "isIgnorableHydrationNode");
-var canIgnoreHydrationWhitespace = /* @__PURE__ */ __name((children2) => children2.every((child) => child.kind !== "text" && child.kind !== "live_text"), "canIgnoreHydrationWhitespace");
-var findHydrationRootNode = /* @__PURE__ */ __name((children2, node) => {
+};
+var canIgnoreHydrationWhitespace = (children2) => children2.every((child) => child.kind !== "text" && child.kind !== "live_text");
+var findHydrationRootNode = (children2, node) => {
   if (node.kind === "text" || node.kind === "live_text") {
     return children2[0] ?? null;
   }
   return children2.find((child) => !isIgnorableHydrationNode(child)) ?? null;
-}, "findHydrationRootNode");
-var hasHydratableKeyedChildren = /* @__PURE__ */ __name((children2) => children2.some((child) => hasVNodeKey(child)), "hasHydratableKeyedChildren");
-var duplicateKeyError = /* @__PURE__ */ __name((key2) => new Error(`Duplicate keyed child '${String(key2)}' in the same parent is not supported`), "duplicateKeyError");
-var assertUniqueVNodeChildKeys = /* @__PURE__ */ __name((children2) => {
+};
+var hasHydratableKeyedChildren = (children2) => children2.some((child) => hasVNodeKey(child));
+var duplicateKeyError = (key2) => new Error(`Duplicate keyed child '${String(key2)}' in the same parent is not supported`);
+var assertUniqueVNodeChildKeys = (children2) => {
   const seen = /* @__PURE__ */ new Set();
   for (const child of children2) {
     if (!hasVNodeKey(child)) continue;
@@ -6359,20 +5964,14 @@ var assertUniqueVNodeChildKeys = /* @__PURE__ */ __name((children2) => {
     }
     seen.add(child.key);
   }
-}, "assertUniqueVNodeChildKeys");
-var areAllChildrenKeyed = /* @__PURE__ */ __name((children2) => children2.every((child) => hasVNodeKey(child)), "areAllChildrenKeyed");
-var tryReadTextLeaf = /* @__PURE__ */ __name((node) => {
+};
+var areAllChildrenKeyed = (children2) => children2.every((child) => hasVNodeKey(child));
+var tryReadTextLeaf = (node) => {
   if (node.kind === "text") {
-    return {
-      kind: "text",
-      text: node.text ?? ""
-    };
+    return { kind: "text", text: node.text ?? "" };
   }
   if (node.kind === "live_text") {
-    return {
-      kind: "live_text",
-      signal: node.signal
-    };
+    return { kind: "live_text", signal: node.signal };
   }
   if (node.kind !== "element" && node.kind !== "fragment") {
     return null;
@@ -6383,20 +5982,14 @@ var tryReadTextLeaf = /* @__PURE__ */ __name((node) => {
   }
   const child = children2[0];
   if (child.kind === "text") {
-    return {
-      kind: "text",
-      text: child.text ?? ""
-    };
+    return { kind: "text", text: child.text ?? "" };
   }
   if (child.kind === "live_text") {
-    return {
-      kind: "live_text",
-      signal: child.signal
-    };
+    return { kind: "live_text", signal: child.signal };
   }
   return null;
-}, "tryReadTextLeaf");
-var trySkipStableKeyedChildFast = /* @__PURE__ */ __name((prevNode, nextNode) => {
+};
+var trySkipStableKeyedChildFast = (prevNode, nextNode) => {
   if (prevNode === nextNode) return true;
   if (prevNode.kind !== nextNode.kind) return false;
   if (prevNode.kind === "text" && nextNode.kind === "text") {
@@ -6482,8 +6075,8 @@ var trySkipStableKeyedChildFast = /* @__PURE__ */ __name((prevNode, nextNode) =>
     return null;
   }
   return true;
-}, "trySkipStableKeyedChildFast");
-var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChildren) => {
+};
+var analyzeKeyedChildTransition = (prevChildren, nextChildren) => {
   if (prevChildren.length !== nextChildren.length) {
     return null;
   }
@@ -6504,25 +6097,24 @@ var analyzeKeyedChildTransition = /* @__PURE__ */ __name((prevChildren, nextChil
     sawMismatch || (sawMismatch = prevKey !== nextKey);
   }
   if (!sawMismatch) {
-    return {
-      kind: "same_order"
-    };
+    return { kind: "same_order" };
   }
-  return analyzeSequenceTransition(prevChildren, nextChildren, (left, right) => left.key === right.key);
-}, "analyzeKeyedChildTransition");
-var createForListState = /* @__PURE__ */ __name((entries) => ({
+  return analyzeSequenceTransition(
+    prevChildren,
+    nextChildren,
+    (left, right) => left.key === right.key
+  );
+};
+var createForListState = (entries) => ({
   entries,
-  entriesByKey: new Map(entries.map((entry) => [
-    entry.key,
-    entry
-  ])),
+  entriesByKey: new Map(entries.map((entry) => [entry.key, entry])),
   order: entries.map((entry) => entry.key)
-}), "createForListState");
+});
 var genericKeyedStates = /* @__PURE__ */ new WeakMap();
-var createGenericKeyedState = /* @__PURE__ */ __name((entries) => ({
+var createGenericKeyedState = (entries) => ({
   entries
-}), "createGenericKeyedState");
-var buildKeyedOrder = /* @__PURE__ */ __name((items, keyOf) => {
+});
+var buildKeyedOrder = (items, keyOf) => {
   const order = [];
   const seen = /* @__PURE__ */ new Set();
   for (let index = 0; index < items.length; index += 1) {
@@ -6534,13 +6126,15 @@ var buildKeyedOrder = /* @__PURE__ */ __name((items, keyOf) => {
     order.push(key2);
   }
   return order;
-}, "buildKeyedOrder");
-var buildGenericKeyedState = /* @__PURE__ */ __name((children2, domChildren) => createGenericKeyedState(children2.map((child, index) => ({
-  key: child.key,
-  vnode: child,
-  domNode: domChildren[index]
-})).filter((entry) => Boolean(entry.domNode))), "buildGenericKeyedState");
-var isGenericKeyedStateValid = /* @__PURE__ */ __name((host, state2, children2) => {
+};
+var buildGenericKeyedState = (children2, domChildren) => createGenericKeyedState(
+  children2.map((child, index) => ({
+    key: child.key,
+    vnode: child,
+    domNode: domChildren[index]
+  })).filter((entry) => Boolean(entry.domNode))
+);
+var isGenericKeyedStateValid = (host, state2, children2) => {
   if (!state2 || state2.entries.length !== children2.length) {
     return false;
   }
@@ -6552,8 +6146,8 @@ var isGenericKeyedStateValid = /* @__PURE__ */ __name((host, state2, children2) 
     }
   }
   return true;
-}, "isGenericKeyedStateValid");
-var ensureGenericKeyedState = /* @__PURE__ */ __name((host, children2) => {
+};
+var ensureGenericKeyedState = (host, children2) => {
   const existing = genericKeyedStates.get(host);
   if (isGenericKeyedStateValid(host, existing, children2)) {
     return existing;
@@ -6561,8 +6155,8 @@ var ensureGenericKeyedState = /* @__PURE__ */ __name((host, children2) => {
   const rebuilt = buildGenericKeyedState(children2, readChildNodes(host));
   genericKeyedStates.set(host, rebuilt);
   return rebuilt;
-}, "ensureGenericKeyedState");
-var syncGenericKeyedStateForTransition = /* @__PURE__ */ __name((state2, nextChildren, transition) => {
+};
+var syncGenericKeyedStateForTransition = (state2, nextChildren, transition) => {
   if (transition.kind === "adjacent_swap") {
     const leftEntry = state2.entries[transition.left];
     state2.entries[transition.left] = state2.entries[transition.right];
@@ -6578,16 +6172,16 @@ var syncGenericKeyedStateForTransition = /* @__PURE__ */ __name((state2, nextChi
     if (!entry) continue;
     entry.vnode = nextChildren[index];
   }
-}, "syncGenericKeyedStateForTransition");
-var replaceGenericKeyedState = /* @__PURE__ */ __name((host, nextEntries, existingState) => {
+};
+var replaceGenericKeyedState = (host, nextEntries, existingState) => {
   if (existingState) {
     existingState.entries = nextEntries;
     genericKeyedStates.set(host, existingState);
     return;
   }
   genericKeyedStates.set(host, createGenericKeyedState(nextEntries));
-}, "replaceGenericKeyedState");
-var collectGenericEntryDomChildren = /* @__PURE__ */ __name((entries, host, attachedOnly) => {
+};
+var collectGenericEntryDomChildren = (entries, host, attachedOnly) => {
   if (!attachedOnly) {
     const children3 = new Array(entries.length);
     for (let index = 0; index < entries.length; index += 1) {
@@ -6603,15 +6197,10 @@ var collectGenericEntryDomChildren = /* @__PURE__ */ __name((entries, host, atta
     }
   }
   return children2;
-}, "collectGenericEntryDomChildren");
-var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, keyOf) => {
+};
+var analyzeKeyedOrderTransition = (items, previousOrder, keyOf) => {
   if (items.length !== previousOrder.length) {
-    return {
-      transition: {
-        kind: "complex_reorder"
-      },
-      nextOrder: null
-    };
+    return { transition: { kind: "complex_reorder" }, nextOrder: null };
   }
   let firstMismatch = -1;
   let firstMismatchKey = null;
@@ -6624,12 +6213,7 @@ var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, 
     }
   }
   if (firstMismatch < 0) {
-    return {
-      transition: {
-        kind: "same_order"
-      },
-      nextOrder: null
-    };
+    return { transition: { kind: "same_order" }, nextOrder: null };
   }
   const swapRight = firstMismatch + 1;
   if (swapRight < items.length) {
@@ -6645,11 +6229,7 @@ var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, 
       }
       if (restMatches) {
         return {
-          transition: {
-            kind: "adjacent_swap",
-            left: firstMismatch,
-            right: swapRight
-          },
+          transition: { kind: "adjacent_swap", left: firstMismatch, right: swapRight },
           nextOrder: null
         };
       }
@@ -6661,11 +6241,15 @@ var analyzeKeyedOrderTransition = /* @__PURE__ */ __name((items, previousOrder, 
     nextOrder[index] = coerceListKey(keyOf(items[index], index), index);
   }
   return {
-    transition: analyzeSequenceTransition(previousOrder, nextOrder, (left, right) => left === right),
+    transition: analyzeSequenceTransition(
+      previousOrder,
+      nextOrder,
+      (left, right) => left === right
+    ),
     nextOrder
   };
-}, "analyzeKeyedOrderTransition");
-var hasShallowEqualProps = /* @__PURE__ */ __name((left, right) => {
+};
+var hasShallowEqualProps = (left, right) => {
   if (left === right) return true;
   if (!left || !right) return !left && !right;
   let leftCount = 0;
@@ -6681,8 +6265,8 @@ var hasShallowEqualProps = /* @__PURE__ */ __name((left, right) => {
     rightCount += 1;
   }
   return leftCount === rightCount;
-}, "hasShallowEqualProps");
-var canSkipChildListPatch = /* @__PURE__ */ __name((length, compareChild) => {
+};
+var canSkipChildListPatch = (length, compareChild) => {
   if (length === 0) {
     return true;
   }
@@ -6695,8 +6279,8 @@ var canSkipChildListPatch = /* @__PURE__ */ __name((length, compareChild) => {
     }
   }
   return true;
-}, "canSkipChildListPatch");
-var canSkipStructuredSmallSubtree = /* @__PURE__ */ __name((prevNode, nextNode, equalsValue) => {
+};
+var canSkipStructuredSmallSubtree = (prevNode, nextNode, equalsValue) => {
   if (prevNode === nextNode) return true;
   if (prevNode.kind !== nextNode.kind) return false;
   if (prevNode.kind === "text" && nextNode.kind === "text") {
@@ -6741,7 +6325,11 @@ var canSkipStructuredSmallSubtree = /* @__PURE__ */ __name((prevNode, nextNode, 
     return null;
   }
   for (let index = 0; index < prevChildren.length; index += 1) {
-    const childResult = canSkipStructuredSmallSubtree(prevChildren[index], nextChildren[index], equalsValue);
+    const childResult = canSkipStructuredSmallSubtree(
+      prevChildren[index],
+      nextChildren[index],
+      equalsValue
+    );
     if (childResult === null) {
       return null;
     }
@@ -6750,8 +6338,8 @@ var canSkipStructuredSmallSubtree = /* @__PURE__ */ __name((prevNode, nextNode, 
     }
   }
   return true;
-}, "canSkipStructuredSmallSubtree");
-var remapMovedIndex = /* @__PURE__ */ __name((index, from, to) => {
+};
+var remapMovedIndex = (index, from, to) => {
   if (from === to) {
     return index;
   }
@@ -6763,18 +6351,15 @@ var remapMovedIndex = /* @__PURE__ */ __name((index, from, to) => {
   if (index < to || index > from) return index;
   if (index === to) return from;
   return index - 1;
-}, "remapMovedIndex");
-var getComplexOrderAffectedRange = /* @__PURE__ */ __name((previousOrder, nextOrder) => {
+};
+var getComplexOrderAffectedRange = (previousOrder, nextOrder) => {
   const window2 = findStableSequenceWindow(previousOrder, nextOrder);
   if (!window2) {
     return null;
   }
-  return {
-    start: window2.nextStart,
-    end: window2.nextEnd
-  };
-}, "getComplexOrderAffectedRange");
-var canSkipDomPatch = /* @__PURE__ */ __name((prevNode, nextNode, equalsValue) => {
+  return { start: window2.nextStart, end: window2.nextEnd };
+};
+var canSkipDomPatch = (prevNode, nextNode, equalsValue) => {
   if (prevNode === nextNode) return true;
   if (prevNode.kind !== nextNode.kind) return false;
   if (prevNode.kind === "text" && nextNode.kind === "text") {
@@ -6817,13 +6402,13 @@ var canSkipDomPatch = /* @__PURE__ */ __name((prevNode, nextNode, equalsValue) =
   if (prevChildren.length === 0) {
     return true;
   }
-  return canSkipChildListPatch(prevChildren.length, (index) => canSkipDomPatch(prevChildren[index], nextChildren[index], equalsValue));
-}, "canSkipDomPatch");
-var patchPortalMount = /* @__PURE__ */ __name((anchor, prevNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
-  const previous = portalStore.get(anchor) ?? {
-    target: null,
-    host: null
-  };
+  return canSkipChildListPatch(
+    prevChildren.length,
+    (index) => canSkipDomPatch(prevChildren[index], nextChildren[index], equalsValue)
+  );
+};
+var patchPortalMount = (anchor, prevNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+  const previous = portalStore.get(anchor) ?? { target: null, host: null };
   const nextTarget = resolvePortalTarget(nextNode, documentLike);
   const prevChildren = prevNode?.kind === "portal" ? prevNode.children ?? [] : [];
   const nextChildren = nextNode.children ?? [];
@@ -6833,10 +6418,7 @@ var patchPortalMount = /* @__PURE__ */ __name((anchor, prevNode, nextNode, docum
       const parent = previous.host.parentNode;
       if (parent) parent.removeChild(previous.host);
     }
-    portalStore.set(anchor, {
-      target: null,
-      host: null
-    });
+    portalStore.set(anchor, { target: null, host: null });
     return;
   }
   let host = previous.host;
@@ -6856,19 +6438,36 @@ var patchPortalMount = /* @__PURE__ */ __name((anchor, prevNode, nextNode, docum
     nextTarget.appendChild(host);
   }
   if (targetChanged || !prevNode || prevNode.kind !== "portal") {
-    const mountedChildren = nextChildren.map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+    const mountedChildren = nextChildren.map(
+      (child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue)
+    );
     replaceChildren(host, mountedChildren, eventStore, portalStore, liveTextStore);
   } else if (hasKeyedChildren(prevChildren) || hasKeyedChildren(nextChildren)) {
-    patchDomChildrenWithKeys(host, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchDomChildrenWithKeys(
+      host,
+      prevChildren,
+      nextChildren,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
   } else {
-    patchDomChildrenPositionally(host, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchDomChildrenPositionally(
+      host,
+      prevChildren,
+      nextChildren,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
   }
-  portalStore.set(anchor, {
-    target: nextTarget,
-    host
-  });
-}, "patchPortalMount");
-var bindIndexListHost = /* @__PURE__ */ __name((host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+  portalStore.set(anchor, { target: nextTarget, host });
+};
+var bindIndexListHost = (host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const source = node.itemsSignal;
   const renderItem = node.listRender;
   if (!source || typeof renderItem !== "function") {
@@ -6885,11 +6484,20 @@ var bindIndexListHost = /* @__PURE__ */ __name((host, node, documentLike, eventS
   host.__luminaIndexListEffect?.dispose();
   let currentItems = readIndexListValues(source, false);
   let itemSignals = currentItems.map((value) => new Signal(value));
-  const renderChildren = /* @__PURE__ */ __name(() => itemSignals.map((itemSignal, index) => createDomNode(coerceRenderableToVNode(renderItem(itemSignal, index)), documentLike, eventStore, portalStore, liveTextStore, equalsValue)), "renderChildren");
+  const renderChildren = () => itemSignals.map(
+    (itemSignal, index) => createDomNode(
+      coerceRenderableToVNode(renderItem(itemSignal, index)),
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    )
+  );
   replaceChildren(host, renderChildren(), eventStore, portalStore, liveTextStore);
-  const runBatched = /* @__PURE__ */ __name((fn) => {
+  const runBatched = (fn) => {
     batch(fn);
-  }, "runBatched");
+  };
   host.__luminaIndexListEffect = new Effect(() => {
     const nextItems = readIndexListValues(source, true);
     if (nextItems.length !== itemSignals.length) {
@@ -6910,8 +6518,8 @@ var bindIndexListHost = /* @__PURE__ */ __name((host, node, documentLike, eventS
   });
   host.__luminaIndexListSource = source;
   host.__luminaIndexListRender = renderItem;
-}, "bindIndexListHost");
-var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydrateExisting = false, hydration) => {
+};
+var bindForListHost = (host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydrateExisting = false, hydration) => {
   const source = node.itemsSignal;
   const keyOf = node.listKey;
   const renderItem = node.listIndexedRender;
@@ -6928,15 +6536,24 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     return;
   }
   host.__luminaForListEffect?.dispose();
-  const runBatched = /* @__PURE__ */ __name((fn) => {
+  const runBatched = (fn) => {
     batch(fn);
-  }, "runBatched");
-  const createEntry = /* @__PURE__ */ __name((value, index, existingDomNode, keyOverride) => {
+  };
+  const createEntry = (value, index, existingDomNode, keyOverride) => {
     const key2 = keyOverride ?? coerceListKey(keyOf(value, index), index);
     const itemSignal = new Signal(value);
     const indexSignal = new Signal(index);
     const vnode2 = applyVNodeKey(coerceRenderableToVNode(renderItem(itemSignal, indexSignal)), key2);
-    const domNode = existingDomNode ? hydrateDomNode(existingDomNode, vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue, childHydrationContext(hydration, `key:${String(key2)}`)) : createDomNode(vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    const domNode = existingDomNode ? hydrateDomNode(
+      existingDomNode,
+      vnode2,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue,
+      childHydrationContext(hydration, `key:${String(key2)}`)
+    ) : createDomNode(vnode2, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
     return {
       key: key2,
       currentValue: value,
@@ -6946,8 +6563,8 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       vnode: vnode2,
       domNode
     };
-  }, "createEntry");
-  const createInitialEntries = /* @__PURE__ */ __name((items, existingChildren2 = []) => {
+  };
+  const createInitialEntries = (items, existingChildren2 = []) => {
     const seen = /* @__PURE__ */ new Set();
     const keyedExisting = /* @__PURE__ */ new Map();
     for (const child of existingChildren2) {
@@ -6972,71 +6589,94 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       }
       return createEntry(value, index, keyedDom, key2);
     });
-  }, "createInitialEntries");
-  const replaceOrHydrateInitialChildren = /* @__PURE__ */ __name((entries, existingChildren2) => {
+  };
+  const replaceOrHydrateInitialChildren = (entries, existingChildren2) => {
     if (!hydrateExisting) {
-      replaceChildren(host, entries.map((entry) => entry.domNode), eventStore, portalStore, liveTextStore);
+      replaceChildren(
+        host,
+        entries.map((entry) => entry.domNode),
+        eventStore,
+        portalStore,
+        liveTextStore
+      );
       return;
     }
-    reorderChildren(host, entries.map((entry) => entry.domNode), (child) => {
-      reportHydrationMismatch(hydration, {
-        kind: "extra_node",
-        actual: getDomHydrationLabel(child)
-      });
-      disposeDomNode(child, eventStore, portalStore, liveTextStore);
-    }, {
-      currentChildren: existingChildren2,
-      structureChanged: true
-    });
-  }, "replaceOrHydrateInitialChildren");
+    reorderChildren(
+      host,
+      entries.map((entry) => entry.domNode),
+      (child) => {
+        reportHydrationMismatch(hydration, {
+          kind: "extra_node",
+          actual: getDomHydrationLabel(child)
+        });
+        disposeDomNode(child, eventStore, portalStore, liveTextStore);
+      },
+      {
+        currentChildren: existingChildren2,
+        structureChanged: true
+      }
+    );
+  };
   const existingChildren = hydrateExisting ? readChildNodes(host) : [];
   const initialEntries = createInitialEntries(readIndexListValues(source, false), existingChildren);
   let state2 = createForListState(initialEntries);
   const dirtyEntries = /* @__PURE__ */ new Set();
   replaceOrHydrateInitialChildren(state2.entries, existingChildren);
-  const renderEntryVNode = /* @__PURE__ */ __name((entry) => applyVNodeKey(coerceRenderableToVNode(renderItem(entry.itemSignal, entry.indexSignal)), entry.key), "renderEntryVNode");
-  const markEntryDirty = /* @__PURE__ */ __name((entry) => {
+  const renderEntryVNode = (entry) => applyVNodeKey(
+    coerceRenderableToVNode(renderItem(entry.itemSignal, entry.indexSignal)),
+    entry.key
+  );
+  const markEntryDirty = (entry) => {
     dirtyEntries.add(entry);
-  }, "markEntryDirty");
-  const flushDirtyEntries = /* @__PURE__ */ __name(() => {
+  };
+  const flushDirtyEntries = () => {
     for (const entry of dirtyEntries) {
       const nextVNode = renderEntryVNode(entry);
       if (!canSkipDomPatch(entry.vnode, nextVNode, equalsValue)) {
-        entry.domNode = patchDomNode(entry.domNode, entry.vnode, nextVNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        entry.domNode = patchDomNode(
+          entry.domNode,
+          entry.vnode,
+          nextVNode,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
       }
       entry.vnode = nextVNode;
     }
     dirtyEntries.clear();
-  }, "flushDirtyEntries");
-  const syncEntryValue = /* @__PURE__ */ __name((entry, value) => {
+  };
+  const syncEntryValue = (entry, value) => {
     if (entry.currentValue !== value && !equalsValue(entry.currentValue, value)) {
       entry.itemSignal.set(value);
       entry.currentValue = value;
       markEntryDirty(entry);
     }
-  }, "syncEntryValue");
-  const syncEntryIndex = /* @__PURE__ */ __name((entry, index) => {
+  };
+  const syncEntryIndex = (entry, index) => {
     if (entry.currentIndex !== index) {
       entry.indexSignal.set(index);
       entry.currentIndex = index;
       markEntryDirty(entry);
     }
-  }, "syncEntryIndex");
-  const syncValuesForOrder = /* @__PURE__ */ __name((items, order) => {
+  };
+  const syncValuesForOrder = (items, order) => {
     for (let index = 0; index < items.length; index += 1) {
       const entry = state2.entriesByKey.get(order[index]);
       if (!entry) continue;
       syncEntryValue(entry, items[index]);
     }
-  }, "syncValuesForOrder");
-  const syncValuesForEntries = /* @__PURE__ */ __name((items, nextEntries) => {
+  };
+  const syncValuesForEntries = (items, nextEntries) => {
     for (let index = 0; index < items.length; index += 1) {
       const entry = nextEntries[index];
       if (!entry) continue;
       syncEntryValue(entry, items[index]);
     }
-  }, "syncValuesForEntries");
-  const hasPureEntryValueReuse = /* @__PURE__ */ __name((items, nextEntries) => {
+  };
+  const hasPureEntryValueReuse = (items, nextEntries) => {
     if (items.length !== nextEntries.length) {
       return false;
     }
@@ -7046,15 +6686,15 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       }
     }
     return true;
-  }, "hasPureEntryValueReuse");
-  const swapItems = /* @__PURE__ */ __name((entries, left, right) => {
+  };
+  const swapItems = (entries, left, right) => {
     const nextEntries = entries.slice();
     const previousLeft = nextEntries[left];
     nextEntries[left] = nextEntries[right];
     nextEntries[right] = previousLeft;
     return nextEntries;
-  }, "swapItems");
-  const moveItems = /* @__PURE__ */ __name((entries, from, to) => {
+  };
+  const moveItems = (entries, from, to) => {
     const nextEntries = entries.slice();
     const moving = nextEntries.splice(from, 1)[0];
     if (!moving) {
@@ -7062,8 +6702,8 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     }
     nextEntries.splice(to, 0, moving);
     return nextEntries;
-  }, "moveItems");
-  const applyDirectEntryReorder = /* @__PURE__ */ __name((currentEntries, nextEntries, transition) => {
+  };
+  const applyDirectEntryReorder = (currentEntries, nextEntries, transition) => {
     if (typeof host.insertBefore !== "function") {
       return false;
     }
@@ -7086,8 +6726,8 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       return true;
     }
     return false;
-  }, "applyDirectEntryReorder");
-  const syncIndicesForRange = /* @__PURE__ */ __name((nextEntries, transition, previousOrder, nextOrder) => {
+  };
+  const syncIndicesForRange = (nextEntries, transition, previousOrder, nextOrder) => {
     const range = transition.kind === "complex_reorder" && previousOrder && nextOrder ? getComplexOrderAffectedRange(previousOrder, nextOrder) : getTransitionAffectedRange(transition, nextEntries.length);
     if (!range) return;
     for (let index = range.start; index <= range.end; index += 1) {
@@ -7095,8 +6735,8 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       if (!entry) continue;
       syncEntryIndex(entry, index);
     }
-  }, "syncIndicesForRange");
-  const reorderEntriesForComplexWindow = /* @__PURE__ */ __name((currentEntries, previousOrder, nextOrder) => {
+  };
+  const reorderEntriesForComplexWindow = (currentEntries, previousOrder, nextOrder) => {
     if (currentEntries.length !== nextOrder.length || previousOrder.length !== nextOrder.length) {
       return null;
     }
@@ -7122,8 +6762,8 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       nextEntries[index] = entry;
     }
     return nextEntries;
-  }, "reorderEntriesForComplexWindow");
-  const buildNextEntries = /* @__PURE__ */ __name((items, order) => {
+  };
+  const buildNextEntries = (items, order) => {
     const retained = /* @__PURE__ */ new Set();
     const nextEntries = [];
     let structureChanged = items.length !== state2.entries.length;
@@ -7146,11 +6786,8 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       state2.entriesByKey.delete(key2);
       structureChanged = true;
     }
-    return {
-      nextEntries,
-      structureChanged
-    };
-  }, "buildNextEntries");
+    return { nextEntries, structureChanged };
+  };
   host.__luminaForListEffect = new Effect(() => {
     const nextItems = readIndexListValues(source, true);
     const analyzedTransition = analyzeKeyedOrderTransition(nextItems, state2.order, keyOf);
@@ -7172,7 +6809,9 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       const nextEntries2 = transition.kind === "adjacent_swap" ? swapItems(state2.entries, transition.left, transition.right) : moveItems(state2.entries, transition.from, transition.to);
       for (let index = 0; index < nextEntries2.length; index += 1) {
         if (!nextEntries2[index]) {
-          throw new Error(`Missing keyed list entry '${String(nextOrder?.[index] ?? index)}' during transition`);
+          throw new Error(
+            `Missing keyed list entry '${String(nextOrder?.[index] ?? index)}' during transition`
+          );
         }
       }
       runBatched(() => {
@@ -7185,11 +6824,16 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       state2.entries = nextEntries2;
       state2.order = nextOrder ?? (transition.kind === "adjacent_swap" ? swapItems(state2.order, transition.left, transition.right) : moveItems(state2.order, transition.from, transition.to));
       if (!applyDirectEntryReorder(previousEntries2, nextEntries2, transition)) {
-        reorderChildren(host, nextEntries2.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-          currentChildren: previousEntries2.map((entry) => entry.domNode),
-          transition,
-          structureChanged: false
-        });
+        reorderChildren(
+          host,
+          nextEntries2.map((entry) => entry.domNode),
+          (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+          {
+            currentChildren: previousEntries2.map((entry) => entry.domNode),
+            transition,
+            structureChanged: false
+          }
+        );
       }
       return;
     }
@@ -7209,11 +6853,16 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
       state2.entries = reorderedEntries;
       state2.order = resolvedNextOrder;
       if (!applyDirectEntryReorder(previousEntries2, reorderedEntries, transition)) {
-        reorderChildren(host, reorderedEntries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-          currentChildren: previousEntries2.map((entry) => entry.domNode),
-          transition,
-          structureChanged: false
-        });
+        reorderChildren(
+          host,
+          reorderedEntries.map((entry) => entry.domNode),
+          (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+          {
+            currentChildren: previousEntries2.map((entry) => entry.domNode),
+            transition,
+            structureChanged: false
+          }
+        );
       }
       return;
     }
@@ -7227,17 +6876,22 @@ var bindForListHost = /* @__PURE__ */ __name((host, node, documentLike, eventSto
     });
     state2.entries = nextEntries;
     state2.order = resolvedNextOrder;
-    reorderChildren(host, nextEntries.map((entry) => entry.domNode), (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-      currentChildren: previousEntries.map((entry) => entry.domNode),
-      transition,
-      structureChanged
-    });
+    reorderChildren(
+      host,
+      nextEntries.map((entry) => entry.domNode),
+      (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+      {
+        currentChildren: previousEntries.map((entry) => entry.domNode),
+        transition,
+        structureChanged
+      }
+    );
   });
   host.__luminaForListSource = source;
   host.__luminaForListKey = keyOf;
   host.__luminaForListRender = renderItem;
-}, "bindForListHost");
-var createDomNode = /* @__PURE__ */ __name((node, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+};
+var createDomNode = (node, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   if (node.kind === "text") {
     return documentLike.createTextNode(node.text ?? "");
   }
@@ -7254,7 +6908,15 @@ var createDomNode = /* @__PURE__ */ __name((node, documentLike, eventStore, port
   if (node.kind === "index_list") {
     const host = documentLike.createElement("lumina-index-list");
     updateDomProperties(host, {}, indexListHostProps, eventStore);
-    bindIndexListHost(host, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    bindIndexListHost(
+      host,
+      node,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     return host;
   }
   if (node.kind === "for_list") {
@@ -7267,17 +6929,30 @@ var createDomNode = /* @__PURE__ */ __name((node, documentLike, eventStore, port
     const wrapper = documentLike.createElement("lumina-fragment");
     const vnodeChildren2 = asDomChildren(node);
     assertUniqueVNodeChildKeys(vnodeChildren2);
-    const children3 = vnodeChildren2.map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+    const children3 = vnodeChildren2.map(
+      (child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue)
+    );
     setChildren2(wrapper, children3);
     return wrapper;
   }
   if (node.kind === "portal") {
     const anchor = documentLike.createElement("lumina-portal-anchor");
-    updateDomProperties(anchor, {}, {
-      hidden: true,
-      "data-lumina-portal-anchor": "true"
-    }, eventStore);
-    patchPortalMount(anchor, null, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    updateDomProperties(
+      anchor,
+      {},
+      { hidden: true, "data-lumina-portal-anchor": "true" },
+      eventStore
+    );
+    patchPortalMount(
+      anchor,
+      null,
+      node,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     return anchor;
   }
   if (node.kind === "element" && typeof node.domTemplateHtml === "string") {
@@ -7291,29 +6966,58 @@ var createDomNode = /* @__PURE__ */ __name((node, documentLike, eventStore, port
   updateDomProperties(element, {}, node.props, eventStore);
   const vnodeChildren = asDomChildren(node);
   assertUniqueVNodeChildKeys(vnodeChildren);
-  const children2 = vnodeChildren.map((child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+  const children2 = vnodeChildren.map(
+    (child) => createDomNode(child, documentLike, eventStore, portalStore, liveTextStore, equalsValue)
+  );
   setChildren2(element, children2);
   if (node.props?.autoFocus && isModalDialogElement(element) && !isElementHidden(element)) {
     focusInitialDialogTarget(element);
   }
   return element;
-}, "createDomNode");
-var patchDomChildrenPositionally = /* @__PURE__ */ __name((element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+};
+var patchDomChildrenPositionally = (element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const shared = Math.min(prevChildren.length, nextChildren.length);
   for (let i = 0; i < shared; i += 1) {
     const currentChild = element.childNodes[i];
     if (!currentChild) {
-      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+      element.appendChild(
+        createDomNode(
+          nextChildren[i],
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        )
+      );
       continue;
     }
     if (canSkipDomPatch(prevChildren[i], nextChildren[i], equalsValue)) {
       continue;
     }
-    patchDomNode(currentChild, prevChildren[i], nextChildren[i], documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchDomNode(
+      currentChild,
+      prevChildren[i],
+      nextChildren[i],
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
   }
   if (nextChildren.length > prevChildren.length) {
     for (let i = prevChildren.length; i < nextChildren.length; i += 1) {
-      element.appendChild(createDomNode(nextChildren[i], documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+      element.appendChild(
+        createDomNode(
+          nextChildren[i],
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        )
+      );
     }
   } else if (prevChildren.length > nextChildren.length) {
     for (let i = prevChildren.length - 1; i >= nextChildren.length; i -= 1) {
@@ -7324,17 +7028,26 @@ var patchDomChildrenPositionally = /* @__PURE__ */ __name((element, prevChildren
       }
     }
   }
-}, "patchDomChildrenPositionally");
-var patchStableKeyedChildAt = /* @__PURE__ */ __name((currentDomChildren, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+};
+var patchStableKeyedChildAt = (currentDomChildren, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const domChild = currentDomChildren[index];
   const prevChild = prevChildren[index];
   const nextChild = nextChildren[index];
   if (!domChild || !prevChild || !nextChild || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
     return;
   }
-  patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
-}, "patchStableKeyedChildAt");
-var patchTransitionAffectedRange = /* @__PURE__ */ __name((currentDomChildren, prevChildren, nextChildren, transition, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+  patchDomNode(
+    domChild,
+    prevChild,
+    nextChild,
+    documentLike,
+    eventStore,
+    portalStore,
+    liveTextStore,
+    equalsValue
+  );
+};
+var patchTransitionAffectedRange = (currentDomChildren, prevChildren, nextChildren, transition, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const range = getTransitionAffectedRange(transition, nextChildren.length);
   if (!range) {
     return;
@@ -7347,10 +7060,19 @@ var patchTransitionAffectedRange = /* @__PURE__ */ __name((currentDomChildren, p
     if (!domChild || !prevChild || !nextChild || canSkipDomPatch(prevChild, nextChild, equalsValue)) {
       continue;
     }
-    patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchDomNode(
+      domChild,
+      prevChild,
+      nextChild,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
   }
-}, "patchTransitionAffectedRange");
-var patchStableGenericKeyedEntryAt = /* @__PURE__ */ __name((entries, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+};
+var patchStableGenericKeyedEntryAt = (entries, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const entry = entries[index];
   const nextChild = nextChildren[index];
   if (!entry || !nextChild) {
@@ -7360,9 +7082,18 @@ var patchStableGenericKeyedEntryAt = /* @__PURE__ */ __name((entries, nextChildr
   if (fastSkip === true || fastSkip !== false && canSkipDomPatch(entry.vnode, nextChild, equalsValue)) {
     return;
   }
-  entry.domNode = patchDomNode(entry.domNode, entry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
-}, "patchStableGenericKeyedEntryAt");
-var patchTransitionAffectedGenericKeyedEntries = /* @__PURE__ */ __name((entries, nextChildren, transition, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+  entry.domNode = patchDomNode(
+    entry.domNode,
+    entry.vnode,
+    nextChild,
+    documentLike,
+    eventStore,
+    portalStore,
+    liveTextStore,
+    equalsValue
+  );
+};
+var patchTransitionAffectedGenericKeyedEntries = (entries, nextChildren, transition, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const range = getTransitionAffectedRange(transition, nextChildren.length);
   if (!range) {
     return;
@@ -7378,10 +7109,19 @@ var patchTransitionAffectedGenericKeyedEntries = /* @__PURE__ */ __name((entries
     if (fastSkip === true || fastSkip !== false && canSkipDomPatch(entry.vnode, nextChild, equalsValue)) {
       continue;
     }
-    entry.domNode = patchDomNode(entry.domNode, entry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    entry.domNode = patchDomNode(
+      entry.domNode,
+      entry.vnode,
+      nextChild,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
   }
-}, "patchTransitionAffectedGenericKeyedEntries");
-var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+};
+var patchDomChildrenWithKeys = (element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   const allPrevChildrenKeyed = areAllChildrenKeyed(prevChildren);
   const allNextChildrenKeyed = areAllChildrenKeyed(nextChildren);
   const genericKeyedState = allPrevChildrenKeyed && allNextChildrenKeyed ? ensureGenericKeyedState(element, prevChildren) : (genericKeyedStates.delete(element), null);
@@ -7396,7 +7136,16 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         continue;
       }
       if (!domChild) {
-        element.appendChild(createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+        element.appendChild(
+          createDomNode(
+            nextChild,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          )
+        );
         continue;
       }
       const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
@@ -7406,7 +7155,16 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         }
         continue;
       }
-      const nextDomNode = patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      const nextDomNode = patchDomNode(
+        domChild,
+        prevChild,
+        nextChild,
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore,
+        equalsValue
+      );
       if (entry) {
         entry.vnode = nextChild;
         entry.domNode = nextDomNode;
@@ -7421,18 +7179,56 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
     const rightDom = currentEntries?.[keyedTransition.right]?.domNode ?? currentDomChildren2?.[keyedTransition.right];
     if (leftDom && rightDom && typeof element.insertBefore === "function") {
       if (currentEntries && allNextChildrenKeyed) {
-        patchTransitionAffectedGenericKeyedEntries(currentEntries, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        patchTransitionAffectedGenericKeyedEntries(
+          currentEntries,
+          nextChildren,
+          keyedTransition,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
       } else {
-        patchTransitionAffectedRange(currentDomChildren2, prevChildren, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        patchTransitionAffectedRange(
+          currentDomChildren2,
+          prevChildren,
+          nextChildren,
+          keyedTransition,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
       }
       for (let index = 0; index < nextChildren.length; index += 1) {
         if (index === keyedTransition.left || index === keyedTransition.right) {
           continue;
         }
         if (currentEntries && allNextChildrenKeyed) {
-          patchStableGenericKeyedEntryAt(currentEntries, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+          patchStableGenericKeyedEntryAt(
+            currentEntries,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
         } else {
-          patchStableKeyedChildAt(currentDomChildren2, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+          patchStableKeyedChildAt(
+            currentDomChildren2,
+            prevChildren,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
         }
       }
       element.insertBefore(rightDom, leftDom);
@@ -7449,9 +7245,28 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
     if (movingDom && typeof element.insertBefore === "function") {
       const reference = keyedTransition.from < keyedTransition.to ? currentEntries?.[keyedTransition.to + 1]?.domNode ?? currentDomChildren2?.[keyedTransition.to + 1] ?? null : currentEntries?.[keyedTransition.to]?.domNode ?? currentDomChildren2?.[keyedTransition.to] ?? null;
       if (currentEntries && allNextChildrenKeyed) {
-        patchTransitionAffectedGenericKeyedEntries(currentEntries, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        patchTransitionAffectedGenericKeyedEntries(
+          currentEntries,
+          nextChildren,
+          keyedTransition,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
       } else {
-        patchTransitionAffectedRange(currentDomChildren2, prevChildren, nextChildren, keyedTransition, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        patchTransitionAffectedRange(
+          currentDomChildren2,
+          prevChildren,
+          nextChildren,
+          keyedTransition,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
       }
       const affectedRange = getTransitionAffectedRange(keyedTransition, nextChildren.length);
       for (let index = 0; index < nextChildren.length; index += 1) {
@@ -7459,9 +7274,28 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
           continue;
         }
         if (currentEntries && allNextChildrenKeyed) {
-          patchStableGenericKeyedEntryAt(currentEntries, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+          patchStableGenericKeyedEntryAt(
+            currentEntries,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
         } else {
-          patchStableKeyedChildAt(currentDomChildren2, prevChildren, nextChildren, index, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+          patchStableKeyedChildAt(
+            currentDomChildren2,
+            prevChildren,
+            nextChildren,
+            index,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
         }
       }
       element.insertBefore(movingDom, reference);
@@ -7479,7 +7313,11 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
       currentEnd: keyedTransition.end,
       nextStart: keyedTransition.start,
       nextEnd: keyedTransition.end
-    } : findStableSequenceWindow(prevChildren, nextChildren, (left, right) => left.key === right.key);
+    } : findStableSequenceWindow(
+      prevChildren,
+      nextChildren,
+      (left, right) => left.key === right.key
+    );
     if (window2) {
       const nextEntries = new Array(nextChildren.length);
       for (let index = 0; index < window2.currentStart; index += 1) {
@@ -7491,18 +7329,23 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
           continue;
         }
         const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
-        const nextDomNode = fastSkip === true || fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue) ? domChild : patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        const nextDomNode = fastSkip === true || fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue) ? domChild : patchDomNode(
+          domChild,
+          prevChild,
+          nextChild,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
         if (entry) {
           entry.vnode = nextChild;
           entry.domNode = nextDomNode;
           nextEntries[index] = entry;
           continue;
         }
-        nextEntries[index] = {
-          key: nextChild.key,
-          vnode: nextChild,
-          domNode: nextDomNode
-        };
+        nextEntries[index] = { key: nextChild.key, vnode: nextChild, domNode: nextDomNode };
       }
       const stableSuffixCount = prevChildren.length - (window2.currentEnd + 1);
       for (let offset = 1; offset <= stableSuffixCount; offset += 1) {
@@ -7516,18 +7359,23 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
           continue;
         }
         const fastSkip = trySkipStableKeyedChildFast(prevChild, nextChild);
-        const nextDomNode = fastSkip === true || fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue) ? domChild : patchDomNode(domChild, prevChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        const nextDomNode = fastSkip === true || fastSkip !== false && canSkipDomPatch(prevChild, nextChild, equalsValue) ? domChild : patchDomNode(
+          domChild,
+          prevChild,
+          nextChild,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
         if (entry) {
           entry.vnode = nextChild;
           entry.domNode = nextDomNode;
           nextEntries[nextIndex] = entry;
           continue;
         }
-        nextEntries[nextIndex] = {
-          key: nextChild.key,
-          vnode: nextChild,
-          domNode: nextDomNode
-        };
+        nextEntries[nextIndex] = { key: nextChild.key, vnode: nextChild, domNode: nextDomNode };
       }
       const prevKeyedWindow = /* @__PURE__ */ new Map();
       for (let index = window2.currentStart; index <= window2.currentEnd; index += 1) {
@@ -7535,11 +7383,10 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         const prevChild = entry?.vnode ?? prevChildren[index];
         const domChild = entry?.domNode ?? currentDomChildren2?.[index];
         if (!domChild || !prevChild || prevChild.key == null) continue;
-        prevKeyedWindow.set(prevChild.key, entry ?? {
-          key: prevChild.key,
-          vnode: prevChild,
-          domNode: domChild
-        });
+        prevKeyedWindow.set(
+          prevChild.key,
+          entry ?? { key: prevChild.key, vnode: prevChild, domNode: domChild }
+        );
       }
       let structureChanged2 = prevChildren.length !== nextChildren.length;
       for (let nextIndex = window2.nextStart; nextIndex <= window2.nextEnd; nextIndex += 1) {
@@ -7547,7 +7394,14 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         const prevEntry = prevKeyedWindow.get(nextChild.key);
         if (!prevEntry) {
           structureChanged2 = true;
-          const createdDomNode = createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+          const createdDomNode = createDomNode(
+            nextChild,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          );
           nextEntries[nextIndex] = {
             key: nextChild.key,
             vnode: nextChild,
@@ -7557,7 +7411,16 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
         }
         prevKeyedWindow.delete(nextChild.key);
         const fastSkip = trySkipStableKeyedChildFast(prevEntry.vnode, nextChild);
-        const nextDomNode = fastSkip === true || fastSkip !== false && canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+        const nextDomNode = fastSkip === true || fastSkip !== false && canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(
+          prevEntry.domNode,
+          prevEntry.vnode,
+          nextChild,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
         prevEntry.vnode = nextChild;
         prevEntry.domNode = nextDomNode;
         nextEntries[nextIndex] = prevEntry;
@@ -7569,16 +7432,25 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
           element.removeChild(stale.domNode);
         }
       }
-      const nextDomChildren2 = collectGenericEntryDomChildren(nextEntries, element, false);
+      const nextDomChildren2 = collectGenericEntryDomChildren(
+        nextEntries,
+        element,
+        false
+      );
       const reconcilerCurrentChildren = structureChanged2 ? currentEntries ? collectGenericEntryDomChildren(currentEntries, element, true) : currentDomChildren2.filter((child) => child.parentNode === element) : currentEntries ? collectGenericEntryDomChildren(currentEntries, element, false) : currentDomChildren2;
-      reorderChildren(element, nextDomChildren2, (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), structureChanged2 ? {
-        currentChildren: reconcilerCurrentChildren,
-        structureChanged: false
-      } : {
-        currentChildren: reconcilerCurrentChildren,
-        transition: keyedTransition?.kind === "complex_reorder" ? keyedTransition : null,
-        structureChanged: false
-      });
+      reorderChildren(
+        element,
+        nextDomChildren2,
+        (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+        structureChanged2 ? {
+          currentChildren: reconcilerCurrentChildren,
+          structureChanged: false
+        } : {
+          currentChildren: reconcilerCurrentChildren,
+          transition: keyedTransition?.kind === "complex_reorder" ? keyedTransition : null,
+          structureChanged: false
+        }
+      );
       replaceGenericKeyedState(element, nextEntries, genericKeyedState);
       return;
     }
@@ -7595,16 +7467,10 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
       if (prevKeyed.has(prevChild.key)) {
         throw duplicateKeyError(prevChild.key);
       }
-      prevKeyed.set(prevChild.key, {
-        vnode: prevChild,
-        domNode: domChild
-      });
+      prevKeyed.set(prevChild.key, { vnode: prevChild, domNode: domChild });
       continue;
     }
-    prevUnkeyed.push({
-      vnode: prevChild,
-      domNode: domChild
-    });
+    prevUnkeyed.push({ vnode: prevChild, domNode: domChild });
   }
   const seenNextKeys = /* @__PURE__ */ new Set();
   const nextDomChildren = [];
@@ -7617,20 +7483,53 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
       seenNextKeys.add(nextChild.key);
       const prevEntry2 = prevKeyed.get(nextChild.key);
       if (!prevEntry2) {
-        nextDomChildren.push(createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+        nextDomChildren.push(
+          createDomNode(
+            nextChild,
+            documentLike,
+            eventStore,
+            portalStore,
+            liveTextStore,
+            equalsValue
+          )
+        );
         continue;
       }
       prevKeyed.delete(nextChild.key);
-      nextDomChildren.push(canSkipDomPatch(prevEntry2.vnode, nextChild, equalsValue) ? prevEntry2.domNode : patchDomNode(prevEntry2.domNode, prevEntry2.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+      nextDomChildren.push(
+        canSkipDomPatch(prevEntry2.vnode, nextChild, equalsValue) ? prevEntry2.domNode : patchDomNode(
+          prevEntry2.domNode,
+          prevEntry2.vnode,
+          nextChild,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        )
+      );
       continue;
     }
     const prevEntry = prevUnkeyed[unkeyedIndex];
     unkeyedIndex += 1;
     if (!prevEntry) {
-      nextDomChildren.push(createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+      nextDomChildren.push(
+        createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue)
+      );
       continue;
     }
-    nextDomChildren.push(canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(prevEntry.domNode, prevEntry.vnode, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+    nextDomChildren.push(
+      canSkipDomPatch(prevEntry.vnode, nextChild, equalsValue) ? prevEntry.domNode : patchDomNode(
+        prevEntry.domNode,
+        prevEntry.vnode,
+        nextChild,
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore,
+        equalsValue
+      )
+    );
   }
   const alreadyDisposedStaleNodes = /* @__PURE__ */ new WeakSet();
   for (const stale of prevKeyed.values()) {
@@ -7642,21 +7541,33 @@ var patchDomChildrenWithKeys = /* @__PURE__ */ __name((element, prevChildren, ne
     alreadyDisposedStaleNodes.add(prevUnkeyed[i].domNode);
   }
   const structureChanged = prevKeyed.size > 0 || unkeyedIndex < prevUnkeyed.length || currentDomChildren.length !== nextDomChildren.length;
-  reorderChildren(element, nextDomChildren, (child) => {
-    const domChild = child;
-    if (alreadyDisposedStaleNodes.has(domChild)) {
-      return;
+  reorderChildren(
+    element,
+    nextDomChildren,
+    (child) => {
+      const domChild = child;
+      if (alreadyDisposedStaleNodes.has(domChild)) {
+        return;
+      }
+      disposeDomNode(domChild, eventStore, portalStore, liveTextStore);
+    },
+    {
+      currentChildren: currentDomChildren,
+      transition: keyedTransition,
+      structureChanged
     }
-    disposeDomNode(domChild, eventStore, portalStore, liveTextStore);
-  }, {
-    currentChildren: currentDomChildren,
-    transition: keyedTransition,
-    structureChanged
-  });
-}, "patchDomChildrenWithKeys");
-var patchDomNode = /* @__PURE__ */ __name((domNode, prevNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
+  );
+};
+var patchDomNode = (domNode, prevNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue) => {
   if (vnodeKindTag(prevNode) !== vnodeKindTag(nextNode)) {
-    const replacement = createDomNode(nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    const replacement = createDomNode(
+      nextNode,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     const parent = domNode.parentNode;
     if (parent && parent.replaceChild) {
       parent.replaceChild(replacement, domNode);
@@ -7691,16 +7602,41 @@ var patchDomNode = /* @__PURE__ */ __name((domNode, prevNode, nextNode, document
   }
   if (nextNode.kind === "index_list") {
     updateDomProperties(domNode, prevNode.props, indexListHostProps, eventStore);
-    bindIndexListHost(domNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    bindIndexListHost(
+      domNode,
+      nextNode,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     return domNode;
   }
   if (nextNode.kind === "for_list") {
     updateDomProperties(domNode, prevNode.props, forListHostProps, eventStore);
-    bindForListHost(domNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    bindForListHost(
+      domNode,
+      nextNode,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     return domNode;
   }
   if (nextNode.kind === "portal") {
-    patchPortalMount(domNode, prevNode, nextNode, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchPortalMount(
+      domNode,
+      prevNode,
+      nextNode,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     return domNode;
   }
   const element = domNode;
@@ -7710,16 +7646,34 @@ var patchDomNode = /* @__PURE__ */ __name((domNode, prevNode, nextNode, document
   const prevChildren = asDomChildren(prevNode);
   const nextChildren = asDomChildren(nextNode);
   if (hasKeyedChildren(prevChildren) || hasKeyedChildren(nextChildren)) {
-    patchDomChildrenWithKeys(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchDomChildrenWithKeys(
+      element,
+      prevChildren,
+      nextChildren,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
   } else {
-    patchDomChildrenPositionally(element, prevChildren, nextChildren, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchDomChildrenPositionally(
+      element,
+      prevChildren,
+      nextChildren,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
   }
   if (nextNode.kind === "element" && nextNode.props?.autoFocus && isModalDialogElement(element) && isHiddenPropValue(prevNode.props?.hidden) && !isElementHidden(element)) {
     focusInitialDialogTarget(element);
   }
   return element;
-}, "patchDomNode");
-var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydration) => {
+};
+var hydrateDomNode = (domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydration) => {
   if (node.kind === "text") {
     if (getDomHydrationLabel(domNode) !== "#text") {
       reportHydrationMismatch(hydration, {
@@ -7765,16 +7719,43 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
   }
   if (node.kind === "index_list") {
     updateDomProperties(domNode, void 0, indexListHostProps, eventStore);
-    bindIndexListHost(domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    bindIndexListHost(
+      domNode,
+      node,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     return domNode;
   }
   if (node.kind === "for_list") {
     updateDomProperties(domNode, void 0, forListHostProps, eventStore);
-    bindForListHost(domNode, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, true, childHydrationContext(hydration, "forList"));
+    bindForListHost(
+      domNode,
+      node,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue,
+      true,
+      childHydrationContext(hydration, "forList")
+    );
     return domNode;
   }
   if (node.kind === "portal") {
-    patchPortalMount(domNode, vnodePortal(node.target, []), node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+    patchPortalMount(
+      domNode,
+      vnodePortal(node.target, []),
+      node,
+      documentLike,
+      eventStore,
+      portalStore,
+      liveTextStore,
+      equalsValue
+    );
     return domNode;
   }
   const element = domNode;
@@ -7807,7 +7788,7 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
     }
   }
   let unkeyedCursor = 0;
-  const takeUnkeyedExisting = /* @__PURE__ */ __name(() => {
+  const takeUnkeyedExisting = () => {
     while (unkeyedCursor < existingChildren.length) {
       const candidate = existingChildren[unkeyedCursor];
       unkeyedCursor += 1;
@@ -7817,7 +7798,7 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
       return candidate;
     }
     return void 0;
-  }, "takeUnkeyedExisting");
+  };
   const seenHydrationKeys = /* @__PURE__ */ new Set();
   for (let index = 0; index < nextChildren.length; index += 1) {
     const nextChild = nextChildren[index];
@@ -7842,7 +7823,25 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
     if (currentChild) {
       usedExisting.add(currentChild);
     }
-    nextDomChildren.push(currentChild ? hydrateDomNode(currentChild, nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue, childHydrationContext(hydration, index)) : createDomNode(nextChild, documentLike, eventStore, portalStore, liveTextStore, equalsValue));
+    nextDomChildren.push(
+      currentChild ? hydrateDomNode(
+        currentChild,
+        nextChild,
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore,
+        equalsValue,
+        childHydrationContext(hydration, index)
+      ) : createDomNode(
+        nextChild,
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore,
+        equalsValue
+      )
+    );
   }
   for (const existingChild of allExistingChildren) {
     if (!usedExisting.has(existingChild)) {
@@ -7855,12 +7854,17 @@ var hydrateDomNode = /* @__PURE__ */ __name((domNode, node, documentLike, eventS
       disposeDomNode(existingChild, eventStore, portalStore, liveTextStore);
     }
   }
-  reorderChildren(element, nextDomChildren, (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-    currentChildren: allExistingChildren
-  });
+  reorderChildren(
+    element,
+    nextDomChildren,
+    (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+    {
+      currentChildren: allExistingChildren
+    }
+  );
   return element;
-}, "hydrateDomNode");
-var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
+};
+var createDomRenderer = (options, equalsValue) => {
   const documentLike = getDomDocument(options);
   const eventStore = /* @__PURE__ */ new Map();
   const portalStore = /* @__PURE__ */ new WeakMap();
@@ -7870,33 +7874,53 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
   return {
     mount(node, container) {
       const domContainer = container;
-      const domNode = createDomNode(node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
-      replaceChildren(domContainer, [
-        domNode
-      ], eventStore, portalStore, liveTextStore);
+      const domNode = createDomNode(
+        node,
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore,
+        equalsValue
+      );
+      replaceChildren(domContainer, [domNode], eventStore, portalStore, liveTextStore);
       currentDom = domNode;
       currentVNode = node;
     },
     patch(prev, next, container) {
       const domContainer = container;
       if (!currentDom || !currentVNode || !prev) {
-        const domNode = createDomNode(next, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
-        replaceChildren(domContainer, [
-          domNode
-        ], eventStore, portalStore, liveTextStore);
+        const domNode = createDomNode(
+          next,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
+        replaceChildren(domContainer, [domNode], eventStore, portalStore, liveTextStore);
         currentDom = domNode;
         currentVNode = next;
         return;
       }
-      const nextDom = patchDomNode(currentDom, prev, next, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
+      const nextDom = patchDomNode(
+        currentDom,
+        prev,
+        next,
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore,
+        equalsValue
+      );
       if (nextDom !== currentDom) {
-        reorderChildren(domContainer, [
-          nextDom
-        ], (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-          currentChildren: [
-            currentDom
-          ]
-        });
+        reorderChildren(
+          domContainer,
+          [nextDom],
+          (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+          {
+            currentChildren: [currentDom]
+          }
+        );
       }
       currentDom = nextDom;
       currentVNode = next;
@@ -7911,28 +7935,43 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
       const existingChildren = readChildNodes(domContainer);
       const existing = findHydrationRootNode(existingChildren, node);
       if (!existing) {
-        const domNode = createDomNode(node, documentLike, eventStore, portalStore, liveTextStore, equalsValue);
-        replaceChildren(domContainer, [
-          domNode
-        ], eventStore, portalStore, liveTextStore);
+        const domNode = createDomNode(
+          node,
+          documentLike,
+          eventStore,
+          portalStore,
+          liveTextStore,
+          equalsValue
+        );
+        replaceChildren(domContainer, [domNode], eventStore, portalStore, liveTextStore);
         currentDom = domNode;
         currentVNode = node;
         return;
       }
-      const hydratedDom = hydrateDomNode(existing, node, documentLike, eventStore, portalStore, liveTextStore, equalsValue, hydrationContext);
+      const hydratedDom = hydrateDomNode(
+        existing,
+        node,
+        documentLike,
+        eventStore,
+        portalStore,
+        liveTextStore,
+        equalsValue,
+        hydrationContext
+      );
       for (const child of existingChildren) {
         if (child === existing || !isIgnorableHydrationNode(child)) continue;
         disposeDomNode(child, eventStore, portalStore, liveTextStore);
         domContainer.removeChild(child);
       }
       if (hydratedDom !== existing) {
-        reorderChildren(domContainer, [
-          hydratedDom
-        ], (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore), {
-          currentChildren: [
-            existing
-          ]
-        });
+        reorderChildren(
+          domContainer,
+          [hydratedDom],
+          (child) => disposeDomNode(child, eventStore, portalStore, liveTextStore),
+          {
+            currentChildren: [existing]
+          }
+        );
       }
       currentDom = hydratedDom;
       currentVNode = node;
@@ -7945,16 +7984,14 @@ var createDomRenderer = /* @__PURE__ */ __name((options, equalsValue) => {
       eventStore.clear();
     }
   };
-}, "createDomRenderer");
+};
 
 // src/runtime/render-core.ts
-var _RenderRoot = class _RenderRoot {
+var RenderRoot = class {
   constructor(renderer, container) {
-    __publicField(this, "renderer");
-    __publicField(this, "container");
-    __publicField(this, "current", null);
     this.renderer = renderer;
     this.container = container;
+    this.current = null;
   }
   mount(node) {
     this.current = node;
@@ -7990,14 +8027,8 @@ var _RenderRoot = class _RenderRoot {
     return this.current;
   }
 };
-__name(_RenderRoot, "RenderRoot");
-var RenderRoot = _RenderRoot;
-var _ReactiveRenderRoot = class _ReactiveRenderRoot {
+var ReactiveRenderRoot = class {
   constructor(root, effect, frameManager, hooks) {
-    __publicField(this, "root");
-    __publicField(this, "effect");
-    __publicField(this, "frameManager");
-    __publicField(this, "hooks");
     this.root = root;
     this.effect = effect;
     this.frameManager = frameManager;
@@ -8011,11 +8042,9 @@ var _ReactiveRenderRoot = class _ReactiveRenderRoot {
     this.root.unmount();
   }
 };
-__name(_ReactiveRenderRoot, "ReactiveRenderRoot");
-var ReactiveRenderRoot = _ReactiveRenderRoot;
-var isDisposableLike = /* @__PURE__ */ __name((value) => !!value && typeof value === "object" && typeof value.dispose === "function", "isDisposableLike");
-var isUnmountableLike = /* @__PURE__ */ __name((value) => !!value && typeof value === "object" && typeof value.unmount === "function", "isUnmountableLike");
-var coerceRenderer = /* @__PURE__ */ __name((candidate) => {
+var isDisposableLike = (value) => !!value && typeof value === "object" && typeof value.dispose === "function";
+var isUnmountableLike = (value) => !!value && typeof value === "object" && typeof value.unmount === "function";
+var coerceRenderer = (candidate) => {
   if (!candidate || typeof candidate !== "object") {
     throw new Error("Renderer must be an object with a mount function");
   }
@@ -8030,8 +8059,8 @@ var coerceRenderer = /* @__PURE__ */ __name((candidate) => {
     throw new Error("Renderer.unmount must be a function when provided");
   }
   return renderer;
-}, "coerceRenderer");
-var runWithFrameManager = /* @__PURE__ */ __name((frameManager, getActiveManager, setActiveManager, renderView) => {
+};
+var runWithFrameManager = (frameManager, getActiveManager, setActiveManager, renderView) => {
   frameManager.beginRender();
   frameManager.rootFrame.seenEpoch = frameManager.renderEpoch;
   const previousManager = getActiveManager();
@@ -8041,66 +8070,65 @@ var runWithFrameManager = /* @__PURE__ */ __name((frameManager, getActiveManager
   } finally {
     setActiveManager(previousManager);
   }
-}, "runWithFrameManager");
+};
 
 // src/runtime/frame-runtime.ts
-var createFrameRuntime = /* @__PURE__ */ __name((options) => {
+var createFrameRuntime = (options) => {
   let activeFrameManager = null;
-  const runWithFrameManager3 = /* @__PURE__ */ __name((frameManager, renderView) => runWithFrameManager(frameManager, () => activeFrameManager, (next) => {
-    activeFrameManager = next;
-  }, renderView), "runWithFrameManager");
-  const requireActiveFrameManager = /* @__PURE__ */ __name((apiName) => {
+  const runWithFrameManager3 = (frameManager, renderView) => runWithFrameManager(
+    frameManager,
+    () => activeFrameManager,
+    (next) => {
+      activeFrameManager = next;
+    },
+    renderView
+  );
+  const requireActiveFrameManager = (apiName) => {
     if (!activeFrameManager) {
       throw new Error(`${apiName} can only be used while rendering inside mount_reactive`);
     }
     return activeFrameManager;
-  }, "requireActiveFrameManager");
+  };
   return {
     runWithFrameManager: runWithFrameManager3,
     requireActiveFrameManager,
-    component: /* @__PURE__ */ __name((componentFn, props, key2) => {
+    component: (componentFn, props, key2) => {
       const frameManager = requireActiveFrameManager("render.component");
       const parentFrame = frameManager.currentFrame ?? frameManager.rootFrame;
       const { result } = frameManager.executeComponent(parentFrame, componentFn, key2 ?? null, props);
       return options.coerceRenderable(result);
-    }, "component"),
-    createContext: /* @__PURE__ */ __name((defaultValue) => createContextToken(defaultValue), "createContext"),
-    createRequiredContext: /* @__PURE__ */ __name(() => createContextToken(), "createRequiredContext"),
-    withContext: /* @__PURE__ */ __name((context, value, renderChildren) => {
+    },
+    createContext: (defaultValue) => createContextToken(defaultValue),
+    createRequiredContext: () => createContextToken(),
+    withContext: (context, value, renderChildren) => {
       const frameManager = requireActiveFrameManager("render.with_context");
       return options.coerceRenderable(frameManager.withContext(context, value, renderChildren));
-    }, "withContext"),
-    useContext: /* @__PURE__ */ __name((context) => {
+    },
+    useContext: (context) => {
       const frameManager = requireActiveFrameManager("render.use_context");
       return frameManager.useContext(context);
-    }, "useContext"),
-    state: /* @__PURE__ */ __name((initial) => {
+    },
+    state: (initial) => {
       const frameManager = requireActiveFrameManager("render.state");
       return frameManager.getSlot("state", () => options.createState(initial));
-    }, "state"),
-    remember: /* @__PURE__ */ __name((compute) => {
+    },
+    remember: (compute) => {
       const frameManager = requireActiveFrameManager("render.remember");
       return frameManager.getSlot("memo", compute);
-    }, "remember")
+    }
   };
-}, "createFrameRuntime");
+};
 
 // src/runtime/props-core.ts
-var isEventProp2 = /* @__PURE__ */ __name((name) => /^on[A-Z]/.test(name), "isEventProp");
-var mergeClassValues = /* @__PURE__ */ __name((left, right) => {
-  const tokens = [
-    left,
-    right
-  ].flatMap((value) => typeof value === "string" ? value.split(/\s+/) : []).map((token) => token.trim()).filter((token) => token.length > 0);
+var isEventProp2 = (name) => /^on[A-Z]/.test(name);
+var mergeClassValues = (left, right) => {
+  const tokens = [left, right].flatMap((value) => typeof value === "string" ? value.split(/\s+/) : []).map((token) => token.trim()).filter((token) => token.length > 0);
   if (tokens.length === 0) return right ?? left;
   return Array.from(new Set(tokens)).join(" ");
-}, "mergeClassValues");
-var mergeStyleValues = /* @__PURE__ */ __name((left, right) => {
+};
+var mergeStyleValues = (left, right) => {
   if (typeof left === "string" && typeof right === "string") {
-    const parts = [
-      left,
-      right
-    ].map((value) => value.trim()).filter((value) => value.length > 0);
+    const parts = [left, right].map((value) => value.trim()).filter((value) => value.length > 0);
     return parts.join(parts.length > 1 ? ";" : "");
   }
   if (left && right && typeof left === "object" && typeof right === "object" && !Array.isArray(left) && !Array.isArray(right)) {
@@ -8110,14 +8138,14 @@ var mergeStyleValues = /* @__PURE__ */ __name((left, right) => {
     };
   }
   return right ?? left;
-}, "mergeStyleValues");
-var preventDefaultIfNeeded = /* @__PURE__ */ __name((args) => {
+};
+var preventDefaultIfNeeded = (args) => {
   const event = args[0];
   if (event && typeof event.preventDefault === "function") {
     event.preventDefault();
   }
-}, "preventDefaultIfNeeded");
-var composeHandlers = /* @__PURE__ */ __name((left, right) => {
+};
+var composeHandlers = (left, right) => {
   if (typeof left !== "function") return typeof right === "function" ? right : void 0;
   if (typeof right !== "function") return left;
   return (...args) => {
@@ -8131,8 +8159,8 @@ var composeHandlers = /* @__PURE__ */ __name((left, right) => {
     }
     return rightResult === void 0 ? leftResult : rightResult;
   };
-}, "composeHandlers");
-var mergePropValue = /* @__PURE__ */ __name((name, left, right) => {
+};
+var mergePropValue = (name, left, right) => {
   if (right === void 0) return left;
   if (left === void 0) return right;
   if (name === "class" || name === "className") {
@@ -8142,26 +8170,26 @@ var mergePropValue = /* @__PURE__ */ __name((name, left, right) => {
     return mergeStyleValues(left, right);
   }
   if (isEventProp2(name) && typeof left === "function" && typeof right === "function") {
-    return composeHandlers(left, right);
+    return composeHandlers(
+      left,
+      right
+    );
   }
   return right;
-}, "mergePropValue");
-var mergeProps = /* @__PURE__ */ __name((left, right) => {
+};
+var mergeProps = (left, right) => {
   const lhs = left && typeof left === "object" ? left : {};
   const rhs = right && typeof right === "object" ? right : {};
   const merged = {};
-  for (const key2 of /* @__PURE__ */ new Set([
-    ...Object.keys(lhs),
-    ...Object.keys(rhs)
-  ])) {
+  for (const key2 of /* @__PURE__ */ new Set([...Object.keys(lhs), ...Object.keys(rhs)])) {
     const value = mergePropValue(key2, lhs[key2], rhs[key2]);
     if (value !== void 0) {
       merged[key2] = value;
     }
   }
   return merged;
-}, "mergeProps");
-var normalizeAuthoringPropName = /* @__PURE__ */ __name((name) => {
+};
+var normalizeAuthoringPropName = (name) => {
   if (name === "class") return "className";
   if (name.startsWith("data_")) return `data-${name.slice(5).replace(/_/g, "-")}`;
   if (name.startsWith("aria_")) return `aria-${name.slice(5).replace(/_/g, "-")}`;
@@ -8170,89 +8198,67 @@ var normalizeAuthoringPropName = /* @__PURE__ */ __name((name) => {
     return `on${eventName.charAt(0).toUpperCase()}${eventName.slice(1)}`;
   }
   return name.replace(/_([a-zA-Z0-9])/g, (_match, ch) => ch.toUpperCase());
-}, "normalizeAuthoringPropName");
-var propsAttr = /* @__PURE__ */ __name((name, value) => ({
+};
+var propsAttr = (name, value) => ({
   [normalizeAuthoringPropName(name)]: value
-}), "propsAttr");
-var propsWhen = /* @__PURE__ */ __name((condition, props) => {
+});
+var propsWhen = (condition, props) => {
   const resolved = condition instanceof Signal ? condition.get() : condition;
   return resolved ? mergeProps({}, props) : {};
-}, "propsWhen");
-var propsEmpty = /* @__PURE__ */ __name(() => ({}), "propsEmpty");
-var propsClass = /* @__PURE__ */ __name((className) => ({
-  className
-}), "propsClass");
-var propsId = /* @__PURE__ */ __name((id) => ({
-  id
-}), "propsId");
-var propsStyle = /* @__PURE__ */ __name((style) => ({
-  style
-}), "propsStyle");
-var propsValue = /* @__PURE__ */ __name((value) => ({
-  value
-}), "propsValue");
-var propsChecked = /* @__PURE__ */ __name((checked) => ({
-  checked
-}), "propsChecked");
-var propsType = /* @__PURE__ */ __name((type) => ({
-  type
-}), "propsType");
-var propsName = /* @__PURE__ */ __name((name) => ({
-  name
-}), "propsName");
-var propsPlaceholder = /* @__PURE__ */ __name((placeholder) => ({
-  placeholder
-}), "propsPlaceholder");
-var propsHref = /* @__PURE__ */ __name((href) => ({
-  href
-}), "propsHref");
-var propsDisabled = /* @__PURE__ */ __name((disabled) => ({
-  disabled
-}), "propsDisabled");
-var propsKey = /* @__PURE__ */ __name((key2) => {
+};
+var propsEmpty = () => ({});
+var propsClass = (className) => ({ className });
+var propsId = (id) => ({ id });
+var propsStyle = (style) => ({ style });
+var propsValue = (value) => ({ value });
+var propsChecked = (checked) => ({ checked });
+var propsType = (type) => ({ type });
+var propsName = (name) => ({ name });
+var propsPlaceholder = (placeholder) => ({ placeholder });
+var propsHref = (href) => ({ href });
+var propsDisabled = (disabled) => ({ disabled });
+var propsKey = (key2) => {
   if (typeof key2 !== "string" && typeof key2 !== "number") {
     throw new Error("props_key key must be a string or number");
   }
-  return {
-    key: key2
-  };
-}, "propsKey");
-var propsOnClick = /* @__PURE__ */ __name((handler) => ({
-  onClick: /* @__PURE__ */ __name((event) => {
+  return { key: key2 };
+};
+var propsOnClick = (handler) => ({
+  onClick: (event) => {
     if (typeof handler !== "function") return void 0;
     const outcome = handler();
     if (outcome === false && event && typeof event.preventDefault === "function") {
       event.preventDefault();
     }
     return outcome;
-  }, "onClick")
-}), "propsOnClick");
-var propsOnClickDelta = /* @__PURE__ */ __name((signal, delta) => ({
-  onClick: /* @__PURE__ */ __name(() => {
+  }
+});
+var propsOnClickDelta = (signal, delta) => ({
+  onClick: () => {
     signal.set(signal.get() + delta);
-  }, "onClick")
-}), "propsOnClickDelta");
-var propsOnClickInc = /* @__PURE__ */ __name((signal) => ({
-  onClick: /* @__PURE__ */ __name(() => {
+  }
+});
+var propsOnClickInc = (signal) => ({
+  onClick: () => {
     signal.set(signal.get() + 1);
-  }, "onClick")
-}), "propsOnClickInc");
-var propsOnClickDec = /* @__PURE__ */ __name((signal) => ({
-  onClick: /* @__PURE__ */ __name(() => {
+  }
+});
+var propsOnClickDec = (signal) => ({
+  onClick: () => {
     signal.set(signal.get() - 1);
-  }, "onClick")
-}), "propsOnClickDec");
-var propsOnInput = /* @__PURE__ */ __name((handler) => ({
-  onInput: /* @__PURE__ */ __name((event) => handler(event.target?.value ?? ""), "onInput")
-}), "propsOnInput");
-var propsOnChange = /* @__PURE__ */ __name((handler) => ({
-  onChange: /* @__PURE__ */ __name((event) => handler(event.target?.value ?? ""), "onChange")
-}), "propsOnChange");
-var propsOnCheckedChange = /* @__PURE__ */ __name((handler) => ({
-  onChange: /* @__PURE__ */ __name((event) => handler(!!event.target?.checked), "onChange")
-}), "propsOnCheckedChange");
-var propsOnSubmit = /* @__PURE__ */ __name((handler) => ({
-  onSubmit: /* @__PURE__ */ __name((event) => {
+  }
+});
+var propsOnInput = (handler) => ({
+  onInput: (event) => handler(event.target?.value ?? "")
+});
+var propsOnChange = (handler) => ({
+  onChange: (event) => handler(event.target?.value ?? "")
+});
+var propsOnCheckedChange = (handler) => ({
+  onChange: (event) => handler(!!event.target?.checked)
+});
+var propsOnSubmit = (handler) => ({
+  onSubmit: (event) => {
     event?.preventDefault?.();
     if (typeof handler !== "function") return void 0;
     const outcome = handler();
@@ -8260,11 +8266,11 @@ var propsOnSubmit = /* @__PURE__ */ __name((handler) => ({
       outcome.then(void 0, () => void 0);
     }
     return outcome;
-  }, "onSubmit")
-}), "propsOnSubmit");
+  }
+});
 
 // src/runtime/headless-primitives-runtime.ts
-var getTextLabel = /* @__PURE__ */ __name((input) => {
+var getTextLabel = (input) => {
   const parts = [];
   for (const child of normalizeVNodeChildren(input)) {
     if (child.kind === "text" && child.text) {
@@ -8279,314 +8285,526 @@ var getTextLabel = /* @__PURE__ */ __name((input) => {
     }
   }
   return parts.join(" ").replace(/\s+/g, " ").trim();
-}, "getTextLabel");
-var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
-  const { tabsContext, dialogContext, popoverContext, tooltipContext, toastContext, menuContext, checkboxContext, radioGroupContext, radioItemContext, selectContext, selectItemContext, comboboxContext, comboboxItemContext, multiselectContext, multiselectItemContext, getTabsBaseId, getDialogBaseId, getPopoverBaseId, getTooltipBaseId, getToastBaseId, getMenuBaseId, getCheckboxBaseId, getRadioBaseId, getSelectBaseId, getComboboxBaseId, getMultiselectBaseId, getTabsIds, registerTabsValue, getTabsNavigationTarget, getDialogIds, getPopoverIds, getTooltipIds, getToastIds, getMenuIds, getCheckboxIds, getRadioItemId, getSelectIds, getComboboxIds, getMultiselectIds, getRadioIndicatorId, getSelectItemId, getComboboxItemId, getMultiselectItemId, getSelectIndicatorId, getComboboxIndicatorId, getMultiselectIndicatorId, setDialogRestoreTarget, restoreDialogFocus, setPopoverAnchorTarget, setPopoverRestoreTarget, restorePopoverFocus, clearToastTimer, scheduleToastTimer, setMenuAnchorTarget, setMenuRestoreTarget, restoreMenuFocus, setTooltipAnchorTarget, setSelectAnchorTarget, setSelectRestoreTarget, restoreSelectFocus, setComboboxAnchorTarget, setComboboxRestoreTarget, restoreComboboxFocus, setMultiselectAnchorTarget, setMultiselectRestoreTarget, restoreMultiselectFocus, registerMenuValue, registerRadioValue, registerSelectValue, registerComboboxValue, registerMultiselectValue, getMenuItemId, getMenuActiveValue, setMenuActiveValue, getMenuNavigationTarget, getMenuTypeaheadTarget, getRadioNavigationTarget, getSelectNavigationTarget, getSelectTypeaheadTarget, getComboboxNavigationTarget, getMultiselectNavigationTarget, getMultiselectTypeaheadTarget, getSelectActiveValue, getSelectActiveDescendantId, setSelectActiveValue, acceptSelectActiveValue, getComboboxActiveValue, getComboboxActiveDescendantId, setComboboxActiveValue, acceptComboboxActiveValue, getMultiselectActiveValue, setMultiselectActiveValue, focusMenuItem, focusRadioItem, focusMultiselectItem, closeMenu, closeSelect, closeCombobox, closeMultiselect, readStringSelection, toggleMultiselectValue, getPopoverAnchorRect, getMenuAnchorRect, getTooltipAnchorRect, getSelectAnchorRect, getComboboxAnchorRect, getMultiselectAnchorRect, pickPopoverSide, omitPopoverLayoutProps, pickToastDuration, omitToastControlProps, getPopoverContentStyle } = options.headlessUi;
-  const resolveMultiselectOpenActiveValue = /* @__PURE__ */ __name((ctx) => readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry)) ?? ctx.order[0] ?? "", "resolveMultiselectOpenActiveValue");
+};
+var createHeadlessPrimitivesRuntime = (options) => {
+  const {
+    tabsContext,
+    dialogContext,
+    popoverContext,
+    tooltipContext,
+    toastContext,
+    menuContext,
+    checkboxContext,
+    radioGroupContext,
+    radioItemContext,
+    selectContext,
+    selectItemContext,
+    comboboxContext,
+    comboboxItemContext,
+    multiselectContext,
+    multiselectItemContext,
+    getTabsBaseId,
+    getDialogBaseId,
+    getPopoverBaseId,
+    getTooltipBaseId,
+    getToastBaseId,
+    getMenuBaseId,
+    getCheckboxBaseId,
+    getRadioBaseId,
+    getSelectBaseId,
+    getComboboxBaseId,
+    getMultiselectBaseId,
+    getTabsIds,
+    registerTabsValue,
+    getTabsNavigationTarget,
+    getDialogIds,
+    getPopoverIds,
+    getTooltipIds,
+    getToastIds,
+    getMenuIds,
+    getCheckboxIds,
+    getRadioItemId,
+    getSelectIds,
+    getComboboxIds,
+    getMultiselectIds,
+    getRadioIndicatorId,
+    getSelectItemId,
+    getComboboxItemId,
+    getMultiselectItemId,
+    getSelectIndicatorId,
+    getComboboxIndicatorId,
+    getMultiselectIndicatorId,
+    setDialogRestoreTarget,
+    restoreDialogFocus,
+    setPopoverAnchorTarget,
+    setPopoverRestoreTarget,
+    restorePopoverFocus,
+    clearToastTimer,
+    scheduleToastTimer,
+    setMenuAnchorTarget,
+    setMenuRestoreTarget,
+    restoreMenuFocus,
+    setTooltipAnchorTarget,
+    setSelectAnchorTarget,
+    setSelectRestoreTarget,
+    restoreSelectFocus,
+    setComboboxAnchorTarget,
+    setComboboxRestoreTarget,
+    restoreComboboxFocus,
+    setMultiselectAnchorTarget,
+    setMultiselectRestoreTarget,
+    restoreMultiselectFocus,
+    registerMenuValue,
+    registerRadioValue,
+    registerSelectValue,
+    registerComboboxValue,
+    registerMultiselectValue,
+    getMenuItemId,
+    getMenuActiveValue,
+    setMenuActiveValue,
+    getMenuNavigationTarget,
+    getMenuTypeaheadTarget,
+    getRadioNavigationTarget,
+    getSelectNavigationTarget,
+    getSelectTypeaheadTarget,
+    getComboboxNavigationTarget,
+    getMultiselectNavigationTarget,
+    getMultiselectTypeaheadTarget,
+    getSelectActiveValue,
+    getSelectActiveDescendantId,
+    setSelectActiveValue,
+    acceptSelectActiveValue,
+    getComboboxActiveValue,
+    getComboboxActiveDescendantId,
+    setComboboxActiveValue,
+    acceptComboboxActiveValue,
+    getMultiselectActiveValue,
+    setMultiselectActiveValue,
+    focusMenuItem,
+    focusRadioItem,
+    focusMultiselectItem,
+    closeMenu,
+    closeSelect,
+    closeCombobox,
+    closeMultiselect,
+    readStringSelection,
+    toggleMultiselectValue,
+    getPopoverAnchorRect,
+    getMenuAnchorRect,
+    getTooltipAnchorRect,
+    getSelectAnchorRect,
+    getComboboxAnchorRect,
+    getMultiselectAnchorRect,
+    pickPopoverSide,
+    omitPopoverLayoutProps,
+    pickToastDuration,
+    omitToastControlProps,
+    getPopoverContentStyle
+  } = options.headlessUi;
+  const resolveMultiselectOpenActiveValue = (ctx) => readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry)) ?? ctx.order[0] ?? "";
   const api = {
-    tabs_root: /* @__PURE__ */ __name((value, renderChildren) => {
+    tabs_root: (value, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.tabs_root");
-      return coerceRenderableToVNode(frameManager.withContext(tabsContext, {
-        value,
-        baseId: getTabsBaseId(value),
-        order: []
-      }, renderChildren));
-    }, "tabs_root"),
-    tabs_list: /* @__PURE__ */ __name((props, renderChildren) => vnodeElement("div", mergeProps({
-      role: "tablist",
-      "data-lumina-tabs-list": "true"
-    }, props), resolveChildrenInput(renderChildren)), "tabs_list"),
-    tabs_trigger: /* @__PURE__ */ __name((value, props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          tabsContext,
+          { value, baseId: getTabsBaseId(value), order: [] },
+          renderChildren
+        )
+      );
+    },
+    tabs_list: (props, renderChildren) => vnodeElement(
+      "div",
+      mergeProps({ role: "tablist", "data-lumina-tabs-list": "true" }, props),
+      resolveChildrenInput(renderChildren)
+    ),
+    tabs_trigger: (value, props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.tabs_trigger");
       const ctx = frameManager.useContext(tabsContext);
       registerTabsValue(ctx, value);
       const selected = ctx.value.get() === value;
       const { triggerId, panelId } = getTabsIds(ctx, value);
-      return vnodeElement("button", mergeProps({
-        role: "tab",
-        type: "button",
-        id: triggerId,
-        "aria-controls": panelId,
-        "aria-selected": selected ? "true" : "false",
-        tabIndex: selected ? 0 : -1,
-        "data-state": selected ? "active" : "inactive",
-        onClick: /* @__PURE__ */ __name(() => ctx.value.set(value), "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const nextValue = getTabsNavigationTarget(ctx, value, String(event?.key ?? ""));
-          if (!nextValue) return void 0;
-          event?.preventDefault?.();
-          ctx.value.set(nextValue);
-          return false;
-        }, "onKeyDown")
-      }, props), children2);
-    }, "tabs_trigger"),
-    tabs_panel: /* @__PURE__ */ __name((value, props, children2 = []) => {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            role: "tab",
+            type: "button",
+            id: triggerId,
+            "aria-controls": panelId,
+            "aria-selected": selected ? "true" : "false",
+            tabIndex: selected ? 0 : -1,
+            "data-state": selected ? "active" : "inactive",
+            onClick: () => ctx.value.set(value),
+            onKeyDown: (event) => {
+              const nextValue = getTabsNavigationTarget(ctx, value, String(event?.key ?? ""));
+              if (!nextValue) return void 0;
+              event?.preventDefault?.();
+              ctx.value.set(nextValue);
+              return false;
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    tabs_panel: (value, props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.tabs_panel");
       const ctx = frameManager.useContext(tabsContext);
       const selected = ctx.value.get() === value;
       const { triggerId, panelId } = getTabsIds(ctx, value);
-      return vnodeElement("div", mergeProps({
-        role: "tabpanel",
-        id: panelId,
-        "aria-labelledby": triggerId,
-        hidden: !selected,
-        tabIndex: selected ? 0 : -1,
-        "data-state": selected ? "active" : "inactive"
-      }, props), children2);
-    }, "tabs_panel"),
-    dialog_root: /* @__PURE__ */ __name((open, renderChildren) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "tabpanel",
+            id: panelId,
+            "aria-labelledby": triggerId,
+            hidden: !selected,
+            tabIndex: selected ? 0 : -1,
+            "data-state": selected ? "active" : "inactive"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    dialog_root: (open, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.dialog_root");
-      return coerceRenderableToVNode(frameManager.withContext(dialogContext, {
-        open,
-        baseId: getDialogBaseId(open),
-        hasTitle: false,
-        hasDescription: false
-      }, renderChildren));
-    }, "dialog_root"),
-    dialog_portal: /* @__PURE__ */ __name((children2 = []) => vnodePortal(null, children2), "dialog_portal"),
-    dialog_trigger: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          dialogContext,
+          { open, baseId: getDialogBaseId(open), hasTitle: false, hasDescription: false },
+          renderChildren
+        )
+      );
+    },
+    dialog_portal: (children2 = []) => vnodePortal(null, children2),
+    dialog_trigger: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.dialog_trigger");
       const ctx = frameManager.useContext(dialogContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getDialogIds(ctx);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        id: triggerId,
-        "aria-haspopup": "dialog",
-        "aria-expanded": open ? "true" : "false",
-        "aria-controls": contentId,
-        "data-state": open ? "open" : "closed",
-        onClick: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setDialogRestoreTarget(ctx, target);
-          }
-          ctx.open.set(true);
-        }, "onClick")
-      }, props), children2);
-    }, "dialog_trigger"),
-    dialog_overlay: /* @__PURE__ */ __name((props) => {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            id: triggerId,
+            "aria-haspopup": "dialog",
+            "aria-expanded": open ? "true" : "false",
+            "aria-controls": contentId,
+            "data-state": open ? "open" : "closed",
+            onClick: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setDialogRestoreTarget(ctx, target);
+              }
+              ctx.open.set(true);
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    dialog_overlay: (props) => {
       const frameManager = options.requireActiveFrameManager("render.dialog_overlay");
       const ctx = frameManager.useContext(dialogContext);
       const open = ctx.open.get();
-      return vnodeElement("div", mergeProps({
-        "data-lumina-dialog-overlay": "true",
-        "data-state": open ? "open" : "closed",
-        hidden: !open,
-        onClick: /* @__PURE__ */ __name(() => {
-          ctx.open.set(false);
-          restoreDialogFocus(ctx);
-        }, "onClick")
-      }, props), []);
-    }, "dialog_overlay"),
-    dialog_content: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            "data-lumina-dialog-overlay": "true",
+            "data-state": open ? "open" : "closed",
+            hidden: !open,
+            onClick: () => {
+              ctx.open.set(false);
+              restoreDialogFocus(ctx);
+            }
+          },
+          props
+        ),
+        []
+      );
+    },
+    dialog_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.dialog_content");
       const ctx = frameManager.useContext(dialogContext);
       const open = ctx.open.get();
       const { contentId, titleId, descriptionId } = getDialogIds(ctx);
-      return vnodeElement("div", mergeProps({
-        role: "dialog",
-        id: contentId,
-        "aria-modal": "true",
-        "aria-labelledby": ctx.hasTitle ? titleId : void 0,
-        "aria-describedby": ctx.hasDescription ? descriptionId : void 0,
-        autoFocus: open,
-        hidden: !open,
-        tabIndex: -1,
-        "data-state": open ? "open" : "closed",
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          if (trapDialogTabNavigation(event)) {
-            return false;
-          }
-          if (String(event?.key ?? "") !== "Escape") return void 0;
-          event?.preventDefault?.();
-          ctx.open.set(false);
-          restoreDialogFocus(ctx);
-          return false;
-        }, "onKeyDown")
-      }, props), children2);
-    }, "dialog_content"),
-    dialog_title: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "dialog",
+            id: contentId,
+            "aria-modal": "true",
+            "aria-labelledby": ctx.hasTitle ? titleId : void 0,
+            "aria-describedby": ctx.hasDescription ? descriptionId : void 0,
+            autoFocus: open,
+            hidden: !open,
+            tabIndex: -1,
+            "data-state": open ? "open" : "closed",
+            onKeyDown: (event) => {
+              if (trapDialogTabNavigation(event)) {
+                return false;
+              }
+              if (String(event?.key ?? "") !== "Escape") return void 0;
+              event?.preventDefault?.();
+              ctx.open.set(false);
+              restoreDialogFocus(ctx);
+              return false;
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    dialog_title: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.dialog_title");
       const ctx = frameManager.useContext(dialogContext);
       ctx.hasTitle = true;
       const { titleId } = getDialogIds(ctx);
-      return vnodeElement("h2", mergeProps({
-        id: titleId,
-        "data-lumina-dialog-title": "true"
-      }, props), children2);
-    }, "dialog_title"),
-    dialog_description: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "h2",
+        mergeProps(
+          {
+            id: titleId,
+            "data-lumina-dialog-title": "true"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    dialog_description: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.dialog_description");
       const ctx = frameManager.useContext(dialogContext);
       ctx.hasDescription = true;
       const { descriptionId } = getDialogIds(ctx);
-      return vnodeElement("p", mergeProps({
-        id: descriptionId,
-        "data-lumina-dialog-description": "true"
-      }, props), children2);
-    }, "dialog_description"),
-    dialog_close: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "p",
+        mergeProps(
+          {
+            id: descriptionId,
+            "data-lumina-dialog-description": "true"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    dialog_close: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.dialog_close");
       const ctx = frameManager.useContext(dialogContext);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        "data-lumina-dialog-close": "true",
-        onClick: /* @__PURE__ */ __name(() => {
-          ctx.open.set(false);
-          restoreDialogFocus(ctx);
-        }, "onClick")
-      }, props), children2);
-    }, "dialog_close"),
-    popover_root: /* @__PURE__ */ __name((open, renderChildren) => {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            "data-lumina-dialog-close": "true",
+            onClick: () => {
+              ctx.open.set(false);
+              restoreDialogFocus(ctx);
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    popover_root: (open, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.popover_root");
-      return coerceRenderableToVNode(frameManager.withContext(popoverContext, {
-        open,
-        baseId: getPopoverBaseId(open)
-      }, renderChildren));
-    }, "popover_root"),
-    popover_portal: /* @__PURE__ */ __name((children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          popoverContext,
+          { open, baseId: getPopoverBaseId(open) },
+          renderChildren
+        )
+      );
+    },
+    popover_portal: (children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.popover_portal");
       const ctx = frameManager.useContext(popoverContext);
       const open = ctx.open.get();
-      const dismissLayer = vnodeElement("div", {
-        "data-lumina-popover-dismiss": "true",
-        "data-state": open ? "open" : "closed",
-        hidden: !open,
-        style: {
-          position: "fixed",
-          inset: "0",
-          background: "transparent",
-          zIndex: "1000"
+      const dismissLayer = vnodeElement(
+        "div",
+        {
+          "data-lumina-popover-dismiss": "true",
+          "data-state": open ? "open" : "closed",
+          hidden: !open,
+          style: {
+            position: "fixed",
+            inset: "0",
+            background: "transparent",
+            zIndex: "1000"
+          },
+          onClick: () => {
+            ctx.open.set(false);
+            restorePopoverFocus(ctx);
+          }
         },
-        onClick: /* @__PURE__ */ __name(() => {
-          ctx.open.set(false);
-          restorePopoverFocus(ctx);
-        }, "onClick")
-      }, []);
+        []
+      );
       return vnodePortal(null, [
         dismissLayer,
         ...normalizeVNodeChildren(resolveChildrenInput(children2))
       ]);
-    }, "popover_portal"),
-    popover_trigger: /* @__PURE__ */ __name((props, children2 = []) => {
+    },
+    popover_trigger: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.popover_trigger");
       const ctx = frameManager.useContext(popoverContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getPopoverIds(ctx);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        id: triggerId,
-        "aria-haspopup": "dialog",
-        "aria-expanded": open ? "true" : "false",
-        "aria-controls": contentId,
-        "data-state": open ? "open" : "closed",
-        onClick: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setPopoverRestoreTarget(ctx, target);
-            setPopoverAnchorTarget(ctx, target);
-          }
-          const nextOpen = !ctx.open.get();
-          ctx.open.set(nextOpen);
-          if (!nextOpen) {
-            restorePopoverFocus(ctx);
-          }
-        }, "onClick")
-      }, props), children2);
-    }, "popover_trigger"),
-    popover_content: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            id: triggerId,
+            "aria-haspopup": "dialog",
+            "aria-expanded": open ? "true" : "false",
+            "aria-controls": contentId,
+            "data-state": open ? "open" : "closed",
+            onClick: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setPopoverRestoreTarget(ctx, target);
+                setPopoverAnchorTarget(ctx, target);
+              }
+              const nextOpen = !ctx.open.get();
+              ctx.open.set(nextOpen);
+              if (!nextOpen) {
+                restorePopoverFocus(ctx);
+              }
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    popover_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.popover_content");
       const ctx = frameManager.useContext(popoverContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getPopoverIds(ctx);
-      return vnodeElement("div", mergeProps({
-        role: "dialog",
-        id: contentId,
-        "aria-modal": "false",
-        "aria-labelledby": triggerId,
-        autoFocus: open,
-        hidden: !open,
-        tabIndex: -1,
-        "data-lumina-popover-content": "true",
-        "data-state": open ? "open" : "closed",
-        "data-side": pickPopoverSide(props),
-        style: getPopoverContentStyle(getPopoverAnchorRect(ctx), props),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          if (String(event?.key ?? "") !== "Escape") return void 0;
-          event?.preventDefault?.();
-          ctx.open.set(false);
-          restorePopoverFocus(ctx);
-          return false;
-        }, "onKeyDown")
-      }, omitPopoverLayoutProps(props)), children2);
-    }, "popover_content"),
-    tooltip_root: /* @__PURE__ */ __name((open, renderChildren) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "dialog",
+            id: contentId,
+            "aria-modal": "false",
+            "aria-labelledby": triggerId,
+            autoFocus: open,
+            hidden: !open,
+            tabIndex: -1,
+            "data-lumina-popover-content": "true",
+            "data-state": open ? "open" : "closed",
+            "data-side": pickPopoverSide(props),
+            style: getPopoverContentStyle(getPopoverAnchorRect(ctx), props),
+            onKeyDown: (event) => {
+              if (String(event?.key ?? "") !== "Escape") return void 0;
+              event?.preventDefault?.();
+              ctx.open.set(false);
+              restorePopoverFocus(ctx);
+              return false;
+            }
+          },
+          omitPopoverLayoutProps(props)
+        ),
+        children2
+      );
+    },
+    tooltip_root: (open, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.tooltip_root");
-      return coerceRenderableToVNode(frameManager.withContext(tooltipContext, {
-        open,
-        baseId: getTooltipBaseId(open)
-      }, renderChildren));
-    }, "tooltip_root"),
-    tooltip_portal: /* @__PURE__ */ __name((children2 = []) => vnodePortal(null, children2), "tooltip_portal"),
-    tooltip_trigger: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          tooltipContext,
+          { open, baseId: getTooltipBaseId(open) },
+          renderChildren
+        )
+      );
+    },
+    tooltip_portal: (children2 = []) => vnodePortal(null, children2),
+    tooltip_trigger: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.tooltip_trigger");
       const ctx = frameManager.useContext(tooltipContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getTooltipIds(ctx);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        id: triggerId,
-        "aria-describedby": open ? contentId : void 0,
-        "data-state": open ? "open" : "closed",
-        onMouseEnter: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setTooltipAnchorTarget(ctx, target);
-          }
-          ctx.open.set(true);
-        }, "onMouseEnter"),
-        onMouseLeave: /* @__PURE__ */ __name(() => {
-          ctx.open.set(false);
-        }, "onMouseLeave"),
-        onFocus: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setTooltipAnchorTarget(ctx, target);
-          }
-          ctx.open.set(true);
-        }, "onFocus"),
-        onBlur: /* @__PURE__ */ __name(() => {
-          ctx.open.set(false);
-        }, "onBlur")
-      }, props), children2);
-    }, "tooltip_trigger"),
-    tooltip_content: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            id: triggerId,
+            "aria-describedby": open ? contentId : void 0,
+            "data-state": open ? "open" : "closed",
+            onMouseEnter: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setTooltipAnchorTarget(ctx, target);
+              }
+              ctx.open.set(true);
+            },
+            onMouseLeave: () => {
+              ctx.open.set(false);
+            },
+            onFocus: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setTooltipAnchorTarget(ctx, target);
+              }
+              ctx.open.set(true);
+            },
+            onBlur: () => {
+              ctx.open.set(false);
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    tooltip_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.tooltip_content");
       const ctx = frameManager.useContext(tooltipContext);
       const open = ctx.open.get();
       const { contentId } = getTooltipIds(ctx);
-      return vnodeElement("div", mergeProps({
-        role: "tooltip",
-        id: contentId,
-        hidden: !open,
-        "data-lumina-tooltip-content": "true",
-        "data-state": open ? "open" : "closed",
-        "data-side": pickPopoverSide(props),
-        style: getPopoverContentStyle(getTooltipAnchorRect(ctx), props)
-      }, omitPopoverLayoutProps(props)), children2);
-    }, "tooltip_content"),
-    toast_root: /* @__PURE__ */ __name((open, renderChildren) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "tooltip",
+            id: contentId,
+            hidden: !open,
+            "data-lumina-tooltip-content": "true",
+            "data-state": open ? "open" : "closed",
+            "data-side": pickPopoverSide(props),
+            style: getPopoverContentStyle(getTooltipAnchorRect(ctx), props)
+          },
+          omitPopoverLayoutProps(props)
+        ),
+        children2
+      );
+    },
+    toast_root: (open, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.toast_root");
-      return coerceRenderableToVNode(frameManager.withContext(toastContext, {
-        open,
-        baseId: getToastBaseId(open),
-        hasTitle: false,
-        hasDescription: false
-      }, renderChildren));
-    }, "toast_root"),
-    toast_portal: /* @__PURE__ */ __name((children2 = []) => vnodePortal(null, children2), "toast_portal"),
-    toast_content: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          toastContext,
+          { open, baseId: getToastBaseId(open), hasTitle: false, hasDescription: false },
+          renderChildren
+        )
+      );
+    },
+    toast_portal: (children2 = []) => vnodePortal(null, children2),
+    toast_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.toast_content");
       const ctx = frameManager.useContext(toastContext);
       const open = ctx.open.get();
@@ -8597,448 +8815,551 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       } else {
         clearToastTimer(ctx.open);
       }
-      return vnodeElement("div", mergeProps({
-        role: "status",
-        id: contentId,
-        "aria-live": "polite",
-        "aria-atomic": "true",
-        "aria-labelledby": ctx.hasTitle ? titleId : void 0,
-        "aria-describedby": ctx.hasDescription ? descriptionId : void 0,
-        hidden: !open,
-        tabIndex: 0,
-        "data-lumina-toast-content": "true",
-        "data-state": open ? "open" : "closed",
-        style: {
-          position: "fixed",
-          top: "16px",
-          right: "16px",
-          zIndex: "1002"
-        },
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          if (String(event?.key ?? "") !== "Escape") return void 0;
-          event?.preventDefault?.();
-          clearToastTimer(ctx.open);
-          ctx.open.set(false);
-          return false;
-        }, "onKeyDown")
-      }, omitToastControlProps(props)), children2);
-    }, "toast_content"),
-    toast_title: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "status",
+            id: contentId,
+            "aria-live": "polite",
+            "aria-atomic": "true",
+            "aria-labelledby": ctx.hasTitle ? titleId : void 0,
+            "aria-describedby": ctx.hasDescription ? descriptionId : void 0,
+            hidden: !open,
+            tabIndex: 0,
+            "data-lumina-toast-content": "true",
+            "data-state": open ? "open" : "closed",
+            style: {
+              position: "fixed",
+              top: "16px",
+              right: "16px",
+              zIndex: "1002"
+            },
+            onKeyDown: (event) => {
+              if (String(event?.key ?? "") !== "Escape") return void 0;
+              event?.preventDefault?.();
+              clearToastTimer(ctx.open);
+              ctx.open.set(false);
+              return false;
+            }
+          },
+          omitToastControlProps(props)
+        ),
+        children2
+      );
+    },
+    toast_title: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.toast_title");
       const ctx = frameManager.useContext(toastContext);
       ctx.hasTitle = true;
       const { titleId } = getToastIds(ctx);
-      return vnodeElement("div", mergeProps({
-        id: titleId,
-        "data-lumina-toast-title": "true"
-      }, props), children2);
-    }, "toast_title"),
-    toast_description: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            id: titleId,
+            "data-lumina-toast-title": "true"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    toast_description: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.toast_description");
       const ctx = frameManager.useContext(toastContext);
       ctx.hasDescription = true;
       const { descriptionId } = getToastIds(ctx);
-      return vnodeElement("div", mergeProps({
-        id: descriptionId,
-        "data-lumina-toast-description": "true"
-      }, props), children2);
-    }, "toast_description"),
-    toast_close: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            id: descriptionId,
+            "data-lumina-toast-description": "true"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    toast_close: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.toast_close");
       const ctx = frameManager.useContext(toastContext);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        "data-lumina-toast-close": "true",
-        onClick: /* @__PURE__ */ __name(() => {
-          clearToastTimer(ctx.open);
-          ctx.open.set(false);
-        }, "onClick")
-      }, props), children2);
-    }, "toast_close"),
-    menu_root: /* @__PURE__ */ __name((open, renderChildren) => {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            "data-lumina-toast-close": "true",
+            onClick: () => {
+              clearToastTimer(ctx.open);
+              ctx.open.set(false);
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    menu_root: (open, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.menu_root");
-      return coerceRenderableToVNode(frameManager.withContext(menuContext, {
-        open,
-        baseId: getMenuBaseId(open),
-        order: []
-      }, renderChildren));
-    }, "menu_root"),
-    menu_portal: /* @__PURE__ */ __name((children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          menuContext,
+          { open, baseId: getMenuBaseId(open), order: [] },
+          renderChildren
+        )
+      );
+    },
+    menu_portal: (children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.menu_portal");
       const ctx = frameManager.useContext(menuContext);
       const open = ctx.open.get();
-      const dismissLayer = vnodeElement("div", {
-        "data-lumina-menu-dismiss": "true",
-        "data-state": open ? "open" : "closed",
-        hidden: !open,
-        style: {
-          position: "fixed",
-          inset: "0",
-          background: "transparent",
-          zIndex: "1000"
+      const dismissLayer = vnodeElement(
+        "div",
+        {
+          "data-lumina-menu-dismiss": "true",
+          "data-state": open ? "open" : "closed",
+          hidden: !open,
+          style: {
+            position: "fixed",
+            inset: "0",
+            background: "transparent",
+            zIndex: "1000"
+          },
+          onClick: () => {
+            closeMenu(ctx);
+          }
         },
-        onClick: /* @__PURE__ */ __name(() => {
-          closeMenu(ctx);
-        }, "onClick")
-      }, []);
+        []
+      );
       return vnodePortal(null, [
         dismissLayer,
         ...normalizeVNodeChildren(resolveChildrenInput(children2))
       ]);
-    }, "menu_portal"),
-    menu_trigger: /* @__PURE__ */ __name((props, children2 = []) => {
+    },
+    menu_trigger: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.menu_trigger");
       const ctx = frameManager.useContext(menuContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getMenuIds(ctx);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        id: triggerId,
-        "aria-haspopup": "menu",
-        "aria-expanded": open ? "true" : "false",
-        "aria-controls": contentId,
-        "data-state": open ? "open" : "closed",
-        onClick: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setMenuRestoreTarget(ctx, target);
-            setMenuAnchorTarget(ctx, target);
-          }
-          const nextOpen = !ctx.open.get();
-          if (nextOpen) {
-            setMenuActiveValue(ctx, "");
-          }
-          ctx.open.set(nextOpen);
-          if (!nextOpen) {
-            restoreMenuFocus(ctx);
-          }
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          const target = getFocusTargetFromEvent(event);
-          if (key2 !== "Enter" && key2 !== " " && key2 !== "ArrowDown" && key2 !== "ArrowUp") {
-            return void 0;
-          }
-          event?.preventDefault?.();
-          if (target) {
-            setMenuRestoreTarget(ctx, target);
-            setMenuAnchorTarget(ctx, target);
-          }
-          setMenuActiveValue(ctx, key2 === "ArrowUp" ? ctx.order[ctx.order.length - 1] ?? "" : "");
-          ctx.open.set(true);
-          return false;
-        }, "onKeyDown")
-      }, props), children2);
-    }, "menu_trigger"),
-    menu_content: /* @__PURE__ */ __name((props, children2 = []) => {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            id: triggerId,
+            "aria-haspopup": "menu",
+            "aria-expanded": open ? "true" : "false",
+            "aria-controls": contentId,
+            "data-state": open ? "open" : "closed",
+            onClick: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setMenuRestoreTarget(ctx, target);
+                setMenuAnchorTarget(ctx, target);
+              }
+              const nextOpen = !ctx.open.get();
+              if (nextOpen) {
+                setMenuActiveValue(ctx, "");
+              }
+              ctx.open.set(nextOpen);
+              if (!nextOpen) {
+                restoreMenuFocus(ctx);
+              }
+            },
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              const target = getFocusTargetFromEvent(event);
+              if (key2 !== "Enter" && key2 !== " " && key2 !== "ArrowDown" && key2 !== "ArrowUp") {
+                return void 0;
+              }
+              event?.preventDefault?.();
+              if (target) {
+                setMenuRestoreTarget(ctx, target);
+                setMenuAnchorTarget(ctx, target);
+              }
+              setMenuActiveValue(
+                ctx,
+                key2 === "ArrowUp" ? ctx.order[ctx.order.length - 1] ?? "" : ""
+              );
+              ctx.open.set(true);
+              return false;
+            }
+          },
+          props
+        ),
+        children2
+      );
+    },
+    menu_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.menu_content");
       const ctx = frameManager.useContext(menuContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getMenuIds(ctx);
-      return vnodeElement("div", mergeProps({
-        role: "menu",
-        id: contentId,
-        "aria-labelledby": triggerId,
-        hidden: !open,
-        tabIndex: -1,
-        autoFocus: open,
-        "data-lumina-menu-content": "true",
-        "data-state": open ? "open" : "closed",
-        "data-side": pickPopoverSide(props),
-        style: getPopoverContentStyle(getMenuAnchorRect(ctx), props),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          if (key2 === "Escape") {
-            event?.preventDefault?.();
-            closeMenu(ctx);
-            return false;
-          }
-          if (key2 === "Tab") {
-            setMenuActiveValue(ctx, "");
-            ctx.open.set(false);
-            return void 0;
-          }
-          if (key2 === "ArrowDown" || key2 === "Home") {
-            event?.preventDefault?.();
-            setMenuActiveValue(ctx, ctx.order[0] ?? "");
-            focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.order[0] ?? "");
-            return false;
-          }
-          if (key2 === "ArrowUp" || key2 === "End") {
-            event?.preventDefault?.();
-            setMenuActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? "");
-            focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, ctx.order[ctx.order.length - 1] ?? "");
-            return false;
-          }
-          const typeaheadTarget = getMenuTypeaheadTarget(ctx, getMenuActiveValue(ctx), key2);
-          if (!typeaheadTarget) {
-            return void 0;
-          }
-          event?.preventDefault?.();
-          setMenuActiveValue(ctx, typeaheadTarget);
-          focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget);
-          return false;
-        }, "onKeyDown")
-      }, omitPopoverLayoutProps(props)), children2);
-    }, "menu_content"),
-    menu_item: /* @__PURE__ */ __name((value, props, children2 = []) => {
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "menu",
+            id: contentId,
+            "aria-labelledby": triggerId,
+            hidden: !open,
+            tabIndex: -1,
+            autoFocus: open,
+            "data-lumina-menu-content": "true",
+            "data-state": open ? "open" : "closed",
+            "data-side": pickPopoverSide(props),
+            style: getPopoverContentStyle(getMenuAnchorRect(ctx), props),
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              if (key2 === "Escape") {
+                event?.preventDefault?.();
+                closeMenu(ctx);
+                return false;
+              }
+              if (key2 === "Tab") {
+                setMenuActiveValue(ctx, "");
+                ctx.open.set(false);
+                return void 0;
+              }
+              if (key2 === "ArrowDown" || key2 === "Home") {
+                event?.preventDefault?.();
+                setMenuActiveValue(ctx, ctx.order[0] ?? "");
+                focusMenuItem(
+                  getFocusTargetFromEvent(event)?.ownerDocument,
+                  ctx,
+                  ctx.order[0] ?? ""
+                );
+                return false;
+              }
+              if (key2 === "ArrowUp" || key2 === "End") {
+                event?.preventDefault?.();
+                setMenuActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? "");
+                focusMenuItem(
+                  getFocusTargetFromEvent(event)?.ownerDocument,
+                  ctx,
+                  ctx.order[ctx.order.length - 1] ?? ""
+                );
+                return false;
+              }
+              const typeaheadTarget = getMenuTypeaheadTarget(ctx, getMenuActiveValue(ctx), key2);
+              if (!typeaheadTarget) {
+                return void 0;
+              }
+              event?.preventDefault?.();
+              setMenuActiveValue(ctx, typeaheadTarget);
+              focusMenuItem(
+                getFocusTargetFromEvent(event)?.ownerDocument,
+                ctx,
+                typeaheadTarget
+              );
+              return false;
+            }
+          },
+          omitPopoverLayoutProps(props)
+        ),
+        children2
+      );
+    },
+    menu_item: (value, props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.menu_item");
       const ctx = frameManager.useContext(menuContext);
       registerMenuValue(ctx, value, getTextLabel(children2));
       const open = ctx.open.get();
       const active = getMenuActiveValue(ctx);
       const itemId = getMenuItemId(ctx, value);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        id: itemId,
-        role: "menuitem",
-        hidden: !open,
-        tabIndex: open && active === value ? 0 : -1,
-        autoFocus: open && active === value,
-        "data-lumina-menu-item": "true",
-        "data-state": open ? "open" : "closed",
-        onClick: /* @__PURE__ */ __name(() => {
-          closeMenu(ctx);
-        }, "onClick"),
-        onMouseEnter: /* @__PURE__ */ __name(() => {
-          setMenuActiveValue(ctx, value);
-        }, "onMouseEnter"),
-        onFocus: /* @__PURE__ */ __name(() => {
-          setMenuActiveValue(ctx, value);
-        }, "onFocus"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          if (key2 === "Escape") {
-            event?.preventDefault?.();
-            closeMenu(ctx);
-            return false;
-          }
-          if (key2 === "Tab") {
-            setMenuActiveValue(ctx, "");
-            ctx.open.set(false);
-            return void 0;
-          }
-          if (key2 === "Enter" || key2 === " ") {
-            event?.preventDefault?.();
-            const click = props?.onClick;
-            if (typeof click === "function") {
-              click(event);
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            id: itemId,
+            role: "menuitem",
+            hidden: !open,
+            tabIndex: open && active === value ? 0 : -1,
+            autoFocus: open && active === value,
+            "data-lumina-menu-item": "true",
+            "data-state": open ? "open" : "closed",
+            onClick: () => {
+              closeMenu(ctx);
+            },
+            onMouseEnter: () => {
+              setMenuActiveValue(ctx, value);
+            },
+            onFocus: () => {
+              setMenuActiveValue(ctx, value);
+            },
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              if (key2 === "Escape") {
+                event?.preventDefault?.();
+                closeMenu(ctx);
+                return false;
+              }
+              if (key2 === "Tab") {
+                setMenuActiveValue(ctx, "");
+                ctx.open.set(false);
+                return void 0;
+              }
+              if (key2 === "Enter" || key2 === " ") {
+                event?.preventDefault?.();
+                const click = props?.onClick;
+                if (typeof click === "function") {
+                  click(event);
+                }
+                closeMenu(ctx);
+                return false;
+              }
+              const nextValue = getMenuNavigationTarget(ctx, value, key2);
+              if (nextValue) {
+                event?.preventDefault?.();
+                setMenuActiveValue(ctx, nextValue);
+                focusMenuItem(
+                  getFocusTargetFromEvent(event)?.ownerDocument,
+                  ctx,
+                  nextValue
+                );
+                return false;
+              }
+              const typeaheadTarget = getMenuTypeaheadTarget(ctx, value, key2);
+              if (!typeaheadTarget) return void 0;
+              event?.preventDefault?.();
+              setMenuActiveValue(ctx, typeaheadTarget);
+              focusMenuItem(
+                getFocusTargetFromEvent(event)?.ownerDocument,
+                ctx,
+                typeaheadTarget
+              );
+              return false;
             }
-            closeMenu(ctx);
-            return false;
-          }
-          const nextValue = getMenuNavigationTarget(ctx, value, key2);
-          if (nextValue) {
-            event?.preventDefault?.();
-            setMenuActiveValue(ctx, nextValue);
-            focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue);
-            return false;
-          }
-          const typeaheadTarget = getMenuTypeaheadTarget(ctx, value, key2);
-          if (!typeaheadTarget) return void 0;
-          event?.preventDefault?.();
-          setMenuActiveValue(ctx, typeaheadTarget);
-          focusMenuItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget);
-          return false;
-        }, "onKeyDown")
-      }, props), children2);
-    }, "menu_item"),
-    select_root: /* @__PURE__ */ __name((open, value, renderChildren) => {
+          },
+          props
+        ),
+        children2
+      );
+    },
+    select_root: (open, value, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.select_root");
-      return coerceRenderableToVNode(frameManager.withContext(selectContext, {
-        open,
-        value,
-        baseId: getSelectBaseId(open),
-        order: []
-      }, renderChildren));
-    }, "select_root"),
-    select_portal: /* @__PURE__ */ __name((children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          selectContext,
+          { open, value, baseId: getSelectBaseId(open), order: [] },
+          renderChildren
+        )
+      );
+    },
+    select_portal: (children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.select_portal");
       const ctx = frameManager.useContext(selectContext);
       const open = ctx.open.get();
-      const dismissLayer = vnodeElement("div", {
-        "data-lumina-select-dismiss": "true",
-        "data-state": open ? "open" : "closed",
-        hidden: !open,
-        style: {
-          position: "fixed",
-          inset: "0",
-          background: "transparent",
-          zIndex: "1000"
+      const dismissLayer = vnodeElement(
+        "div",
+        {
+          "data-lumina-select-dismiss": "true",
+          "data-state": open ? "open" : "closed",
+          hidden: !open,
+          style: {
+            position: "fixed",
+            inset: "0",
+            background: "transparent",
+            zIndex: "1000"
+          },
+          onClick: () => {
+            closeSelect(ctx);
+          }
         },
-        onClick: /* @__PURE__ */ __name(() => {
-          closeSelect(ctx);
-        }, "onClick")
-      }, []);
+        []
+      );
       return vnodePortal(null, [
         dismissLayer,
         ...normalizeVNodeChildren(resolveChildrenInput(children2))
       ]);
-    }, "select_portal"),
-    select_trigger: /* @__PURE__ */ __name((props, children2 = []) => {
+    },
+    select_trigger: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.select_trigger");
       const ctx = frameManager.useContext(selectContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getSelectIds(ctx);
       const activeDescendantId = open ? getSelectActiveDescendantId(ctx) : null;
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        id: triggerId,
-        role: "combobox",
-        "aria-haspopup": "listbox",
-        "aria-expanded": open ? "true" : "false",
-        "aria-controls": open ? contentId : void 0,
-        "aria-activedescendant": activeDescendantId ?? void 0,
-        "data-state": open ? "open" : "closed",
-        onClick: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setSelectRestoreTarget(ctx, target);
-            setSelectAnchorTarget(ctx, target);
-            target.focus?.();
-          }
-          const nextOpen = !ctx.open.get();
-          if (nextOpen) {
-            setSelectActiveValue(ctx, ctx.value.get());
-          }
-          ctx.open.set(nextOpen);
-          if (!nextOpen) {
-            restoreSelectFocus(ctx);
-          }
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          const openNow = ctx.open.get();
-          const currentValue = ctx.value.get();
-          const currentActive = getSelectActiveValue(ctx);
-          if (key2 === "Escape" && openNow) {
-            event?.preventDefault?.();
-            closeSelect(ctx);
-            return false;
-          }
-          if (!openNow) {
-            if (key2 === "ArrowDown" || key2 === "Enter" || key2 === " ") {
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            id: triggerId,
+            role: "combobox",
+            "aria-haspopup": "listbox",
+            "aria-expanded": open ? "true" : "false",
+            "aria-controls": open ? contentId : void 0,
+            "aria-activedescendant": activeDescendantId ?? void 0,
+            "data-state": open ? "open" : "closed",
+            onClick: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setSelectRestoreTarget(ctx, target);
+                setSelectAnchorTarget(ctx, target);
+                target.focus?.();
+              }
+              const nextOpen = !ctx.open.get();
+              if (nextOpen) {
+                setSelectActiveValue(ctx, ctx.value.get());
+              }
+              ctx.open.set(nextOpen);
+              if (!nextOpen) {
+                restoreSelectFocus(ctx);
+              }
+            },
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              const openNow = ctx.open.get();
+              const currentValue = ctx.value.get();
+              const currentActive = getSelectActiveValue(ctx);
+              if (key2 === "Escape" && openNow) {
+                event?.preventDefault?.();
+                closeSelect(ctx);
+                return false;
+              }
+              if (!openNow) {
+                if (key2 === "ArrowDown" || key2 === "Enter" || key2 === " ") {
+                  event?.preventDefault?.();
+                  setSelectActiveValue(ctx, currentValue);
+                  ctx.open.set(true);
+                  return false;
+                }
+                if (key2 === "ArrowUp" || key2 === "Home") {
+                  event?.preventDefault?.();
+                  setSelectActiveValue(ctx, ctx.order[0] ?? currentValue);
+                  ctx.open.set(true);
+                  return false;
+                }
+                if (key2 === "End") {
+                  event?.preventDefault?.();
+                  setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentValue);
+                  ctx.open.set(true);
+                  return false;
+                }
+                const typeaheadTarget2 = getSelectTypeaheadTarget(ctx, currentValue, key2);
+                if (!typeaheadTarget2) {
+                  return void 0;
+                }
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, typeaheadTarget2);
+                ctx.open.set(true);
+                return false;
+              }
+              if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
+                if (key2 !== "Tab") {
+                  event?.preventDefault?.();
+                }
+                acceptSelectActiveValue(ctx);
+                setSelectActiveValue(ctx, ctx.value.get());
+                ctx.open.set(false);
+                return key2 === "Tab" ? void 0 : false;
+              }
+              if (key2 === "Home") {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
+                return false;
+              }
+              if (key2 === "End") {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
+                return false;
+              }
+              const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key2);
+              if (typeaheadTarget) {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, typeaheadTarget);
+                return false;
+              }
+              const nextValue = getSelectNavigationTarget(ctx, currentActive, key2);
+              if (!nextValue) return void 0;
               event?.preventDefault?.();
-              setSelectActiveValue(ctx, currentValue);
-              ctx.open.set(true);
+              setSelectActiveValue(ctx, nextValue);
               return false;
             }
-            if (key2 === "ArrowUp" || key2 === "Home") {
-              event?.preventDefault?.();
-              setSelectActiveValue(ctx, ctx.order[0] ?? currentValue);
-              ctx.open.set(true);
-              return false;
-            }
-            if (key2 === "End") {
-              event?.preventDefault?.();
-              setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentValue);
-              ctx.open.set(true);
-              return false;
-            }
-            const typeaheadTarget2 = getSelectTypeaheadTarget(ctx, currentValue, key2);
-            if (!typeaheadTarget2) {
-              return void 0;
-            }
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, typeaheadTarget2);
-            ctx.open.set(true);
-            return false;
-          }
-          if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
-            if (key2 !== "Tab") {
-              event?.preventDefault?.();
-            }
-            acceptSelectActiveValue(ctx);
-            setSelectActiveValue(ctx, ctx.value.get());
-            ctx.open.set(false);
-            return key2 === "Tab" ? void 0 : false;
-          }
-          if (key2 === "Home") {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
-            return false;
-          }
-          if (key2 === "End") {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
-            return false;
-          }
-          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key2);
-          if (typeaheadTarget) {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, typeaheadTarget);
-            return false;
-          }
-          const nextValue = getSelectNavigationTarget(ctx, currentActive, key2);
-          if (!nextValue) return void 0;
-          event?.preventDefault?.();
-          setSelectActiveValue(ctx, nextValue);
-          return false;
-        }, "onKeyDown")
-      }, props), children2);
-    }, "select_trigger"),
-    select_content: /* @__PURE__ */ __name((props, children2 = []) => {
+          },
+          props
+        ),
+        children2
+      );
+    },
+    select_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.select_content");
       const ctx = frameManager.useContext(selectContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getSelectIds(ctx);
-      return vnodeElement("div", mergeProps({
-        role: "listbox",
-        id: contentId,
-        "aria-labelledby": triggerId,
-        hidden: !open,
-        "data-lumina-select-content": "true",
-        "data-state": open ? "open" : "closed",
-        "data-side": pickPopoverSide(props),
-        style: getPopoverContentStyle(getSelectAnchorRect(ctx), props),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          const currentActive = getSelectActiveValue(ctx);
-          if (key2 === "Escape") {
-            event?.preventDefault?.();
-            closeSelect(ctx);
-            return false;
-          }
-          if (key2 === "ArrowDown" || key2 === "ArrowRight") {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key2));
-            return false;
-          }
-          if (key2 === "ArrowUp" || key2 === "ArrowLeft") {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key2));
-            return false;
-          }
-          if (key2 === "Home") {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
-            return false;
-          }
-          if (key2 === "End") {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
-            return false;
-          }
-          if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
-            if (key2 !== "Tab") {
-              event?.preventDefault?.();
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "listbox",
+            id: contentId,
+            "aria-labelledby": triggerId,
+            hidden: !open,
+            "data-lumina-select-content": "true",
+            "data-state": open ? "open" : "closed",
+            "data-side": pickPopoverSide(props),
+            style: getPopoverContentStyle(getSelectAnchorRect(ctx), props),
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              const currentActive = getSelectActiveValue(ctx);
+              if (key2 === "Escape") {
+                event?.preventDefault?.();
+                closeSelect(ctx);
+                return false;
+              }
+              if (key2 === "ArrowDown" || key2 === "ArrowRight") {
+                event?.preventDefault?.();
+                setSelectActiveValue(
+                  ctx,
+                  getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key2)
+                );
+                return false;
+              }
+              if (key2 === "ArrowUp" || key2 === "ArrowLeft") {
+                event?.preventDefault?.();
+                setSelectActiveValue(
+                  ctx,
+                  getSelectNavigationTarget(ctx, getSelectActiveValue(ctx), key2)
+                );
+                return false;
+              }
+              if (key2 === "Home") {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, ctx.order[0] ?? currentActive);
+                return false;
+              }
+              if (key2 === "End") {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, ctx.order[ctx.order.length - 1] ?? currentActive);
+                return false;
+              }
+              if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
+                if (key2 !== "Tab") {
+                  event?.preventDefault?.();
+                }
+                acceptSelectActiveValue(ctx);
+                setSelectActiveValue(ctx, ctx.value.get());
+                ctx.open.set(false);
+                return key2 === "Tab" ? void 0 : false;
+              }
+              const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key2);
+              if (typeaheadTarget) {
+                event?.preventDefault?.();
+                setSelectActiveValue(ctx, typeaheadTarget);
+                return false;
+              }
+              return void 0;
             }
-            acceptSelectActiveValue(ctx);
-            setSelectActiveValue(ctx, ctx.value.get());
-            ctx.open.set(false);
-            return key2 === "Tab" ? void 0 : false;
-          }
-          const typeaheadTarget = getSelectTypeaheadTarget(ctx, currentActive, key2);
-          if (typeaheadTarget) {
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, typeaheadTarget);
-            return false;
-          }
-          return void 0;
-        }, "onKeyDown")
-      }, omitPopoverLayoutProps(props)), children2);
-    }, "select_content"),
-    select_item: /* @__PURE__ */ __name((value, props, renderChildren) => {
+          },
+          omitPopoverLayoutProps(props)
+        ),
+        children2
+      );
+    },
+    select_item: (value, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.select_item");
       const ctx = frameManager.useContext(selectContext);
       const open = ctx.open.get();
@@ -9047,218 +9368,262 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       const selected = currentValue === value;
       const active = open && activeValue === value;
       const itemId = getSelectItemId(ctx, value);
-      return coerceRenderableToVNode(frameManager.withContext(selectItemContext, {
-        value,
-        itemId,
-        selected
-      }, () => {
-        const resolvedChildren = resolveChildrenInput(renderChildren);
-        registerSelectValue(ctx, value, getTextLabel(resolvedChildren));
-        return vnodeElement("button", mergeProps({
-          type: "button",
-          id: itemId,
-          role: "option",
-          hidden: !open,
-          tabIndex: -1,
-          "aria-selected": selected ? "true" : "false",
-          "data-lumina-select-item": "true",
-          "data-active": active ? "true" : "false",
-          "data-state": selected ? "checked" : "unchecked",
-          onClick: /* @__PURE__ */ __name(() => {
-            setSelectActiveValue(ctx, value);
-            acceptSelectActiveValue(ctx);
-            closeSelect(ctx);
-          }, "onClick"),
-          onMouseEnter: /* @__PURE__ */ __name(() => {
-            setSelectActiveValue(ctx, value);
-          }, "onMouseEnter"),
-          onKeyDown: /* @__PURE__ */ __name((event) => {
-            const key2 = String(event?.key ?? "");
-            if (key2 === "Escape") {
-              event?.preventDefault?.();
-              closeSelect(ctx);
-              return false;
-            }
-            if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
-              if (key2 !== "Tab") {
-                event?.preventDefault?.();
-              }
-              setSelectActiveValue(ctx, value);
-              acceptSelectActiveValue(ctx);
-              setSelectActiveValue(ctx, ctx.value.get());
-              ctx.open.set(false);
-              return key2 === "Tab" ? void 0 : false;
-            }
-            const nextValue = getSelectNavigationTarget(ctx, value, key2);
-            if (!nextValue) return void 0;
-            event?.preventDefault?.();
-            setSelectActiveValue(ctx, nextValue);
-            restoreSelectFocus(ctx);
-            return false;
-          }, "onKeyDown")
-        }, props), resolvedChildren);
-      }));
-    }, "select_item"),
-    select_indicator: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(selectItemContext, { value, itemId, selected }, () => {
+          const resolvedChildren = resolveChildrenInput(renderChildren);
+          registerSelectValue(ctx, value, getTextLabel(resolvedChildren));
+          return vnodeElement(
+            "button",
+            mergeProps(
+              {
+                type: "button",
+                id: itemId,
+                role: "option",
+                hidden: !open,
+                tabIndex: -1,
+                "aria-selected": selected ? "true" : "false",
+                "data-lumina-select-item": "true",
+                "data-active": active ? "true" : "false",
+                "data-state": selected ? "checked" : "unchecked",
+                onClick: () => {
+                  setSelectActiveValue(ctx, value);
+                  acceptSelectActiveValue(ctx);
+                  closeSelect(ctx);
+                },
+                onMouseEnter: () => {
+                  setSelectActiveValue(ctx, value);
+                },
+                onKeyDown: (event) => {
+                  const key2 = String(event?.key ?? "");
+                  if (key2 === "Escape") {
+                    event?.preventDefault?.();
+                    closeSelect(ctx);
+                    return false;
+                  }
+                  if (key2 === "Enter" || key2 === " " || key2 === "Tab") {
+                    if (key2 !== "Tab") {
+                      event?.preventDefault?.();
+                    }
+                    setSelectActiveValue(ctx, value);
+                    acceptSelectActiveValue(ctx);
+                    setSelectActiveValue(ctx, ctx.value.get());
+                    ctx.open.set(false);
+                    return key2 === "Tab" ? void 0 : false;
+                  }
+                  const nextValue = getSelectNavigationTarget(ctx, value, key2);
+                  if (!nextValue) return void 0;
+                  event?.preventDefault?.();
+                  setSelectActiveValue(ctx, nextValue);
+                  restoreSelectFocus(ctx);
+                  return false;
+                }
+              },
+              props
+            ),
+            resolvedChildren
+          );
+        })
+      );
+    },
+    select_indicator: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.select_indicator");
       const ctx = frameManager.useContext(selectItemContext);
-      return vnodeElement("span", mergeProps({
-        id: getSelectIndicatorId(ctx.itemId),
-        "aria-hidden": "true",
-        hidden: !ctx.selected,
-        "data-lumina-select-indicator": "true",
-        "data-state": ctx.selected ? "checked" : "unchecked"
-      }, props), children2);
-    }, "select_indicator"),
-    combobox_root: /* @__PURE__ */ __name((open, value, query2, renderChildren) => {
+      return vnodeElement(
+        "span",
+        mergeProps(
+          {
+            id: getSelectIndicatorId(ctx.itemId),
+            "aria-hidden": "true",
+            hidden: !ctx.selected,
+            "data-lumina-select-indicator": "true",
+            "data-state": ctx.selected ? "checked" : "unchecked"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    combobox_root: (open, value, query2, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.combobox_root");
-      return coerceRenderableToVNode(frameManager.withContext(comboboxContext, {
-        open,
-        value,
-        query: query2,
-        baseId: getComboboxBaseId(open),
-        order: []
-      }, renderChildren));
-    }, "combobox_root"),
-    combobox_portal: /* @__PURE__ */ __name((children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          comboboxContext,
+          { open, value, query: query2, baseId: getComboboxBaseId(open), order: [] },
+          renderChildren
+        )
+      );
+    },
+    combobox_portal: (children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.combobox_portal");
       const ctx = frameManager.useContext(comboboxContext);
       const open = ctx.open.get();
-      const dismissLayer = vnodeElement("div", {
-        "data-lumina-combobox-dismiss": "true",
-        "data-state": open ? "open" : "closed",
-        hidden: !open,
-        style: {
-          position: "fixed",
-          inset: "0",
-          background: "transparent",
-          zIndex: "1000"
+      const dismissLayer = vnodeElement(
+        "div",
+        {
+          "data-lumina-combobox-dismiss": "true",
+          "data-state": open ? "open" : "closed",
+          hidden: !open,
+          style: {
+            position: "fixed",
+            inset: "0",
+            background: "transparent",
+            zIndex: "1000"
+          },
+          onClick: () => {
+            closeCombobox(ctx);
+          }
         },
-        onClick: /* @__PURE__ */ __name(() => {
-          closeCombobox(ctx);
-        }, "onClick")
-      }, []);
+        []
+      );
       return vnodePortal(null, [
         dismissLayer,
         ...normalizeVNodeChildren(resolveChildrenInput(children2))
       ]);
-    }, "combobox_portal"),
-    combobox_input: /* @__PURE__ */ __name((props, children2 = []) => {
+    },
+    combobox_input: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.combobox_input");
       const ctx = frameManager.useContext(comboboxContext);
       const open = ctx.open.get();
       const { inputId, contentId } = getComboboxIds(ctx);
       const activeDescendantId = open ? getComboboxActiveDescendantId(ctx) : null;
-      return vnodeElement("input", mergeProps({
-        type: "text",
-        id: inputId,
-        role: "combobox",
-        value: ctx.query.get(),
-        "aria-autocomplete": "list",
-        "aria-haspopup": "listbox",
-        "aria-expanded": open ? "true" : "false",
-        "aria-controls": contentId,
-        "aria-activedescendant": activeDescendantId ?? void 0,
-        "data-state": open ? "open" : "closed",
-        onInput: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setComboboxRestoreTarget(ctx, target);
-            setComboboxAnchorTarget(ctx, target);
-          }
-          const nextQuery = String(event?.target?.value ?? "");
-          ctx.query.set(nextQuery);
-          setComboboxActiveValue(ctx, "");
-          ctx.open.set(true);
-        }, "onInput"),
-        onFocus: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (!target) return void 0;
-          setComboboxRestoreTarget(ctx, target);
-          setComboboxAnchorTarget(ctx, target);
-          setComboboxActiveValue(ctx, ctx.value.get());
-          ctx.open.set(true);
-          return void 0;
-        }, "onFocus"),
-        onClick: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (!target) return void 0;
-          setComboboxRestoreTarget(ctx, target);
-          setComboboxAnchorTarget(ctx, target);
-          setComboboxActiveValue(ctx, ctx.value.get());
-          ctx.open.set(true);
-          return void 0;
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          if (key2 === "Escape") {
-            event?.preventDefault?.();
-            closeCombobox(ctx);
-            return false;
-          }
-          if (key2 === "Enter") {
-            event?.preventDefault?.();
-            acceptComboboxActiveValue(ctx);
-            closeCombobox(ctx);
-            return false;
-          }
-          if (key2 === "ArrowDown" || key2 === "ArrowUp") {
-            event?.preventDefault?.();
-            ctx.open.set(true);
-            const currentValue = getComboboxActiveValue(ctx);
-            const nextValue = key2 === "ArrowDown" ? getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowDown" : "Home") : getComboboxNavigationTarget(ctx, currentValue, currentValue ? "ArrowUp" : "End");
-            if (nextValue) {
-              setComboboxActiveValue(ctx, nextValue);
+      return vnodeElement(
+        "input",
+        mergeProps(
+          {
+            type: "text",
+            id: inputId,
+            role: "combobox",
+            value: ctx.query.get(),
+            "aria-autocomplete": "list",
+            "aria-haspopup": "listbox",
+            "aria-expanded": open ? "true" : "false",
+            "aria-controls": contentId,
+            "aria-activedescendant": activeDescendantId ?? void 0,
+            "data-state": open ? "open" : "closed",
+            onInput: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setComboboxRestoreTarget(ctx, target);
+                setComboboxAnchorTarget(ctx, target);
+              }
+              const nextQuery = String(
+                event?.target?.value ?? ""
+              );
+              ctx.query.set(nextQuery);
+              setComboboxActiveValue(ctx, "");
+              ctx.open.set(true);
+            },
+            onFocus: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (!target) return void 0;
+              setComboboxRestoreTarget(ctx, target);
+              setComboboxAnchorTarget(ctx, target);
+              setComboboxActiveValue(ctx, ctx.value.get());
+              ctx.open.set(true);
+              return void 0;
+            },
+            onClick: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (!target) return void 0;
+              setComboboxRestoreTarget(ctx, target);
+              setComboboxAnchorTarget(ctx, target);
+              setComboboxActiveValue(ctx, ctx.value.get());
+              ctx.open.set(true);
+              return void 0;
+            },
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              if (key2 === "Escape") {
+                event?.preventDefault?.();
+                closeCombobox(ctx);
+                return false;
+              }
+              if (key2 === "Enter") {
+                event?.preventDefault?.();
+                acceptComboboxActiveValue(ctx);
+                closeCombobox(ctx);
+                return false;
+              }
+              if (key2 === "ArrowDown" || key2 === "ArrowUp") {
+                event?.preventDefault?.();
+                ctx.open.set(true);
+                const currentValue = getComboboxActiveValue(ctx);
+                const nextValue = key2 === "ArrowDown" ? getComboboxNavigationTarget(
+                  ctx,
+                  currentValue,
+                  currentValue ? "ArrowDown" : "Home"
+                ) : getComboboxNavigationTarget(
+                  ctx,
+                  currentValue,
+                  currentValue ? "ArrowUp" : "End"
+                );
+                if (nextValue) {
+                  setComboboxActiveValue(ctx, nextValue);
+                }
+                return false;
+              }
+              return void 0;
             }
-            return false;
-          }
-          return void 0;
-        }, "onKeyDown")
-      }, props), children2);
-    }, "combobox_input"),
-    combobox_content: /* @__PURE__ */ __name((props, children2 = []) => {
+          },
+          props
+        ),
+        children2
+      );
+    },
+    combobox_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.combobox_content");
       const ctx = frameManager.useContext(comboboxContext);
       const open = ctx.open.get();
       const { inputId, contentId } = getComboboxIds(ctx);
-      return vnodeElement("div", mergeProps({
-        role: "listbox",
-        id: contentId,
-        "aria-labelledby": inputId,
-        hidden: !open,
-        tabIndex: -1,
-        "data-lumina-combobox-content": "true",
-        "data-state": open ? "open" : "closed",
-        "data-side": pickPopoverSide(props),
-        style: getPopoverContentStyle(getComboboxAnchorRect(ctx), props),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          if (key2 === "Escape") {
-            event?.preventDefault?.();
-            closeCombobox(ctx);
-            return false;
-          }
-          if (key2 === "Enter") {
-            event?.preventDefault?.();
-            acceptComboboxActiveValue(ctx);
-            closeCombobox(ctx);
-            return false;
-          }
-          if (key2 === "ArrowDown" || key2 === "ArrowUp" || key2 === "Home" || key2 === "End") {
-            event?.preventDefault?.();
-            const currentValue = getComboboxActiveValue(ctx);
-            const nextValue = getComboboxNavigationTarget(ctx, currentValue, key2 === "ArrowDown" || key2 === "ArrowUp" ? key2 : key2);
-            if (nextValue) {
-              setComboboxActiveValue(ctx, nextValue);
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "listbox",
+            id: contentId,
+            "aria-labelledby": inputId,
+            hidden: !open,
+            tabIndex: -1,
+            "data-lumina-combobox-content": "true",
+            "data-state": open ? "open" : "closed",
+            "data-side": pickPopoverSide(props),
+            style: getPopoverContentStyle(getComboboxAnchorRect(ctx), props),
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              if (key2 === "Escape") {
+                event?.preventDefault?.();
+                closeCombobox(ctx);
+                return false;
+              }
+              if (key2 === "Enter") {
+                event?.preventDefault?.();
+                acceptComboboxActiveValue(ctx);
+                closeCombobox(ctx);
+                return false;
+              }
+              if (key2 === "ArrowDown" || key2 === "ArrowUp" || key2 === "Home" || key2 === "End") {
+                event?.preventDefault?.();
+                const currentValue = getComboboxActiveValue(ctx);
+                const nextValue = getComboboxNavigationTarget(
+                  ctx,
+                  currentValue,
+                  key2 === "ArrowDown" || key2 === "ArrowUp" ? key2 : key2
+                );
+                if (nextValue) {
+                  setComboboxActiveValue(ctx, nextValue);
+                }
+                restoreComboboxFocus(ctx);
+                return false;
+              }
+              return void 0;
             }
-            restoreComboboxFocus(ctx);
-            return false;
-          }
-          return void 0;
-        }, "onKeyDown")
-      }, omitPopoverLayoutProps(props)), children2);
-    }, "combobox_content"),
-    combobox_item: /* @__PURE__ */ __name((value, props, renderChildren) => {
+          },
+          omitPopoverLayoutProps(props)
+        ),
+        children2
+      );
+    },
+    combobox_item: (value, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.combobox_item");
       const ctx = frameManager.useContext(comboboxContext);
       const open = ctx.open.get();
@@ -9271,441 +9636,574 @@ var createHeadlessPrimitivesRuntime = /* @__PURE__ */ __name((options) => {
       const selected = currentValue === value;
       const active = getComboboxActiveValue(ctx) === value;
       const itemId = getComboboxItemId(ctx, value);
-      return coerceRenderableToVNode(frameManager.withContext(comboboxItemContext, {
-        value,
-        itemId,
-        selected,
-        active
-      }, () => vnodeElement("div", mergeProps({
-        id: itemId,
-        role: "option",
-        hidden: !open || !matchesQuery,
-        tabIndex: -1,
-        "aria-selected": active ? "true" : "false",
-        "data-lumina-combobox-item": "true",
-        "data-state": selected ? "checked" : "unchecked",
-        "data-active": active ? "true" : "false",
-        onMouseDown: /* @__PURE__ */ __name((event) => {
-          event?.preventDefault?.();
-          return false;
-        }, "onMouseDown"),
-        onMouseEnter: /* @__PURE__ */ __name(() => {
-          setComboboxActiveValue(ctx, value);
-        }, "onMouseEnter"),
-        onFocus: /* @__PURE__ */ __name(() => {
-          setComboboxActiveValue(ctx, value);
-        }, "onFocus"),
-        onClick: /* @__PURE__ */ __name(() => {
-          ctx.value.set(value);
-          ctx.query.set(value);
-          setComboboxActiveValue(ctx, value);
-          closeCombobox(ctx);
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          if (key2 === "Escape") {
-            event?.preventDefault?.();
-            closeCombobox(ctx);
-            return false;
-          }
-          if (key2 === "Enter" || key2 === " ") {
-            event?.preventDefault?.();
-            ctx.value.set(value);
-            ctx.query.set(value);
-            setComboboxActiveValue(ctx, value);
-            closeCombobox(ctx);
-            return false;
-          }
-          const nextValue = getComboboxNavigationTarget(ctx, value, key2);
-          if (!nextValue) return void 0;
-          event?.preventDefault?.();
-          setComboboxActiveValue(ctx, nextValue);
-          restoreComboboxFocus(ctx);
-          return false;
-        }, "onKeyDown")
-      }, props), resolveChildrenInput(renderChildren))));
-    }, "combobox_item"),
-    combobox_indicator: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          comboboxItemContext,
+          { value, itemId, selected, active },
+          () => vnodeElement(
+            "div",
+            mergeProps(
+              {
+                id: itemId,
+                role: "option",
+                hidden: !open || !matchesQuery,
+                tabIndex: -1,
+                "aria-selected": active ? "true" : "false",
+                "data-lumina-combobox-item": "true",
+                "data-state": selected ? "checked" : "unchecked",
+                "data-active": active ? "true" : "false",
+                onMouseDown: (event) => {
+                  event?.preventDefault?.();
+                  return false;
+                },
+                onMouseEnter: () => {
+                  setComboboxActiveValue(ctx, value);
+                },
+                onFocus: () => {
+                  setComboboxActiveValue(ctx, value);
+                },
+                onClick: () => {
+                  ctx.value.set(value);
+                  ctx.query.set(value);
+                  setComboboxActiveValue(ctx, value);
+                  closeCombobox(ctx);
+                },
+                onKeyDown: (event) => {
+                  const key2 = String(event?.key ?? "");
+                  if (key2 === "Escape") {
+                    event?.preventDefault?.();
+                    closeCombobox(ctx);
+                    return false;
+                  }
+                  if (key2 === "Enter" || key2 === " ") {
+                    event?.preventDefault?.();
+                    ctx.value.set(value);
+                    ctx.query.set(value);
+                    setComboboxActiveValue(ctx, value);
+                    closeCombobox(ctx);
+                    return false;
+                  }
+                  const nextValue = getComboboxNavigationTarget(ctx, value, key2);
+                  if (!nextValue) return void 0;
+                  event?.preventDefault?.();
+                  setComboboxActiveValue(ctx, nextValue);
+                  restoreComboboxFocus(ctx);
+                  return false;
+                }
+              },
+              props
+            ),
+            resolveChildrenInput(renderChildren)
+          )
+        )
+      );
+    },
+    combobox_indicator: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.combobox_indicator");
       const ctx = frameManager.useContext(comboboxItemContext);
-      return vnodeElement("span", mergeProps({
-        id: getComboboxIndicatorId(ctx.itemId),
-        "aria-hidden": "true",
-        hidden: !ctx.active,
-        "data-lumina-combobox-indicator": "true",
-        "data-state": ctx.active ? "checked" : "unchecked"
-      }, props), children2);
-    }, "combobox_indicator"),
-    multiselect_root: /* @__PURE__ */ __name((open, values, renderChildren) => {
+      return vnodeElement(
+        "span",
+        mergeProps(
+          {
+            id: getComboboxIndicatorId(ctx.itemId),
+            "aria-hidden": "true",
+            hidden: !ctx.active,
+            "data-lumina-combobox-indicator": "true",
+            "data-state": ctx.active ? "checked" : "unchecked"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    multiselect_root: (open, values, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_root");
-      return coerceRenderableToVNode(frameManager.withContext(multiselectContext, {
-        open,
-        values,
-        baseId: getMultiselectBaseId(open),
-        order: []
-      }, renderChildren));
-    }, "multiselect_root"),
-    multiselect_portal: /* @__PURE__ */ __name((children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          multiselectContext,
+          { open, values, baseId: getMultiselectBaseId(open), order: [] },
+          renderChildren
+        )
+      );
+    },
+    multiselect_portal: (children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_portal");
       const ctx = frameManager.useContext(multiselectContext);
       const open = ctx.open.get();
-      const dismissLayer = vnodeElement("div", {
-        "data-lumina-multiselect-dismiss": "true",
-        "data-state": open ? "open" : "closed",
-        hidden: !open,
-        style: {
-          position: "fixed",
-          inset: "0",
-          background: "transparent",
-          zIndex: "1000"
+      const dismissLayer = vnodeElement(
+        "div",
+        {
+          "data-lumina-multiselect-dismiss": "true",
+          "data-state": open ? "open" : "closed",
+          hidden: !open,
+          style: {
+            position: "fixed",
+            inset: "0",
+            background: "transparent",
+            zIndex: "1000"
+          },
+          onClick: () => {
+            closeMultiselect(ctx);
+          }
         },
-        onClick: /* @__PURE__ */ __name(() => {
-          closeMultiselect(ctx);
-        }, "onClick")
-      }, []);
+        []
+      );
       return vnodePortal(null, [
         dismissLayer,
         ...normalizeVNodeChildren(resolveChildrenInput(children2))
       ]);
-    }, "multiselect_portal"),
-    multiselect_trigger: /* @__PURE__ */ __name((props, children2 = []) => {
+    },
+    multiselect_trigger: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_trigger");
       const ctx = frameManager.useContext(multiselectContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getMultiselectIds(ctx);
-      return vnodeElement("button", mergeProps({
-        type: "button",
-        id: triggerId,
-        "aria-haspopup": "listbox",
-        "aria-expanded": open ? "true" : "false",
-        "aria-controls": contentId,
-        "data-state": open ? "open" : "closed",
-        onClick: /* @__PURE__ */ __name((event) => {
-          const target = getFocusTargetFromEvent(event);
-          if (target) {
-            setMultiselectRestoreTarget(ctx, target);
-            setMultiselectAnchorTarget(ctx, target);
-          }
-          const nextOpen = !ctx.open.get();
-          if (nextOpen) {
-            setMultiselectActiveValue(ctx, resolveMultiselectOpenActiveValue(ctx));
-          }
-          ctx.open.set(nextOpen);
-          if (!nextOpen) {
-            restoreMultiselectFocus(ctx);
-          }
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          const target = getFocusTargetFromEvent(event);
-          const openWithValue = /* @__PURE__ */ __name((nextValue) => {
-            event?.preventDefault?.();
-            if (target) {
-              setMultiselectRestoreTarget(ctx, target);
-              setMultiselectAnchorTarget(ctx, target);
+      return vnodeElement(
+        "button",
+        mergeProps(
+          {
+            type: "button",
+            id: triggerId,
+            "aria-haspopup": "listbox",
+            "aria-expanded": open ? "true" : "false",
+            "aria-controls": contentId,
+            "data-state": open ? "open" : "closed",
+            onClick: (event) => {
+              const target = getFocusTargetFromEvent(event);
+              if (target) {
+                setMultiselectRestoreTarget(ctx, target);
+                setMultiselectAnchorTarget(ctx, target);
+              }
+              const nextOpen = !ctx.open.get();
+              if (nextOpen) {
+                setMultiselectActiveValue(ctx, resolveMultiselectOpenActiveValue(ctx));
+              }
+              ctx.open.set(nextOpen);
+              if (!nextOpen) {
+                restoreMultiselectFocus(ctx);
+              }
+            },
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              const target = getFocusTargetFromEvent(event);
+              const openWithValue = (nextValue) => {
+                event?.preventDefault?.();
+                if (target) {
+                  setMultiselectRestoreTarget(ctx, target);
+                  setMultiselectAnchorTarget(ctx, target);
+                }
+                setMultiselectActiveValue(ctx, nextValue);
+                ctx.open.set(true);
+                return false;
+              };
+              const initialValue = resolveMultiselectOpenActiveValue(ctx);
+              if (key2 === "Enter" || key2 === " " || key2 === "ArrowDown") {
+                return openWithValue(initialValue);
+              }
+              if (key2 === "ArrowUp" || key2 === "End") {
+                return openWithValue(ctx.order[ctx.order.length - 1] ?? initialValue);
+              }
+              if (key2 === "Home") {
+                return openWithValue(ctx.order[0] ?? initialValue);
+              }
+              const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, initialValue, key2);
+              if (!typeaheadTarget) {
+                return void 0;
+              }
+              return openWithValue(typeaheadTarget);
             }
-            setMultiselectActiveValue(ctx, nextValue);
-            ctx.open.set(true);
-            return false;
-          }, "openWithValue");
-          const initialValue = resolveMultiselectOpenActiveValue(ctx);
-          if (key2 === "Enter" || key2 === " " || key2 === "ArrowDown") {
-            return openWithValue(initialValue);
-          }
-          if (key2 === "ArrowUp" || key2 === "End") {
-            return openWithValue(ctx.order[ctx.order.length - 1] ?? initialValue);
-          }
-          if (key2 === "Home") {
-            return openWithValue(ctx.order[0] ?? initialValue);
-          }
-          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, initialValue, key2);
-          if (!typeaheadTarget) {
-            return void 0;
-          }
-          return openWithValue(typeaheadTarget);
-        }, "onKeyDown")
-      }, props), children2);
-    }, "multiselect_trigger"),
-    multiselect_content: /* @__PURE__ */ __name((props, children2 = []) => {
+          },
+          props
+        ),
+        children2
+      );
+    },
+    multiselect_content: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_content");
       const ctx = frameManager.useContext(multiselectContext);
       const open = ctx.open.get();
       const { triggerId, contentId } = getMultiselectIds(ctx);
-      return vnodeElement("div", mergeProps({
-        role: "listbox",
-        id: contentId,
-        "aria-labelledby": triggerId,
-        "aria-multiselectable": "true",
-        hidden: !open,
-        tabIndex: -1,
-        autoFocus: open,
-        "data-lumina-multiselect-content": "true",
-        "data-state": open ? "open" : "closed",
-        "data-side": pickPopoverSide(props),
-        style: getPopoverContentStyle(getMultiselectAnchorRect(ctx), props),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          if (key2 === "Escape") {
-            event?.preventDefault?.();
-            closeMultiselect(ctx);
-            return false;
-          }
-          if (key2 === "Tab") {
-            ctx.open.set(false);
-            return void 0;
-          }
-          const activeValue = getMultiselectActiveValue(ctx);
-          if (key2 === "Enter" || key2 === " ") {
-            if (!activeValue) {
-              return void 0;
+      return vnodeElement(
+        "div",
+        mergeProps(
+          {
+            role: "listbox",
+            id: contentId,
+            "aria-labelledby": triggerId,
+            "aria-multiselectable": "true",
+            hidden: !open,
+            tabIndex: -1,
+            autoFocus: open,
+            "data-lumina-multiselect-content": "true",
+            "data-state": open ? "open" : "closed",
+            "data-side": pickPopoverSide(props),
+            style: getPopoverContentStyle(getMultiselectAnchorRect(ctx), props),
+            onKeyDown: (event) => {
+              const key2 = String(event?.key ?? "");
+              if (key2 === "Escape") {
+                event?.preventDefault?.();
+                closeMultiselect(ctx);
+                return false;
+              }
+              if (key2 === "Tab") {
+                ctx.open.set(false);
+                return void 0;
+              }
+              const activeValue = getMultiselectActiveValue(ctx);
+              if (key2 === "Enter" || key2 === " ") {
+                if (!activeValue) {
+                  return void 0;
+                }
+                event?.preventDefault?.();
+                setMultiselectActiveValue(ctx, activeValue);
+                toggleMultiselectValue(ctx, activeValue);
+                focusMultiselectItem(
+                  getFocusTargetFromEvent(event)?.ownerDocument,
+                  ctx,
+                  activeValue,
+                  getFocusTargetFromEvent(event)
+                );
+                return false;
+              }
+              if (key2 === "ArrowDown" || key2 === "Home") {
+                event?.preventDefault?.();
+                const targetValue = key2 === "Home" ? ctx.order[0] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key2) ?? activeValue;
+                setMultiselectActiveValue(ctx, targetValue);
+                focusMultiselectItem(
+                  getFocusTargetFromEvent(event)?.ownerDocument,
+                  ctx,
+                  targetValue,
+                  getFocusTargetFromEvent(event)
+                );
+                return false;
+              }
+              if (key2 === "ArrowUp" || key2 === "End") {
+                event?.preventDefault?.();
+                const targetValue = key2 === "End" ? ctx.order[ctx.order.length - 1] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key2) ?? activeValue;
+                setMultiselectActiveValue(ctx, targetValue);
+                focusMultiselectItem(
+                  getFocusTargetFromEvent(event)?.ownerDocument,
+                  ctx,
+                  targetValue,
+                  getFocusTargetFromEvent(event)
+                );
+                return false;
+              }
+              const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, activeValue, key2);
+              if (!typeaheadTarget) {
+                return void 0;
+              }
+              event?.preventDefault?.();
+              setMultiselectActiveValue(ctx, typeaheadTarget);
+              focusMultiselectItem(
+                getFocusTargetFromEvent(event)?.ownerDocument,
+                ctx,
+                typeaheadTarget,
+                getFocusTargetFromEvent(event)
+              );
+              return false;
             }
-            event?.preventDefault?.();
-            setMultiselectActiveValue(ctx, activeValue);
-            toggleMultiselectValue(ctx, activeValue);
-            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, activeValue, getFocusTargetFromEvent(event));
-            return false;
-          }
-          if (key2 === "ArrowDown" || key2 === "Home") {
-            event?.preventDefault?.();
-            const targetValue = key2 === "Home" ? ctx.order[0] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key2) ?? activeValue;
-            setMultiselectActiveValue(ctx, targetValue);
-            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, targetValue, getFocusTargetFromEvent(event));
-            return false;
-          }
-          if (key2 === "ArrowUp" || key2 === "End") {
-            event?.preventDefault?.();
-            const targetValue = key2 === "End" ? ctx.order[ctx.order.length - 1] ?? activeValue : getMultiselectNavigationTarget(ctx, activeValue, key2) ?? activeValue;
-            setMultiselectActiveValue(ctx, targetValue);
-            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, targetValue, getFocusTargetFromEvent(event));
-            return false;
-          }
-          const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, activeValue, key2);
-          if (!typeaheadTarget) {
-            return void 0;
-          }
-          event?.preventDefault?.();
-          setMultiselectActiveValue(ctx, typeaheadTarget);
-          focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget, getFocusTargetFromEvent(event));
-          return false;
-        }, "onKeyDown")
-      }, omitPopoverLayoutProps(props)), children2);
-    }, "multiselect_content"),
-    multiselect_item: /* @__PURE__ */ __name((value, props, renderChildren) => {
+          },
+          omitPopoverLayoutProps(props)
+        ),
+        children2
+      );
+    },
+    multiselect_item: (value, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_item");
       const ctx = frameManager.useContext(multiselectContext);
       const open = ctx.open.get();
       const selectedValues = readStringSelection(ctx.values.get());
       const selected = selectedValues.includes(value);
       const itemId = getMultiselectItemId(ctx, value);
-      return coerceRenderableToVNode(frameManager.withContext(multiselectItemContext, {
-        value,
-        itemId,
-        selected
-      }, () => {
-        const resolvedChildren = resolveChildrenInput(renderChildren);
-        registerMultiselectValue(ctx, value, getTextLabel(resolvedChildren));
-        const active = getMultiselectActiveValue(ctx);
-        const shouldAutoFocus = open && active === value;
-        return vnodeElement("button", mergeProps({
-          type: "button",
-          id: itemId,
-          role: "option",
-          hidden: !open,
-          tabIndex: open && active === value ? 0 : -1,
-          autoFocus: shouldAutoFocus,
-          "aria-selected": selected ? "true" : "false",
-          "data-lumina-multiselect-item": "true",
-          "data-active": active === value ? "true" : "false",
-          "data-state": selected ? "checked" : "unchecked",
-          onClick: /* @__PURE__ */ __name(() => {
-            setMultiselectActiveValue(ctx, value);
-            toggleMultiselectValue(ctx, value);
-          }, "onClick"),
-          onMouseEnter: /* @__PURE__ */ __name(() => {
-            setMultiselectActiveValue(ctx, value);
-          }, "onMouseEnter"),
-          onFocus: /* @__PURE__ */ __name(() => {
-            setMultiselectActiveValue(ctx, value);
-          }, "onFocus"),
-          onKeyDown: /* @__PURE__ */ __name((event) => {
-            const key2 = String(event?.key ?? "");
-            if (key2 === "Escape") {
-              event?.preventDefault?.();
-              closeMultiselect(ctx);
-              return false;
-            }
-            if (key2 === "Tab") {
-              ctx.open.set(false);
-              return void 0;
-            }
-            if (key2 === "Enter" || key2 === " ") {
-              event?.preventDefault?.();
-              setMultiselectActiveValue(ctx, value);
-              toggleMultiselectValue(ctx, value);
-              return false;
-            }
-            if (key2 === "Home") {
-              event?.preventDefault?.();
-              const firstValue = ctx.order[0] ?? value;
-              setMultiselectActiveValue(ctx, firstValue);
-              focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, firstValue, getFocusTargetFromEvent(event));
-              return false;
-            }
-            if (key2 === "End") {
-              event?.preventDefault?.();
-              const lastValue = ctx.order[ctx.order.length - 1] ?? value;
-              setMultiselectActiveValue(ctx, lastValue);
-              focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, lastValue, getFocusTargetFromEvent(event));
-              return false;
-            }
-            const nextValue = getMultiselectNavigationTarget(ctx, value, key2);
-            if (nextValue) {
-              event?.preventDefault?.();
-              setMultiselectActiveValue(ctx, nextValue);
-              focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, nextValue, getFocusTargetFromEvent(event));
-              return false;
-            }
-            const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, value, key2);
-            if (!typeaheadTarget) return void 0;
-            event?.preventDefault?.();
-            setMultiselectActiveValue(ctx, typeaheadTarget);
-            focusMultiselectItem(getFocusTargetFromEvent(event)?.ownerDocument, ctx, typeaheadTarget, getFocusTargetFromEvent(event));
-            return false;
-          }, "onKeyDown")
-        }, props), resolvedChildren);
-      }));
-    }, "multiselect_item"),
-    multiselect_indicator: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(multiselectItemContext, { value, itemId, selected }, () => {
+          const resolvedChildren = resolveChildrenInput(renderChildren);
+          registerMultiselectValue(ctx, value, getTextLabel(resolvedChildren));
+          const active = getMultiselectActiveValue(ctx);
+          const shouldAutoFocus = open && active === value;
+          return vnodeElement(
+            "button",
+            mergeProps(
+              {
+                type: "button",
+                id: itemId,
+                role: "option",
+                hidden: !open,
+                tabIndex: open && active === value ? 0 : -1,
+                autoFocus: shouldAutoFocus,
+                "aria-selected": selected ? "true" : "false",
+                "data-lumina-multiselect-item": "true",
+                "data-active": active === value ? "true" : "false",
+                "data-state": selected ? "checked" : "unchecked",
+                onClick: () => {
+                  setMultiselectActiveValue(ctx, value);
+                  toggleMultiselectValue(ctx, value);
+                },
+                onMouseEnter: () => {
+                  setMultiselectActiveValue(ctx, value);
+                },
+                onFocus: () => {
+                  setMultiselectActiveValue(ctx, value);
+                },
+                onKeyDown: (event) => {
+                  const key2 = String(event?.key ?? "");
+                  if (key2 === "Escape") {
+                    event?.preventDefault?.();
+                    closeMultiselect(ctx);
+                    return false;
+                  }
+                  if (key2 === "Tab") {
+                    ctx.open.set(false);
+                    return void 0;
+                  }
+                  if (key2 === "Enter" || key2 === " ") {
+                    event?.preventDefault?.();
+                    setMultiselectActiveValue(ctx, value);
+                    toggleMultiselectValue(ctx, value);
+                    return false;
+                  }
+                  if (key2 === "Home") {
+                    event?.preventDefault?.();
+                    const firstValue = ctx.order[0] ?? value;
+                    setMultiselectActiveValue(ctx, firstValue);
+                    focusMultiselectItem(
+                      getFocusTargetFromEvent(event)?.ownerDocument,
+                      ctx,
+                      firstValue,
+                      getFocusTargetFromEvent(event)
+                    );
+                    return false;
+                  }
+                  if (key2 === "End") {
+                    event?.preventDefault?.();
+                    const lastValue = ctx.order[ctx.order.length - 1] ?? value;
+                    setMultiselectActiveValue(ctx, lastValue);
+                    focusMultiselectItem(
+                      getFocusTargetFromEvent(event)?.ownerDocument,
+                      ctx,
+                      lastValue,
+                      getFocusTargetFromEvent(event)
+                    );
+                    return false;
+                  }
+                  const nextValue = getMultiselectNavigationTarget(ctx, value, key2);
+                  if (nextValue) {
+                    event?.preventDefault?.();
+                    setMultiselectActiveValue(ctx, nextValue);
+                    focusMultiselectItem(
+                      getFocusTargetFromEvent(event)?.ownerDocument,
+                      ctx,
+                      nextValue,
+                      getFocusTargetFromEvent(event)
+                    );
+                    return false;
+                  }
+                  const typeaheadTarget = getMultiselectTypeaheadTarget(ctx, value, key2);
+                  if (!typeaheadTarget) return void 0;
+                  event?.preventDefault?.();
+                  setMultiselectActiveValue(ctx, typeaheadTarget);
+                  focusMultiselectItem(
+                    getFocusTargetFromEvent(event)?.ownerDocument,
+                    ctx,
+                    typeaheadTarget,
+                    getFocusTargetFromEvent(event)
+                  );
+                  return false;
+                }
+              },
+              props
+            ),
+            resolvedChildren
+          );
+        })
+      );
+    },
+    multiselect_indicator: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.multiselect_indicator");
       const ctx = frameManager.useContext(multiselectItemContext);
-      return vnodeElement("span", mergeProps({
-        id: getMultiselectIndicatorId(ctx.itemId),
-        "aria-hidden": "true",
-        hidden: !ctx.selected,
-        "data-lumina-multiselect-indicator": "true",
-        "data-state": ctx.selected ? "checked" : "unchecked"
-      }, props), children2);
-    }, "multiselect_indicator"),
-    checkbox_root: /* @__PURE__ */ __name((checked, props, renderChildren) => {
+      return vnodeElement(
+        "span",
+        mergeProps(
+          {
+            id: getMultiselectIndicatorId(ctx.itemId),
+            "aria-hidden": "true",
+            hidden: !ctx.selected,
+            "data-lumina-multiselect-indicator": "true",
+            "data-state": ctx.selected ? "checked" : "unchecked"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    checkbox_root: (checked, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.checkbox_root");
-      return coerceRenderableToVNode(frameManager.withContext(checkboxContext, {
-        checked,
-        baseId: getCheckboxBaseId(checked)
-      }, () => {
-        const ctx = frameManager.useContext(checkboxContext);
-        const current = ctx.checked.get();
-        const { rootId, indicatorId } = getCheckboxIds(ctx);
-        return vnodeElement("button", mergeProps({
-          type: "button",
-          id: rootId,
-          role: "checkbox",
-          "aria-checked": current ? "true" : "false",
-          "aria-controls": indicatorId,
-          tabIndex: 0,
-          "data-lumina-checkbox-root": "true",
-          "data-state": current ? "checked" : "unchecked",
-          onClick: /* @__PURE__ */ __name(() => {
-            ctx.checked.set(!ctx.checked.get());
-          }, "onClick"),
-          onKeyDown: /* @__PURE__ */ __name((event) => {
-            const key2 = String(event?.key ?? "");
-            if (key2 !== "Enter" && key2 !== " ") return void 0;
-            event?.preventDefault?.();
-            ctx.checked.set(!ctx.checked.get());
-            return false;
-          }, "onKeyDown")
-        }, props), resolveChildrenInput(renderChildren));
-      }));
-    }, "checkbox_root"),
-    checkbox_indicator: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          checkboxContext,
+          { checked, baseId: getCheckboxBaseId(checked) },
+          () => {
+            const ctx = frameManager.useContext(checkboxContext);
+            const current = ctx.checked.get();
+            const { rootId, indicatorId } = getCheckboxIds(ctx);
+            return vnodeElement(
+              "button",
+              mergeProps(
+                {
+                  type: "button",
+                  id: rootId,
+                  role: "checkbox",
+                  "aria-checked": current ? "true" : "false",
+                  "aria-controls": indicatorId,
+                  tabIndex: 0,
+                  "data-lumina-checkbox-root": "true",
+                  "data-state": current ? "checked" : "unchecked",
+                  onClick: () => {
+                    ctx.checked.set(!ctx.checked.get());
+                  },
+                  onKeyDown: (event) => {
+                    const key2 = String(event?.key ?? "");
+                    if (key2 !== "Enter" && key2 !== " ") return void 0;
+                    event?.preventDefault?.();
+                    ctx.checked.set(!ctx.checked.get());
+                    return false;
+                  }
+                },
+                props
+              ),
+              resolveChildrenInput(renderChildren)
+            );
+          }
+        )
+      );
+    },
+    checkbox_indicator: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.checkbox_indicator");
       const ctx = frameManager.useContext(checkboxContext);
       const current = ctx.checked.get();
       const { indicatorId } = getCheckboxIds(ctx);
-      return vnodeElement("span", mergeProps({
-        id: indicatorId,
-        "aria-hidden": "true",
-        hidden: !current,
-        "data-lumina-checkbox-indicator": "true",
-        "data-state": current ? "checked" : "unchecked"
-      }, props), children2);
-    }, "checkbox_indicator"),
-    radio_group: /* @__PURE__ */ __name((value, props, renderChildren) => {
+      return vnodeElement(
+        "span",
+        mergeProps(
+          {
+            id: indicatorId,
+            "aria-hidden": "true",
+            hidden: !current,
+            "data-lumina-checkbox-indicator": "true",
+            "data-state": current ? "checked" : "unchecked"
+          },
+          props
+        ),
+        children2
+      );
+    },
+    radio_group: (value, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.radio_group");
-      return coerceRenderableToVNode(frameManager.withContext(radioGroupContext, {
-        value,
-        baseId: getRadioBaseId(value),
-        order: []
-      }, () => vnodeElement("div", mergeProps({
-        role: "radiogroup",
-        "data-lumina-radio-group": "true"
-      }, props), resolveChildrenInput(renderChildren))));
-    }, "radio_group"),
-    radio_item: /* @__PURE__ */ __name((value, props, renderChildren) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          radioGroupContext,
+          { value, baseId: getRadioBaseId(value), order: [] },
+          () => vnodeElement(
+            "div",
+            mergeProps(
+              {
+                role: "radiogroup",
+                "data-lumina-radio-group": "true"
+              },
+              props
+            ),
+            resolveChildrenInput(renderChildren)
+          )
+        )
+      );
+    },
+    radio_item: (value, props, renderChildren) => {
       const frameManager = options.requireActiveFrameManager("render.radio_item");
       const ctx = frameManager.useContext(radioGroupContext);
       registerRadioValue(ctx, value);
       const selected = ctx.value.get() === value;
       const itemId = getRadioItemId(ctx, value);
-      return coerceRenderableToVNode(frameManager.withContext(radioItemContext, {
-        value,
-        itemId,
-        selected
-      }, () => vnodeElement("button", mergeProps({
-        type: "button",
-        id: itemId,
-        role: "radio",
-        "aria-checked": selected ? "true" : "false",
-        tabIndex: selected ? 0 : -1,
-        "data-lumina-radio-item": "true",
-        "data-state": selected ? "checked" : "unchecked",
-        onClick: /* @__PURE__ */ __name(() => {
-          ctx.value.set(value);
-        }, "onClick"),
-        onKeyDown: /* @__PURE__ */ __name((event) => {
-          const key2 = String(event?.key ?? "");
-          if (key2 === "Enter" || key2 === " ") {
-            event?.preventDefault?.();
-            ctx.value.set(value);
-            return false;
-          }
-          const nextValue = getRadioNavigationTarget(ctx, value, key2);
-          if (!nextValue) return void 0;
-          event?.preventDefault?.();
-          ctx.value.set(nextValue);
-          const focusTarget = getFocusTargetFromEvent(event);
-          focusRadioItem(focusTarget?.ownerDocument, ctx, nextValue, focusTarget?.parentNode ?? null);
-          return false;
-        }, "onKeyDown")
-      }, props), resolveChildrenInput(renderChildren))));
-    }, "radio_item"),
-    radio_indicator: /* @__PURE__ */ __name((props, children2 = []) => {
+      return coerceRenderableToVNode(
+        frameManager.withContext(
+          radioItemContext,
+          { value, itemId, selected },
+          () => vnodeElement(
+            "button",
+            mergeProps(
+              {
+                type: "button",
+                id: itemId,
+                role: "radio",
+                "aria-checked": selected ? "true" : "false",
+                tabIndex: selected ? 0 : -1,
+                "data-lumina-radio-item": "true",
+                "data-state": selected ? "checked" : "unchecked",
+                onClick: () => {
+                  ctx.value.set(value);
+                },
+                onKeyDown: (event) => {
+                  const key2 = String(event?.key ?? "");
+                  if (key2 === "Enter" || key2 === " ") {
+                    event?.preventDefault?.();
+                    ctx.value.set(value);
+                    return false;
+                  }
+                  const nextValue = getRadioNavigationTarget(ctx, value, key2);
+                  if (!nextValue) return void 0;
+                  event?.preventDefault?.();
+                  ctx.value.set(nextValue);
+                  const focusTarget = getFocusTargetFromEvent(event);
+                  focusRadioItem(
+                    focusTarget?.ownerDocument,
+                    ctx,
+                    nextValue,
+                    focusTarget?.parentNode ?? null
+                  );
+                  return false;
+                }
+              },
+              props
+            ),
+            resolveChildrenInput(renderChildren)
+          )
+        )
+      );
+    },
+    radio_indicator: (props, children2 = []) => {
       const frameManager = options.requireActiveFrameManager("render.radio_indicator");
       const ctx = frameManager.useContext(radioItemContext);
-      return vnodeElement("span", mergeProps({
-        id: getRadioIndicatorId(ctx.itemId),
-        "aria-hidden": "true",
-        hidden: !ctx.selected,
-        "data-lumina-radio-indicator": "true",
-        "data-state": ctx.selected ? "checked" : "unchecked"
-      }, props), children2);
-    }, "radio_indicator")
+      return vnodeElement(
+        "span",
+        mergeProps(
+          {
+            id: getRadioIndicatorId(ctx.itemId),
+            "aria-hidden": "true",
+            hidden: !ctx.selected,
+            "data-lumina-radio-indicator": "true",
+            "data-state": ctx.selected ? "checked" : "unchecked"
+          },
+          props
+        ),
+        children2
+      );
+    }
   };
   return api;
-}, "createHeadlessPrimitivesRuntime");
+};
 
 // src/runtime/system-runtime.ts
-var padTimePart = /* @__PURE__ */ __name((value) => String(Math.trunc(value)).padStart(2, "0"), "padTimePart");
-var localDateString = /* @__PURE__ */ __name((date) => `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())}`, "localDateString");
-var localTimeString = /* @__PURE__ */ __name((date) => `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}`, "localTimeString");
-var localClockMs = /* @__PURE__ */ __name((date) => date.getHours() * 60 * 60 * 1e3 + date.getMinutes() * 60 * 1e3 + date.getSeconds() * 1e3 + date.getMilliseconds(), "localClockMs");
-var localTimeZoneName = /* @__PURE__ */ __name(() => {
+var padTimePart = (value) => String(Math.trunc(value)).padStart(2, "0");
+var localDateString = (date) => `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())}`;
+var localTimeString = (date) => `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}`;
+var localClockMs = (date) => date.getHours() * 60 * 60 * 1e3 + date.getMinutes() * 60 * 1e3 + date.getSeconds() * 1e3 + date.getMilliseconds();
+var localTimeZoneName = () => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time";
   } catch {
     return "Local time";
   }
-}, "localTimeZoneName");
+};
 var blockedHttpHosts = /* @__PURE__ */ new Set([
   "localhost",
   "127.0.0.1",
@@ -9714,7 +10212,7 @@ var blockedHttpHosts = /* @__PURE__ */ new Set([
   "metadata.google.internal",
   "169.254.169.254"
 ]);
-var isPrivateIpv4Host = /* @__PURE__ */ __name((host) => {
+var isPrivateIpv4Host = (host) => {
   const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!match) return false;
   const octets = match.slice(1).map((part) => Number(part));
@@ -9726,8 +10224,8 @@ var isPrivateIpv4Host = /* @__PURE__ */ __name((host) => {
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 169 && b === 254) return true;
   return false;
-}, "isPrivateIpv4Host");
-var validateHttpUrl = /* @__PURE__ */ __name((rawUrl) => {
+};
+var validateHttpUrl = (rawUrl) => {
   const parsed = new URL(rawUrl);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`Blocked protocol '${parsed.protocol}'. Only http and https are allowed.`);
@@ -9740,38 +10238,36 @@ var validateHttpUrl = /* @__PURE__ */ __name((rawUrl) => {
     throw new Error(`Blocked private IP address: ${host}`);
   }
   return parsed.toString();
-}, "validateHttpUrl");
-var hasOpfsSupport = /* @__PURE__ */ __name(() => {
+};
+var hasOpfsSupport = () => {
   const nav = globalThis.navigator;
   return typeof nav?.storage?.getDirectory === "function";
-}, "hasOpfsSupport");
-var getOpfsRoot = /* @__PURE__ */ __name(async () => {
+};
+var getOpfsRoot = async () => {
   const nav = globalThis.navigator;
   const getter = nav?.storage?.getDirectory;
   if (typeof getter !== "function") {
     throw new Error("OPFS is not available in this environment");
   }
   return await getter.call(nav.storage);
-}, "getOpfsRoot");
-var opfsError = /* @__PURE__ */ __name((error) => {
+};
+var opfsError = (error) => {
   if (error instanceof Error && error.message) return error.message;
   return String(error);
-}, "opfsError");
-var isOpfsNotFoundError = /* @__PURE__ */ __name((error) => !!error && typeof error === "object" && (error.name === "NotFoundError" || error.code === "ENOENT"), "isOpfsNotFoundError");
-var splitOpfsPath = /* @__PURE__ */ __name((path2) => String(path2).replace(/\\/g, "/").split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0 && segment !== "."), "splitOpfsPath");
-var walkOpfsDirectory = /* @__PURE__ */ __name(async (segments, create) => {
+};
+var isOpfsNotFoundError = (error) => !!error && typeof error === "object" && (error.name === "NotFoundError" || error.code === "ENOENT");
+var splitOpfsPath = (path2) => String(path2).replace(/\\/g, "/").split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0 && segment !== ".");
+var walkOpfsDirectory = async (segments, create) => {
   let current = await getOpfsRoot();
   for (const segment of segments) {
     if (segment === "..") {
       throw new Error("OPFS path traversal is not supported");
     }
-    current = await current.getDirectoryHandle(segment, {
-      create
-    });
+    current = await current.getDirectoryHandle(segment, { create });
   }
   return current;
-}, "walkOpfsDirectory");
-var resolveOpfsParent = /* @__PURE__ */ __name(async (path2, createParent) => {
+};
+var resolveOpfsParent = async (path2, createParent) => {
   const segments = splitOpfsPath(path2);
   if (segments.length === 0) {
     throw new Error("Path must not be empty");
@@ -9779,34 +10275,31 @@ var resolveOpfsParent = /* @__PURE__ */ __name(async (path2, createParent) => {
   const name = segments[segments.length - 1];
   const parentSegments = segments.slice(0, -1);
   const directory = await walkOpfsDirectory(parentSegments, createParent);
-  return {
-    directory,
-    name
-  };
-}, "resolveOpfsParent");
-var isLikelyRemotePath = /* @__PURE__ */ __name((path2) => /^[a-z][a-z0-9+.-]*:\/\//i.test(path2) || path2.startsWith("//"), "isLikelyRemotePath");
-var getMonotonicNow = /* @__PURE__ */ __name(() => {
+  return { directory, name };
+};
+var isLikelyRemotePath = (path2) => /^[a-z][a-z0-9+.-]*:\/\//i.test(path2) || path2.startsWith("//");
+var getMonotonicNow = () => {
   const perf = globalThis.performance;
   if (perf && typeof perf.now === "function") return perf.now();
   return Date.now();
-}, "getMonotonicNow");
-var compileRegex = /* @__PURE__ */ __name((pattern, flags = "") => {
+};
+var compileRegex = (pattern, flags = "") => {
   try {
     return new RegExp(pattern, flags);
   } catch {
     return null;
   }
-}, "compileRegex");
-var toHex = /* @__PURE__ */ __name((bytes) => Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join(""), "toHex");
-var toBase64 = /* @__PURE__ */ __name((bytes) => {
+};
+var toHex = (bytes) => Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+var toBase64 = (bytes) => {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(bytes).toString("base64");
   }
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
   return btoa(binary);
-}, "toBase64");
-var fromBase64 = /* @__PURE__ */ __name((value) => {
+};
+var fromBase64 = (value) => {
   if (typeof Buffer !== "undefined") {
     return new Uint8Array(Buffer.from(value, "base64"));
   }
@@ -9814,8 +10307,8 @@ var fromBase64 = /* @__PURE__ */ __name((value) => {
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
   return out;
-}, "fromBase64");
-var getWebCrypto = /* @__PURE__ */ __name(async () => {
+};
+var getWebCrypto = async () => {
   if (globalThis.crypto && typeof globalThis.crypto.subtle !== "undefined") {
     return globalThis.crypto;
   }
@@ -9826,18 +10319,14 @@ var getWebCrypto = /* @__PURE__ */ __name(async () => {
   } catch {
     return null;
   }
-}, "getWebCrypto");
-var utf8Encode = /* @__PURE__ */ __name((value) => new TextEncoder().encode(value), "utf8Encode");
-var utf8Decode = /* @__PURE__ */ __name((value) => new TextDecoder().decode(value), "utf8Decode");
-var deriveAesKey = /* @__PURE__ */ __name(async (web, key2, usage) => {
+};
+var utf8Encode = (value) => new TextEncoder().encode(value);
+var utf8Decode = (value) => new TextDecoder().decode(value);
+var deriveAesKey = async (web, key2, usage) => {
   const digest = await web.subtle.digest("SHA-256", utf8Encode(key2));
-  return await web.subtle.importKey("raw", digest, {
-    name: "AES-GCM"
-  }, false, [
-    usage
-  ]);
-}, "deriveAesKey");
-var toIterableValues2 = /* @__PURE__ */ __name((value) => {
+  return await web.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, [usage]);
+};
+var toIterableValues2 = (value) => {
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object") {
     const iteratorFn = value[Symbol.iterator];
@@ -9846,9 +10335,9 @@ var toIterableValues2 = /* @__PURE__ */ __name((value) => {
     }
   }
   return [];
-}, "toIterableValues");
-var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
-  const toJsonValue = /* @__PURE__ */ __name((value, seen) => {
+};
+var createSystemRuntime = (deps) => {
+  const toJsonValue = (value, seen) => {
     if (value === null || value === void 0) return value;
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       return value;
@@ -9862,31 +10351,23 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       if (deps.isEnumLike(value)) {
         const tag = deps.getEnumTag(value);
         const payload = deps.getEnumPayload(value);
-        return payload === void 0 ? {
-          $tag: tag
-        } : {
-          $tag: tag,
-          $payload: toJsonValue(payload, seen)
-        };
+        return payload === void 0 ? { $tag: tag } : { $tag: tag, $payload: toJsonValue(payload, seen) };
       }
-      const entries = Object.entries(value).map(([key2, val]) => [
-        key2,
-        toJsonValue(val, seen)
-      ]);
+      const entries = Object.entries(value).map(([key2, val]) => [key2, toJsonValue(val, seen)]);
       return Object.fromEntries(entries);
     }
     return String(value);
-  }, "toJsonValue");
-  const toJsonString2 = /* @__PURE__ */ __name((value, pretty = true) => {
+  };
+  const toJsonString2 = (value, pretty = true) => {
     const normalized = toJsonValue(value, /* @__PURE__ */ new WeakSet());
     return JSON.stringify(normalized, null, pretty ? 2 : void 0);
-  }, "toJsonString");
-  const resultOk = /* @__PURE__ */ __name((value) => deps.getResult().Ok(value), "resultOk");
-  const resultErr = /* @__PURE__ */ __name((message) => deps.getResult().Err(message), "resultErr");
-  const optionSome = /* @__PURE__ */ __name((value) => deps.getOption().Some(value), "optionSome");
-  const optionNone = /* @__PURE__ */ __name(() => deps.getOption().None, "optionNone");
-  const renderArgs = /* @__PURE__ */ __name((args) => args.map((arg) => deps.formatValue(arg)).join(" "), "renderArgs");
-  const writeStdout = /* @__PURE__ */ __name((text2, newline) => {
+  };
+  const resultOk = (value) => deps.getResult().Ok(value);
+  const resultErr = (message) => deps.getResult().Err(message);
+  const optionSome = (value) => deps.getOption().Some(value);
+  const optionNone = () => deps.getOption().None;
+  const renderArgs = (args) => args.map((arg) => deps.formatValue(arg)).join(" ");
+  const writeStdout = (text2, newline) => {
     if (isNodeRuntime()) {
       const stdout = getNodeProcess()?.stdout;
       if (stdout?.write) {
@@ -9895,8 +10376,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       }
     }
     console.log(text2);
-  }, "writeStdout");
-  const writeStderr = /* @__PURE__ */ __name((text2, newline) => {
+  };
+  const writeStderr = (text2, newline) => {
     if (isNodeRuntime()) {
       const stderr = getNodeProcess()?.stderr;
       if (stderr?.write) {
@@ -9905,10 +10386,10 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       }
     }
     console.error(text2);
-  }, "writeStderr");
+  };
   let stdinCache = null;
   let stdinIndex = 0;
-  const readStdinLines = /* @__PURE__ */ __name(() => {
+  const readStdinLines = () => {
     if (stdinCache) return stdinCache;
     const globalAny = globalThis;
     if (globalAny.__luminaStdin !== void 0) {
@@ -9943,42 +10424,30 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
     }
     stdinCache = [];
     return stdinCache;
-  }, "readStdinLines");
-  const unwrapOption = /* @__PURE__ */ __name((value) => {
+  };
+  const unwrapOption = (value) => {
     if (deps.isEnumLike(value)) {
       const tag = deps.getEnumTag(value);
-      if (tag === "Some") return {
-        isSome: true,
-        value: deps.getEnumPayload(value)
-      };
-      if (tag === "None") return {
-        isSome: false
-      };
+      if (tag === "Some") return { isSome: true, value: deps.getEnumPayload(value) };
+      if (tag === "None") return { isSome: false };
     }
-    return {
-      isSome: true,
-      value
-    };
-  }, "unwrapOption");
-  const opfsReadFile = /* @__PURE__ */ __name(async (path3) => {
+    return { isSome: true, value };
+  };
+  const opfsReadFile = async (path3) => {
     try {
       const { directory, name } = await resolveOpfsParent(path3, false);
-      const handle = await directory.getFileHandle(name, {
-        create: false
-      });
+      const handle = await directory.getFileHandle(name, { create: false });
       const file = await handle.getFile();
       const content = await file.text();
       return resultOk(content);
     } catch (error) {
       return resultErr(opfsError(error));
     }
-  }, "opfsReadFile");
-  const opfsWriteFile = /* @__PURE__ */ __name(async (path3, content) => {
+  };
+  const opfsWriteFile = async (path3, content) => {
     try {
       const { directory, name } = await resolveOpfsParent(path3, true);
-      const handle = await directory.getFileHandle(name, {
-        create: true
-      });
+      const handle = await directory.getFileHandle(name, { create: true });
       const writable = await handle.createWritable();
       await writable.write(String(content));
       await writable.close();
@@ -9986,8 +10455,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
     } catch (error) {
       return resultErr(opfsError(error));
     }
-  }, "opfsWriteFile");
-  const opfsReadDir = /* @__PURE__ */ __name(async (path3) => {
+  };
+  const opfsReadDir = async (path3) => {
     try {
       const segments = splitOpfsPath(path3);
       const directory = await walkOpfsDirectory(segments, false);
@@ -10008,23 +10477,16 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
     } catch (error) {
       return resultErr(opfsError(error));
     }
-  }, "opfsReadDir");
-  const opfsMetadata = /* @__PURE__ */ __name(async (path3) => {
+  };
+  const opfsMetadata = async (path3) => {
     try {
       const segments = splitOpfsPath(path3);
       if (segments.length === 0) {
-        return resultOk({
-          isFile: false,
-          isDirectory: true,
-          size: 0,
-          modifiedMs: 0
-        });
+        return resultOk({ isFile: false, isDirectory: true, size: 0, modifiedMs: 0 });
       }
       const { directory, name } = await resolveOpfsParent(path3, false);
       try {
-        const fileHandle = await directory.getFileHandle(name, {
-          create: false
-        });
+        const fileHandle = await directory.getFileHandle(name, { create: false });
         const file = await fileHandle.getFile();
         return resultOk({
           isFile: true,
@@ -10037,31 +10499,24 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
           return resultErr(opfsError(fileError));
         }
       }
-      const dirHandle = await directory.getDirectoryHandle(name, {
-        create: false
-      });
+      const dirHandle = await directory.getDirectoryHandle(name, { create: false });
       if (dirHandle) {
-        return resultOk({
-          isFile: false,
-          isDirectory: true,
-          size: 0,
-          modifiedMs: 0
-        });
+        return resultOk({ isFile: false, isDirectory: true, size: 0, modifiedMs: 0 });
       }
       return resultErr(`Entry not found: ${path3}`);
     } catch (error) {
       return resultErr(opfsError(error));
     }
-  }, "opfsMetadata");
-  const opfsExists = /* @__PURE__ */ __name(async (path3) => {
+  };
+  const opfsExists = async (path3) => {
     try {
       const meta = await opfsMetadata(path3);
       return deps.isEnumLike(meta) && deps.getEnumTag(meta) === "Ok";
     } catch {
       return false;
     }
-  }, "opfsExists");
-  const opfsMkdir = /* @__PURE__ */ __name(async (path3, recursive = true) => {
+  };
+  const opfsMkdir = async (path3, recursive = true) => {
     try {
       const segments = splitOpfsPath(path3);
       if (segments.length === 0) return resultOk(void 0);
@@ -10071,39 +10526,35 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       }
       const parentSegments = segments.slice(0, -1);
       const parent = await walkOpfsDirectory(parentSegments, false);
-      await parent.getDirectoryHandle(segments[segments.length - 1], {
-        create: true
-      });
+      await parent.getDirectoryHandle(segments[segments.length - 1], { create: true });
       return resultOk(void 0);
     } catch (error) {
       return resultErr(opfsError(error));
     }
-  }, "opfsMkdir");
-  const opfsRemoveFile = /* @__PURE__ */ __name(async (path3) => {
+  };
+  const opfsRemoveFile = async (path3) => {
     try {
       const { directory, name } = await resolveOpfsParent(path3, false);
-      await directory.removeEntry(name, {
-        recursive: false
-      });
+      await directory.removeEntry(name, { recursive: false });
       return resultOk(void 0);
     } catch (error) {
       return resultErr(opfsError(error));
     }
-  }, "opfsRemoveFile");
+  };
   const io2 = {
-    print: /* @__PURE__ */ __name((...args) => {
+    print: (...args) => {
       writeStdout(renderArgs(args), false);
-    }, "print"),
-    println: /* @__PURE__ */ __name((...args) => {
+    },
+    println: (...args) => {
       writeStdout(renderArgs(args), true);
-    }, "println"),
-    eprint: /* @__PURE__ */ __name((...args) => {
+    },
+    eprint: (...args) => {
       writeStderr(renderArgs(args), false);
-    }, "eprint"),
-    eprintln: /* @__PURE__ */ __name((...args) => {
+    },
+    eprintln: (...args) => {
       writeStderr(renderArgs(args), true);
-    }, "eprintln"),
-    readLine: /* @__PURE__ */ __name(() => {
+    },
+    readLine: () => {
       const globalAny = globalThis;
       if (typeof globalAny.__luminaReadLine === "function") {
         const value2 = globalAny.__luminaReadLine();
@@ -10117,8 +10568,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       if (stdinIndex >= lines.length) return optionNone();
       const value = lines[stdinIndex++];
       return optionSome(value);
-    }, "readLine"),
-    readLineAsync: /* @__PURE__ */ __name(async () => {
+    },
+    readLineAsync: async () => {
       const globalAny = globalThis;
       if (globalAny.__luminaStdin !== void 0) {
         const lines = readStdinLines();
@@ -10156,77 +10607,77 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
         return value == null ? optionNone() : optionSome(value);
       }
       return optionNone();
-    }, "readLineAsync"),
-    printJson: /* @__PURE__ */ __name((value, pretty = true) => {
+    },
+    printJson: (value, pretty = true) => {
       console.log(toJsonString2(value, pretty));
-    }, "printJson")
+    }
   };
   const str2 = {
-    length: /* @__PURE__ */ __name((value) => value.length, "length"),
-    concat: /* @__PURE__ */ __name((a, b) => a + b, "concat"),
-    substring: /* @__PURE__ */ __name((value, start, end) => {
+    length: (value) => value.length,
+    concat: (a, b) => a + b,
+    substring: (value, start, end) => {
       const safeStart = Math.max(0, Math.trunc(start));
       const safeEnd = Math.max(safeStart, Math.trunc(end));
       return value.substring(safeStart, safeEnd);
-    }, "substring"),
-    slice: /* @__PURE__ */ __name((value, range) => {
+    },
+    slice: (value, range) => {
       const start = range?.start ?? void 0;
       const end = range?.end ?? void 0;
       return value.slice(start ?? void 0, range?.inclusive && end !== void 0 ? end + 1 : end ?? void 0);
-    }, "slice"),
-    split: /* @__PURE__ */ __name((value, sep) => value.split(sep), "split"),
-    trim: /* @__PURE__ */ __name((value) => value.trim(), "trim"),
-    contains: /* @__PURE__ */ __name((haystack, needle) => haystack.includes(needle), "contains"),
-    eq: /* @__PURE__ */ __name((a, b) => a === b, "eq"),
-    char_at: /* @__PURE__ */ __name((value, index) => {
+    },
+    split: (value, sep) => value.split(sep),
+    trim: (value) => value.trim(),
+    contains: (haystack, needle) => haystack.includes(needle),
+    eq: (a, b) => a === b,
+    char_at: (value, index) => {
       if (Number.isNaN(index) || index < 0 || index >= value.length) return optionNone();
       return optionSome(value.charAt(index));
-    }, "char_at"),
-    is_whitespace: /* @__PURE__ */ __name((value) => value === " " || value === "\n" || value === "	" || value === "\r", "is_whitespace"),
-    is_digit: /* @__PURE__ */ __name((value) => {
+    },
+    is_whitespace: (value) => value === " " || value === "\n" || value === "	" || value === "\r",
+    is_digit: (value) => {
       if (!value || value.length === 0) return false;
       const code = value.charCodeAt(0);
       return code >= 48 && code <= 57;
-    }, "is_digit"),
-    to_int: /* @__PURE__ */ __name((value) => {
+    },
+    to_int: (value) => {
       const parsed = Number.parseInt(value, 10);
       return Number.isNaN(parsed) ? resultErr(`Invalid int: ${value}`) : resultOk(parsed);
-    }, "to_int"),
-    to_float: /* @__PURE__ */ __name((value) => {
+    },
+    to_float: (value) => {
       const parsed = Number.parseFloat(value);
       return Number.isNaN(parsed) ? resultErr(`Invalid float: ${value}`) : resultOk(parsed);
-    }, "to_float"),
-    from_int: /* @__PURE__ */ __name((value) => String(Math.trunc(value)), "from_int"),
-    from_float: /* @__PURE__ */ __name((value) => String(value), "from_float")
+    },
+    from_int: (value) => String(Math.trunc(value)),
+    from_float: (value) => String(value)
   };
   const math2 = {
-    abs: /* @__PURE__ */ __name((value) => Math.abs(value), "abs"),
-    min: /* @__PURE__ */ __name((a, b) => Math.min(a, b), "min"),
-    max: /* @__PURE__ */ __name((a, b) => Math.max(a, b), "max"),
-    absf: /* @__PURE__ */ __name((value) => Math.abs(value), "absf"),
-    minf: /* @__PURE__ */ __name((a, b) => Math.min(a, b), "minf"),
-    maxf: /* @__PURE__ */ __name((a, b) => Math.max(a, b), "maxf"),
-    sqrt: /* @__PURE__ */ __name((value) => Math.sqrt(value), "sqrt"),
-    pow: /* @__PURE__ */ __name((base, exp) => Math.pow(base, exp), "pow"),
-    powf: /* @__PURE__ */ __name((base, exp) => Math.pow(base, exp), "powf"),
-    floor: /* @__PURE__ */ __name((value) => Math.floor(value), "floor"),
-    ceil: /* @__PURE__ */ __name((value) => Math.ceil(value), "ceil"),
-    round: /* @__PURE__ */ __name((value) => Math.round(value), "round"),
+    abs: (value) => Math.abs(value),
+    min: (a, b) => Math.min(a, b),
+    max: (a, b) => Math.max(a, b),
+    absf: (value) => Math.abs(value),
+    minf: (a, b) => Math.min(a, b),
+    maxf: (a, b) => Math.max(a, b),
+    sqrt: (value) => Math.sqrt(value),
+    pow: (base, exp) => Math.pow(base, exp),
+    powf: (base, exp) => Math.pow(base, exp),
+    floor: (value) => Math.floor(value),
+    ceil: (value) => Math.ceil(value),
+    round: (value) => Math.round(value),
     pi: Math.PI,
     e: Math.E
   };
   const opfs2 = {
-    is_available: /* @__PURE__ */ __name(() => hasOpfsSupport(), "is_available"),
-    readFile: /* @__PURE__ */ __name(async (path3) => opfsReadFile(path3), "readFile"),
-    writeFile: /* @__PURE__ */ __name(async (path3, content) => opfsWriteFile(path3, content), "writeFile"),
-    readDir: /* @__PURE__ */ __name(async (path3) => opfsReadDir(path3), "readDir"),
-    metadata: /* @__PURE__ */ __name(async (path3) => opfsMetadata(path3), "metadata"),
-    exists: /* @__PURE__ */ __name(async (path3) => opfsExists(path3), "exists"),
-    mkdir: /* @__PURE__ */ __name(async (path3, recursive = true) => opfsMkdir(path3, recursive), "mkdir"),
-    removeFile: /* @__PURE__ */ __name(async (path3) => opfsRemoveFile(path3), "removeFile")
+    is_available: () => hasOpfsSupport(),
+    readFile: async (path3) => opfsReadFile(path3),
+    writeFile: async (path3, content) => opfsWriteFile(path3, content),
+    readDir: async (path3) => opfsReadDir(path3),
+    metadata: async (path3) => opfsMetadata(path3),
+    exists: async (path3) => opfsExists(path3),
+    mkdir: async (path3, recursive = true) => opfsMkdir(path3, recursive),
+    removeFile: async (path3) => opfsRemoveFile(path3)
   };
   const fs2 = {
-    readFile: /* @__PURE__ */ __name(async (path3) => {
+    readFile: async (path3) => {
       try {
         if (isNodeRuntime()) {
           const fsPromises = await import("fs/promises");
@@ -10248,8 +10699,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "readFile"),
-    writeFile: /* @__PURE__ */ __name(async (path3, content) => {
+    },
+    writeFile: async (path3, content) => {
       try {
         if (isNodeRuntime()) {
           const fsPromises = await import("fs/promises");
@@ -10263,8 +10714,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "writeFile"),
-    readDir: /* @__PURE__ */ __name(async (path3) => {
+    },
+    readDir: async (path3) => {
       try {
         if (isNodeRuntime()) {
           const fsPromises = await import("fs/promises");
@@ -10281,8 +10732,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "readDir"),
-    metadata: /* @__PURE__ */ __name(async (path3) => {
+    },
+    metadata: async (path3) => {
       try {
         if (isNodeRuntime()) {
           const fsPromises = await import("fs/promises");
@@ -10301,8 +10752,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "metadata"),
-    exists: /* @__PURE__ */ __name(async (path3) => {
+    },
+    exists: async (path3) => {
       try {
         if (isNodeRuntime()) {
           const fsPromises = await import("fs/promises");
@@ -10314,14 +10765,12 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch {
         return false;
       }
-    }, "exists"),
-    mkdir: /* @__PURE__ */ __name(async (path3, recursive = true) => {
+    },
+    mkdir: async (path3, recursive = true) => {
       try {
         if (isNodeRuntime()) {
           const fsPromises = await import("fs/promises");
-          await fsPromises.mkdir(path3, {
-            recursive: !!recursive
-          });
+          await fsPromises.mkdir(path3, { recursive: !!recursive });
           return resultOk(void 0);
         }
         if (opfs2.is_available()) {
@@ -10331,8 +10780,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "mkdir"),
-    removeFile: /* @__PURE__ */ __name(async (path3) => {
+    },
+    removeFile: async (path3) => {
       try {
         if (isNodeRuntime()) {
           const fsPromises = await import("fs/promises");
@@ -10346,38 +10795,38 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "removeFile")
+    }
   };
   const path2 = {
-    join: /* @__PURE__ */ __name((left, right) => {
+    join: (left, right) => {
       const nodePath = getNodePath();
       return nodePath ? nodePath.join(String(left), String(right)) : joinPathBasic(String(left), String(right));
-    }, "join"),
-    is_absolute: /* @__PURE__ */ __name((value) => {
+    },
+    is_absolute: (value) => {
       const nodePath = getNodePath();
       return nodePath ? nodePath.isAbsolute(String(value)) : isAbsolutePathBasic(String(value));
-    }, "is_absolute"),
-    extension: /* @__PURE__ */ __name((value) => {
+    },
+    extension: (value) => {
       const nodePath = getNodePath();
       const ext = nodePath ? nodePath.extname(String(value)) : extnamePathBasic(String(value));
       if (!ext) return optionNone();
       return optionSome(ext.startsWith(".") ? ext.slice(1) : ext);
-    }, "extension"),
-    dirname: /* @__PURE__ */ __name((value) => {
+    },
+    dirname: (value) => {
       const nodePath = getNodePath();
       return nodePath ? nodePath.dirname(String(value)) : dirnamePathBasic(String(value));
-    }, "dirname"),
-    basename: /* @__PURE__ */ __name((value) => {
+    },
+    basename: (value) => {
       const nodePath = getNodePath();
       return nodePath ? nodePath.basename(String(value)) : basenamePathBasic(String(value));
-    }, "basename"),
-    normalize: /* @__PURE__ */ __name((value) => {
+    },
+    normalize: (value) => {
       const nodePath = getNodePath();
       return nodePath ? nodePath.normalize(String(value)) : normalizePathBasic(String(value));
-    }, "normalize")
+    }
   };
   const env2 = {
-    var: /* @__PURE__ */ __name((name) => {
+    var: (name) => {
       const nodeProcess = getNodeProcess();
       if (!nodeProcess) {
         return resultErr("Environment variables are not available in this runtime");
@@ -10387,38 +10836,38 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
         return resultErr(`Environment variable '${name}' is not set`);
       }
       return resultOk(String(value));
-    }, "var"),
-    set_var: /* @__PURE__ */ __name((name, value) => {
+    },
+    set_var: (name, value) => {
       const nodeProcess = getNodeProcess();
       if (!nodeProcess) {
         return resultErr("Environment variables are not available in this runtime");
       }
       nodeProcess.env[String(name)] = String(value);
       return resultOk(void 0);
-    }, "set_var"),
-    remove_var: /* @__PURE__ */ __name((name) => {
+    },
+    remove_var: (name) => {
       const nodeProcess = getNodeProcess();
       if (!nodeProcess) {
         return resultErr("Environment variables are not available in this runtime");
       }
       delete nodeProcess.env[String(name)];
       return resultOk(void 0);
-    }, "remove_var"),
-    args: /* @__PURE__ */ __name(() => {
+    },
+    args: () => {
       const nodeProcess = getNodeProcess();
       if (!nodeProcess) return [];
       return nodeProcess.argv.slice(2);
-    }, "args"),
-    cwd: /* @__PURE__ */ __name(() => {
+    },
+    cwd: () => {
       const nodeProcess = getNodeProcess();
       if (!nodeProcess) {
         return resultErr("Current working directory is not available in this runtime");
       }
       return resultOk(nodeProcess.cwd());
-    }, "cwd")
+    }
   };
   const processRuntime = {
-    spawn: /* @__PURE__ */ __name((command, args = []) => {
+    spawn: (command, args = []) => {
       if (!isNodeRuntime()) {
         return resultErr("Process spawning is not available in this runtime");
       }
@@ -10449,53 +10898,53 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(error instanceof Error ? error.message : String(error));
       }
-    }, "spawn"),
-    exit: /* @__PURE__ */ __name((code = 0) => {
+    },
+    exit: (code = 0) => {
       const nodeProcess = getNodeProcess();
       if (!nodeProcess) return;
       nodeProcess.exit(Math.trunc(code));
-    }, "exit"),
-    cwd: /* @__PURE__ */ __name(() => {
+    },
+    cwd: () => {
       const nodeProcess = getNodeProcess();
       return nodeProcess ? nodeProcess.cwd() : "";
-    }, "cwd"),
-    pid: /* @__PURE__ */ __name(() => {
+    },
+    pid: () => {
       const nodeProcess = getNodeProcess();
       return nodeProcess ? Math.trunc(nodeProcess.pid) : -1;
-    }, "pid")
+    }
   };
   const json2 = {
-    to_string: /* @__PURE__ */ __name((value) => {
+    to_string: (value) => {
       try {
         return resultOk(JSON.stringify(value));
       } catch (error) {
         return resultErr(error instanceof Error ? error.message : String(error));
       }
-    }, "to_string"),
-    to_pretty_string: /* @__PURE__ */ __name((value) => {
+    },
+    to_pretty_string: (value) => {
       try {
         return resultOk(toJsonString2(value, true));
       } catch (error) {
         return resultErr(error instanceof Error ? error.message : String(error));
       }
-    }, "to_pretty_string"),
-    from_string: /* @__PURE__ */ __name((source) => {
+    },
+    from_string: (source) => {
       try {
         return resultOk(JSON.parse(String(source)));
       } catch (error) {
         return resultErr(error instanceof Error ? error.message : String(error));
       }
-    }, "from_string"),
-    parse: /* @__PURE__ */ __name((source) => {
+    },
+    parse: (source) => {
       try {
         return resultOk(JSON.parse(String(source)));
       } catch (error) {
         return resultErr(error instanceof Error ? error.message : String(error));
       }
-    }, "parse")
+    }
   };
   const http2 = {
-    fetch: /* @__PURE__ */ __name(async (request) => {
+    fetch: async (request) => {
       if (typeof fetch !== "function") {
         return resultErr("Fetch API is not available");
       }
@@ -10537,16 +10986,9 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       const bodyValue = unwrapOption(req.body).value;
       const body = typeof bodyValue === "string" ? bodyValue : bodyValue == null ? void 0 : String(bodyValue);
       try {
-        const response = await fetch(url2, {
-          method,
-          headers,
-          body
-        });
+        const response = await fetch(url2, { method, headers, body });
         const text2 = await response.text();
-        const responseHeaders = Array.from(response.headers.entries()).map(([name, value]) => ({
-          name,
-          value
-        }));
+        const responseHeaders = Array.from(response.headers.entries()).map(([name, value]) => ({ name, value }));
         return resultOk({
           status: response.status,
           statusText: response.statusText,
@@ -10556,75 +10998,75 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "fetch"),
-    get: /* @__PURE__ */ __name(async (url2) => await http2.fetch({
+    },
+    get: async (url2) => await http2.fetch({
       url: url2,
       method: "GET",
       headers: optionNone(),
       body: optionNone()
-    }), "get"),
-    post: /* @__PURE__ */ __name(async (url2, body) => await http2.fetch({
+    }),
+    post: async (url2, body) => await http2.fetch({
       url: url2,
       method: "POST",
       headers: optionNone(),
       body: body === void 0 ? optionNone() : optionSome(typeof body === "string" ? body : JSON.stringify(body))
-    }), "post"),
-    put: /* @__PURE__ */ __name(async (url2, body) => await http2.fetch({
+    }),
+    put: async (url2, body) => await http2.fetch({
       url: url2,
       method: "PUT",
       headers: optionNone(),
       body: body === void 0 ? optionNone() : optionSome(typeof body === "string" ? body : JSON.stringify(body))
-    }), "put"),
-    del: /* @__PURE__ */ __name(async (url2) => await http2.fetch({
+    }),
+    del: async (url2) => await http2.fetch({
       url: url2,
       method: "DELETE",
       headers: optionNone(),
       body: optionNone()
-    }), "del")
+    })
   };
   const time2 = {
-    nowMs: /* @__PURE__ */ __name(() => Math.trunc(Date.now()), "nowMs"),
-    nowIso: /* @__PURE__ */ __name(() => (/* @__PURE__ */ new Date()).toISOString(), "nowIso"),
-    localDate: /* @__PURE__ */ __name(() => localDateString(/* @__PURE__ */ new Date()), "localDate"),
-    localTime: /* @__PURE__ */ __name(() => localTimeString(/* @__PURE__ */ new Date()), "localTime"),
-    localClockMs: /* @__PURE__ */ __name(() => Math.trunc(localClockMs(/* @__PURE__ */ new Date())), "localClockMs"),
-    timeZone: /* @__PURE__ */ __name(() => localTimeZoneName(), "timeZone"),
-    instantNow: /* @__PURE__ */ __name(() => Math.trunc(getMonotonicNow()), "instantNow"),
-    elapsedMs: /* @__PURE__ */ __name((since) => Math.max(0, Math.trunc(getMonotonicNow()) - Math.trunc(since)), "elapsedMs"),
-    sleep: /* @__PURE__ */ __name(async (ms) => await new Promise((resolve) => {
+    nowMs: () => Math.trunc(Date.now()),
+    nowIso: () => (/* @__PURE__ */ new Date()).toISOString(),
+    localDate: () => localDateString(/* @__PURE__ */ new Date()),
+    localTime: () => localTimeString(/* @__PURE__ */ new Date()),
+    localClockMs: () => Math.trunc(localClockMs(/* @__PURE__ */ new Date())),
+    timeZone: () => localTimeZoneName(),
+    instantNow: () => Math.trunc(getMonotonicNow()),
+    elapsedMs: (since) => Math.max(0, Math.trunc(getMonotonicNow()) - Math.trunc(since)),
+    sleep: async (ms) => await new Promise((resolve) => {
       setTimeout(resolve, Math.max(0, Math.trunc(ms)));
-    }), "sleep")
+    })
   };
   const regex2 = {
-    isValid: /* @__PURE__ */ __name((pattern, flags = "") => compileRegex(pattern, flags) !== null, "isValid"),
-    test: /* @__PURE__ */ __name((pattern, text2, flags = "") => {
+    isValid: (pattern, flags = "") => compileRegex(pattern, flags) !== null,
+    test: (pattern, text2, flags = "") => {
       const re = compileRegex(pattern, flags);
       if (!re) return resultErr(`Invalid regex: /${pattern}/${flags}`);
       return resultOk(re.test(text2));
-    }, "test"),
-    find: /* @__PURE__ */ __name((pattern, text2, flags = "") => {
+    },
+    find: (pattern, text2, flags = "") => {
       const re = compileRegex(pattern, flags);
       if (!re) return optionNone();
       const match = text2.match(re);
       if (!match) return optionNone();
       return optionSome(match[0]);
-    }, "find"),
-    findAll: /* @__PURE__ */ __name((pattern, text2, flags = "") => {
+    },
+    findAll: (pattern, text2, flags = "") => {
       const normalizedFlags = flags.includes("g") ? flags : `${flags}g`;
       const re = compileRegex(pattern, normalizedFlags);
       if (!re) return resultErr(`Invalid regex: /${pattern}/${normalizedFlags}`);
       const matches = Array.from(text2.matchAll(re)).map((m) => m[0]);
       return resultOk(matches);
-    }, "findAll"),
-    replace: /* @__PURE__ */ __name((pattern, text2, replacement, flags = "") => {
+    },
+    replace: (pattern, text2, replacement, flags = "") => {
       const re = compileRegex(pattern, flags);
       if (!re) return resultErr(`Invalid regex: /${pattern}/${flags}`);
       return resultOk(text2.replace(re, replacement));
-    }, "replace")
+    }
   };
   const crypto2 = {
-    isAvailable: /* @__PURE__ */ __name(async () => await getWebCrypto() !== null, "isAvailable"),
-    sha256: /* @__PURE__ */ __name(async (value) => {
+    isAvailable: async () => await getWebCrypto() !== null,
+    sha256: async (value) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
@@ -10633,24 +11075,25 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "sha256"),
-    hmacSha256: /* @__PURE__ */ __name(async (key2, value) => {
+    },
+    hmacSha256: async (key2, value) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
-        const cryptoKey = await web.subtle.importKey("raw", utf8Encode(key2), {
-          name: "HMAC",
-          hash: "SHA-256"
-        }, false, [
-          "sign"
-        ]);
+        const cryptoKey = await web.subtle.importKey(
+          "raw",
+          utf8Encode(key2),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"]
+        );
         const signature = await web.subtle.sign("HMAC", cryptoKey, utf8Encode(value));
         return resultOk(toHex(new Uint8Array(signature)));
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "hmacSha256"),
-    randomBytes: /* @__PURE__ */ __name(async (length) => {
+    },
+    randomBytes: async (length) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
@@ -10661,8 +11104,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "randomBytes"),
-    randomInt: /* @__PURE__ */ __name(async (min, max) => {
+    },
+    randomInt: async (min, max) => {
       const lower = Math.trunc(Math.min(min, max));
       const upper = Math.trunc(Math.max(min, max));
       const span = upper - lower + 1;
@@ -10671,26 +11114,18 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       if (!deps.isEnumLike(random) || deps.getEnumTag(random) !== "Ok") return random;
       const bytes = deps.getEnumPayload(random);
       if (!Array.isArray(bytes) || bytes.length < 4) return resultErr("Failed to generate randomness");
-      const packed = new Uint8Array([
-        bytes[0],
-        bytes[1],
-        bytes[2],
-        bytes[3]
-      ]);
+      const packed = new Uint8Array([bytes[0], bytes[1], bytes[2], bytes[3]]);
       const value = new DataView(packed.buffer).getUint32(0, false);
       return resultOk(lower + value % span);
-    }, "randomInt"),
-    aesGcmEncrypt: /* @__PURE__ */ __name(async (key2, plaintext) => {
+    },
+    aesGcmEncrypt: async (key2, plaintext) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
         const aesKey = await deriveAesKey(web, key2, "encrypt");
         const iv = new Uint8Array(12);
         web.getRandomValues(iv);
-        const encrypted = await web.subtle.encrypt({
-          name: "AES-GCM",
-          iv
-        }, aesKey, utf8Encode(plaintext));
+        const encrypted = await web.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, utf8Encode(plaintext));
         const cipherBytes = new Uint8Array(encrypted);
         const packed = new Uint8Array(iv.length + cipherBytes.length);
         packed.set(iv, 0);
@@ -10699,8 +11134,8 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "aesGcmEncrypt"),
-    aesGcmDecrypt: /* @__PURE__ */ __name(async (key2, payloadBase64) => {
+    },
+    aesGcmDecrypt: async (key2, payloadBase64) => {
       try {
         const web = await getWebCrypto();
         if (!web) return resultErr("Crypto API is not available");
@@ -10709,15 +11144,12 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
         const iv = packed.slice(0, 12);
         const cipher = packed.slice(12);
         const aesKey = await deriveAesKey(web, key2, "decrypt");
-        const plain = await web.subtle.decrypt({
-          name: "AES-GCM",
-          iv
-        }, aesKey, cipher);
+        const plain = await web.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, cipher);
         return resultOk(utf8Decode(new Uint8Array(plain)));
       } catch (error) {
         return resultErr(String(error));
       }
-    }, "aesGcmDecrypt")
+    }
   };
   return {
     toJsonString: toJsonString2,
@@ -10735,10 +11167,10 @@ var createSystemRuntime = /* @__PURE__ */ __name((deps) => {
     regex: regex2,
     crypto: crypto2
   };
-}, "createSystemRuntime");
+};
 
 // src/runtime/headless-ui-runtime.ts
-var createSignalBaseIdResolver = /* @__PURE__ */ __name((prefix) => {
+var createSignalBaseIdResolver = (prefix) => {
   const ids = /* @__PURE__ */ new WeakMap();
   let nextId = 1;
   return (signal) => {
@@ -10749,25 +11181,25 @@ var createSignalBaseIdResolver = /* @__PURE__ */ __name((prefix) => {
     ids.set(key2, next);
     return next;
   };
-}, "createSignalBaseIdResolver");
-var registerOrderedValue = /* @__PURE__ */ __name((order, value) => {
+};
+var registerOrderedValue = (order, value) => {
   if (!order.includes(value)) {
     order.push(value);
   }
-}, "registerOrderedValue");
-var getTypeaheadLabels = /* @__PURE__ */ __name((labelsMap, keyObject) => {
+};
+var getTypeaheadLabels = (labelsMap, keyObject) => {
   const existing = labelsMap.get(keyObject);
   if (existing) return existing;
   const created = /* @__PURE__ */ new Map();
   labelsMap.set(keyObject, created);
   return created;
-}, "getTypeaheadLabels");
-var registerTypeaheadLabel = /* @__PURE__ */ __name((labelsMap, keyObject, value, label) => {
+};
+var registerTypeaheadLabel = (labelsMap, keyObject, value, label) => {
   const normalized = String(label ?? "").trim();
   if (!normalized) return;
   getTypeaheadLabels(labelsMap, keyObject).set(value, normalized);
-}, "registerTypeaheadLabel");
-var getWrappedNavigationTarget = /* @__PURE__ */ __name((order, current, key2, forwardKeys, backwardKeys) => {
+};
+var getWrappedNavigationTarget = (order, current, key2, forwardKeys, backwardKeys) => {
   if (order.length === 0) return null;
   const currentIndex = Math.max(0, order.indexOf(current));
   if (key2 === "Home") {
@@ -10783,8 +11215,8 @@ var getWrappedNavigationTarget = /* @__PURE__ */ __name((order, current, key2, f
     return order[(currentIndex - 1 + order.length) % order.length] ?? null;
   }
   return null;
-}, "getWrappedNavigationTarget");
-var getClampedNavigationTarget = /* @__PURE__ */ __name((order, current, key2, forwardKeys, backwardKeys) => {
+};
+var getClampedNavigationTarget = (order, current, key2, forwardKeys, backwardKeys) => {
   if (order.length === 0) return null;
   const currentIndex = Math.max(0, order.indexOf(current));
   if (key2 === "Home") {
@@ -10800,33 +11232,33 @@ var getClampedNavigationTarget = /* @__PURE__ */ __name((order, current, key2, f
     return order[Math.max(currentIndex - 1, 0)] ?? null;
   }
   return null;
-}, "getClampedNavigationTarget");
-var restoreFocusFromMap = /* @__PURE__ */ __name((ctx, targets) => {
+};
+var restoreFocusFromMap = (ctx, targets) => {
   const key2 = ctx.open;
   const target = targets.get(key2);
   if (!target || typeof target.focus !== "function") return;
   targets.delete(key2);
   target.focus();
-}, "restoreFocusFromMap");
-var setMapTarget = /* @__PURE__ */ __name((ctx, map, value) => {
+};
+var setMapTarget = (ctx, map, value) => {
   const key2 = ctx.open;
   if (value == null) {
     map.delete(key2);
     return;
   }
   map.set(key2, value);
-}, "setMapTarget");
-var focusElementById = /* @__PURE__ */ __name((documentLike, targetId, fallbackRoot) => {
+};
+var focusElementById = (documentLike, targetId, fallbackRoot) => {
   const target = (documentLike && typeof documentLike.getElementById === "function" ? documentLike.getElementById(targetId) : null) ?? findDomElementById(fallbackRoot, targetId);
   if (!target || typeof target.focus !== "function") return false;
   target.focus();
   return true;
-}, "focusElementById");
-var readNumericRectValue = /* @__PURE__ */ __name((value) => {
+};
+var readNumericRectValue = (value) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
-}, "readNumericRectValue");
-var readAnchorRect = /* @__PURE__ */ __name((ctx, anchors) => {
+};
+var readAnchorRect = (ctx, anchors) => {
   const anchor = anchors.get(ctx.open);
   if (!anchor || typeof anchor.getBoundingClientRect !== "function") return null;
   const raw = anchor.getBoundingClientRect();
@@ -10836,23 +11268,16 @@ var readAnchorRect = /* @__PURE__ */ __name((ctx, anchors) => {
   const bottom = readNumericRectValue(raw?.bottom) ?? top;
   const width = readNumericRectValue(raw?.width) ?? Math.max(0, right - left);
   const height = readNumericRectValue(raw?.height) ?? Math.max(0, bottom - top);
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    width,
-    height
-  };
-}, "readAnchorRect");
-var clearTimerHandle = /* @__PURE__ */ __name((handle) => {
+  return { left, top, right, bottom, width, height };
+};
+var clearTimerHandle = (handle) => {
   if (handle !== void 0 && typeof globalThis.clearTimeout === "function") {
     globalThis.clearTimeout(handle);
   }
-}, "clearTimerHandle");
+};
 var TYPEAHEAD_RESET_MS = 700;
-var isPrintableTypeaheadKey = /* @__PURE__ */ __name((key2) => key2.length === 1 && key2.trim().length > 0, "isPrintableTypeaheadKey");
-var updateTypeaheadBuffer = /* @__PURE__ */ __name((state2, key2) => {
+var isPrintableTypeaheadKey = (key2) => key2.length === 1 && key2.trim().length > 0;
+var updateTypeaheadBuffer = (state2, key2) => {
   const normalizedKey = key2.toLowerCase();
   const previous = state2?.buffer ?? "";
   const nextRaw = `${previous}${normalizedKey}`;
@@ -10867,8 +11292,8 @@ var updateTypeaheadBuffer = /* @__PURE__ */ __name((state2, key2) => {
     nextState.resetHandle = void 0;
   }, TYPEAHEAD_RESET_MS) : void 0;
   return nextState;
-}, "updateTypeaheadBuffer");
-var getTypeaheadTarget = /* @__PURE__ */ __name((stateMap, keyObject, order, labels, current, key2) => {
+};
+var getTypeaheadTarget = (stateMap, keyObject, order, labels, current, key2) => {
   if (!isPrintableTypeaheadKey(key2) || order.length === 0) return null;
   const nextState = updateTypeaheadBuffer(stateMap.get(keyObject), key2);
   stateMap.set(keyObject, nextState);
@@ -10884,8 +11309,8 @@ var getTypeaheadTarget = /* @__PURE__ */ __name((stateMap, keyObject, order, lab
     }
   }
   return null;
-}, "getTypeaheadTarget");
-var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
+};
+var createHeadlessUiRuntime = () => {
   const tabsContext = createContextToken();
   const checkboxContext = createContextToken();
   const radioGroupContext = createContextToken();
@@ -10935,96 +11360,96 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
   const getSelectBaseId = createSignalBaseIdResolver("lumina-select");
   const getComboboxBaseId = createSignalBaseIdResolver("lumina-combobox");
   const getMultiselectBaseId = createSignalBaseIdResolver("lumina-multiselect");
-  const normalizeTabsPart = /* @__PURE__ */ __name((value) => {
+  const normalizeTabsPart = (value) => {
     const normalized = String(value).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
     return normalized.length > 0 ? normalized : "tab";
-  }, "normalizeTabsPart");
-  const getTabsIds = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const getTabsIds = (ctx, value) => {
     const part = normalizeTabsPart(value);
     return {
       triggerId: `${ctx.baseId}-trigger-${part}`,
       panelId: `${ctx.baseId}-panel-${part}`
     };
-  }, "getTabsIds");
-  const registerTabsValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const registerTabsValue = (ctx, value) => {
     registerOrderedValue(ctx.order, value);
-  }, "registerTabsValue");
-  const getTabsNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
-    "ArrowRight",
-    "ArrowDown"
-  ], [
-    "ArrowLeft",
-    "ArrowUp"
-  ]), "getTabsNavigationTarget");
-  const getDialogIds = /* @__PURE__ */ __name((ctx) => ({
+  };
+  const getTabsNavigationTarget = (ctx, current, key2) => getWrappedNavigationTarget(
+    ctx.order,
+    current,
+    key2,
+    ["ArrowRight", "ArrowDown"],
+    ["ArrowLeft", "ArrowUp"]
+  );
+  const getDialogIds = (ctx) => ({
     triggerId: `${ctx.baseId}-trigger`,
     contentId: `${ctx.baseId}-content`,
     titleId: `${ctx.baseId}-title`,
     descriptionId: `${ctx.baseId}-description`
-  }), "getDialogIds");
-  const getPopoverIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getPopoverIds = (ctx) => ({
     triggerId: `${ctx.baseId}-trigger`,
     contentId: `${ctx.baseId}-content`
-  }), "getPopoverIds");
-  const getTooltipIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getTooltipIds = (ctx) => ({
     triggerId: `${ctx.baseId}-trigger`,
     contentId: `${ctx.baseId}-content`
-  }), "getTooltipIds");
-  const getToastIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getToastIds = (ctx) => ({
     contentId: `${ctx.baseId}-content`,
     titleId: `${ctx.baseId}-title`,
     descriptionId: `${ctx.baseId}-description`
-  }), "getToastIds");
-  const getMenuIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getMenuIds = (ctx) => ({
     triggerId: `${ctx.baseId}-trigger`,
     contentId: `${ctx.baseId}-content`
-  }), "getMenuIds");
-  const getSelectIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getSelectIds = (ctx) => ({
     triggerId: `${ctx.baseId}-trigger`,
     contentId: `${ctx.baseId}-content`
-  }), "getSelectIds");
-  const getComboboxIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getComboboxIds = (ctx) => ({
     inputId: `${ctx.baseId}-input`,
     contentId: `${ctx.baseId}-content`
-  }), "getComboboxIds");
-  const getMultiselectIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getMultiselectIds = (ctx) => ({
     triggerId: `${ctx.baseId}-trigger`,
     contentId: `${ctx.baseId}-content`
-  }), "getMultiselectIds");
-  const getCheckboxIds = /* @__PURE__ */ __name((ctx) => ({
+  });
+  const getCheckboxIds = (ctx) => ({
     rootId: `${ctx.baseId}-root`,
     indicatorId: `${ctx.baseId}-indicator`
-  }), "getCheckboxIds");
-  const getMenuItemId = /* @__PURE__ */ __name((ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`, "getMenuItemId");
-  const getRadioItemId = /* @__PURE__ */ __name((ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`, "getRadioItemId");
-  const getSelectItemId = /* @__PURE__ */ __name((ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`, "getSelectItemId");
-  const getComboboxItemId = /* @__PURE__ */ __name((ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`, "getComboboxItemId");
-  const getMultiselectItemId = /* @__PURE__ */ __name((ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`, "getMultiselectItemId");
-  const getRadioIndicatorId = /* @__PURE__ */ __name((itemId) => `${itemId}-indicator`, "getRadioIndicatorId");
-  const getSelectIndicatorId = /* @__PURE__ */ __name((itemId) => `${itemId}-indicator`, "getSelectIndicatorId");
-  const getComboboxIndicatorId = /* @__PURE__ */ __name((itemId) => `${itemId}-indicator`, "getComboboxIndicatorId");
-  const getMultiselectIndicatorId = /* @__PURE__ */ __name((itemId) => `${itemId}-indicator`, "getMultiselectIndicatorId");
-  const setDialogRestoreTarget = /* @__PURE__ */ __name((ctx, target) => {
+  });
+  const getMenuItemId = (ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`;
+  const getRadioItemId = (ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`;
+  const getSelectItemId = (ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`;
+  const getComboboxItemId = (ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`;
+  const getMultiselectItemId = (ctx, value) => `${ctx.baseId}-item-${normalizeTabsPart(value)}`;
+  const getRadioIndicatorId = (itemId) => `${itemId}-indicator`;
+  const getSelectIndicatorId = (itemId) => `${itemId}-indicator`;
+  const getComboboxIndicatorId = (itemId) => `${itemId}-indicator`;
+  const getMultiselectIndicatorId = (itemId) => `${itemId}-indicator`;
+  const setDialogRestoreTarget = (ctx, target) => {
     setMapTarget(ctx, dialogRestoreTargets, target);
-  }, "setDialogRestoreTarget");
-  const restoreDialogFocus = /* @__PURE__ */ __name((ctx) => {
+  };
+  const restoreDialogFocus = (ctx) => {
     restoreFocusFromMap(ctx, dialogRestoreTargets);
-  }, "restoreDialogFocus");
-  const setPopoverAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setPopoverAnchorTarget = (ctx, target) => {
     setMapTarget(ctx, popoverAnchorTargets, target);
-  }, "setPopoverAnchorTarget");
-  const setPopoverRestoreTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setPopoverRestoreTarget = (ctx, target) => {
     setMapTarget(ctx, popoverRestoreTargets, target);
-  }, "setPopoverRestoreTarget");
-  const restorePopoverFocus = /* @__PURE__ */ __name((ctx) => {
+  };
+  const restorePopoverFocus = (ctx) => {
     restoreFocusFromMap(ctx, popoverRestoreTargets);
-  }, "restorePopoverFocus");
-  const clearToastTimer = /* @__PURE__ */ __name((signal) => {
+  };
+  const clearToastTimer = (signal) => {
     const key2 = signal;
     clearTimerHandle(toastTimers.get(key2));
     toastTimers.delete(key2);
-  }, "clearToastTimer");
-  const scheduleToastTimer = /* @__PURE__ */ __name((ctx, duration) => {
+  };
+  const scheduleToastTimer = (ctx, duration) => {
     if (!Number.isFinite(duration) || duration <= 0) {
       clearToastTimer(ctx.open);
       return;
@@ -11038,87 +11463,87 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
       ctx.open.set(false);
     }, duration);
     toastTimers.set(key2, handle);
-  }, "scheduleToastTimer");
-  const setMenuAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setMenuAnchorTarget = (ctx, target) => {
     setMapTarget(ctx, menuAnchorTargets, target);
-  }, "setMenuAnchorTarget");
-  const setMenuRestoreTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setMenuRestoreTarget = (ctx, target) => {
     setMapTarget(ctx, menuRestoreTargets, target);
-  }, "setMenuRestoreTarget");
-  const restoreMenuFocus = /* @__PURE__ */ __name((ctx) => {
+  };
+  const restoreMenuFocus = (ctx) => {
     restoreFocusFromMap(ctx, menuRestoreTargets);
-  }, "restoreMenuFocus");
-  const setSelectAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setSelectAnchorTarget = (ctx, target) => {
     setMapTarget(ctx, selectAnchorTargets, target);
-  }, "setSelectAnchorTarget");
-  const setSelectRestoreTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setSelectRestoreTarget = (ctx, target) => {
     setMapTarget(ctx, selectRestoreTargets, target);
-  }, "setSelectRestoreTarget");
-  const restoreSelectFocus = /* @__PURE__ */ __name((ctx) => {
+  };
+  const restoreSelectFocus = (ctx) => {
     restoreFocusFromMap(ctx, selectRestoreTargets);
-  }, "restoreSelectFocus");
-  const setComboboxAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setComboboxAnchorTarget = (ctx, target) => {
     setMapTarget(ctx, comboboxAnchorTargets, target);
-  }, "setComboboxAnchorTarget");
-  const setComboboxRestoreTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setComboboxRestoreTarget = (ctx, target) => {
     setMapTarget(ctx, comboboxRestoreTargets, target);
-  }, "setComboboxRestoreTarget");
-  const restoreComboboxFocus = /* @__PURE__ */ __name((ctx) => {
+  };
+  const restoreComboboxFocus = (ctx) => {
     restoreFocusFromMap(ctx, comboboxRestoreTargets);
-  }, "restoreComboboxFocus");
-  const setMultiselectAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setMultiselectAnchorTarget = (ctx, target) => {
     setMapTarget(ctx, multiselectAnchorTargets, target);
-  }, "setMultiselectAnchorTarget");
-  const setMultiselectRestoreTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setMultiselectRestoreTarget = (ctx, target) => {
     setMapTarget(ctx, multiselectRestoreTargets, target);
-  }, "setMultiselectRestoreTarget");
-  const restoreMultiselectFocus = /* @__PURE__ */ __name((ctx) => {
+  };
+  const restoreMultiselectFocus = (ctx) => {
     restoreFocusFromMap(ctx, multiselectRestoreTargets);
-  }, "restoreMultiselectFocus");
-  const setTooltipAnchorTarget = /* @__PURE__ */ __name((ctx, target) => {
+  };
+  const setTooltipAnchorTarget = (ctx, target) => {
     setMapTarget(ctx, tooltipAnchorTargets, target);
-  }, "setTooltipAnchorTarget");
-  const registerMenuValue = /* @__PURE__ */ __name((ctx, value, label) => {
+  };
+  const registerMenuValue = (ctx, value, label) => {
     registerOrderedValue(ctx.order, value);
     registerTypeaheadLabel(menuTypeaheadLabels, ctx.open, value, label);
-  }, "registerMenuValue");
-  const getMenuActiveSignal = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getMenuActiveSignal = (ctx) => {
     const key2 = ctx.open;
     const existing = menuActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
     menuActiveValues.set(key2, created);
     return created;
-  }, "getMenuActiveSignal");
-  const setMenuActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const setMenuActiveValue = (ctx, value) => {
     getMenuActiveSignal(ctx).set(typeof value === "string" ? value : "");
-  }, "setMenuActiveValue");
-  const getMenuActiveValue = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getMenuActiveValue = (ctx) => {
     const explicit = getMenuActiveSignal(ctx).get();
     if (explicit) {
       return explicit;
     }
     return ctx.order[0] ?? explicit ?? "";
-  }, "getMenuActiveValue");
-  const registerRadioValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const registerRadioValue = (ctx, value) => {
     registerOrderedValue(ctx.order, value);
-  }, "registerRadioValue");
-  const registerSelectValue = /* @__PURE__ */ __name((ctx, value, label) => {
+  };
+  const registerSelectValue = (ctx, value, label) => {
     registerOrderedValue(ctx.order, value);
     registerTypeaheadLabel(selectTypeaheadLabels, ctx.value, value, label);
-  }, "registerSelectValue");
-  const getSelectActiveSignal = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getSelectActiveSignal = (ctx) => {
     const key2 = ctx.value;
     const existing = selectActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
     selectActiveValues.set(key2, created);
     return created;
-  }, "getSelectActiveSignal");
-  const setSelectActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const setSelectActiveValue = (ctx, value) => {
     getSelectActiveSignal(ctx).set(typeof value === "string" ? value : "");
-  }, "setSelectActiveValue");
-  const resolveSelectActiveValue = /* @__PURE__ */ __name((ctx) => {
+  };
+  const resolveSelectActiveValue = (ctx) => {
     const explicit = getSelectActiveSignal(ctx).get();
     if (explicit && (ctx.order.length === 0 || ctx.order.includes(explicit))) {
       return explicit;
@@ -11128,34 +11553,34 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
       return selected;
     }
     return ctx.order[0] ?? explicit ?? selected ?? "";
-  }, "resolveSelectActiveValue");
-  const getSelectActiveValue = /* @__PURE__ */ __name((ctx) => resolveSelectActiveValue(ctx), "getSelectActiveValue");
-  const getSelectActiveDescendantId = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getSelectActiveValue = (ctx) => resolveSelectActiveValue(ctx);
+  const getSelectActiveDescendantId = (ctx) => {
     const activeValue = resolveSelectActiveValue(ctx);
     return activeValue ? getSelectItemId(ctx, activeValue) : null;
-  }, "getSelectActiveDescendantId");
-  const acceptSelectActiveValue = /* @__PURE__ */ __name((ctx) => {
+  };
+  const acceptSelectActiveValue = (ctx) => {
     const nextValue = resolveSelectActiveValue(ctx);
     if (!nextValue) return "";
     ctx.value.set(nextValue);
     setSelectActiveValue(ctx, nextValue);
     return nextValue;
-  }, "acceptSelectActiveValue");
-  const registerComboboxValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const registerComboboxValue = (ctx, value) => {
     registerOrderedValue(ctx.order, value);
-  }, "registerComboboxValue");
-  const getComboboxActiveSignal = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getComboboxActiveSignal = (ctx) => {
     const key2 = ctx.value;
     const existing = comboboxActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
     comboboxActiveValues.set(key2, created);
     return created;
-  }, "getComboboxActiveSignal");
-  const setComboboxActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const setComboboxActiveValue = (ctx, value) => {
     getComboboxActiveSignal(ctx).set(typeof value === "string" ? value : "");
-  }, "setComboboxActiveValue");
-  const resolveComboboxActiveValue = /* @__PURE__ */ __name((ctx) => {
+  };
+  const resolveComboboxActiveValue = (ctx) => {
     const explicit = getComboboxActiveSignal(ctx).get();
     if (explicit && (ctx.order.length === 0 || ctx.order.includes(explicit))) {
       return explicit;
@@ -11165,151 +11590,155 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
       return selected;
     }
     return ctx.order[0] ?? explicit ?? selected ?? "";
-  }, "resolveComboboxActiveValue");
-  const getComboboxActiveValue = /* @__PURE__ */ __name((ctx) => resolveComboboxActiveValue(ctx), "getComboboxActiveValue");
-  const getComboboxActiveDescendantId = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getComboboxActiveValue = (ctx) => resolveComboboxActiveValue(ctx);
+  const getComboboxActiveDescendantId = (ctx) => {
     const activeValue = resolveComboboxActiveValue(ctx);
     return activeValue ? getComboboxItemId(ctx, activeValue) : null;
-  }, "getComboboxActiveDescendantId");
-  const acceptComboboxActiveValue = /* @__PURE__ */ __name((ctx) => {
+  };
+  const acceptComboboxActiveValue = (ctx) => {
     const nextValue = resolveComboboxActiveValue(ctx);
     if (!nextValue) return "";
     ctx.value.set(nextValue);
     ctx.query.set(nextValue);
     setComboboxActiveValue(ctx, nextValue);
     return nextValue;
-  }, "acceptComboboxActiveValue");
-  const registerMultiselectValue = /* @__PURE__ */ __name((ctx, value, label) => {
+  };
+  const registerMultiselectValue = (ctx, value, label) => {
     registerOrderedValue(ctx.order, value);
     registerTypeaheadLabel(multiselectTypeaheadLabels, ctx.open, value, label);
-  }, "registerMultiselectValue");
-  const getMultiselectActiveSignal = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getMultiselectActiveSignal = (ctx) => {
     const key2 = ctx.values;
     const existing = multiselectActiveValues.get(key2);
     if (existing) return existing;
     const created = new Signal("");
     multiselectActiveValues.set(key2, created);
     return created;
-  }, "getMultiselectActiveSignal");
-  const setMultiselectActiveValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const setMultiselectActiveValue = (ctx, value) => {
     getMultiselectActiveSignal(ctx).set(typeof value === "string" ? value : "");
-  }, "setMultiselectActiveValue");
-  const getMultiselectActiveValue = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getMultiselectActiveValue = (ctx) => {
     const explicit = getMultiselectActiveSignal(ctx).get();
     if (explicit) {
       return explicit;
     }
-    const selected = readStringSelection(ctx.values.get()).find((entry) => ctx.order.includes(entry));
+    const selected = readStringSelection(ctx.values.get()).find(
+      (entry) => ctx.order.includes(entry)
+    );
     return selected ?? ctx.order[0] ?? "";
-  }, "getMultiselectActiveValue");
-  const getMenuNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
-    "ArrowDown"
-  ], [
-    "ArrowUp"
-  ]), "getMenuNavigationTarget");
-  const getMenuTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key2) => getTypeaheadTarget(menuTypeaheadStates, ctx.open, ctx.order, menuTypeaheadLabels.get(ctx.open), current, key2), "getMenuTypeaheadTarget");
-  const getRadioNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
-    "ArrowRight",
-    "ArrowDown"
-  ], [
-    "ArrowLeft",
-    "ArrowUp"
-  ]), "getRadioNavigationTarget");
-  const getSelectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getClampedNavigationTarget(ctx.order, current, key2, [
-    "ArrowDown"
-  ], [
-    "ArrowUp"
-  ]), "getSelectNavigationTarget");
-  const getSelectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key2) => getTypeaheadTarget(selectTypeaheadStates, ctx.value, ctx.order, selectTypeaheadLabels.get(ctx.value), current, key2), "getSelectTypeaheadTarget");
-  const getComboboxNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, [
-    "ArrowDown",
-    "ArrowRight"
-  ], [
-    "ArrowUp",
-    "ArrowLeft"
-  ]), "getComboboxNavigationTarget");
-  const getMultiselectNavigationTarget = /* @__PURE__ */ __name((ctx, current, key2) => getClampedNavigationTarget(ctx.order, current, key2, [
-    "ArrowDown"
-  ], [
-    "ArrowUp"
-  ]), "getMultiselectNavigationTarget");
-  const getMultiselectTypeaheadTarget = /* @__PURE__ */ __name((ctx, current, key2) => getTypeaheadTarget(multiselectTypeaheadStates, ctx.open, ctx.order, multiselectTypeaheadLabels.get(ctx.open), current, key2), "getMultiselectTypeaheadTarget");
-  const focusMenuItem = /* @__PURE__ */ __name((documentLike, ctx, value) => focusElementById(documentLike, getMenuItemId(ctx, value)), "focusMenuItem");
-  const focusRadioItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getRadioItemId(ctx, value), fallbackRoot), "focusRadioItem");
-  const focusSelectItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getSelectItemId(ctx, value), fallbackRoot), "focusSelectItem");
-  const focusComboboxItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getComboboxItemId(ctx, value), fallbackRoot), "focusComboboxItem");
-  const focusMultiselectItem = /* @__PURE__ */ __name((documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getMultiselectItemId(ctx, value), fallbackRoot), "focusMultiselectItem");
-  const closeMenu = /* @__PURE__ */ __name((ctx) => {
+  };
+  const getMenuNavigationTarget = (ctx, current, key2) => getWrappedNavigationTarget(ctx.order, current, key2, ["ArrowDown"], ["ArrowUp"]);
+  const getMenuTypeaheadTarget = (ctx, current, key2) => getTypeaheadTarget(
+    menuTypeaheadStates,
+    ctx.open,
+    ctx.order,
+    menuTypeaheadLabels.get(ctx.open),
+    current,
+    key2
+  );
+  const getRadioNavigationTarget = (ctx, current, key2) => getWrappedNavigationTarget(
+    ctx.order,
+    current,
+    key2,
+    ["ArrowRight", "ArrowDown"],
+    ["ArrowLeft", "ArrowUp"]
+  );
+  const getSelectNavigationTarget = (ctx, current, key2) => getClampedNavigationTarget(ctx.order, current, key2, ["ArrowDown"], ["ArrowUp"]);
+  const getSelectTypeaheadTarget = (ctx, current, key2) => getTypeaheadTarget(
+    selectTypeaheadStates,
+    ctx.value,
+    ctx.order,
+    selectTypeaheadLabels.get(ctx.value),
+    current,
+    key2
+  );
+  const getComboboxNavigationTarget = (ctx, current, key2) => getWrappedNavigationTarget(
+    ctx.order,
+    current,
+    key2,
+    ["ArrowDown", "ArrowRight"],
+    ["ArrowUp", "ArrowLeft"]
+  );
+  const getMultiselectNavigationTarget = (ctx, current, key2) => getClampedNavigationTarget(ctx.order, current, key2, ["ArrowDown"], ["ArrowUp"]);
+  const getMultiselectTypeaheadTarget = (ctx, current, key2) => getTypeaheadTarget(
+    multiselectTypeaheadStates,
+    ctx.open,
+    ctx.order,
+    multiselectTypeaheadLabels.get(ctx.open),
+    current,
+    key2
+  );
+  const focusMenuItem = (documentLike, ctx, value) => focusElementById(documentLike, getMenuItemId(ctx, value));
+  const focusRadioItem = (documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getRadioItemId(ctx, value), fallbackRoot);
+  const focusSelectItem = (documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getSelectItemId(ctx, value), fallbackRoot);
+  const focusComboboxItem = (documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getComboboxItemId(ctx, value), fallbackRoot);
+  const focusMultiselectItem = (documentLike, ctx, value, fallbackRoot) => focusElementById(documentLike, getMultiselectItemId(ctx, value), fallbackRoot);
+  const closeMenu = (ctx) => {
     setMenuActiveValue(ctx, "");
     ctx.open.set(false);
     restoreMenuFocus(ctx);
-  }, "closeMenu");
-  const closeSelect = /* @__PURE__ */ __name((ctx) => {
+  };
+  const closeSelect = (ctx) => {
     setSelectActiveValue(ctx, ctx.value.get());
     ctx.open.set(false);
     restoreSelectFocus(ctx);
-  }, "closeSelect");
-  const closeCombobox = /* @__PURE__ */ __name((ctx) => {
+  };
+  const closeCombobox = (ctx) => {
     setComboboxActiveValue(ctx, ctx.value.get());
     ctx.open.set(false);
     restoreComboboxFocus(ctx);
-  }, "closeCombobox");
-  const closeMultiselect = /* @__PURE__ */ __name((ctx) => {
+  };
+  const closeMultiselect = (ctx) => {
     setMultiselectActiveValue(ctx, getMultiselectActiveValue(ctx));
     ctx.open.set(false);
     restoreMultiselectFocus(ctx);
-  }, "closeMultiselect");
-  const readStringSelection = /* @__PURE__ */ __name((value) => Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [], "readStringSelection");
-  const toggleMultiselectValue = /* @__PURE__ */ __name((ctx, value) => {
+  };
+  const readStringSelection = (value) => Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+  const toggleMultiselectValue = (ctx, value) => {
     const current = readStringSelection(ctx.values.get());
-    const next = current.includes(value) ? current.filter((entry) => entry !== value) : [
-      ...current,
-      value
-    ];
+    const next = current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value];
     ctx.values.set(next);
     return next;
-  }, "toggleMultiselectValue");
-  const getPopoverAnchorRect = /* @__PURE__ */ __name((ctx) => readAnchorRect(ctx, popoverAnchorTargets), "getPopoverAnchorRect");
-  const getMenuAnchorRect = /* @__PURE__ */ __name((ctx) => readAnchorRect(ctx, menuAnchorTargets), "getMenuAnchorRect");
-  const getTooltipAnchorRect = /* @__PURE__ */ __name((ctx) => readAnchorRect(ctx, tooltipAnchorTargets), "getTooltipAnchorRect");
-  const getSelectAnchorRect = /* @__PURE__ */ __name((ctx) => readAnchorRect(ctx, selectAnchorTargets), "getSelectAnchorRect");
-  const getComboboxAnchorRect = /* @__PURE__ */ __name((ctx) => readAnchorRect(ctx, comboboxAnchorTargets), "getComboboxAnchorRect");
-  const getMultiselectAnchorRect = /* @__PURE__ */ __name((ctx) => readAnchorRect(ctx, multiselectAnchorTargets), "getMultiselectAnchorRect");
-  const pickPopoverSide = /* @__PURE__ */ __name((props) => {
+  };
+  const getPopoverAnchorRect = (ctx) => readAnchorRect(ctx, popoverAnchorTargets);
+  const getMenuAnchorRect = (ctx) => readAnchorRect(ctx, menuAnchorTargets);
+  const getTooltipAnchorRect = (ctx) => readAnchorRect(ctx, tooltipAnchorTargets);
+  const getSelectAnchorRect = (ctx) => readAnchorRect(ctx, selectAnchorTargets);
+  const getComboboxAnchorRect = (ctx) => readAnchorRect(ctx, comboboxAnchorTargets);
+  const getMultiselectAnchorRect = (ctx) => readAnchorRect(ctx, multiselectAnchorTargets);
+  const pickPopoverSide = (props) => {
     const value = props?.side;
     return value === "top" || value === "bottom" || value === "left" || value === "right" ? value : "bottom";
-  }, "pickPopoverSide");
-  const pickPopoverAlign = /* @__PURE__ */ __name((props) => {
+  };
+  const pickPopoverAlign = (props) => {
     const value = props?.align;
     return value === "start" || value === "center" || value === "end" ? value : "center";
-  }, "pickPopoverAlign");
-  const pickPopoverOffset = /* @__PURE__ */ __name((props) => {
+  };
+  const pickPopoverOffset = (props) => {
     const value = props?.offset;
     return typeof value === "number" && Number.isFinite(value) ? value : 8;
-  }, "pickPopoverOffset");
-  const omitPopoverLayoutProps = /* @__PURE__ */ __name((props) => {
+  };
+  const omitPopoverLayoutProps = (props) => {
     if (!props) return void 0;
-    const next = {
-      ...props
-    };
+    const next = { ...props };
     delete next.side;
     delete next.align;
     delete next.offset;
     return next;
-  }, "omitPopoverLayoutProps");
-  const pickToastDuration = /* @__PURE__ */ __name((props) => {
+  };
+  const pickToastDuration = (props) => {
     const value = props?.duration;
     return typeof value === "number" && Number.isFinite(value) ? value : 0;
-  }, "pickToastDuration");
-  const omitToastControlProps = /* @__PURE__ */ __name((props) => {
+  };
+  const omitToastControlProps = (props) => {
     if (!props) return void 0;
-    const next = {
-      ...props
-    };
+    const next = { ...props };
     delete next.duration;
     return next;
-  }, "omitToastControlProps");
-  const getPopoverContentStyle = /* @__PURE__ */ __name((rect, props) => {
+  };
+  const getPopoverContentStyle = (rect, props) => {
     const side = pickPopoverSide(props);
     const align = pickPopoverAlign(props);
     const offset = pickPopoverOffset(props);
@@ -11354,7 +11783,7 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
       style.transform = "translateX(-100%)";
     }
     return style;
-  }, "getPopoverContentStyle");
+  };
   return {
     tabsContext,
     checkboxContext,
@@ -11474,26 +11903,20 @@ var createHeadlessUiRuntime = /* @__PURE__ */ __name(() => {
     omitToastControlProps,
     getPopoverContentStyle
   };
-}, "createHeadlessUiRuntime");
+};
 
 // src/runtime/resource-core.ts
 var resourceHooks = {};
-var configureResourceCore = /* @__PURE__ */ __name((hooks) => {
-  resourceHooks = {
-    ...resourceHooks,
-    ...hooks
-  };
-}, "configureResourceCore");
-var _ResourceHandle = class _ResourceHandle {
+var configureResourceCore = (hooks) => {
+  resourceHooks = { ...resourceHooks, ...hooks };
+};
+var ResourceHandle = class {
   constructor(record) {
-    __publicField(this, "record");
     this.record = record;
   }
 };
-__name(_ResourceHandle, "ResourceHandle");
-var ResourceHandle = _ResourceHandle;
 var resourceCache = /* @__PURE__ */ new Map();
-var normalizeResourceKey = /* @__PURE__ */ __name((key2) => {
+var normalizeResourceKey = (key2) => {
   if (typeof key2 === "string") return key2;
   if (typeof key2 === "number" || typeof key2 === "boolean" || typeof key2 === "bigint") {
     return String(key2);
@@ -11511,14 +11934,12 @@ var normalizeResourceKey = /* @__PURE__ */ __name((key2) => {
   } catch {
     return String(key2);
   }
-}, "normalizeResourceKey");
-var normalizeResourceTags = /* @__PURE__ */ __name((value) => {
-  const raw = Array.isArray(value) ? value : typeof value === "string" ? [
-    value
-  ] : [];
+};
+var normalizeResourceTags = (value) => {
+  const raw = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
   return raw.map((entry) => String(entry).trim()).filter((entry, index, list2) => entry.length > 0 && list2.indexOf(entry) === index);
-}, "normalizeResourceTags");
-var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
+};
+var normalizeResourceOptions = (options) => {
   const candidate = options && typeof options === "object" ? options : {};
   const ttlRaw = candidate.ttlMs;
   const ttlMs = typeof ttlRaw === "number" && Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : 0;
@@ -11529,24 +11950,11 @@ var normalizeResourceOptions = /* @__PURE__ */ __name((options) => {
   const requestId = typeof candidate.requestId === "string" && candidate.requestId.trim() ? candidate.requestId.trim() : "";
   const tags = normalizeResourceTags(candidate.tags ?? candidate.tag);
   const dependencies = normalizeResourceTags(candidate.dependencies ?? candidate.dependency ?? candidate.dependsOn);
-  return {
-    ttlMs,
-    enabled,
-    staleWhileRevalidate,
-    abortOnRefresh,
-    scope,
-    requestId,
-    tags,
-    dependencies
-  };
-}, "normalizeResourceOptions");
-var resourceCacheIdentity = /* @__PURE__ */ __name((key2, scope, requestId) => JSON.stringify([
-  scope,
-  requestId,
-  key2
-]), "resourceCacheIdentity");
-var resourceHasData = /* @__PURE__ */ __name((record) => !!record.hasData.peek(), "resourceHasData");
-var createResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => ({
+  return { ttlMs, enabled, staleWhileRevalidate, abortOnRefresh, scope, requestId, tags, dependencies };
+};
+var resourceCacheIdentity = (key2, scope, requestId) => JSON.stringify([scope, requestId, key2]);
+var resourceHasData = (record) => !!record.hasData.peek();
+var createResourceRecord = (key2, loader, options) => ({
   key: key2,
   loader,
   ttlMs: options.ttlMs,
@@ -11565,8 +11973,8 @@ var createResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => ({
   abortController: null,
   expiresAt: 0,
   version: 0
-}), "createResourceRecord");
-var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
+});
+var startResourceLoad = (record, force = false) => {
   if (record.promise && !force) return record.promise;
   if (!record.enabled && !force) {
     return Promise.reject(new Error(`Resource '${record.key}' is disabled`));
@@ -11585,37 +11993,40 @@ var startResourceLoad = /* @__PURE__ */ __name((record, force = false) => {
   } catch (error) {
     loadResult = Promise.reject(error);
   }
-  const promise = loadResult.then((value) => {
-    if (record.version !== version) {
+  const promise = loadResult.then(
+    (value) => {
+      if (record.version !== version) {
+        return value;
+      }
+      record.data.set(value);
+      record.hasData.set(true);
+      record.error.set(null);
+      record.status.set("success");
+      record.expiresAt = record.ttlMs > 0 ? Date.now() + record.ttlMs : Number.POSITIVE_INFINITY;
+      record.promise = null;
+      record.abortController = null;
+      resourceHooks.notifyDevtools?.();
       return value;
-    }
-    record.data.set(value);
-    record.hasData.set(true);
-    record.error.set(null);
-    record.status.set("success");
-    record.expiresAt = record.ttlMs > 0 ? Date.now() + record.ttlMs : Number.POSITIVE_INFINITY;
-    record.promise = null;
-    record.abortController = null;
-    resourceHooks.notifyDevtools?.();
-    return value;
-  }, (error) => {
-    if (record.version !== version) {
+    },
+    (error) => {
+      if (record.version !== version) {
+        throw error;
+      }
+      record.error.set(error);
+      record.status.set("error");
+      record.expiresAt = 0;
+      record.promise = null;
+      record.abortController = null;
+      resourceHooks.notifyDevtools?.();
       throw error;
     }
-    record.error.set(error);
-    record.status.set("error");
-    record.expiresAt = 0;
-    record.promise = null;
-    record.abortController = null;
-    resourceHooks.notifyDevtools?.();
-    throw error;
-  });
+  );
   promise.catch(() => void 0);
   record.promise = promise;
   resourceHooks.notifyDevtools?.();
   return promise;
-}, "startResourceLoad");
-var ensureResourceCurrent = /* @__PURE__ */ __name((record) => {
+};
+var ensureResourceCurrent = (record) => {
   if (record.promise) return;
   if (!record.enabled) return;
   if (!resourceHasData(record)) {
@@ -11627,16 +12038,16 @@ var ensureResourceCurrent = /* @__PURE__ */ __name((record) => {
   if (record.ttlMs > 0 && Date.now() >= record.expiresAt) {
     startResourceLoad(record);
   }
-}, "ensureResourceCurrent");
-var discardResourcePending = /* @__PURE__ */ __name((record, abort) => {
+};
+var discardResourcePending = (record, abort) => {
   record.version += 1;
   if (abort) {
     record.abortController?.abort();
   }
   record.abortController = null;
   record.promise = null;
-}, "discardResourcePending");
-var invalidateResourceRecord = /* @__PURE__ */ __name((record) => {
+};
+var invalidateResourceRecord = (record) => {
   record.expiresAt = 0;
   discardResourcePending(record, record.abortOnRefresh);
   if (!record.hasData.peek() || !record.staleWhileRevalidate) {
@@ -11645,11 +12056,15 @@ var invalidateResourceRecord = /* @__PURE__ */ __name((record) => {
   if (record.enabled) {
     startResourceLoad(record, true);
   }
-}, "invalidateResourceRecord");
-var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
+};
+var resolveResourceRecord = (key2, loader, options) => {
   const normalizedKey = normalizeResourceKey(key2);
   const normalizedOptions = normalizeResourceOptions(options);
-  const cacheIdentity = resourceCacheIdentity(normalizedKey, normalizedOptions.scope, normalizedOptions.requestId);
+  const cacheIdentity = resourceCacheIdentity(
+    normalizedKey,
+    normalizedOptions.scope,
+    normalizedOptions.requestId
+  );
   const existing = resourceCache.get(cacheIdentity);
   if (existing) {
     existing.loader = loader;
@@ -11668,15 +12083,15 @@ var resolveResourceRecord = /* @__PURE__ */ __name((key2, loader, options) => {
   resourceCache.set(cacheIdentity, record);
   ensureResourceCurrent(record);
   return record;
-}, "resolveResourceRecord");
-var asResourceHandle = /* @__PURE__ */ __name((candidate, apiName) => {
+};
+var asResourceHandle = (candidate, apiName) => {
   if (candidate instanceof ResourceHandle) {
     return candidate;
   }
   throw new Error(`${apiName} expects a resource handle`);
-}, "asResourceHandle");
-var listResourceRecords = /* @__PURE__ */ __name(() => Array.from(resourceCache.values()), "listResourceRecords");
-var invalidateResourceKey = /* @__PURE__ */ __name((key2) => {
+};
+var listResourceRecords = () => Array.from(resourceCache.values());
+var invalidateResourceKey = (key2) => {
   const normalizedKey = normalizeResourceKey(key2);
   let changed = false;
   for (const record of resourceCache.values()) {
@@ -11686,8 +12101,8 @@ var invalidateResourceKey = /* @__PURE__ */ __name((key2) => {
   }
   if (changed) resourceHooks.notifyDevtools?.();
   return changed;
-}, "invalidateResourceKey");
-var invalidateResourcePrefix = /* @__PURE__ */ __name((prefix) => {
+};
+var invalidateResourcePrefix = (prefix) => {
   const normalizedPrefix = String(prefix);
   let count = 0;
   for (const record of resourceCache.values()) {
@@ -11697,8 +12112,8 @@ var invalidateResourcePrefix = /* @__PURE__ */ __name((prefix) => {
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
-}, "invalidateResourcePrefix");
-var invalidateResourceTag = /* @__PURE__ */ __name((tag) => {
+};
+var invalidateResourceTag = (tag) => {
   const normalizedTag = String(tag).trim();
   if (!normalizedTag) return 0;
   let count = 0;
@@ -11709,8 +12124,8 @@ var invalidateResourceTag = /* @__PURE__ */ __name((tag) => {
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
-}, "invalidateResourceTag");
-var invalidateResourceDependency = /* @__PURE__ */ __name((dependency) => {
+};
+var invalidateResourceDependency = (dependency) => {
   const normalizedDependency = String(dependency).trim();
   if (!normalizedDependency) return 0;
   let count = 0;
@@ -11721,8 +12136,8 @@ var invalidateResourceDependency = /* @__PURE__ */ __name((dependency) => {
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
-}, "invalidateResourceDependency");
-var invalidateResourceScope = /* @__PURE__ */ __name((scope) => {
+};
+var invalidateResourceScope = (scope) => {
   const normalizedScope = String(scope).trim() || "global";
   let count = 0;
   for (const record of resourceCache.values()) {
@@ -11732,8 +12147,8 @@ var invalidateResourceScope = /* @__PURE__ */ __name((scope) => {
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
-}, "invalidateResourceScope");
-var invalidateResourceRequest = /* @__PURE__ */ __name((requestId) => {
+};
+var invalidateResourceRequest = (requestId) => {
   const normalizedRequestId = String(requestId).trim();
   if (!normalizedRequestId) return 0;
   let count = 0;
@@ -11744,16 +12159,16 @@ var invalidateResourceRequest = /* @__PURE__ */ __name((requestId) => {
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
-}, "invalidateResourceRequest");
-var clearResourceRecords = /* @__PURE__ */ __name(() => {
+};
+var clearResourceRecords = () => {
   if (resourceCache.size === 0) return;
   for (const record of resourceCache.values()) {
     discardResourcePending(record, true);
   }
   resourceCache.clear();
   resourceHooks.notifyDevtools?.();
-}, "clearResourceRecords");
-var clearResourceScope = /* @__PURE__ */ __name((scope) => {
+};
+var clearResourceScope = (scope) => {
   const normalizedScope = String(scope).trim() || "global";
   let count = 0;
   for (const [key2, record] of resourceCache) {
@@ -11764,8 +12179,8 @@ var clearResourceScope = /* @__PURE__ */ __name((scope) => {
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
-}, "clearResourceScope");
-var clearResourceRequest = /* @__PURE__ */ __name((requestId) => {
+};
+var clearResourceRequest = (requestId) => {
   const normalizedRequestId = String(requestId).trim();
   if (!normalizedRequestId) return 0;
   let count = 0;
@@ -11777,12 +12192,12 @@ var clearResourceRequest = /* @__PURE__ */ __name((requestId) => {
   }
   if (count > 0) resourceHooks.notifyDevtools?.();
   return count;
-}, "clearResourceRequest");
+};
 
 // src/runtime/root-runtime.ts
-var coerceRenderer2 = /* @__PURE__ */ __name((candidate) => coerceRenderer(candidate), "coerceRenderer");
-var createRootRuntime = /* @__PURE__ */ __name((deps) => {
-  const mountReactiveView2 = /* @__PURE__ */ __name((renderer, container, view) => {
+var coerceRenderer2 = (candidate) => coerceRenderer(candidate);
+var createRootRuntime = (deps) => {
+  const mountReactiveView2 = (renderer, container, view) => {
     if (container == null) return deps.renderError("Render container is required");
     const root = deps.createRenderRoot(coerceRenderer(renderer), container);
     const frameManager = deps.createFrameManager();
@@ -11795,8 +12210,8 @@ var createRootRuntime = /* @__PURE__ */ __name((deps) => {
     } catch (error) {
       return deps.renderError(deps.toRenderErrorMessage(error));
     }
-  }, "mountReactiveView");
-  const hydrateReactiveView2 = /* @__PURE__ */ __name((renderer, container, view) => {
+  };
+  const hydrateReactiveView2 = (renderer, container, view) => {
     if (container == null) return deps.renderError("Render container is required");
     const root = deps.createRenderRoot(coerceRenderer(renderer), container);
     const frameManager = deps.createFrameManager();
@@ -11815,65 +12230,65 @@ var createRootRuntime = /* @__PURE__ */ __name((deps) => {
     } catch (error) {
       return deps.renderError(deps.toRenderErrorMessage(error));
     }
-  }, "hydrateReactiveView");
+  };
   return {
     coerceRenderer: coerceRenderer2,
     mountReactiveView: mountReactiveView2,
     hydrateReactiveView: hydrateReactiveView2
   };
-}, "createRootRuntime");
+};
 
 // src/runtime/render-api.ts
-var isThenable = /* @__PURE__ */ __name((value) => !!value && (typeof value === "object" || typeof value === "function") && typeof value.then === "function", "isThenable");
-var createRenderApi = /* @__PURE__ */ __name((deps) => {
+var isThenable = (value) => !!value && (typeof value === "object" || typeof value === "function") && typeof value.then === "function";
+var createRenderApi = (deps) => {
   const render2 = {
-    signal: /* @__PURE__ */ __name((initial) => new Signal(initial), "signal"),
-    get: /* @__PURE__ */ __name((signal) => signal.get(), "get"),
-    peek: /* @__PURE__ */ __name((signal) => signal.peek(), "peek"),
-    set: /* @__PURE__ */ __name((signal, value) => signal.set(value), "set"),
-    update_signal: /* @__PURE__ */ __name((signal, updater) => signal.update(updater), "update_signal"),
-    memo: /* @__PURE__ */ __name((compute) => new Memo(compute), "memo"),
-    memo_get: /* @__PURE__ */ __name((memo) => memo.get(), "memo_get"),
-    memo_peek: /* @__PURE__ */ __name((memo) => memo.peek(), "memo_peek"),
-    memo_dispose: /* @__PURE__ */ __name((memo) => memo.dispose(), "memo_dispose"),
-    effect: /* @__PURE__ */ __name((fn) => new Effect(fn), "effect"),
-    dispose_effect: /* @__PURE__ */ __name((effect) => {
+    signal: (initial) => new Signal(initial),
+    get: (signal) => signal.get(),
+    peek: (signal) => signal.peek(),
+    set: (signal, value) => signal.set(value),
+    update_signal: (signal, updater) => signal.update(updater),
+    memo: (compute) => new Memo(compute),
+    memo_get: (memo) => memo.get(),
+    memo_peek: (memo) => memo.peek(),
+    memo_dispose: (memo) => memo.dispose(),
+    effect: (fn) => new Effect(fn),
+    dispose_effect: (effect) => {
       if (!isDisposableLike(effect)) return;
       try {
         effect.dispose();
       } catch {
       }
-    }, "dispose_effect"),
-    batch: /* @__PURE__ */ __name((fn) => batch(fn), "batch"),
-    untrack: /* @__PURE__ */ __name((fn) => untrack(fn), "untrack"),
-    component: /* @__PURE__ */ __name((componentFn, props, key2) => applyVNodeKey(deps.frameRuntime.component(componentFn, props, key2), key2), "component"),
-    component_keyed: /* @__PURE__ */ __name((componentFn, props, key2) => render2.component(componentFn, props, key2), "component_keyed"),
-    render_app: /* @__PURE__ */ __name((componentFn, props) => deps.appRuntime.renderAppVNode(componentFn, props), "render_app"),
-    render_to_string_app: /* @__PURE__ */ __name((componentFn, props) => deps.renderToString(deps.appRuntime.renderAppVNode(componentFn, props)), "render_to_string_app"),
+    },
+    batch: (fn) => batch(fn),
+    untrack: (fn) => untrack(fn),
+    component: (componentFn, props, key2) => applyVNodeKey(deps.frameRuntime.component(componentFn, props, key2), key2),
+    component_keyed: (componentFn, props, key2) => render2.component(componentFn, props, key2),
+    render_app: (componentFn, props) => deps.appRuntime.renderAppVNode(componentFn, props),
+    render_to_string_app: (componentFn, props) => deps.renderToString(deps.appRuntime.renderAppVNode(componentFn, props)),
     create_context: deps.frameRuntime.createContext,
     create_required_context: deps.frameRuntime.createRequiredContext,
-    with_context: /* @__PURE__ */ __name((context, value, renderChildren) => deps.frameRuntime.withContext(context, value, renderChildren), "with_context"),
-    use_context: /* @__PURE__ */ __name((context) => deps.frameRuntime.useContext(context), "use_context"),
-    state: /* @__PURE__ */ __name((initial) => deps.frameRuntime.state(initial), "state"),
-    remember: /* @__PURE__ */ __name((compute) => deps.frameRuntime.remember(compute), "remember"),
-    transition_presence: /* @__PURE__ */ __name((open, props, durationMs, renderChildren) => deps.transitionRuntime.transitionPresence(open, props, durationMs, renderChildren), "transition_presence"),
-    resource_create: /* @__PURE__ */ __name((key2, loader, options) => new ResourceHandle(resolveResourceRecord(key2, loader, options)), "resource_create"),
-    resource_status: /* @__PURE__ */ __name((resource) => {
+    with_context: (context, value, renderChildren) => deps.frameRuntime.withContext(context, value, renderChildren),
+    use_context: (context) => deps.frameRuntime.useContext(context),
+    state: (initial) => deps.frameRuntime.state(initial),
+    remember: (compute) => deps.frameRuntime.remember(compute),
+    transition_presence: (open, props, durationMs, renderChildren) => deps.transitionRuntime.transitionPresence(open, props, durationMs, renderChildren),
+    resource_create: (key2, loader, options) => new ResourceHandle(resolveResourceRecord(key2, loader, options)),
+    resource_status: (resource) => {
       const handle = asResourceHandle(resource, "render.resource_status");
       ensureResourceCurrent(handle.record);
       return handle.record.status.get();
-    }, "resource_status"),
-    resource_data: /* @__PURE__ */ __name((resource) => {
+    },
+    resource_data: (resource) => {
       const handle = asResourceHandle(resource, "render.resource_data");
       ensureResourceCurrent(handle.record);
       return handle.record.hasData.get() ? handle.record.data.get() : null;
-    }, "resource_data"),
-    resource_error: /* @__PURE__ */ __name((resource) => {
+    },
+    resource_error: (resource) => {
       const handle = asResourceHandle(resource, "render.resource_error");
       ensureResourceCurrent(handle.record);
       return handle.record.error.get();
-    }, "resource_error"),
-    resource_read: /* @__PURE__ */ __name((resource) => {
+    },
+    resource_read: (resource) => {
       const handle = asResourceHandle(resource, "render.resource_read");
       ensureResourceCurrent(handle.record);
       const status = handle.record.status.get();
@@ -11888,21 +12303,21 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
         throw error;
       }
       throw new Error(`Resource '${handle.record.key}' has no data`);
-    }, "resource_read"),
-    resource_refresh: /* @__PURE__ */ __name((resource) => {
+    },
+    resource_refresh: (resource) => {
       const handle = asResourceHandle(resource, "render.resource_refresh");
       handle.record.expiresAt = 0;
       return startResourceLoad(handle.record, true);
-    }, "resource_refresh"),
-    resource_submit: /* @__PURE__ */ __name(async (resource, submitting) => {
+    },
+    resource_submit: async (resource, submitting) => {
       if (submitting instanceof Signal) submitting.set(true);
       try {
         return await render2.resource_refresh(resource);
       } finally {
         if (submitting instanceof Signal) submitting.set(false);
       }
-    }, "resource_submit"),
-    resource_submit_optimistic: /* @__PURE__ */ __name(async (resource, submitting, target, optimistic, previous) => {
+    },
+    resource_submit_optimistic: async (resource, submitting, target, optimistic, previous) => {
       render2.resource_mutate(target, optimistic);
       try {
         return await render2.resource_submit(resource, submitting);
@@ -11910,57 +12325,57 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
         render2.resource_mutate(target, previous);
         throw error;
       }
-    }, "resource_submit_optimistic"),
-    resource_invalidate: /* @__PURE__ */ __name((resource) => {
+    },
+    resource_invalidate: (resource) => {
       const handle = asResourceHandle(resource, "render.resource_invalidate");
       invalidateResourceRecord(handle.record);
       deps.scheduleDevtoolsNotify();
-    }, "resource_invalidate"),
-    resource_invalidate_key: /* @__PURE__ */ __name((key2) => {
+    },
+    resource_invalidate_key: (key2) => {
       const changed = invalidateResourceKey(key2);
       if (changed) deps.scheduleDevtoolsNotify();
       return changed;
-    }, "resource_invalidate_key"),
-    resource_invalidate_prefix: /* @__PURE__ */ __name((prefix) => {
+    },
+    resource_invalidate_prefix: (prefix) => {
       const count = invalidateResourcePrefix(prefix);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
-    }, "resource_invalidate_prefix"),
-    resource_invalidate_tag: /* @__PURE__ */ __name((tag) => {
+    },
+    resource_invalidate_tag: (tag) => {
       const count = invalidateResourceTag(tag);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
-    }, "resource_invalidate_tag"),
-    resource_invalidate_dependency: /* @__PURE__ */ __name((dependency) => {
+    },
+    resource_invalidate_dependency: (dependency) => {
       const count = invalidateResourceDependency(dependency);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
-    }, "resource_invalidate_dependency"),
-    resource_invalidate_scope: /* @__PURE__ */ __name((scope) => {
+    },
+    resource_invalidate_scope: (scope) => {
       const count = invalidateResourceScope(scope);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
-    }, "resource_invalidate_scope"),
-    resource_invalidate_request: /* @__PURE__ */ __name((requestId) => {
+    },
+    resource_invalidate_request: (requestId) => {
       const count = invalidateResourceRequest(requestId);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
-    }, "resource_invalidate_request"),
-    resource_clear_cache: /* @__PURE__ */ __name(() => {
+    },
+    resource_clear_cache: () => {
       clearResourceRecords();
       deps.scheduleDevtoolsNotify();
-    }, "resource_clear_cache"),
-    resource_clear_scope: /* @__PURE__ */ __name((scope) => {
+    },
+    resource_clear_scope: (scope) => {
       const count = clearResourceScope(scope);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
-    }, "resource_clear_scope"),
-    resource_clear_request: /* @__PURE__ */ __name((requestId) => {
+    },
+    resource_clear_request: (requestId) => {
       const count = clearResourceRequest(requestId);
       if (count > 0) deps.scheduleDevtoolsNotify();
       return count;
-    }, "resource_clear_request"),
-    resource_mutate: /* @__PURE__ */ __name((resource, value) => {
+    },
+    resource_mutate: (resource, value) => {
       const handle = asResourceHandle(resource, "render.resource_mutate");
       handle.record.version += 1;
       handle.record.abortController?.abort();
@@ -11973,8 +12388,8 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       handle.record.expiresAt = handle.record.ttlMs > 0 ? Date.now() + handle.record.ttlMs : Number.POSITIVE_INFINITY;
       deps.scheduleDevtoolsNotify();
       return handle.record.data.get();
-    }, "resource_mutate"),
-    suspense: /* @__PURE__ */ __name((fallback, renderChildren) => {
+    },
+    suspense: (fallback, renderChildren) => {
       try {
         return coerceRenderableToVNode(renderChildren());
       } catch (error) {
@@ -11984,8 +12399,8 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
         const resolvedFallback = typeof fallback === "function" ? fallback() : fallback;
         return coerceRenderableToVNode(resolvedFallback);
       }
-    }, "suspense"),
-    error_boundary: /* @__PURE__ */ __name((fallback, renderChildren) => {
+    },
+    error_boundary: (fallback, renderChildren) => {
       try {
         return coerceRenderableToVNode(renderChildren());
       } catch (error) {
@@ -11995,83 +12410,92 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
         const resolvedFallback = typeof fallback === "function" ? fallback(error) : fallback;
         return coerceRenderableToVNode(resolvedFallback);
       }
-    }, "error_boundary"),
-    show: /* @__PURE__ */ __name((condition, renderChildren, fallback) => {
+    },
+    show: (condition, renderChildren, fallback) => {
       const resolved = condition instanceof Signal ? condition.get() : condition;
       return resolved ? coerceRenderableToVNode(renderChildren()) : coerceRenderableToVNode(typeof fallback === "function" ? fallback() : fallback);
-    }, "show"),
-    createResource: /* @__PURE__ */ __name((key2, loader, options) => render2.resource_create(key2, loader, options), "createResource"),
-    renderApp: /* @__PURE__ */ __name((componentFn, props) => render2.render_app(componentFn, props), "renderApp"),
-    renderToStringApp: /* @__PURE__ */ __name((componentFn, props) => render2.render_to_string_app(componentFn, props), "renderToStringApp"),
-    renderToChunks: /* @__PURE__ */ __name((node) => render2.render_to_chunks(node), "renderToChunks"),
-    renderToReadableStream: /* @__PURE__ */ __name((node) => render2.render_to_readable_stream(node), "renderToReadableStream"),
-    transitionPresence: /* @__PURE__ */ __name((open, props, durationMs, renderChildren) => render2.transition_presence(open, props, durationMs, renderChildren), "transitionPresence"),
-    resourceStatus: /* @__PURE__ */ __name((resource) => render2.resource_status(resource), "resourceStatus"),
-    resourceData: /* @__PURE__ */ __name((resource) => render2.resource_data(resource), "resourceData"),
-    resourceError: /* @__PURE__ */ __name((resource) => render2.resource_error(resource), "resourceError"),
-    resourceRead: /* @__PURE__ */ __name((resource) => render2.resource_read(resource), "resourceRead"),
-    resourceRefresh: /* @__PURE__ */ __name((resource) => render2.resource_refresh(resource), "resourceRefresh"),
-    resourceSubmit: /* @__PURE__ */ __name((resource, submitting) => render2.resource_submit(resource, submitting), "resourceSubmit"),
-    resourceSubmitOptimistic: /* @__PURE__ */ __name((resource, submitting, target, optimistic, previous) => render2.resource_submit_optimistic(resource, submitting, target, optimistic, previous), "resourceSubmitOptimistic"),
-    resourceInvalidate: /* @__PURE__ */ __name((resource) => render2.resource_invalidate(resource), "resourceInvalidate"),
-    resourceInvalidateKey: /* @__PURE__ */ __name((key2) => render2.resource_invalidate_key(key2), "resourceInvalidateKey"),
-    resourceInvalidatePrefix: /* @__PURE__ */ __name((prefix) => render2.resource_invalidate_prefix(prefix), "resourceInvalidatePrefix"),
-    resourceInvalidateTag: /* @__PURE__ */ __name((tag) => render2.resource_invalidate_tag(tag), "resourceInvalidateTag"),
-    resourceInvalidateDependency: /* @__PURE__ */ __name((dependency) => render2.resource_invalidate_dependency(dependency), "resourceInvalidateDependency"),
-    resourceInvalidateScope: /* @__PURE__ */ __name((scope) => render2.resource_invalidate_scope(scope), "resourceInvalidateScope"),
-    resourceInvalidateRequest: /* @__PURE__ */ __name((requestId) => render2.resource_invalidate_request(requestId), "resourceInvalidateRequest"),
-    resourceClearCache: /* @__PURE__ */ __name(() => render2.resource_clear_cache(), "resourceClearCache"),
-    resourceClearScope: /* @__PURE__ */ __name((scope) => render2.resource_clear_scope(scope), "resourceClearScope"),
-    resourceClearRequest: /* @__PURE__ */ __name((requestId) => render2.resource_clear_request(requestId), "resourceClearRequest"),
-    resourceMutate: /* @__PURE__ */ __name((resource, value) => render2.resource_mutate(resource, value), "resourceMutate"),
-    errorBoundary: /* @__PURE__ */ __name((fallback, renderChildren) => render2.error_boundary(fallback, renderChildren), "errorBoundary"),
-    mountApp: /* @__PURE__ */ __name((renderer, container, componentFn, props) => render2.mount_app(renderer, container, componentFn, props), "mountApp"),
-    hydrateApp: /* @__PURE__ */ __name((renderer, container, componentFn, props) => render2.hydrate_app(renderer, container, componentFn, props), "hydrateApp"),
-    testingCreateDomHarness: /* @__PURE__ */ __name(() => render2.testing_create_dom_harness(), "testingCreateDomHarness"),
-    testingMountApp: /* @__PURE__ */ __name((harness, componentFn, props) => render2.testing_mount_app(harness, componentFn, props), "testingMountApp"),
-    testingHydrateApp: /* @__PURE__ */ __name((harness, componentFn, props) => render2.testing_hydrate_app(harness, componentFn, props), "testingHydrateApp"),
-    testingContainer: /* @__PURE__ */ __name((harness) => render2.testing_container(harness), "testingContainer"),
-    testingBody: /* @__PURE__ */ __name((harness) => render2.testing_body(harness), "testingBody"),
-    testingGetById: /* @__PURE__ */ __name((harness, id) => render2.testing_get_by_id(harness, id), "testingGetById"),
-    testingGetByText: /* @__PURE__ */ __name((scope, value) => render2.testing_get_by_text(scope, value), "testingGetByText"),
-    testingGetByRole: /* @__PURE__ */ __name((scope, role) => {
+    },
+    createResource: (key2, loader, options) => render2.resource_create(key2, loader, options),
+    renderApp: (componentFn, props) => render2.render_app(componentFn, props),
+    renderToStringApp: (componentFn, props) => render2.render_to_string_app(componentFn, props),
+    renderToChunks: (node) => render2.render_to_chunks(node),
+    renderToReadableStream: (node) => render2.render_to_readable_stream(node),
+    transitionPresence: (open, props, durationMs, renderChildren) => render2.transition_presence(open, props, durationMs, renderChildren),
+    resourceStatus: (resource) => render2.resource_status(resource),
+    resourceData: (resource) => render2.resource_data(resource),
+    resourceError: (resource) => render2.resource_error(resource),
+    resourceRead: (resource) => render2.resource_read(resource),
+    resourceRefresh: (resource) => render2.resource_refresh(resource),
+    resourceSubmit: (resource, submitting) => render2.resource_submit(resource, submitting),
+    resourceSubmitOptimistic: (resource, submitting, target, optimistic, previous) => render2.resource_submit_optimistic(resource, submitting, target, optimistic, previous),
+    resourceInvalidate: (resource) => render2.resource_invalidate(resource),
+    resourceInvalidateKey: (key2) => render2.resource_invalidate_key(key2),
+    resourceInvalidatePrefix: (prefix) => render2.resource_invalidate_prefix(prefix),
+    resourceInvalidateTag: (tag) => render2.resource_invalidate_tag(tag),
+    resourceInvalidateDependency: (dependency) => render2.resource_invalidate_dependency(dependency),
+    resourceInvalidateScope: (scope) => render2.resource_invalidate_scope(scope),
+    resourceInvalidateRequest: (requestId) => render2.resource_invalidate_request(requestId),
+    resourceClearCache: () => render2.resource_clear_cache(),
+    resourceClearScope: (scope) => render2.resource_clear_scope(scope),
+    resourceClearRequest: (requestId) => render2.resource_clear_request(requestId),
+    resourceMutate: (resource, value) => render2.resource_mutate(resource, value),
+    errorBoundary: (fallback, renderChildren) => render2.error_boundary(fallback, renderChildren),
+    mountApp: (renderer, container, componentFn, props) => render2.mount_app(renderer, container, componentFn, props),
+    hydrateApp: (renderer, container, componentFn, props) => render2.hydrate_app(renderer, container, componentFn, props),
+    testingCreateDomHarness: () => render2.testing_create_dom_harness(),
+    testingMountApp: (harness, componentFn, props) => render2.testing_mount_app(harness, componentFn, props),
+    testingHydrateApp: (harness, componentFn, props) => render2.testing_hydrate_app(harness, componentFn, props),
+    testingContainer: (harness) => render2.testing_container(harness),
+    testingBody: (harness) => render2.testing_body(harness),
+    testingGetById: (harness, id) => render2.testing_get_by_id(harness, id),
+    testingGetByText: (scope, value) => render2.testing_get_by_text(scope, value),
+    testingGetByRole: (scope, role) => {
       const matches = render2.testing_query_all_by_role(scope, role);
       return matches[0] ?? null;
-    }, "testingGetByRole"),
-    testingGetByRoleName: /* @__PURE__ */ __name((scope, role, name) => render2.testing_get_by_role_name(scope, role, name), "testingGetByRoleName"),
-    testingQueryAllByRole: /* @__PURE__ */ __name((scope, role) => render2.testing_query_all_by_role(scope, role), "testingQueryAllByRole"),
-    testingGetByLabel: /* @__PURE__ */ __name((scope, label) => render2.testing_get_by_label(scope, label), "testingGetByLabel"),
-    testingGetByPlaceholder: /* @__PURE__ */ __name((scope, placeholder) => render2.testing_get_by_placeholder(scope, placeholder), "testingGetByPlaceholder"),
-    testingTextContent: /* @__PURE__ */ __name((node) => render2.testing_text_content(node), "testingTextContent"),
-    testingClick: /* @__PURE__ */ __name((node) => render2.testing_click(node), "testingClick"),
-    testingInput: /* @__PURE__ */ __name((node, value) => render2.testing_input(node, value), "testingInput"),
-    testingChangeChecked: /* @__PURE__ */ __name((node, checked) => render2.testing_change_checked(node, checked), "testingChangeChecked"),
-    testingKeydown: /* @__PURE__ */ __name((node, key2, shiftKey) => render2.testing_keydown(node, key2, shiftKey), "testingKeydown"),
-    testingSubmit: /* @__PURE__ */ __name((node) => render2.testing_submit(node), "testingSubmit"),
-    testingFlush: /* @__PURE__ */ __name(() => render2.testing_flush(), "testingFlush"),
-    testingWaitFor: /* @__PURE__ */ __name((check, attempts) => render2.testing_wait_for(check, attempts), "testingWaitFor"),
-    devtoolsSnapshot: /* @__PURE__ */ __name(() => render2.devtools_snapshot(), "devtoolsSnapshot"),
-    installDevtools: /* @__PURE__ */ __name((key2) => render2.install_devtools(key2), "installDevtools"),
-    devtoolsRecordEvent: /* @__PURE__ */ __name((type, label, detail) => render2.devtools_record_event(type, label, detail), "devtoolsRecordEvent"),
-    devtoolsTimeline: /* @__PURE__ */ __name(() => render2.devtools_timeline(), "devtoolsTimeline"),
-    devtoolsClearTimeline: /* @__PURE__ */ __name(() => render2.devtools_clear_timeline(), "devtoolsClearTimeline"),
-    ssgPage: /* @__PURE__ */ __name((body, options) => render2.ssg_page(body, options), "ssgPage"),
-    ssgRenderApp: /* @__PURE__ */ __name((componentFn, props, options) => render2.ssg_render_app(componentFn, props, options), "ssgRenderApp"),
-    ssgWritePage: /* @__PURE__ */ __name((filePath, body, options) => render2.ssg_write_page(filePath, body, options), "ssgWritePage"),
-    ssgWriteApp: /* @__PURE__ */ __name((filePath, componentFn, props, options) => render2.ssg_write_app(filePath, componentFn, props, options), "ssgWriteApp"),
-    devtools_snapshot: /* @__PURE__ */ __name(() => deps.snapshotDevtools(), "devtools_snapshot"),
-    install_devtools: /* @__PURE__ */ __name((key2) => deps.installLuminaDevtools(key2), "install_devtools"),
-    devtools_record_event: /* @__PURE__ */ __name((type, label, detail) => deps.recordDevtoolsEvent(type, label, detail), "devtools_record_event"),
-    devtools_timeline: /* @__PURE__ */ __name(() => deps.readDevtoolsTimeline(), "devtools_timeline"),
-    devtools_clear_timeline: /* @__PURE__ */ __name(() => deps.clearDevtoolsTimeline(), "devtools_clear_timeline"),
-    ssg_page: /* @__PURE__ */ __name((body, options) => deps.appRuntime.ssgApi.renderPage(body, options), "ssg_page"),
-    ssg_render_app: /* @__PURE__ */ __name((componentFn, props, options) => deps.appRuntime.ssgApi.renderAppPage(componentFn, props, options), "ssg_render_app"),
-    ssg_write_page: /* @__PURE__ */ __name((filePath, body, options) => deps.appRuntime.ssgApi.writePage(filePath, body, options), "ssg_write_page"),
-    ssg_write_app: /* @__PURE__ */ __name((filePath, componentFn, props, options) => deps.appRuntime.ssgApi.writeAppPage(filePath, componentFn, props, options), "ssg_write_app"),
-    mountCustomElement: /* @__PURE__ */ __name((host, componentFn, options) => render2.mount_custom_element(host, componentFn, options), "mountCustomElement"),
-    defineCustomElement: /* @__PURE__ */ __name((tagName, componentFn, options) => render2.define_custom_element(tagName, componentFn, options), "defineCustomElement"),
-    children: /* @__PURE__ */ __name((input) => normalizeVNodeChildren(resolveChildrenInput(input)), "children"),
-    slot: /* @__PURE__ */ __name((slotValue, props, fallback = []) => {
+    },
+    testingGetByRoleName: (scope, role, name) => render2.testing_get_by_role_name(scope, role, name),
+    testingQueryAllByRole: (scope, role) => render2.testing_query_all_by_role(scope, role),
+    testingGetByLabel: (scope, label) => render2.testing_get_by_label(scope, label),
+    testingGetByPlaceholder: (scope, placeholder) => render2.testing_get_by_placeholder(scope, placeholder),
+    testingTextContent: (node) => render2.testing_text_content(node),
+    testingClick: (node) => render2.testing_click(node),
+    testingInput: (node, value) => render2.testing_input(node, value),
+    testingChangeChecked: (node, checked) => render2.testing_change_checked(node, checked),
+    testingKeydown: (node, key2, shiftKey) => render2.testing_keydown(node, key2, shiftKey),
+    testingSubmit: (node) => render2.testing_submit(node),
+    testingFlush: () => render2.testing_flush(),
+    testingWaitFor: (check, attempts) => render2.testing_wait_for(check, attempts),
+    devtoolsSnapshot: () => render2.devtools_snapshot(),
+    installDevtools: (key2) => render2.install_devtools(key2),
+    devtoolsRecordEvent: (type, label, detail) => render2.devtools_record_event(type, label, detail),
+    devtoolsTimeline: () => render2.devtools_timeline(),
+    devtoolsClearTimeline: () => render2.devtools_clear_timeline(),
+    ssgPage: (body, options) => render2.ssg_page(body, options),
+    ssgRenderApp: (componentFn, props, options) => render2.ssg_render_app(componentFn, props, options),
+    ssgWritePage: (filePath, body, options) => render2.ssg_write_page(filePath, body, options),
+    ssgWriteApp: (filePath, componentFn, props, options) => render2.ssg_write_app(filePath, componentFn, props, options),
+    devtools_snapshot: () => deps.snapshotDevtools(),
+    install_devtools: (key2) => deps.installLuminaDevtools(key2),
+    devtools_record_event: (type, label, detail) => deps.recordDevtoolsEvent(type, label, detail),
+    devtools_timeline: () => deps.readDevtoolsTimeline(),
+    devtools_clear_timeline: () => deps.clearDevtoolsTimeline(),
+    ssg_page: (body, options) => deps.appRuntime.ssgApi.renderPage(body, options),
+    ssg_render_app: (componentFn, props, options) => deps.appRuntime.ssgApi.renderAppPage(
+      componentFn,
+      props,
+      options
+    ),
+    ssg_write_page: (filePath, body, options) => deps.appRuntime.ssgApi.writePage(filePath, body, options),
+    ssg_write_app: (filePath, componentFn, props, options) => deps.appRuntime.ssgApi.writeAppPage(
+      filePath,
+      componentFn,
+      props,
+      options
+    ),
+    mountCustomElement: (host, componentFn, options) => render2.mount_custom_element(host, componentFn, options),
+    defineCustomElement: (tagName, componentFn, options) => render2.define_custom_element(tagName, componentFn, options),
+    children: (input) => normalizeVNodeChildren(resolveChildrenInput(input)),
+    slot: (slotValue, props, fallback = []) => {
       if (typeof slotValue === "function") {
         return coerceRenderableToVNode(slotValue(props));
       }
@@ -12079,71 +12503,71 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
         return coerceRenderableToVNode(fallback);
       }
       return coerceRenderableToVNode(slotValue);
-    }, "slot"),
-    slot_or: /* @__PURE__ */ __name((slotValue, props, fallback) => render2.slot(slotValue, props, fallback), "slot_or"),
-    compose_handlers: /* @__PURE__ */ __name((left, right) => composeHandlers(left, right), "compose_handlers"),
-    portal: /* @__PURE__ */ __name((target, children2 = []) => vnodePortal(target, children2), "portal"),
-    portal_body: /* @__PURE__ */ __name((children2 = []) => vnodePortal(null, children2), "portal_body"),
+    },
+    slot_or: (slotValue, props, fallback) => render2.slot(slotValue, props, fallback),
+    compose_handlers: (left, right) => composeHandlers(left, right),
+    portal: (target, children2 = []) => vnodePortal(target, children2),
+    portal_body: (children2 = []) => vnodePortal(null, children2),
     ...deps.headlessPrimitiveRender,
-    selectRoot: /* @__PURE__ */ __name((open, value, renderChildren) => render2.select_root(open, value, renderChildren), "selectRoot"),
-    selectPortal: /* @__PURE__ */ __name((children2 = []) => render2.select_portal(children2), "selectPortal"),
-    selectTrigger: /* @__PURE__ */ __name((props, children2 = []) => render2.select_trigger(props, children2), "selectTrigger"),
-    selectContent: /* @__PURE__ */ __name((props, children2 = []) => render2.select_content(props, children2), "selectContent"),
-    selectItem: /* @__PURE__ */ __name((value, props, renderChildren) => render2.select_item(value, props, renderChildren), "selectItem"),
-    selectIndicator: /* @__PURE__ */ __name((props, children2 = []) => render2.select_indicator(props, children2), "selectIndicator"),
-    comboboxRoot: /* @__PURE__ */ __name((open, value, query2, renderChildren) => render2.combobox_root(open, value, query2, renderChildren), "comboboxRoot"),
-    comboboxPortal: /* @__PURE__ */ __name((children2 = []) => render2.combobox_portal(children2), "comboboxPortal"),
-    comboboxInput: /* @__PURE__ */ __name((props, children2 = []) => render2.combobox_input(props, children2), "comboboxInput"),
-    comboboxContent: /* @__PURE__ */ __name((props, children2 = []) => render2.combobox_content(props, children2), "comboboxContent"),
-    comboboxItem: /* @__PURE__ */ __name((value, props, renderChildren) => render2.combobox_item(value, props, renderChildren), "comboboxItem"),
-    comboboxIndicator: /* @__PURE__ */ __name((props, children2 = []) => render2.combobox_indicator(props, children2), "comboboxIndicator"),
-    multiselectRoot: /* @__PURE__ */ __name((open, values, renderChildren) => render2.multiselect_root(open, values, renderChildren), "multiselectRoot"),
-    multiselectPortal: /* @__PURE__ */ __name((children2 = []) => render2.multiselect_portal(children2), "multiselectPortal"),
-    multiselectTrigger: /* @__PURE__ */ __name((props, children2 = []) => render2.multiselect_trigger(props, children2), "multiselectTrigger"),
-    multiselectContent: /* @__PURE__ */ __name((props, children2 = []) => render2.multiselect_content(props, children2), "multiselectContent"),
-    multiselectItem: /* @__PURE__ */ __name((value, props, renderChildren) => render2.multiselect_item(value, props, renderChildren), "multiselectItem"),
-    multiselectIndicator: /* @__PURE__ */ __name((props, children2 = []) => render2.multiselect_indicator(props, children2), "multiselectIndicator"),
-    checkboxRoot: /* @__PURE__ */ __name((checked, props, renderChildren) => render2.checkbox_root(checked, props, renderChildren), "checkboxRoot"),
-    checkboxIndicator: /* @__PURE__ */ __name((props, children2 = []) => render2.checkbox_indicator(props, children2), "checkboxIndicator"),
-    radioGroup: /* @__PURE__ */ __name((value, props, renderChildren) => render2.radio_group(value, props, renderChildren), "radioGroup"),
-    radioItem: /* @__PURE__ */ __name((value, props, renderChildren) => render2.radio_item(value, props, renderChildren), "radioItem"),
-    radioIndicator: /* @__PURE__ */ __name((props, children2 = []) => render2.radio_indicator(props, children2), "radioIndicator"),
-    portalBody: /* @__PURE__ */ __name((children2 = []) => render2.portal_body(children2), "portalBody"),
-    tabsRoot: /* @__PURE__ */ __name((value, renderChildren) => render2.tabs_root(value, renderChildren), "tabsRoot"),
-    tabsList: /* @__PURE__ */ __name((props, renderChildren) => render2.tabs_list(props, renderChildren), "tabsList"),
-    tabsTrigger: /* @__PURE__ */ __name((value, props, children2 = []) => render2.tabs_trigger(value, props, children2), "tabsTrigger"),
-    tabsPanel: /* @__PURE__ */ __name((value, props, children2 = []) => render2.tabs_panel(value, props, children2), "tabsPanel"),
-    dialogRoot: /* @__PURE__ */ __name((open, renderChildren) => render2.dialog_root(open, renderChildren), "dialogRoot"),
-    dialogPortal: /* @__PURE__ */ __name((children2 = []) => render2.dialog_portal(children2), "dialogPortal"),
-    dialogTrigger: /* @__PURE__ */ __name((props, children2 = []) => render2.dialog_trigger(props, children2), "dialogTrigger"),
-    dialogOverlay: /* @__PURE__ */ __name((props) => render2.dialog_overlay(props), "dialogOverlay"),
-    dialogContent: /* @__PURE__ */ __name((props, children2 = []) => render2.dialog_content(props, children2), "dialogContent"),
-    dialogTitle: /* @__PURE__ */ __name((props, children2 = []) => render2.dialog_title(props, children2), "dialogTitle"),
-    dialogDescription: /* @__PURE__ */ __name((props, children2 = []) => render2.dialog_description(props, children2), "dialogDescription"),
-    dialogClose: /* @__PURE__ */ __name((props, children2 = []) => render2.dialog_close(props, children2), "dialogClose"),
-    popoverRoot: /* @__PURE__ */ __name((open, renderChildren) => render2.popover_root(open, renderChildren), "popoverRoot"),
-    popoverPortal: /* @__PURE__ */ __name((children2 = []) => render2.popover_portal(children2), "popoverPortal"),
-    popoverTrigger: /* @__PURE__ */ __name((props, children2 = []) => render2.popover_trigger(props, children2), "popoverTrigger"),
-    popoverContent: /* @__PURE__ */ __name((props, children2 = []) => render2.popover_content(props, children2), "popoverContent"),
-    tooltipRoot: /* @__PURE__ */ __name((open, renderChildren) => render2.tooltip_root(open, renderChildren), "tooltipRoot"),
-    tooltipPortal: /* @__PURE__ */ __name((children2 = []) => render2.tooltip_portal(children2), "tooltipPortal"),
-    tooltipTrigger: /* @__PURE__ */ __name((props, children2 = []) => render2.tooltip_trigger(props, children2), "tooltipTrigger"),
-    tooltipContent: /* @__PURE__ */ __name((props, children2 = []) => render2.tooltip_content(props, children2), "tooltipContent"),
-    menuRoot: /* @__PURE__ */ __name((open, renderChildren) => render2.menu_root(open, renderChildren), "menuRoot"),
-    menuPortal: /* @__PURE__ */ __name((children2 = []) => render2.menu_portal(children2), "menuPortal"),
-    menuTrigger: /* @__PURE__ */ __name((props, children2 = []) => render2.menu_trigger(props, children2), "menuTrigger"),
-    menuContent: /* @__PURE__ */ __name((props, children2 = []) => render2.menu_content(props, children2), "menuContent"),
-    menuItem: /* @__PURE__ */ __name((value, props, children2 = []) => render2.menu_item(value, props, children2), "menuItem"),
-    text: /* @__PURE__ */ __name((value) => vnodeText(value), "text"),
-    live_text: /* @__PURE__ */ __name((signal) => vnodeLiveText(signal), "live_text"),
-    liveText: /* @__PURE__ */ __name((signal) => vnodeLiveText(signal), "liveText"),
-    index_list: /* @__PURE__ */ __name((itemsSignal, renderItem) => vnodeIndexList(itemsSignal, renderItem), "index_list"),
-    indexList: /* @__PURE__ */ __name((itemsSignal, renderItem) => vnodeIndexList(itemsSignal, renderItem), "indexList"),
-    for_list: /* @__PURE__ */ __name((itemsSignal, keyOf, renderItem) => vnodeForList(itemsSignal, keyOf, renderItem), "for_list"),
-    forList: /* @__PURE__ */ __name((itemsSignal, keyOf, renderItem) => vnodeForList(itemsSignal, keyOf, renderItem), "forList"),
-    keyed: /* @__PURE__ */ __name((key2, child) => vnodeKeyed(key2, child), "keyed"),
-    key: /* @__PURE__ */ __name((key2, child) => render2.keyed(key2, child), "key"),
-    element: /* @__PURE__ */ __name((tag, props, children2 = []) => vnodeElement(tag, props, children2), "element"),
+    selectRoot: (open, value, renderChildren) => render2.select_root(open, value, renderChildren),
+    selectPortal: (children2 = []) => render2.select_portal(children2),
+    selectTrigger: (props, children2 = []) => render2.select_trigger(props, children2),
+    selectContent: (props, children2 = []) => render2.select_content(props, children2),
+    selectItem: (value, props, renderChildren) => render2.select_item(value, props, renderChildren),
+    selectIndicator: (props, children2 = []) => render2.select_indicator(props, children2),
+    comboboxRoot: (open, value, query2, renderChildren) => render2.combobox_root(open, value, query2, renderChildren),
+    comboboxPortal: (children2 = []) => render2.combobox_portal(children2),
+    comboboxInput: (props, children2 = []) => render2.combobox_input(props, children2),
+    comboboxContent: (props, children2 = []) => render2.combobox_content(props, children2),
+    comboboxItem: (value, props, renderChildren) => render2.combobox_item(value, props, renderChildren),
+    comboboxIndicator: (props, children2 = []) => render2.combobox_indicator(props, children2),
+    multiselectRoot: (open, values, renderChildren) => render2.multiselect_root(open, values, renderChildren),
+    multiselectPortal: (children2 = []) => render2.multiselect_portal(children2),
+    multiselectTrigger: (props, children2 = []) => render2.multiselect_trigger(props, children2),
+    multiselectContent: (props, children2 = []) => render2.multiselect_content(props, children2),
+    multiselectItem: (value, props, renderChildren) => render2.multiselect_item(value, props, renderChildren),
+    multiselectIndicator: (props, children2 = []) => render2.multiselect_indicator(props, children2),
+    checkboxRoot: (checked, props, renderChildren) => render2.checkbox_root(checked, props, renderChildren),
+    checkboxIndicator: (props, children2 = []) => render2.checkbox_indicator(props, children2),
+    radioGroup: (value, props, renderChildren) => render2.radio_group(value, props, renderChildren),
+    radioItem: (value, props, renderChildren) => render2.radio_item(value, props, renderChildren),
+    radioIndicator: (props, children2 = []) => render2.radio_indicator(props, children2),
+    portalBody: (children2 = []) => render2.portal_body(children2),
+    tabsRoot: (value, renderChildren) => render2.tabs_root(value, renderChildren),
+    tabsList: (props, renderChildren) => render2.tabs_list(props, renderChildren),
+    tabsTrigger: (value, props, children2 = []) => render2.tabs_trigger(value, props, children2),
+    tabsPanel: (value, props, children2 = []) => render2.tabs_panel(value, props, children2),
+    dialogRoot: (open, renderChildren) => render2.dialog_root(open, renderChildren),
+    dialogPortal: (children2 = []) => render2.dialog_portal(children2),
+    dialogTrigger: (props, children2 = []) => render2.dialog_trigger(props, children2),
+    dialogOverlay: (props) => render2.dialog_overlay(props),
+    dialogContent: (props, children2 = []) => render2.dialog_content(props, children2),
+    dialogTitle: (props, children2 = []) => render2.dialog_title(props, children2),
+    dialogDescription: (props, children2 = []) => render2.dialog_description(props, children2),
+    dialogClose: (props, children2 = []) => render2.dialog_close(props, children2),
+    popoverRoot: (open, renderChildren) => render2.popover_root(open, renderChildren),
+    popoverPortal: (children2 = []) => render2.popover_portal(children2),
+    popoverTrigger: (props, children2 = []) => render2.popover_trigger(props, children2),
+    popoverContent: (props, children2 = []) => render2.popover_content(props, children2),
+    tooltipRoot: (open, renderChildren) => render2.tooltip_root(open, renderChildren),
+    tooltipPortal: (children2 = []) => render2.tooltip_portal(children2),
+    tooltipTrigger: (props, children2 = []) => render2.tooltip_trigger(props, children2),
+    tooltipContent: (props, children2 = []) => render2.tooltip_content(props, children2),
+    menuRoot: (open, renderChildren) => render2.menu_root(open, renderChildren),
+    menuPortal: (children2 = []) => render2.menu_portal(children2),
+    menuTrigger: (props, children2 = []) => render2.menu_trigger(props, children2),
+    menuContent: (props, children2 = []) => render2.menu_content(props, children2),
+    menuItem: (value, props, children2 = []) => render2.menu_item(value, props, children2),
+    text: (value) => vnodeText(value),
+    live_text: (signal) => vnodeLiveText(signal),
+    liveText: (signal) => vnodeLiveText(signal),
+    index_list: (itemsSignal, renderItem) => vnodeIndexList(itemsSignal, renderItem),
+    indexList: (itemsSignal, renderItem) => vnodeIndexList(itemsSignal, renderItem),
+    for_list: (itemsSignal, keyOf, renderItem) => vnodeForList(itemsSignal, keyOf, renderItem),
+    forList: (itemsSignal, keyOf, renderItem) => vnodeForList(itemsSignal, keyOf, renderItem),
+    keyed: (key2, child) => vnodeKeyed(key2, child),
+    key: (key2, child) => render2.keyed(key2, child),
+    element: (tag, props, children2 = []) => vnodeElement(tag, props, children2),
     props_empty: propsEmpty,
     props_class: propsClass,
     props_on_click: propsOnClick,
@@ -12164,29 +12588,29 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
     props_on_checked_change: propsOnCheckedChange,
     props_on_submit: propsOnSubmit,
     props_key: propsKey,
-    props_attr: /* @__PURE__ */ __name((name, value) => propsAttr(name, value), "props_attr"),
-    props_when: /* @__PURE__ */ __name((condition, props) => propsWhen(condition, props), "props_when"),
-    props_merge: /* @__PURE__ */ __name((left, right) => mergeProps(left, right), "props_merge"),
-    dom_get_element_by_id: /* @__PURE__ */ __name((id) => {
+    props_attr: (name, value) => propsAttr(name, value),
+    props_when: (condition, props) => propsWhen(condition, props),
+    props_merge: (left, right) => mergeProps(left, right),
+    dom_get_element_by_id: (id) => {
       const doc = globalThis.document;
       if (!doc || typeof doc.getElementById !== "function") return null;
       return doc.getElementById(id);
-    }, "dom_get_element_by_id"),
-    fragment: /* @__PURE__ */ __name((children2 = []) => vnodeFragment(children2), "fragment"),
-    is_vnode: /* @__PURE__ */ __name((value) => isVNode(value), "is_vnode"),
-    serialize: /* @__PURE__ */ __name((node) => serializeVNode(node), "serialize"),
-    parse: /* @__PURE__ */ __name((json2) => parseVNode(json2), "parse"),
-    create_renderer: /* @__PURE__ */ __name((renderer) => deps.coerceRenderer(renderer), "create_renderer"),
-    create_dom_renderer: /* @__PURE__ */ __name((options) => deps.createDomRenderer(options), "create_dom_renderer"),
-    create_ssr_renderer: /* @__PURE__ */ __name(() => deps.createSsrRenderer(), "create_ssr_renderer"),
-    create_canvas_renderer: /* @__PURE__ */ __name((options) => deps.createCanvasRenderer(options), "create_canvas_renderer"),
-    create_terminal_renderer: /* @__PURE__ */ __name(() => deps.createTerminalRenderer(), "create_terminal_renderer"),
-    render_to_string: /* @__PURE__ */ __name((node) => deps.renderToString(node), "render_to_string"),
-    render_to_chunks: /* @__PURE__ */ __name((node) => deps.renderToChunks(node), "render_to_chunks"),
-    render_to_readable_stream: /* @__PURE__ */ __name((node) => deps.renderToReadableStream(node), "render_to_readable_stream"),
-    render_to_terminal: /* @__PURE__ */ __name((node) => deps.renderToTerminal(node), "render_to_terminal"),
-    create_root: /* @__PURE__ */ __name((renderer, container) => new deps.RenderRoot(deps.coerceRenderer(renderer), container), "create_root"),
-    mount: /* @__PURE__ */ __name((renderer, container, node) => {
+    },
+    fragment: (children2 = []) => vnodeFragment(children2),
+    is_vnode: (value) => isVNode(value),
+    serialize: (node) => serializeVNode(node),
+    parse: (json2) => parseVNode(json2),
+    create_renderer: (renderer) => deps.coerceRenderer(renderer),
+    create_dom_renderer: (options) => deps.createDomRenderer(options),
+    create_ssr_renderer: () => deps.createSsrRenderer(),
+    create_canvas_renderer: (options) => deps.createCanvasRenderer(options),
+    create_terminal_renderer: () => deps.createTerminalRenderer(),
+    render_to_string: (node) => deps.renderToString(node),
+    render_to_chunks: (node) => deps.renderToChunks(node),
+    render_to_readable_stream: (node) => deps.renderToReadableStream(node),
+    render_to_terminal: (node) => deps.renderToTerminal(node),
+    create_root: (renderer, container) => new deps.RenderRoot(deps.coerceRenderer(renderer), container),
+    mount: (renderer, container, node) => {
       if (container == null) return deps.renderError("Render container is required");
       const root = new deps.RenderRoot(deps.coerceRenderer(renderer), container);
       try {
@@ -12195,8 +12619,8 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return deps.renderError(deps.toRenderErrorMessage(error));
       }
-    }, "mount"),
-    hydrate: /* @__PURE__ */ __name((renderer, container, node) => {
+    },
+    hydrate: (renderer, container, node) => {
       if (container == null) return deps.renderError("Render container is required");
       const root = new deps.RenderRoot(deps.coerceRenderer(renderer), container);
       try {
@@ -12205,66 +12629,82 @@ var createRenderApi = /* @__PURE__ */ __name((deps) => {
       } catch (error) {
         return deps.renderError(deps.toRenderErrorMessage(error));
       }
-    }, "hydrate"),
-    mount_reactive: /* @__PURE__ */ __name((renderer, container, view) => deps.mountReactiveView(renderer, container, view), "mount_reactive"),
-    hydrate_reactive: /* @__PURE__ */ __name((renderer, container, view) => deps.hydrateReactiveView(renderer, container, view), "hydrate_reactive"),
-    mount_app: /* @__PURE__ */ __name((renderer, container, componentFn, props) => deps.appRuntime.mountReactiveApp(renderer, container, componentFn, props), "mount_app"),
-    hydrate_app: /* @__PURE__ */ __name((renderer, container, componentFn, props) => deps.appRuntime.hydrateReactiveApp(renderer, container, componentFn, props), "hydrate_app"),
-    testing_create_dom_harness: /* @__PURE__ */ __name(() => deps.appRuntime.testingFacade.testing_create_dom_harness(), "testing_create_dom_harness"),
-    testing_mount_app: /* @__PURE__ */ __name((harness, componentFn, props) => deps.appRuntime.testingFacade.testing_mount_app(harness, componentFn, props), "testing_mount_app"),
-    testing_hydrate_app: /* @__PURE__ */ __name((harness, componentFn, props) => deps.appRuntime.testingFacade.testing_hydrate_app(harness, componentFn, props), "testing_hydrate_app"),
-    testing_container: /* @__PURE__ */ __name((harness) => deps.appRuntime.testingFacade.testing_container(harness), "testing_container"),
-    testing_body: /* @__PURE__ */ __name((harness) => deps.appRuntime.testingFacade.testing_body(harness), "testing_body"),
-    testing_get_by_id: /* @__PURE__ */ __name((harness, id) => deps.appRuntime.testingFacade.testing_get_by_id(harness, id), "testing_get_by_id"),
-    testing_get_by_text: /* @__PURE__ */ __name((scope, value) => deps.appRuntime.testingFacade.testing_get_by_text(scope, value), "testing_get_by_text"),
-    testing_get_by_role_name: /* @__PURE__ */ __name((scope, role, name) => deps.appRuntime.testingFacade.testing_get_by_role_name(scope, role, name), "testing_get_by_role_name"),
-    testing_query_all_by_role: /* @__PURE__ */ __name((scope, role) => deps.appRuntime.testingFacade.testing_query_all_by_role(scope, role), "testing_query_all_by_role"),
-    testing_get_by_label: /* @__PURE__ */ __name((scope, label) => deps.appRuntime.testingFacade.testing_get_by_label(scope, label), "testing_get_by_label"),
-    testing_get_by_placeholder: /* @__PURE__ */ __name((scope, placeholder) => deps.appRuntime.testingFacade.testing_get_by_placeholder(scope, placeholder), "testing_get_by_placeholder"),
-    testing_text_content: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_text_content(node), "testing_text_content"),
-    testing_click: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_click(node), "testing_click"),
-    testing_input: /* @__PURE__ */ __name((node, value) => deps.appRuntime.testingFacade.testing_input(node, value), "testing_input"),
-    testing_change_checked: /* @__PURE__ */ __name((node, checked) => deps.appRuntime.testingFacade.testing_change_checked(node, checked), "testing_change_checked"),
-    testing_keydown: /* @__PURE__ */ __name((node, key2, shiftKey) => deps.appRuntime.testingFacade.testing_keydown(node, key2, shiftKey), "testing_keydown"),
-    testing_submit: /* @__PURE__ */ __name((node) => deps.appRuntime.testingFacade.testing_submit(node), "testing_submit"),
-    testing_flush: /* @__PURE__ */ __name(() => deps.appRuntime.testingFacade.testing_flush(), "testing_flush"),
-    testing_wait_for: /* @__PURE__ */ __name((check, attempts) => deps.appRuntime.testingFacade.testing_wait_for(check, attempts), "testing_wait_for"),
-    mount_custom_element: /* @__PURE__ */ __name((host, componentFn, options) => deps.appRuntime.mountCustomElementInternal(host, componentFn, options), "mount_custom_element"),
-    define_custom_element: /* @__PURE__ */ __name((tagName, componentFn, options) => deps.appRuntime.defineCustomElementInternal(tagName, componentFn, options), "define_custom_element"),
-    update: /* @__PURE__ */ __name((root, node) => {
+    },
+    mount_reactive: (renderer, container, view) => deps.mountReactiveView(renderer, container, view),
+    hydrate_reactive: (renderer, container, view) => deps.hydrateReactiveView(renderer, container, view),
+    mount_app: (renderer, container, componentFn, props) => deps.appRuntime.mountReactiveApp(renderer, container, componentFn, props),
+    hydrate_app: (renderer, container, componentFn, props) => deps.appRuntime.hydrateReactiveApp(renderer, container, componentFn, props),
+    testing_create_dom_harness: () => deps.appRuntime.testingFacade.testing_create_dom_harness(),
+    testing_mount_app: (harness, componentFn, props) => deps.appRuntime.testingFacade.testing_mount_app(
+      harness,
+      componentFn,
+      props
+    ),
+    testing_hydrate_app: (harness, componentFn, props) => deps.appRuntime.testingFacade.testing_hydrate_app(
+      harness,
+      componentFn,
+      props
+    ),
+    testing_container: (harness) => deps.appRuntime.testingFacade.testing_container(harness),
+    testing_body: (harness) => deps.appRuntime.testingFacade.testing_body(harness),
+    testing_get_by_id: (harness, id) => deps.appRuntime.testingFacade.testing_get_by_id(harness, id),
+    testing_get_by_text: (scope, value) => deps.appRuntime.testingFacade.testing_get_by_text(scope, value),
+    testing_get_by_role_name: (scope, role, name) => deps.appRuntime.testingFacade.testing_get_by_role_name(scope, role, name),
+    testing_query_all_by_role: (scope, role) => deps.appRuntime.testingFacade.testing_query_all_by_role(scope, role),
+    testing_get_by_label: (scope, label) => deps.appRuntime.testingFacade.testing_get_by_label(scope, label),
+    testing_get_by_placeholder: (scope, placeholder) => deps.appRuntime.testingFacade.testing_get_by_placeholder(scope, placeholder),
+    testing_text_content: (node) => deps.appRuntime.testingFacade.testing_text_content(node),
+    testing_click: (node) => deps.appRuntime.testingFacade.testing_click(node),
+    testing_input: (node, value) => deps.appRuntime.testingFacade.testing_input(node, value),
+    testing_change_checked: (node, checked) => deps.appRuntime.testingFacade.testing_change_checked(node, checked),
+    testing_keydown: (node, key2, shiftKey) => deps.appRuntime.testingFacade.testing_keydown(node, key2, shiftKey),
+    testing_submit: (node) => deps.appRuntime.testingFacade.testing_submit(node),
+    testing_flush: () => deps.appRuntime.testingFacade.testing_flush(),
+    testing_wait_for: (check, attempts) => deps.appRuntime.testingFacade.testing_wait_for(check, attempts),
+    mount_custom_element: (host, componentFn, options) => deps.appRuntime.mountCustomElementInternal(
+      host,
+      componentFn,
+      options
+    ),
+    define_custom_element: (tagName, componentFn, options) => deps.appRuntime.defineCustomElementInternal(
+      tagName,
+      componentFn,
+      options
+    ),
+    update: (root, node) => {
       if (!root || typeof root !== "object") return;
       if (typeof root.update !== "function") return;
       try {
         root.update(node);
       } catch {
       }
-    }, "update"),
-    unmount: /* @__PURE__ */ __name((root) => {
+    },
+    unmount: (root) => {
       if (!isUnmountableLike(root)) return;
       try {
         root.unmount();
       } catch {
       }
-    }, "unmount"),
-    dispose_reactive: /* @__PURE__ */ __name((root) => {
+    },
+    dispose_reactive: (root) => {
       if (!isDisposableLike(root)) return;
       try {
         root.dispose();
       } catch {
       }
-    }, "dispose_reactive")
+    }
   };
   return render2;
-}, "createRenderApi");
+};
 
 // src/runtime/transition-runtime.ts
-var clearTimerHandle2 = /* @__PURE__ */ __name((handle) => {
+var clearTimerHandle2 = (handle) => {
   if (handle !== null && handle !== void 0) {
     clearTimeout(handle);
   }
-}, "clearTimerHandle");
-var createTransitionRuntime = /* @__PURE__ */ __name((hooks) => ({
-  transitionPresence: /* @__PURE__ */ __name((open, props, durationMs, children2) => {
+};
+var createTransitionRuntime = (hooks) => ({
+  transitionPresence: (open, props, durationMs, children2) => {
     const mounted = hooks.state(open.peek());
     const phase = hooks.state(open.peek() ? "entered" : "hidden");
     const refs = hooks.remember(() => ({
@@ -12320,16 +12760,16 @@ var createTransitionRuntime = /* @__PURE__ */ __name((hooks) => ({
       "data-transition-duration": String(durationMs)
     });
     return hooks.element("div", currentProps, hooks.resolveChildrenInput(children2));
-  }, "transitionPresence")
-}), "createTransitionRuntime");
+  }
+});
 
 // src/runtime/webgpu-runtime.ts
-var getWebGpu = /* @__PURE__ */ __name(() => {
+var getWebGpu = () => {
   const nav = globalThis.navigator;
   const gpu = nav?.gpu;
   if (!gpu || typeof gpu.requestAdapter !== "function") return null;
   return gpu;
-}, "getWebGpu");
+};
 var WEBGPU_BUFFER_USAGE = {
   MAP_READ: 1,
   MAP_WRITE: 2,
@@ -12344,7 +12784,7 @@ var WEBGPU_MAP_MODE = {
   READ: 1,
   WRITE: 2
 };
-var normalizeElementType = /* @__PURE__ */ __name((typeHint) => {
+var normalizeElementType = (typeHint) => {
   const value = String(typeHint ?? "i32").toLowerCase();
   switch (value) {
     case "u32":
@@ -12359,8 +12799,8 @@ var normalizeElementType = /* @__PURE__ */ __name((typeHint) => {
     default:
       return "i32";
   }
-}, "normalizeElementType");
-var elementSize = /* @__PURE__ */ __name((elementType) => {
+};
+var elementSize = (elementType) => {
   switch (elementType) {
     case "u8":
       return 1;
@@ -12372,15 +12812,15 @@ var elementSize = /* @__PURE__ */ __name((elementType) => {
     default:
       return 4;
   }
-}, "elementSize");
-var inferElementType = /* @__PURE__ */ __name((data) => {
+};
+var inferElementType = (data) => {
   if (data instanceof Uint8Array) return "u8";
   if (data instanceof Uint32Array) return "u32";
   if (data instanceof Float32Array) return "f32";
   if (data instanceof Float64Array) return "f64";
   return "i32";
-}, "inferElementType");
-var numberArrayToView = /* @__PURE__ */ __name((values, elementType) => {
+};
+var numberArrayToView = (values, elementType) => {
   switch (elementType) {
     case "u8":
       return Uint8Array.from(values.map((value) => Math.trunc(value) & 255));
@@ -12394,29 +12834,21 @@ var numberArrayToView = /* @__PURE__ */ __name((values, elementType) => {
     default:
       return Int32Array.from(values.map((value) => Math.trunc(value) | 0));
   }
-}, "numberArrayToView");
-var toTypedArray = /* @__PURE__ */ __name((data, typeHint) => {
+};
+var toTypedArray = (data, typeHint) => {
   if (ArrayBuffer.isView(data) && !(data instanceof DataView)) {
     const view2 = data;
     const elementType2 = inferElementType(view2);
     const elementCount2 = Math.max(0, Math.floor(view2.byteLength / elementSize(elementType2)));
-    return {
-      view: view2,
-      elementType: elementType2,
-      elementCount: elementCount2
-    };
+    return { view: view2, elementType: elementType2, elementCount: elementCount2 };
   }
   const elementType = normalizeElementType(typeHint);
   const source = Array.isArray(data) ? data.map((value) => Number(value)) : [];
   const view = numberArrayToView(source, elementType);
   const elementCount = Math.max(0, Math.floor(view.byteLength / elementSize(elementType)));
-  return {
-    view,
-    elementType,
-    elementCount
-  };
-}, "toTypedArray");
-var readTypedArray = /* @__PURE__ */ __name((buffer, elementType, elementCount) => {
+  return { view, elementType, elementCount };
+};
+var readTypedArray = (buffer, elementType, elementCount) => {
   const maxCount = Math.max(0, elementCount);
   switch (elementType) {
     case "u8":
@@ -12431,37 +12863,37 @@ var readTypedArray = /* @__PURE__ */ __name((buffer, elementType, elementCount) 
     default:
       return Array.from(new Int32Array(buffer).subarray(0, maxCount));
   }
-}, "readTypedArray");
-var resolveWebGpuDevice = /* @__PURE__ */ __name((device) => {
+};
+var resolveWebGpuDevice = (device) => {
   if (device && typeof device.createBuffer === "function") {
     return device;
   }
   return null;
-}, "resolveWebGpuDevice");
-var alignTo4 = /* @__PURE__ */ __name((value) => {
+};
+var alignTo4 = (value) => {
   const v = Math.max(4, Math.trunc(value));
   const mod = v % 4;
   return mod === 0 ? v : v + (4 - mod);
-}, "alignTo4");
-var hasWgslStageEntryPoint = /* @__PURE__ */ __name((source, stage, entryPoint) => {
+};
+var hasWgslStageEntryPoint = (source, stage, entryPoint) => {
   const escaped = entryPoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`@${stage}[\\s\\S]*\\bfn\\s+${escaped}\\s*\\(`, "m");
   return pattern.test(source);
-}, "hasWgslStageEntryPoint");
-var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumLike: isEnumLike2, getEnumTag: getEnumTag2, getEnumPayload: getEnumPayload2 }) => {
+};
+var createWebGpuRuntime = ({ resultOk, resultErr, isEnumLike: isEnumLike2, getEnumTag: getEnumTag2, getEnumPayload: getEnumPayload2 }) => {
   let webgpuNextHandle = 1;
   const webgpuBuffers = /* @__PURE__ */ new Map();
   const webgpuPipelines = /* @__PURE__ */ new Map();
   const webgpuCanvases = /* @__PURE__ */ new Map();
-  const newWebGpuHandle = /* @__PURE__ */ __name(() => {
+  const newWebGpuHandle = () => {
     const handle = webgpuNextHandle;
     webgpuNextHandle += 1;
     return handle;
-  }, "newWebGpuHandle");
-  const formatError2 = /* @__PURE__ */ __name((error) => {
+  };
+  const formatError2 = (error) => {
     if (error instanceof Error && error.message) return error.message;
     return String(error);
-  }, "formatError");
+  };
   const webgpu2 = {
     GPU_BUFFER_USAGE_STORAGE: WEBGPU_BUFFER_USAGE.STORAGE,
     GPU_BUFFER_USAGE_UNIFORM: WEBGPU_BUFFER_USAGE.UNIFORM,
@@ -12469,8 +12901,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
     GPU_BUFFER_USAGE_INDEX: WEBGPU_BUFFER_USAGE.INDEX,
     GPU_BUFFER_USAGE_COPY_SRC: WEBGPU_BUFFER_USAGE.COPY_SRC,
     GPU_BUFFER_USAGE_COPY_DST: WEBGPU_BUFFER_USAGE.COPY_DST,
-    is_available: /* @__PURE__ */ __name(() => getWebGpu() !== null, "is_available"),
-    request_adapter: /* @__PURE__ */ __name(async () => {
+    is_available: () => getWebGpu() !== null,
+    request_adapter: async () => {
       try {
         const gpu = getWebGpu();
         if (!gpu) return resultErr("WebGPU is not available in this environment");
@@ -12480,8 +12912,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "request_adapter"),
-    request_device: /* @__PURE__ */ __name(async (adapter) => {
+    },
+    request_device: async (adapter) => {
       try {
         const source = adapter ?? null;
         const resolved = source && typeof source.requestDevice === "function" ? source : await webgpu2.request_adapter();
@@ -12495,8 +12927,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "request_device"),
-    buffer_create: /* @__PURE__ */ __name((device, size, usage) => {
+    },
+    buffer_create: (device, size, usage) => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         if (!resolvedDevice) return resultErr("Invalid WebGPU device");
@@ -12520,8 +12952,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "buffer_create"),
-    buffer_write: /* @__PURE__ */ __name((device, bufferHandle, data, offset = 0, typeHint = "i32") => {
+    },
+    buffer_write: (device, bufferHandle, data, offset = 0, typeHint = "i32") => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         const entry = webgpuBuffers.get(Math.trunc(bufferHandle));
@@ -12538,8 +12970,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "buffer_write"),
-    buffer_read: /* @__PURE__ */ __name(async (device, bufferHandle, size, typeHint = "i32") => {
+    },
+    buffer_read: async (device, bufferHandle, size, typeHint = "i32") => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         const entry = webgpuBuffers.get(Math.trunc(bufferHandle));
@@ -12555,9 +12987,7 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
         });
         const encoder = readDevice.createCommandEncoder();
         encoder.copyBufferToBuffer(entry.buffer, 0, readBuffer, 0, bytes);
-        readDevice.queue.submit([
-          encoder.finish()
-        ]);
+        readDevice.queue.submit([encoder.finish()]);
         if (typeof readDevice.queue.onSubmittedWorkDone === "function") {
           await readDevice.queue.onSubmittedWorkDone();
         }
@@ -12575,14 +13005,14 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "buffer_read"),
-    buffer_destroy: /* @__PURE__ */ __name((bufferHandle) => {
+    },
+    buffer_destroy: (bufferHandle) => {
       const entry = webgpuBuffers.get(Math.trunc(bufferHandle));
       if (!entry) return;
       entry.buffer.destroy?.();
       webgpuBuffers.delete(Math.trunc(bufferHandle));
-    }, "buffer_destroy"),
-    uniform_create: /* @__PURE__ */ __name((device, data, typeHint = "f32") => {
+    },
+    uniform_create: (device, data, typeHint = "f32") => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         if (!resolvedDevice) return resultErr("Invalid WebGPU device");
@@ -12608,16 +13038,16 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "uniform_create"),
-    uniform_update: /* @__PURE__ */ __name((device, uniformHandle, data, typeHint = "f32") => {
+    },
+    uniform_update: (device, uniformHandle, data, typeHint = "f32") => {
       const entry = webgpuBuffers.get(Math.trunc(uniformHandle));
       if (!entry || entry.kind !== "uniform") return resultErr(`Unknown WebGPU uniform handle ${uniformHandle}`);
       return webgpu2.buffer_write(device, uniformHandle, data, 0, typeHint);
-    }, "uniform_update"),
-    uniform_destroy: /* @__PURE__ */ __name((uniformHandle) => {
+    },
+    uniform_destroy: (uniformHandle) => {
       webgpu2.buffer_destroy(uniformHandle);
-    }, "uniform_destroy"),
-    vertex_buffer: /* @__PURE__ */ __name((device, data, typeHint = "f32") => {
+    },
+    vertex_buffer: (device, data, typeHint = "f32") => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         if (!resolvedDevice) return resultErr("Invalid WebGPU device");
@@ -12643,8 +13073,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "vertex_buffer"),
-    index_buffer: /* @__PURE__ */ __name((device, data, typeHint = "u32") => {
+    },
+    index_buffer: (device, data, typeHint = "u32") => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         if (!resolvedDevice) return resultErr("Invalid WebGPU device");
@@ -12670,14 +13100,14 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "index_buffer"),
-    vertex_buffer_destroy: /* @__PURE__ */ __name((handle) => {
+    },
+    vertex_buffer_destroy: (handle) => {
       webgpu2.buffer_destroy(handle);
-    }, "vertex_buffer_destroy"),
-    index_buffer_destroy: /* @__PURE__ */ __name((handle) => {
+    },
+    index_buffer_destroy: (handle) => {
       webgpu2.buffer_destroy(handle);
-    }, "index_buffer_destroy"),
-    canvas: /* @__PURE__ */ __name((selector) => {
+    },
+    canvas: (selector) => {
       try {
         const documentRef = globalThis.document;
         if (!documentRef || typeof documentRef.querySelector !== "function") {
@@ -12705,11 +13135,11 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "canvas"),
-    canvas_destroy: /* @__PURE__ */ __name((canvasHandle) => {
+    },
+    canvas_destroy: (canvasHandle) => {
       webgpuCanvases.delete(Math.trunc(canvasHandle));
-    }, "canvas_destroy"),
-    present: /* @__PURE__ */ __name((device, canvasHandle, _pipelineHandle) => {
+    },
+    present: (device, canvasHandle, _pipelineHandle) => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         if (!resolvedDevice) return resultErr("Invalid WebGPU device");
@@ -12731,8 +13161,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "present"),
-    render_pipeline: /* @__PURE__ */ __name(async (device, config) => {
+    },
+    render_pipeline: async (device, config) => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         if (!resolvedDevice) return resultErr("Invalid WebGPU device");
@@ -12745,12 +13175,8 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
         if (!hasWgslStageEntryPoint(fragmentShader, "fragment", "main")) {
           return resultErr("Invalid WGSL fragment shader: expected @fragment fn main(...)");
         }
-        const vertexModule = resolvedDevice.createShaderModule({
-          code: vertexShader
-        });
-        const fragmentModule = resolvedDevice.createShaderModule({
-          code: fragmentShader
-        });
+        const vertexModule = resolvedDevice.createShaderModule({ code: vertexShader });
+        const fragmentModule = resolvedDevice.createShaderModule({ code: fragmentShader });
         const vertexLayouts = Array.isArray(config?.vertex_layout) ? config.vertex_layout : [];
         const buffers = vertexLayouts.length ? vertexLayouts.map((layout) => ({
           arrayStride: Math.max(0, Math.trunc(layout.stride)),
@@ -12764,19 +13190,11 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
         })) : [];
         const descriptor = {
           layout: "auto",
-          vertex: {
-            module: vertexModule,
-            entryPoint: "main",
-            buffers
-          },
+          vertex: { module: vertexModule, entryPoint: "main", buffers },
           fragment: {
             module: fragmentModule,
             entryPoint: "main",
-            targets: [
-              {
-                format: String(config?.format ?? "bgra8unorm")
-              }
-            ]
+            targets: [{ format: String(config?.format ?? "bgra8unorm") }]
           },
           primitive: {
             topology: String(config?.topology ?? "triangle-list")
@@ -12801,11 +13219,11 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "render_pipeline"),
-    render_pipeline_destroy: /* @__PURE__ */ __name((pipelineHandle) => {
+    },
+    render_pipeline_destroy: (pipelineHandle) => {
       webgpuPipelines.delete(Math.trunc(pipelineHandle));
-    }, "render_pipeline_destroy"),
-    render_frame: /* @__PURE__ */ __name((device, pipelineHandle, config) => {
+    },
+    render_frame: (device, pipelineHandle, config) => {
       try {
         const resolvedDevice = resolveWebGpuDevice(device);
         if (!resolvedDevice) return resultErr("Invalid WebGPU device");
@@ -12866,16 +13284,14 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
           pass.draw?.(drawCount, 1, 0, 0);
         }
         pass.end();
-        resolvedDevice.queue.submit([
-          encoder.finish()
-        ]);
+        resolvedDevice.queue.submit([encoder.finish()]);
         canvasEntry.hasSubmittedFrame = true;
         return webgpu2.present(resolvedDevice, canvasEntry.id, pipelineHandle);
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "render_frame"),
-    compute: /* @__PURE__ */ __name(async (wgsl, entryPoint, input, outputLength, workgroupSize = 64, typeHint = "i32") => {
+    },
+    compute: async (wgsl, entryPoint, input, outputLength, workgroupSize = 64, typeHint = "i32") => {
       try {
         const deviceResult = await webgpu2.request_device(null);
         if (isEnumLike2(deviceResult) && getEnumTag2(deviceResult) === "Err") return deviceResult;
@@ -12891,9 +13307,7 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
         if (!hasWgslStageEntryPoint(shaderSource, "compute", String(entryPoint))) {
           return resultErr(`Invalid WGSL compute shader: expected @compute fn ${String(entryPoint)}(...)`);
         }
-        const shaderModule = device.createShaderModule({
-          code: shaderSource
-        });
+        const shaderModule = device.createShaderModule({ code: shaderSource });
         const inputBuffer = device.createBuffer({
           size: inBytes,
           usage: WEBGPU_BUFFER_USAGE.STORAGE | WEBGPU_BUFFER_USAGE.COPY_DST
@@ -12909,32 +13323,16 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
         device.queue.writeBuffer(inputBuffer, 0, typedInput.view, 0, typedInput.view.byteLength);
         const pipeline = device.createComputePipelineAsync ? await device.createComputePipelineAsync({
           layout: "auto",
-          compute: {
-            module: shaderModule,
-            entryPoint: String(entryPoint)
-          }
+          compute: { module: shaderModule, entryPoint: String(entryPoint) }
         }) : device.createComputePipeline({
           layout: "auto",
-          compute: {
-            module: shaderModule,
-            entryPoint: String(entryPoint)
-          }
+          compute: { module: shaderModule, entryPoint: String(entryPoint) }
         });
         const bindGroup = device.createBindGroup({
           layout: pipeline.getBindGroupLayout(0),
           entries: [
-            {
-              binding: 0,
-              resource: {
-                buffer: inputBuffer
-              }
-            },
-            {
-              binding: 1,
-              resource: {
-                buffer: outputBuffer
-              }
-            }
+            { binding: 0, resource: { buffer: inputBuffer } },
+            { binding: 1, resource: { buffer: outputBuffer } }
           ]
         });
         const encoder = device.createCommandEncoder();
@@ -12944,9 +13342,7 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
         pass.dispatchWorkgroups(dispatchCount, 1, 1);
         pass.end();
         encoder.copyBufferToBuffer(outputBuffer, 0, readBuffer, 0, outBytes);
-        device.queue.submit([
-          encoder.finish()
-        ]);
+        device.queue.submit([encoder.finish()]);
         if (typeof device.queue.onSubmittedWorkDone === "function") {
           await device.queue.onSubmittedWorkDone();
         }
@@ -12964,19 +13360,19 @@ var createWebGpuRuntime = /* @__PURE__ */ __name(({ resultOk, resultErr, isEnumL
       } catch (error) {
         return resultErr(formatError2(error));
       }
-    }, "compute"),
-    compute_i32: /* @__PURE__ */ __name(async (wgsl, entryPoint, input, outputLength, workgroupSize = 64) => webgpu2.compute(wgsl, entryPoint, input, outputLength, workgroupSize, "i32"), "compute_i32"),
-    __debug_counts: /* @__PURE__ */ __name(() => ({
+    },
+    compute_i32: async (wgsl, entryPoint, input, outputLength, workgroupSize = 64) => webgpu2.compute(wgsl, entryPoint, input, outputLength, workgroupSize, "i32"),
+    __debug_counts: () => ({
       buffers: webgpuBuffers.size,
       pipelines: webgpuPipelines.size,
       canvases: webgpuCanvases.size
-    }), "__debug_counts")
+    })
   };
   return webgpu2;
-}, "createWebGpuRuntime");
+};
 
 // src/runtime/render-targets.ts
-var resolveCanvasContext = /* @__PURE__ */ __name((container, options) => {
+var resolveCanvasContext = (container, options) => {
   if (options?.context) return options.context;
   if (container && typeof container === "object") {
     const maybeContext = container;
@@ -12990,8 +13386,8 @@ var resolveCanvasContext = /* @__PURE__ */ __name((container, options) => {
     }
   }
   throw new Error("Canvas renderer requires a 2D context or canvas");
-}, "resolveCanvasContext");
-var setTerminalOutput = /* @__PURE__ */ __name((container, text2) => {
+};
+var setTerminalOutput = (container, text2) => {
   if (!container || typeof container !== "object") return;
   const sink = container;
   if (typeof sink.write === "function") {
@@ -13007,9 +13403,9 @@ var setTerminalOutput = /* @__PURE__ */ __name((container, text2) => {
     return;
   }
   sink.output = text2;
-}, "setTerminalOutput");
-var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
-  const drawCanvasNode = /* @__PURE__ */ __name((ctx, node, state2) => {
+};
+var createRenderTargetsRuntime = (deps) => {
+  const drawCanvasNode = (ctx, node, state2) => {
     const kind = deps.getKind(node);
     if (kind === "text") {
       if (ctx.fillText) ctx.fillText(deps.getText(node) ?? "", state2.x, state2.y);
@@ -13022,30 +13418,21 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
     if (kind === "index_list") {
       let y2 = state2.y;
       for (const child of deps.materializeIndexListChildren(node, false)) {
-        y2 = drawCanvasNode(ctx, child, {
-          ...state2,
-          y: y2
-        });
+        y2 = drawCanvasNode(ctx, child, { ...state2, y: y2 });
       }
       return y2;
     }
     if (kind === "for_list") {
       let y2 = state2.y;
       for (const child of deps.materializeForListChildren(node, false)) {
-        y2 = drawCanvasNode(ctx, child, {
-          ...state2,
-          y: y2
-        });
+        y2 = drawCanvasNode(ctx, child, { ...state2, y: y2 });
       }
       return y2;
     }
     if (kind === "fragment" || kind === "portal") {
       let y2 = state2.y;
       for (const child of deps.getChildren(node)) {
-        y2 = drawCanvasNode(ctx, child, {
-          ...state2,
-          y: y2
-        });
+        y2 = drawCanvasNode(ctx, child, { ...state2, y: y2 });
       }
       return y2;
     }
@@ -13084,25 +13471,18 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
     }
     let y = state2.y;
     for (const child of deps.getChildren(node)) {
-      y = drawCanvasNode(ctx, child, {
-        ...state2,
-        y
-      });
+      y = drawCanvasNode(ctx, child, { ...state2, y });
     }
     return y;
-  }, "drawCanvasNode");
-  const renderNodeToTerminalLines = /* @__PURE__ */ __name((node, depth = 0) => {
+  };
+  const renderNodeToTerminalLines = (node, depth = 0) => {
     const indent = "  ".repeat(depth);
     const kind = deps.getKind(node);
     if (kind === "text") {
-      return [
-        `${indent}${deps.getText(node) ?? ""}`
-      ];
+      return [`${indent}${deps.getText(node) ?? ""}`];
     }
     if (kind === "live_text") {
-      return [
-        `${indent}${String(deps.getSignalValue(node) ?? "")}`
-      ];
+      return [`${indent}${String(deps.getSignalValue(node) ?? "")}`];
     }
     if (kind === "index_list") {
       return deps.materializeIndexListChildren(node, false).flatMap((child) => renderNodeToTerminalLines(child, depth));
@@ -13117,14 +13497,10 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
     const head = `${indent}<${tag}>`;
     const children2 = deps.getChildren(node).flatMap((child) => renderNodeToTerminalLines(child, depth + 1));
     const tail = `${indent}</${tag}>`;
-    return [
-      head,
-      ...children2,
-      tail
-    ];
-  }, "renderNodeToTerminalLines");
-  const renderToTerminal2 = /* @__PURE__ */ __name((node) => renderNodeToTerminalLines(node).join("\n"), "renderToTerminal");
-  const createCanvasRenderer2 = /* @__PURE__ */ __name((options) => {
+    return [head, ...children2, tail];
+  };
+  const renderToTerminal2 = (node) => renderNodeToTerminalLines(node).join("\n");
+  const createCanvasRenderer2 = (options) => {
     let context = options?.context ?? null;
     return {
       mount(node, container) {
@@ -13134,11 +13510,7 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
         if (options?.clear !== false && context.clearRect) {
           context.clearRect(0, 0, width, height);
         }
-        drawCanvasNode(context, node, {
-          x: 8,
-          y: 20,
-          lineHeight: 20
-        });
+        drawCanvasNode(context, node, { x: 8, y: 20, lineHeight: 20 });
       },
       patch(_prev, next, container) {
         const ctx = context ?? resolveCanvasContext(container, options);
@@ -13148,11 +13520,7 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
         if (options?.clear !== false && ctx.clearRect) {
           ctx.clearRect(0, 0, width, height);
         }
-        drawCanvasNode(ctx, next, {
-          x: 8,
-          y: 20,
-          lineHeight: 20
-        });
+        drawCanvasNode(ctx, next, { x: 8, y: 20, lineHeight: 20 });
       },
       unmount(container) {
         const ctx = context ?? resolveCanvasContext(container, options);
@@ -13162,8 +13530,8 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
         context = null;
       }
     };
-  }, "createCanvasRenderer");
-  const createTerminalRenderer2 = /* @__PURE__ */ __name(() => ({
+  };
+  const createTerminalRenderer2 = () => ({
     mount(node, container) {
       setTerminalOutput(container, renderToTerminal2(node));
     },
@@ -13176,13 +13544,13 @@ var createRenderTargetsRuntime = /* @__PURE__ */ __name((deps) => {
     unmount(container) {
       setTerminalOutput(container, "");
     }
-  }), "createTerminalRenderer");
+  });
   return {
     createCanvasRenderer: createCanvasRenderer2,
     createTerminalRenderer: createTerminalRenderer2,
     renderToTerminal: renderToTerminal2
   };
-}, "createRenderTargetsRuntime");
+};
 
 // src/lumina-runtime.ts
 var coreRuntime = createCoreRuntime({
@@ -13196,15 +13564,15 @@ var Option2 = coreRuntime.Option;
 var Result = coreRuntime.Result;
 var systemRuntime = createSystemRuntime({
   formatValue,
-  getOption: /* @__PURE__ */ __name(() => Option2, "getOption"),
-  getResult: /* @__PURE__ */ __name(() => Result, "getResult"),
+  getOption: () => Option2,
+  getResult: () => Result,
   isEnumLike,
   getEnumTag,
   getEnumPayload
 });
 configureCollectionsRuntime({
-  getOption: /* @__PURE__ */ __name(() => Option2, "getOption"),
-  timeSleep: /* @__PURE__ */ __name((ms) => systemRuntime.time.sleep(ms), "timeSleep")
+  getOption: () => Option2,
+  timeSleep: (ms) => systemRuntime.time.sleep(ms)
 });
 var toJsonString = systemRuntime.toJsonString;
 var io = systemRuntime.io;
@@ -13221,16 +13589,16 @@ var time = systemRuntime.time;
 var regex = systemRuntime.regex;
 var crypto = systemRuntime.crypto;
 var channel = createChannelRuntime({
-  getOption: /* @__PURE__ */ __name(() => Option2, "getOption"),
-  getResult: /* @__PURE__ */ __name(() => Result, "getResult"),
+  getOption: () => Option2,
+  getResult: () => Result,
   isEnumLike,
   getEnumTag
 });
 var async_channel = channel;
 var concurrencyRuntime = createConcurrencyRuntime({
-  getOption: /* @__PURE__ */ __name(() => Option2, "getOption"),
-  getResult: /* @__PURE__ */ __name(() => Result, "getResult"),
-  getChannel: /* @__PURE__ */ __name(() => channel, "getChannel"),
+  getOption: () => Option2,
+  getResult: () => Result,
+  getChannel: () => channel,
   isEnumLike,
   getEnumTag,
   getEnumPayload
@@ -13241,58 +13609,60 @@ var thread = concurrencyRuntime.thread;
 var web_worker = concurrencyRuntime.web_worker;
 var web_streams = concurrencyRuntime.web_streams;
 var browserRuntime = createBrowserRuntime({
-  optionSome: /* @__PURE__ */ __name((value) => Option2.Some(value), "optionSome"),
+  optionSome: (value) => Option2.Some(value),
   optionNone: Option2.None,
-  resultOk: /* @__PURE__ */ __name((value) => Result.Ok(value), "resultOk"),
-  resultErr: /* @__PURE__ */ __name((message) => Result.Err(message), "resultErr"),
-  createHashMap: /* @__PURE__ */ __name(() => HashMap.new(), "createHashMap")
+  resultOk: (value) => Result.Ok(value),
+  resultErr: (message) => Result.Err(message),
+  createHashMap: () => HashMap.new()
 });
 var url = browserRuntime.url;
 var web_storage = browserRuntime.web_storage;
 var dom = browserRuntime.dom;
 var router = browserRuntime.router;
 var webgpu = createWebGpuRuntime({
-  resultOk: /* @__PURE__ */ __name((value) => Result.Ok(value), "resultOk"),
-  resultErr: /* @__PURE__ */ __name((message) => Result.Err(message), "resultErr"),
+  resultOk: (value) => Result.Ok(value),
+  resultErr: (message) => Result.Err(message),
   isEnumLike,
   getEnumTag,
   getEnumPayload
 });
-var runMicrotask = /* @__PURE__ */ __name((fn) => {
+var runMicrotask = (fn) => {
   const queue = globalThis.queueMicrotask;
   if (typeof queue === "function") {
     queue(fn);
     return;
   }
   Promise.resolve().then(fn);
-}, "runMicrotask");
+};
 var devtools = createDevtoolsController({
   scheduleMicrotask: runMicrotask,
-  snapshotRoot: /* @__PURE__ */ __name((root, id) => ({
+  snapshotRoot: (root, id) => ({
     id,
     current: root.root.currentNode(),
     frames: [
       ...Array.from(root.frameManager.rootFrame.keyedChildren.values()).map(snapshotComponentFrame),
       ...root.frameManager.rootFrame.unkeyedChildren.map(snapshotComponentFrame)
     ]
-  }), "snapshotRoot"),
-  snapshotResources: /* @__PURE__ */ __name(() => listResourceRecords().map((record) => ({
-    key: record.key,
-    status: record.status.peek(),
-    hasData: record.hasData.peek(),
-    error: record.error.peek(),
-    scope: record.scope,
-    requestId: record.requestId,
-    tags: Array.from(record.tags)
-  })), "snapshotResources")
+  }),
+  snapshotResources: () => listResourceRecords().map(
+    (record) => ({
+      key: record.key,
+      status: record.status.peek(),
+      hasData: record.hasData.peek(),
+      error: record.error.peek(),
+      scope: record.scope,
+      requestId: record.requestId,
+      tags: Array.from(record.tags)
+    })
+  )
 });
-var registerDevtoolsSignal = /* @__PURE__ */ __name((kind, signal) => devtools.registerSignal(kind, signal), "registerDevtoolsSignal");
-var unregisterDevtoolsSignal = /* @__PURE__ */ __name((id) => {
+var registerDevtoolsSignal = (kind, signal) => devtools.registerSignal(kind, signal);
+var unregisterDevtoolsSignal = (id) => {
   devtools.unregisterSignal(id);
-}, "unregisterDevtoolsSignal");
-var scheduleDevtoolsNotify = /* @__PURE__ */ __name(() => {
+};
+var scheduleDevtoolsNotify = () => {
   devtools.scheduleNotify();
-}, "scheduleDevtoolsNotify");
+};
 configureReactiveCore({
   cloneValue: __lumina_clone,
   equalsValue: runtimeEquals,
@@ -13302,87 +13672,90 @@ configureReactiveCore({
   notifyDevtools: scheduleDevtoolsNotify
 });
 configureResourceCore({
-  serializeKey: /* @__PURE__ */ __name((key2) => {
+  serializeKey: (key2) => {
     try {
       return toJsonString(key2, false);
     } catch {
       return String(key2);
     }
-  }, "serializeKey"),
+  },
   notifyDevtools: scheduleDevtoolsNotify
 });
-var createDomRenderer2 = /* @__PURE__ */ __name((options) => createDomRenderer(options, runtimeEquals), "createDomRenderer");
+var createDomRenderer2 = (options) => createDomRenderer(options, runtimeEquals);
 var ssrRuntime = createSsrRuntime({
-  normalizeNodeForHtml: /* @__PURE__ */ __name((node) => {
+  normalizeNodeForHtml: (node) => {
     if (node.kind === "index_list") {
-      return vnodeElement("lumina-index-list", indexListHostProps, materializeIndexListChildren(node, false));
+      return vnodeElement(
+        "lumina-index-list",
+        indexListHostProps,
+        materializeIndexListChildren(node, false)
+      );
     }
     if (node.kind === "for_list") {
-      return vnodeElement("lumina-for-list", forListHostProps, materializeForListChildren(node, false));
+      return vnodeElement(
+        "lumina-for-list",
+        forListHostProps,
+        materializeForListChildren(node, false)
+      );
     }
     return node;
-  }, "normalizeNodeForHtml"),
-  getKind: /* @__PURE__ */ __name((node) => node.kind, "getKind"),
-  getTag: /* @__PURE__ */ __name((node) => node.tag, "getTag"),
-  getKey: /* @__PURE__ */ __name((node) => node.key, "getKey"),
-  getProps: /* @__PURE__ */ __name((node) => node.props, "getProps"),
-  getChildren: /* @__PURE__ */ __name((node) => node.children ?? [], "getChildren"),
-  getText: /* @__PURE__ */ __name((node) => node.text, "getText"),
-  getSignalValue: /* @__PURE__ */ __name((node) => node.signal?.get(), "getSignalValue"),
-  getTarget: /* @__PURE__ */ __name((node) => node.target, "getTarget")
+  },
+  getKind: (node) => node.kind,
+  getTag: (node) => node.tag,
+  getKey: (node) => node.key,
+  getProps: (node) => node.props,
+  getChildren: (node) => node.children ?? [],
+  getText: (node) => node.text,
+  getSignalValue: (node) => node.signal?.get(),
+  getTarget: (node) => node.target
 });
-var createSsrRenderer = /* @__PURE__ */ __name(() => ssrRuntime.createRenderer(), "createSsrRenderer");
-var renderToString = /* @__PURE__ */ __name((node) => ssrRuntime.renderToString(node), "renderToString");
-var renderToChunks = /* @__PURE__ */ __name((node) => Array.from(ssrRuntime.renderToChunks(node)), "renderToChunks");
-var renderToReadableStream = /* @__PURE__ */ __name((node) => ssrRuntime.renderToReadableStream(node), "renderToReadableStream");
+var createSsrRenderer = () => ssrRuntime.createRenderer();
+var renderToString = (node) => ssrRuntime.renderToString(node);
+var renderToChunks = (node) => Array.from(ssrRuntime.renderToChunks(node));
+var renderToReadableStream = (node) => ssrRuntime.renderToReadableStream(node);
 var renderTargetsRuntime = createRenderTargetsRuntime({
-  getKind: /* @__PURE__ */ __name((node) => node.kind, "getKind"),
-  getTag: /* @__PURE__ */ __name((node) => node.tag, "getTag"),
-  getProps: /* @__PURE__ */ __name((node) => node.props, "getProps"),
-  getChildren: /* @__PURE__ */ __name((node) => node.children ?? [], "getChildren"),
-  getText: /* @__PURE__ */ __name((node) => node.text, "getText"),
-  getSignalValue: /* @__PURE__ */ __name((node) => node.signal?.get(), "getSignalValue"),
-  materializeIndexListChildren: /* @__PURE__ */ __name((node, tracked) => materializeIndexListChildren(node, tracked), "materializeIndexListChildren"),
-  materializeForListChildren: /* @__PURE__ */ __name((node, tracked) => materializeForListChildren(node, tracked), "materializeForListChildren")
+  getKind: (node) => node.kind,
+  getTag: (node) => node.tag,
+  getProps: (node) => node.props,
+  getChildren: (node) => node.children ?? [],
+  getText: (node) => node.text,
+  getSignalValue: (node) => node.signal?.get(),
+  materializeIndexListChildren: (node, tracked) => materializeIndexListChildren(node, tracked),
+  materializeForListChildren: (node, tracked) => materializeForListChildren(node, tracked)
 });
 var frameRuntime = createFrameRuntime({
-  coerceRenderable: /* @__PURE__ */ __name((input) => coerceRenderableToVNode(input), "coerceRenderable"),
-  createState: /* @__PURE__ */ __name((initial) => new Signal(initial), "createState")
+  coerceRenderable: (input) => coerceRenderableToVNode(input),
+  createState: (initial) => new Signal(initial)
 });
 var transitionRuntime = createTransitionRuntime({
-  state: /* @__PURE__ */ __name((initial) => frameRuntime.state(initial), "state"),
+  state: (initial) => frameRuntime.state(initial),
   remember: frameRuntime.remember,
   mergeProps,
   element: vnodeElement,
   fragment: vnodeFragment,
-  resolveChildrenInput: /* @__PURE__ */ __name((children2) => normalizeVNodeChildren(resolveChildrenInput(children2)), "resolveChildrenInput"),
+  resolveChildrenInput: (children2) => normalizeVNodeChildren(resolveChildrenInput(children2)),
   runMicrotask
 });
 var runWithFrameManager2 = frameRuntime.runWithFrameManager;
-var createCanvasRenderer = /* @__PURE__ */ __name((options) => renderTargetsRuntime.createCanvasRenderer(options), "createCanvasRenderer");
-var renderToTerminal = /* @__PURE__ */ __name((node) => renderTargetsRuntime.renderToTerminal(node), "renderToTerminal");
-var createTerminalRenderer = /* @__PURE__ */ __name(() => renderTargetsRuntime.createTerminalRenderer(), "createTerminalRenderer");
-var _RenderRoot2 = class _RenderRoot2 extends RenderRoot {
+var createCanvasRenderer = (options) => renderTargetsRuntime.createCanvasRenderer(options);
+var renderToTerminal = (node) => renderTargetsRuntime.renderToTerminal(node);
+var createTerminalRenderer = () => renderTargetsRuntime.createTerminalRenderer();
+var RenderRoot2 = class extends RenderRoot {
 };
-__name(_RenderRoot2, "RenderRoot");
-var RenderRoot2 = _RenderRoot2;
-var _ReactiveRenderRoot2 = class _ReactiveRenderRoot2 extends ReactiveRenderRoot {
+var ReactiveRenderRoot2 = class extends ReactiveRenderRoot {
   constructor(root, effect, frameManager) {
     super(root, effect, frameManager, {
-      onInit: /* @__PURE__ */ __name((root2) => registerDevtoolsRoot(root2), "onInit"),
-      onDispose: /* @__PURE__ */ __name((root2) => unregisterDevtoolsRoot(root2), "onDispose")
+      onInit: (root2) => registerDevtoolsRoot(root2),
+      onDispose: (root2) => unregisterDevtoolsRoot(root2)
     });
-    __publicField(this, "root");
-    __publicField(this, "effect");
-    __publicField(this, "frameManager");
-    this.root = root, this.effect = effect, this.frameManager = frameManager;
+    this.root = root;
+    this.effect = effect;
+    this.frameManager = frameManager;
   }
 };
-__name(_ReactiveRenderRoot2, "ReactiveRenderRoot");
-var ReactiveRenderRoot2 = _ReactiveRenderRoot2;
-var registerDevtoolsRoot = /* @__PURE__ */ __name((root) => void devtools.registerRoot(root), "registerDevtoolsRoot");
-var unregisterDevtoolsRoot = /* @__PURE__ */ __name((root) => devtools.unregisterRoot(root), "unregisterDevtoolsRoot");
-var toRenderErrorMessage = /* @__PURE__ */ __name((error) => {
+var registerDevtoolsRoot = (root) => void devtools.registerRoot(root);
+var unregisterDevtoolsRoot = (root) => devtools.unregisterRoot(root);
+var toRenderErrorMessage = (error) => {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("Canvas renderer requires")) {
     return "Canvas renderer not available in this environment";
@@ -13391,39 +13764,39 @@ var toRenderErrorMessage = /* @__PURE__ */ __name((error) => {
     return "Terminal renderer not available in this environment";
   }
   return message;
-}, "toRenderErrorMessage");
+};
 var rootRuntime = createRootRuntime({
-  createRenderRoot: /* @__PURE__ */ __name((renderer, container) => new RenderRoot2(renderer, container), "createRenderRoot"),
-  createFrameManager: /* @__PURE__ */ __name(() => new FrameManager(), "createFrameManager"),
+  createRenderRoot: (renderer, container) => new RenderRoot2(renderer, container),
+  createFrameManager: () => new FrameManager(),
   runWithFrameManager: runWithFrameManager2,
-  createReactiveRoot: /* @__PURE__ */ __name((root, effect, frameManager) => new ReactiveRenderRoot2(root, effect, frameManager), "createReactiveRoot"),
-  renderError: /* @__PURE__ */ __name((message) => Result.Err(message), "renderError"),
+  createReactiveRoot: (root, effect, frameManager) => new ReactiveRenderRoot2(root, effect, frameManager),
+  renderError: (message) => Result.Err(message),
   toRenderErrorMessage
 });
-var coerceRenderer3 = /* @__PURE__ */ __name((candidate) => rootRuntime.coerceRenderer(candidate), "coerceRenderer");
-var mountReactiveView = /* @__PURE__ */ __name((renderer, container, view) => rootRuntime.mountReactiveView(renderer, container, view), "mountReactiveView");
-var hydrateReactiveView = /* @__PURE__ */ __name((renderer, container, view) => rootRuntime.hydrateReactiveView(renderer, container, view), "hydrateReactiveView");
+var coerceRenderer3 = (candidate) => rootRuntime.coerceRenderer(candidate);
+var mountReactiveView = (renderer, container, view) => rootRuntime.mountReactiveView(renderer, container, view);
+var hydrateReactiveView = (renderer, container, view) => rootRuntime.hydrateReactiveView(renderer, container, view);
 var appRuntime = createAppRuntime({
-  createFrameManager: /* @__PURE__ */ __name(() => new FrameManager(), "createFrameManager"),
+  createFrameManager: () => new FrameManager(),
   runWithFrameManager: runWithFrameManager2,
-  component: /* @__PURE__ */ __name((componentFn, props) => applyVNodeKey(frameRuntime.component(componentFn, props), void 0), "component"),
-  createDomRenderer: /* @__PURE__ */ __name((options) => createDomRenderer2(options), "createDomRenderer"),
+  component: (componentFn, props) => applyVNodeKey(frameRuntime.component(componentFn, props), void 0),
+  createDomRenderer: (options) => createDomRenderer2(options),
   mountReactive: mountReactiveView,
   hydrateReactive: hydrateReactiveView,
-  createSignal: /* @__PURE__ */ __name((initial) => new Signal(initial), "createSignal"),
-  getSignal: /* @__PURE__ */ __name((signal) => signal.get(), "getSignal"),
-  setSignal: /* @__PURE__ */ __name((signal, value) => {
+  createSignal: (initial) => new Signal(initial),
+  getSignal: (signal) => signal.get(),
+  setSignal: (signal, value) => {
     signal.set(value);
-  }, "setSignal"),
+  },
   isDisposableLike,
-  disposeReactive: /* @__PURE__ */ __name((root) => {
+  disposeReactive: (root) => {
     if (!isDisposableLike(root)) return;
     root.dispose();
-  }, "disposeReactive"),
-  getGlobalDocument: /* @__PURE__ */ __name(() => globalThis.document, "getGlobalDocument"),
+  },
+  getGlobalDocument: () => globalThis.document,
   isVNode,
   renderToString,
-  coerceRenderableToVNode: /* @__PURE__ */ __name((value) => coerceRenderableToVNode(value), "coerceRenderableToVNode"),
+  coerceRenderableToVNode: (value) => coerceRenderableToVNode(value),
   escapeHtml,
   resolvePath: resolvePathBasic,
   dirnamePath: dirnamePathBasic,
@@ -13451,13 +13824,13 @@ var render = createRenderApi({
   RenderRoot: RenderRoot2,
   mountReactiveView,
   hydrateReactiveView,
-  renderError: /* @__PURE__ */ __name((message) => Result.Err(message), "renderError"),
+  renderError: (message) => Result.Err(message),
   toRenderErrorMessage,
-  snapshotDevtools: /* @__PURE__ */ __name(() => devtools.snapshot(), "snapshotDevtools"),
-  installLuminaDevtools: /* @__PURE__ */ __name((key2) => devtools.install(key2), "installLuminaDevtools"),
-  recordDevtoolsEvent: /* @__PURE__ */ __name((type, label, detail) => devtools.recordEvent(type, label, detail), "recordDevtoolsEvent"),
-  readDevtoolsTimeline: /* @__PURE__ */ __name(() => devtools.timeline(), "readDevtoolsTimeline"),
-  clearDevtoolsTimeline: /* @__PURE__ */ __name(() => devtools.clearTimeline(), "clearDevtoolsTimeline"),
+  snapshotDevtools: () => devtools.snapshot(),
+  installLuminaDevtools: (key2) => devtools.install(key2),
+  recordDevtoolsEvent: (type, label, detail) => devtools.recordEvent(type, label, detail),
+  readDevtoolsTimeline: () => devtools.timeline(),
+  clearDevtoolsTimeline: () => devtools.clearTimeline(),
   scheduleDevtoolsNotify
 });
 var renderSurface = {
@@ -13627,7 +14000,173 @@ var renderSurface = {
   ssgWritePage: render.ssg_write_page,
   ssgWriteApp: render.ssg_write_app
 };
-var { createSignal, get, set, createMemo, createEffect, batch: batch2, untrack: untrack2, component, component_keyed, renderApp, renderToStringApp, createContext, create_required_context, withContext, useContext, state, remember, createResource, resourceStatus, resourceData, resourceError, resourceRead, resourceRefresh, resourceSubmit, resourceSubmitOptimistic, resourceInvalidate, resourceInvalidateKey, resourceInvalidatePrefix, resourceInvalidateTag, resourceInvalidateDependency, resourceInvalidateScope, resourceInvalidateRequest, resourceClearCache, resourceClearScope, resourceClearRequest, resourceMutate, suspense, errorBoundary, show, mountApp, hydrateApp, testingCreateDomHarness, testingMountApp, testingHydrateApp, testingContainer, testingBody, testingGetById, testingTextContent, testingClick, testingInput, testingChangeChecked, testingKeydown, testingSubmit, testingFlush, testingWaitFor, mountCustomElement, defineCustomElement, children, slot, slot_or, compose_handlers, portal, portalBody, tabsRoot, tabsList, tabsTrigger, tabsPanel, dialogRoot, dialogPortal, dialogTrigger, dialogOverlay, dialogContent, dialogTitle, dialogDescription, dialogClose, popoverRoot, popoverPortal, popoverTrigger, popoverContent, tooltipRoot, tooltipPortal, tooltipTrigger, tooltipContent, toastRoot, toastPortal, toastContent, toastTitle, toastDescription, toastClose, menuRoot, menuPortal, menuTrigger, menuContent, menuItem, selectRoot, selectPortal, selectTrigger, selectContent, selectItem, selectIndicator, comboboxRoot, comboboxPortal, comboboxInput, comboboxContent, comboboxItem, comboboxIndicator, multiselectRoot, multiselectPortal, multiselectTrigger, multiselectContent, multiselectItem, multiselectIndicator, checkboxRoot, checkboxIndicator, radioGroup, radioItem, radioIndicator, vnode, text, liveText, indexList, forList, keyed, key, mount_reactive, props_empty, props_class, props_on_click, props_on_click_delta, props_on_click_inc, props_on_click_dec, props_id, props_style, props_value, props_checked, props_type, props_name, props_placeholder, props_href, props_disabled, props_on_input, props_on_change, props_on_checked_change, props_on_submit, props_key, props_attr, props_when, props_merge, dom_get_element_by_id, transitionPresence, testingGetByText, testingGetByRole, testingGetByRoleName, testingGetByLabel, testingGetByPlaceholder, testingQueryAllByRole, devtoolsSnapshot, installDevtools, devtoolsRecordEvent, devtoolsTimeline, devtoolsClearTimeline, ssgPage, ssgRenderApp, ssgWritePage, ssgWriteApp } = renderSurface;
+var {
+  createSignal,
+  get,
+  set,
+  createMemo,
+  createEffect,
+  batch: batch2,
+  untrack: untrack2,
+  component,
+  component_keyed,
+  renderApp,
+  renderToStringApp,
+  createContext,
+  create_required_context,
+  withContext,
+  useContext,
+  state,
+  remember,
+  createResource,
+  resourceStatus,
+  resourceData,
+  resourceError,
+  resourceRead,
+  resourceRefresh,
+  resourceSubmit,
+  resourceSubmitOptimistic,
+  resourceInvalidate,
+  resourceInvalidateKey,
+  resourceInvalidatePrefix,
+  resourceInvalidateTag,
+  resourceInvalidateDependency,
+  resourceInvalidateScope,
+  resourceInvalidateRequest,
+  resourceClearCache,
+  resourceClearScope,
+  resourceClearRequest,
+  resourceMutate,
+  suspense,
+  errorBoundary,
+  show,
+  mountApp,
+  hydrateApp,
+  testingCreateDomHarness,
+  testingMountApp,
+  testingHydrateApp,
+  testingContainer,
+  testingBody,
+  testingGetById,
+  testingTextContent,
+  testingClick,
+  testingInput,
+  testingChangeChecked,
+  testingKeydown,
+  testingSubmit,
+  testingFlush,
+  testingWaitFor,
+  mountCustomElement,
+  defineCustomElement,
+  children,
+  slot,
+  slot_or,
+  compose_handlers,
+  portal,
+  portalBody,
+  tabsRoot,
+  tabsList,
+  tabsTrigger,
+  tabsPanel,
+  dialogRoot,
+  dialogPortal,
+  dialogTrigger,
+  dialogOverlay,
+  dialogContent,
+  dialogTitle,
+  dialogDescription,
+  dialogClose,
+  popoverRoot,
+  popoverPortal,
+  popoverTrigger,
+  popoverContent,
+  tooltipRoot,
+  tooltipPortal,
+  tooltipTrigger,
+  tooltipContent,
+  toastRoot,
+  toastPortal,
+  toastContent,
+  toastTitle,
+  toastDescription,
+  toastClose,
+  menuRoot,
+  menuPortal,
+  menuTrigger,
+  menuContent,
+  menuItem,
+  selectRoot,
+  selectPortal,
+  selectTrigger,
+  selectContent,
+  selectItem,
+  selectIndicator,
+  comboboxRoot,
+  comboboxPortal,
+  comboboxInput,
+  comboboxContent,
+  comboboxItem,
+  comboboxIndicator,
+  multiselectRoot,
+  multiselectPortal,
+  multiselectTrigger,
+  multiselectContent,
+  multiselectItem,
+  multiselectIndicator,
+  checkboxRoot,
+  checkboxIndicator,
+  radioGroup,
+  radioItem,
+  radioIndicator,
+  vnode,
+  text,
+  liveText,
+  indexList,
+  forList,
+  keyed,
+  key,
+  mount_reactive,
+  props_empty,
+  props_class,
+  props_on_click,
+  props_on_click_delta,
+  props_on_click_inc,
+  props_on_click_dec,
+  props_id,
+  props_style,
+  props_value,
+  props_checked,
+  props_type,
+  props_name,
+  props_placeholder,
+  props_href,
+  props_disabled,
+  props_on_input,
+  props_on_change,
+  props_on_checked_change,
+  props_on_submit,
+  props_key,
+  props_attr,
+  props_when,
+  props_merge,
+  dom_get_element_by_id,
+  transitionPresence,
+  testingGetByText,
+  testingGetByRole,
+  testingGetByRoleName,
+  testingGetByLabel,
+  testingGetByPlaceholder,
+  testingQueryAllByRole,
+  devtoolsSnapshot,
+  installDevtools,
+  devtoolsRecordEvent,
+  devtoolsTimeline,
+  devtoolsClearTimeline,
+  ssgPage,
+  ssgRenderApp,
+  ssgWritePage,
+  ssgWriteApp
+} = renderSurface;
 var reactive = {
   createSignal,
   get,

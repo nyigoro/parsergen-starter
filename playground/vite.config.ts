@@ -1,9 +1,32 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { OutputAsset, OutputBundle, OutputChunk, Plugin } from 'rollup';
 import { luminaPlugin } from '../demo/vite-plugin-lumina';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const toPortablePath = (id: string): string => id.replaceAll(path.sep, '/');
+const externalSourceMapComment = /\r?\n?\/\/# sourceMappingURL=(?!data:)[^\s]+(?:\r?\n)?$/;
+
+const stripPlaygroundSourceMapComments = (): Plugin => ({
+  name: 'strip-playground-source-map-comments',
+  generateBundle(_options, bundle: OutputBundle) {
+    for (const artifact of Object.values(bundle)) {
+      if (!artifact.fileName.endsWith('.js')) continue;
+      if (artifact.type === 'chunk') {
+        const chunk = artifact as OutputChunk;
+        chunk.code = chunk.code.replace(externalSourceMapComment, '');
+        continue;
+      }
+      const asset = artifact as OutputAsset;
+      if (typeof asset.source === 'string') {
+        asset.source = asset.source.replace(externalSourceMapComment, '');
+      } else {
+        const source = Buffer.from(asset.source).toString('utf-8');
+        asset.source = Buffer.from(source.replace(externalSourceMapComment, ''));
+      }
+    }
+  },
+});
 
 const playgroundChunkFor = (id: string): string | undefined => {
   const portableId = toPortablePath(id);
@@ -48,7 +71,7 @@ const playgroundChunkFor = (id: string): string | undefined => {
 };
 
 export default ({ command }) => ({
-  plugins: [luminaPlugin()],
+  plugins: [luminaPlugin(), stripPlaygroundSourceMapComments()],
   root: '.',
   base: command === 'serve' ? '/playground/' : './',
   server: {
