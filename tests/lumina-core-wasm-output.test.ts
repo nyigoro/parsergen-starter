@@ -30,7 +30,7 @@ describe('compileLuminaTask wasm output', () => {
     const sourcePath = path.join(dir, 'main.lm');
     const wasmPath = path.join(dir, 'dist', 'app.wasm');
     const watPath = path.join(dir, 'dist', 'app.wat');
-    const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+    const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
     const stdPath = path.resolve(__dirname, '../std');
 
     fs.writeFileSync(sourcePath, 'fn main() -> int { return 42; }\n', 'utf-8');
@@ -62,7 +62,7 @@ describe('compileLuminaTask wasm output', () => {
     const sourcePath = path.join(dir, 'standalone.lm');
     const wasmPath = path.join(dir, 'dist', 'standalone.wasm');
     const debugMapPath = `${wasmPath}.map`;
-    const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+    const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
     const stdPath = path.resolve(__dirname, '../std');
 
     fs.writeFileSync(sourcePath, 'fn main() -> int { return 7; }\n', 'utf-8');
@@ -102,7 +102,7 @@ describe('compileLuminaTask wasm output', () => {
     const dir = tmpDir();
     const sourcePath = path.join(dir, 'standalone-string.lm');
     const wasmPath = path.join(dir, 'dist', 'standalone-string.wasm');
-    const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+    const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
     const stdPath = path.resolve(__dirname, '../std');
 
     fs.writeFileSync(

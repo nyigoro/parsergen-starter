@@ -8,7 +8,7 @@ import { inferProgram } from '../src/lumina/hm-infer.js';
 import { compileLuminaTask } from '../src/bin/lumina-core.js';
 import type { LuminaProgram } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 
@@ -155,7 +155,7 @@ describe('macro expansion phase', () => {
     const macrosPath = path.join(root, 'macros.lm');
     const mainPath = path.join(root, 'main.lm');
     const outPath = path.join(root, 'out.js');
-    const grammar = path.resolve(__dirname, '../examples/lumina.peg');
+    const grammar = path.resolve(__dirname, '../src/grammar/lumina.peg');
 
     fs.writeFileSync(
       macrosPath,

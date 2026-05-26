@@ -754,6 +754,8 @@ export class ProjectContext {
   private findLockfilePath(root: string): string | null {
     const modern = path.join(root, LOCKFILE_FILENAME);
     if (fs.existsSync(modern)) return modern;
+    // Legacy read-only migration path for old projects. Current tooling writes
+    // lumina.lock, so this remains a fallback rather than a public default.
     const legacy = path.join(root, LEGACY_LOCKFILE_FILENAME);
     return fs.existsSync(legacy) ? legacy : null;
   }

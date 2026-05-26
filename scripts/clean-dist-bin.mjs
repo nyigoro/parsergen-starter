@@ -4,12 +4,6 @@ import path from 'node:path';
 
 const distBin = path.resolve(process.cwd(), 'dist', 'bin');
 const keep = new Set([
-  'cli.js',
-  'cli.js.map',
-  'cli.d.ts',
-  'cli.cjs',
-  'cli.cjs.map',
-  'cli.d.cts',
   'lumina.js',
   'lumina.js.map',
   'lumina.d.ts',

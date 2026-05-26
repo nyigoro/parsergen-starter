@@ -4,7 +4,7 @@ import { compileGrammar } from '../src/grammar/index.js';
 import { lowerLumina } from '../src/lumina/lower.js';
 import { optimizeIR } from '../src/lumina/optimize.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

@@ -12,4 +12,10 @@ describe('package check script', () => {
       expect(script).toContain(path.basename(binPath));
     }
   });
+
+  test('does not require the removed parsergen compatibility bin', () => {
+    const script = fs.readFileSync(path.resolve(__dirname, '../scripts/check-package.cjs'), 'utf-8');
+
+    expect(script).not.toContain('cli.js');
+  });
 });

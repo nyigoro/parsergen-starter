@@ -15,7 +15,7 @@ type BenchResult = {
   error?: string;
 };
 
-const grammarPath = path.resolve('examples/lumina.peg');
+const grammarPath = path.resolve('src/grammar/lumina.peg');
 
 const fixedSizeSource = `
 struct FixedBlock<const N: usize> {

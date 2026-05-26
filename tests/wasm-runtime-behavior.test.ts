@@ -8,7 +8,7 @@ import type { LuminaProgram } from '../src/lumina/ast.js';
 
 jest.setTimeout(30000);
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

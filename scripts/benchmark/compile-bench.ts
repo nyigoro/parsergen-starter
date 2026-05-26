@@ -37,7 +37,7 @@ function makeTsProgram(lines = 10000): string {
 async function runLuminaSample(workDir: string): Promise<BenchmarkSample> {
   const sourcePath = path.join(workDir, 'bench.lm');
   const outPath = path.join(workDir, 'bench.js');
-  const grammarPath = path.resolve('examples/lumina.peg');
+  const grammarPath = path.resolve('src/grammar/lumina.peg');
   await fs.writeFile(sourcePath, makeLuminaProgram(), 'utf-8');
 
   const start = performance.now();

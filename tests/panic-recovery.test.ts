@@ -4,7 +4,7 @@ import { compileGrammar } from '../src/grammar/index.js';
 import { parseWithPanicRecovery } from '../src/project/panic.js';
 import { createLuminaLexer, luminaSyncTokenTypes } from '../src/lumina/lexer.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

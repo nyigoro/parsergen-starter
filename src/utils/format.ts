@@ -130,6 +130,38 @@ export function formatLocation(location: Location): string {
         : `Line ${start.line}, Col ${start.column} → Line ${end.line}, Col ${end.column}`;
 }
 
+function formatExpectedEntry(entry: unknown): string | null {
+    if (typeof entry === 'string') return entry === '[object Object]' ? null : entry;
+    if (entry === null || entry === undefined) return null;
+    if (typeof entry !== 'object') return String(entry);
+
+    const record = entry as Record<string, unknown>;
+    for (const key of ['description', 'text', 'value']) {
+        const value = record[key];
+        if (typeof value === 'string' && value.length > 0) return value;
+    }
+    if (typeof record.type === 'string' && record.type.length > 0) {
+        return record.type;
+    }
+
+    try {
+        const serialized = JSON.stringify(record);
+        if (serialized && serialized !== '{}') return serialized;
+    } catch {
+        // fall through to null
+    }
+    return null;
+}
+
+function formatExpectedList(expected: readonly unknown[] | undefined): string | null {
+    if (!expected || expected.length === 0) return null;
+    const formatted = expected
+        .map(formatExpectedEntry)
+        .filter((entry): entry is string => entry !== null && entry.length > 0);
+    if (formatted.length === 0) return null;
+    return Array.from(new Set(formatted)).join(', ');
+}
+
 export function formatError(error: ParseError): string {
     const errorMessage = error.error || 'Unknown error';
     const parts: string[] = [`❌ Parse Error: ${errorMessage}`];
@@ -138,8 +170,9 @@ export function formatError(error: ParseError): string {
         parts.push(`↪ at ${formatLocation(error.location)}`);
     }
 
-    if (error.expected && error.expected.length > 0) {
-        parts.push(`Expected: ${error.expected.join(', ')}`);
+    const expected = formatExpectedList(error.expected);
+    if (expected) {
+        parts.push(`Expected: ${expected}`);
     }
 
     if (error.found !== undefined) {
@@ -173,8 +206,9 @@ export function formatErrorWithColors(error: ParseError, useColors: boolean = tr
         parts.push(`${colors.blue('↪ at')} ${formatLocation(error.location)}`); // FIX: Use colors.blue
     }
 
-    if (error.expected && error.expected.length > 0) {
-        parts.push(`${colors.yellow('Expected:')} ${error.expected.join(', ')}`); // FIX: Use colors.yellow
+    const expected = formatExpectedList(error.expected);
+    if (expected) {
+        parts.push(`${colors.yellow('Expected:')} ${expected}`); // FIX: Use colors.yellow
     }
 
     if (error.found !== undefined) {
@@ -278,9 +312,9 @@ export function getErrorSuggestions(error: ParseError): string[] {
         suggestions.push('Remove duplicate rule definitions');
     }
 
-    if (error.expected && error.expected.length > 0) {
-        const expectedItems = error.expected.slice(0, 3).join(', ');
-        suggestions.push(`Try using one of: ${expectedItems}`);
+    const expected = formatExpectedList(error.expected?.slice(0, 3));
+    if (expected) {
+        suggestions.push(`Try using one of: ${expected}`);
     }
 
     return suggestions;
@@ -321,7 +355,7 @@ export function getErrorContext(error: ParseError): {
     location?: string;
     line?: number;
     column?: number;
-    expected?: string[];
+    expected?: string;
     found?: string | null;
 } {
     return {
@@ -329,7 +363,7 @@ export function getErrorContext(error: ParseError): {
         location: error.location ? formatLocation(error.location) : undefined,
         line: error.location?.start?.line,
         column: error.location?.start?.column,
-        expected: error.expected,
+        expected: formatExpectedList(error.expected) ?? undefined,
         found: error.found
     };
 }
@@ -342,7 +376,7 @@ export function formatDebugError(err: unknown): string {
         `🐛 Debug Error Information:`,
         `  Message: ${context.message}`,
         `  Location: ${context.location || 'Unknown'}`,
-        `  Expected: ${context.expected?.join(', ') || 'Unknown'}`,
+        `  Expected: ${context.expected || 'Unknown'}`,
         `  Found: ${context.found || 'Unknown'}`,
         `  Original Error Type: ${
             typeof err === 'object' && err !== null && 'constructor' in err

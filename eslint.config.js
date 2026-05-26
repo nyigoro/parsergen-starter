@@ -190,7 +190,7 @@ export default [
 
   // CLI and REPL
   {
-    files: ['src/bin/**/*.ts', 'src/repl.ts'],
+    files: ['src/bin/**/*.ts'],
     languageOptions: {
       parser: typescriptParser,
       parserOptions: {
@@ -305,13 +305,9 @@ export default [
       '.DS_Store',
       'Thumbs.db',
       'src/grammar/calculator.js',
-      'examples/template/transform.js',
-      'examples/template/codegen.js',
-      'scripts/repl-smoke.cjs',
       'codegen.js',
       'transform.js',
       'grammar.peg',
-      '.parsergenrc',
       'examples/json-parser/*.js',
       'examples/json-parser/*.mjs',
       'examples/json-parser/*.cjs',

@@ -5,7 +5,7 @@ import { compileLuminaTask, setBuildConfig } from '../src/bin/lumina-core.js';
 
 const examplePath = path.resolve(__dirname, '../examples/ui-showcase/main.lm');
 const exampleSource = fs.readFileSync(examplePath, 'utf-8');
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const stdPath = path.resolve(__dirname, '../std');
 
 describe('ui showcase example', () => {

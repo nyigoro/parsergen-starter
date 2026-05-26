@@ -6,7 +6,7 @@ import { compileGrammar } from '../src/grammar/index.js';
 import { ProjectContext } from '../src/project/context.js';
 import { resolveSignatureHelp } from '../src/lsp/hover-signature.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

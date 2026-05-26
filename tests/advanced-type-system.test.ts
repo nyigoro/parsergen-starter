@@ -5,7 +5,7 @@ import { analyzeLumina } from '../src/lumina/semantic.js';
 import { generateJSFromAst } from '../src/lumina/codegen-js.js';
 import type { LuminaProgram } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

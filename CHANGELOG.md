@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Tooling:** Removed the legacy grammar starter shell from the core package. `lumina grammar` remains as focused Lumina grammar validation/compiler tooling, and starter templates may return later as a separate ecosystem package.
 - **Docs:** Refreshed the docs content corpus for current target naming, docs/playground workflow, UI Preview versus Worker Run behavior, learning-path structure, stdlib time helpers, and stale command cleanup.
 - **Docs:** Expanded docs navigation into broader learning categories with a dedicated Lessons section, a visible More / Awaiting Categorization bucket, static playground preview cards with Open in Playground links, and independent sidebar/article scrolling.
 - **Playground:** Added a Clock + Time Reactive UI example with viewer-local date/time output and a live wall clock driven by timer-updated Signals.

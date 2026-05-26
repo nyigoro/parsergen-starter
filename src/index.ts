@@ -1,16 +1,14 @@
 // src/index.ts
-// ============================================
-// 🌐 ParserGen Main API Surface (Public Entry)
-// ============================================
+// Lumina public toolchain API.
 
-// 🧠 Grammar Compilation
+// Grammar compilation
 export {
   clearCompiledGrammarCache,
   compileGrammar,
   type CompiledGrammar,
 } from './grammar/index';
 
-// 🔤 Lexer and Tokenization
+// Lexer and tokenization
 export {
   type LexerRule,
   type LexerState,
@@ -41,7 +39,7 @@ export {
   LexerProfiler,
 } from './lexer/index';
 
-// 📥 Parsing and Input Handling
+// Parsing and input handling
 export {
   parseInput,
   parseWithSemanticAnalysis,
@@ -66,7 +64,7 @@ export {
   type SourceMapGenerator
 } from './parser/index';
 
-// 🧾 Utilities and AST Helpers
+// Utilities and AST helpers
 export {
   formatError,
   formatLocation,

@@ -32,7 +32,7 @@ export interface ParityResult {
   diff: string | null;
 }
 
-const grammarPath = path.resolve(__dirname, '../../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar, { cache: true });
 const tmpDir = path.join(os.tmpdir(), 'lumina-parity');
@@ -60,9 +60,9 @@ const collectParseDiagnostics = (node: unknown): Diagnostic[] => {
           errorNode.location ?? {
             start: { line: 1, column: 1, offset: 0 },
             end: { line: 1, column: 1, offset: 0 },
-          },
+        },
         code: 'PARSE_ERROR',
-        source: 'parsergen',
+        source: 'lumina',
       });
     }
     if (Array.isArray(value)) {

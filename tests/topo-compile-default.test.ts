@@ -62,6 +62,14 @@ afterEach(() => {
 jest.setTimeout(15000);
 
 describe('topological compile default', () => {
+  test('does not advertise legacy compile-path switches in help', async () => {
+    const result = await runCompile(['--help']);
+
+    expect(result.exitCode).toBeNull();
+    expect(result.logs.join('\n')).not.toContain('--bundled-compile');
+    expect(result.logs.join('\n')).not.toContain('--topo-compile');
+  });
+
   test('compiles a single-file program without extra flags', async () => {
     const root = createWorkspace('.tmp-topo-default-single-');
     const entry = path.join(root, 'main.lm');

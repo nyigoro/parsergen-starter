@@ -5,7 +5,7 @@ import type { LuminaProgram } from '../src/lumina/ast.js';
 import { analyzeLumina } from '../src/lumina/semantic.js';
 import { lowerLumina } from '../src/lumina/lower.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const parser = compileGrammar<LuminaProgram>(fs.readFileSync(grammarPath, 'utf-8'));
 
 const parseProgram = (source: string): LuminaProgram => parser.parse(source);

@@ -25,7 +25,7 @@ function percentile(values: number[], p: number): number {
 }
 
 function main() {
-  const grammarPath = path.resolve('examples/lumina.peg');
+  const grammarPath = path.resolve('src/grammar/lumina.peg');
   const grammar = fs.readFileSync(grammarPath, 'utf-8');
   const parser = compileGrammar(grammar);
   const project = new ProjectContext(parser, undefined, undefined, { useHmDiagnostics: true });

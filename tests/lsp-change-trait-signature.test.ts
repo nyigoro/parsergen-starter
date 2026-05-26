@@ -10,7 +10,7 @@ import {
 } from '../src/lsp/refactor-change-trait-signature.js';
 import type { ParamChange } from '../src/lsp/refactor-change-signature.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { readManifest, validateManifest } from '../src/lumina/package-manifest.js';
 
 describe('docs content', () => {
   test('docs bundle groups the current corpus into learning categories with a holding bucket', () => {
@@ -61,6 +63,63 @@ describe('docs content', () => {
     expect(styles).toMatch(/\.docs-sidebar\s*\{[\s\S]*overflow-y: auto/);
     expect(styles).toMatch(/\.docs-article\s*\{[\s\S]*overflow-y: auto/);
     expect(styles).toMatch(/@media \(max-width: 960px\)[\s\S]*body\s*\{[\s\S]*overflow: auto/);
+  });
+
+  test('package guide teaches the native Lumina manifest and current lockfile story', () => {
+    const usage = fs.readFileSync(path.resolve(__dirname, '../docs-content/PACKAGE_USAGE.md'), 'utf-8');
+    const phaseOne = fs.readFileSync(
+      path.resolve(__dirname, '../docs-content/PACKAGE_MANAGEMENT_PHASE1.md'),
+      'utf-8'
+    );
+
+    expect(usage).toContain('`lumina init` creates the native Lumina manifest, `lumina.toml`');
+    expect(usage).toContain('`lumina.lock` is the current project lockfile');
+    expect(usage).toContain('`lumina.lock.json` was an early compatibility format');
+    expect(usage).not.toContain('Create a `package.json` with a `lumina` field');
+    expect(usage).not.toContain('PACKAGE_MANAGEMENT_PHASE1');
+
+    expect(phaseOne).toContain('Historical npm Piggyback Design');
+    expect(phaseOne).toContain('archival design history');
+    expect(phaseOne).toContain('It is not the current package workflow');
+  });
+
+  test('package guide lumina.toml publishing example parses as a valid manifest', async () => {
+    const usage = fs.readFileSync(path.resolve(__dirname, '../docs-content/PACKAGE_USAGE.md'), 'utf-8');
+    const publishing = usage.slice(usage.indexOf('## Publishing Packages'));
+    const match = /```toml\r?\n([\s\S]*?)\r?\n```/.exec(publishing);
+    expect(match).not.toBeNull();
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumina-doc-manifest-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'src', 'index.lm'), 'pub fn demo() { }\n');
+      fs.writeFileSync(path.join(dir, 'lumina.toml'), match![1], 'utf-8');
+      const manifest = await readManifest(dir);
+      expect(manifest.name).toBe('@you/my-package');
+      expect(manifest.entry).toBe('src/index.lm');
+      expect(validateManifest(manifest, dir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('deployed playground assets do not reference missing source maps', () => {
+    const assetsDir = path.resolve(__dirname, '../docs/playground/assets');
+    const files = fs.existsSync(assetsDir)
+      ? fs.readdirSync(assetsDir).filter((name) => /\.(?:js|mjs|cjs)$/.test(name))
+      : [];
+    const offenders: string[] = [];
+    for (const file of files) {
+      const full = path.join(assetsDir, file);
+      const source = fs.readFileSync(full, 'utf-8');
+      for (const match of source.matchAll(/sourceMappingURL=([^\s]+)/g)) {
+        const target = match[1];
+        if (target.startsWith('data:')) continue;
+        if (!fs.existsSync(path.join(assetsDir, target))) offenders.push(`${file} -> ${target}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 
   test('stdlib docs cover complex-app UI modules', () => {

@@ -105,7 +105,7 @@ wrap_Option_int(...)
   Analysis, specialization, call rewrite.
 - `src/lumina/hm-infer.ts`  
   Provides per‑call instantiated signatures.
-- `src/bin/lumina-core.ts`, `src/bin/cli-core.ts`  
+- `src/bin/lumina-core.ts`
   Integrate monomorphization into the compilation pipeline.
 
 ## Future Work

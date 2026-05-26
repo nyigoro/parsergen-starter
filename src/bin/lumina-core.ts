@@ -48,7 +48,7 @@ import {
   generateLuminaDocsMarkdown,
 } from '../lumina/tooling.js';
 import { startLuminaRepl } from '../repl/repl.js';
-import { runParsergen } from './cli-core.js';
+import { runLuminaGrammar } from './lumina-grammar.js';
 import { type RawSourceMap } from 'source-map';
 import { initProject, removePackages, listPackages } from '../commands/package.js';
 import { runLuminaAdd } from './lumina-add.js';
@@ -74,10 +74,7 @@ type Target = 'cjs' | 'esm' | 'wasm' | 'dual';
 type CliTarget = Target | 'js' | 'wasm-web' | 'wasm-standalone';
 type ModuleFormat = 'esm' | 'cjs';
 
-const DEFAULT_GRAMMAR_PATHS = [
-  path.resolve('src/grammar/lumina.peg'),
-  path.resolve('examples/lumina.peg'),
-];
+const DEFAULT_GRAMMAR_PATHS = [path.resolve('src/grammar/lumina.peg')];
 
 type LuminaConfig = {
   grammarPath?: string;
@@ -3345,10 +3342,12 @@ lumina <command> [file] [options]
   watch <file>     Watch and recompile on change
   run-wasm <file>  Execute a .wasm file and print return value
   repl             Interactive compile-and-run Lumina REPL
-  grammar          Parser generator tools (was parsergen)
+  grammar          Lumina grammar validation and compiler tools
   init             Initialize a Lumina browser app starter
   add <pkg...>     Add package(s) from Lumina registry
   install          Install packages from lumina.lock
+  remove <pkg...>  Remove package(s) from lumina.toml and lockfiles
+  list             List Lumina-resolvable packages from lumina.lock
   publish          Publish current package to registry
   bundle <file>    Bundle Lumina source for browser/wasm distribution
   importmap        Generate browser import map from lock data
@@ -3376,8 +3375,6 @@ Options:
   --inline-sourcemap   Embed base64 source map (legacy)
   --debug-ir           Emit Graphviz .dot for optimized IR
   --profile-cache      Print cache hit/miss stats
-  --bundled-compile    Use legacy bundled compile path (default: topological)
-  --topo-compile       Accepted for compatibility; topological compile is now default
   --clear-cache        Clear module-graph cache before running command
   --ast-js             Emit JS directly from AST (no IR)
   --no-optimize        Skip IR SSA + constant folding (workaround for known issues)
@@ -3389,7 +3386,7 @@ Options:
   --yes                Use defaults without prompts (init)
   --template <name>    Starter template: routed | minimal | ssr | auth | testing | deploy | large-app (init)
   --vite-plugin        Emit a plugin-native Vite dev setup for init
-  --frozen             Use npm ci if lockfile is present (install)
+  --frozen             Require lumina.lock to match the manifest (install)
   --dev                Add package as dev dependency (add)
   --limit <n>          Limit search result count (search)
   --offset <n>         Search result offset (search)
@@ -3399,17 +3396,6 @@ Options:
 
 Config file:
   lumina.config.json supports grammarPath, outDir, target, entries, watch, stdPath, fileExtensions, cacheDir, recovery
-Commands:
-  init                 Initialize a Lumina project (package.json + src/)
-  install              Install dependencies from lumina.lock
-  add <pkg...>         Add dependency (supports @scope/pkg@version)
-  publish              Publish current package
-  bundle               Bundle browser/wasm artifacts
-  importmap            Generate browser import map
-  search <query>       Search package registry
-  secret-scan [dir]    Scan directory for likely secrets
-  remove <pkg...>      Remove dependency
-  list                 List Lumina-resolvable packages from lumina.lock
 `);
 }
 
@@ -3682,6 +3668,11 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
     return;
   }
 
+  if (command === 'grammar') {
+    await runLuminaGrammar(argv.slice(1));
+    return;
+  }
+
   if (command === 'search') {
     const query = positionalArgs.join(' ').trim();
     if (query.length === 0) {
@@ -3820,8 +3811,11 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
   const noOptimize = parseBooleanFlag(args, '--no-optimize');
   const noInline = parseBooleanFlag(args, '--no-inline');
   const noComptime = parseBooleanFlag(args, '--no-comptime');
+  // Hidden compatibility switch for older automation. The public compile path
+  // is the module-graph/topological compiler.
   const bundledCompile = parseBooleanFlag(args, '--bundled-compile');
   const emitWat = parseBooleanFlag(args, '--emit-wat');
+  // Accepted as a no-op for older scripts that passed the now-default mode.
   parseBooleanFlag(args, '--topo-compile');
   const clearModuleCache = parseBooleanFlag(args, '--clear-cache');
   const stopOnUnresolvedMemberError = parseBooleanFlag(args, '--stop-on-unresolved');
@@ -4086,11 +4080,6 @@ export async function runLumina(argv: string[] = process.argv.slice(2)) {
 
   if (command === 'repl') {
     await runRepl(grammarPath);
-    return;
-  }
-
-  if (command === 'grammar') {
-    await runParsergen(process.argv.slice(3));
     return;
   }
 

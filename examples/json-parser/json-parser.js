@@ -1244,4 +1244,3 @@ function format_error(error) {
 }
 main();
 export { io, str, math, Result, Option, __set, formatValue, LuminaPanic };
-//# sourceMappingURL=json-parser.js.map

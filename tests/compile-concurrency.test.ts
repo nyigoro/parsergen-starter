@@ -9,7 +9,7 @@ describe('concurrent compile reliability', () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-concurrent-'));
     try {
-      const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+      const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 
       const jobs = Array.from({ length: 8 }, async (_, index) => {
         const sourcePath = path.join(root, `input_${index}.lm`);

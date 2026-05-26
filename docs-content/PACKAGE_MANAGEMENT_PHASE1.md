@@ -1,6 +1,14 @@
-# Package Management Phase 1 (npm piggyback)
+# Package Management Phase 1 (Historical npm Piggyback Design)
 
-This document defines the Phase 1 package management design for Lumina. The goal is to unlock real-world projects quickly by reusing the npm ecosystem while keeping Lumina-specific resolution deterministic.
+This is archival design history for Lumina's early npm-piggyback package
+manager. It is not the current package workflow.
+
+Current Lumina projects use `lumina.toml`, `lumina.lock`, the Lumina registry
+client, browser locks, peer validation, private registry configuration, and
+`lumina publish`. Use [Package Management Guide](PACKAGE_USAGE.md) for current
+commands.
+
+The rest of this document records the original Phase 1 design for context.
 
 ## Goals
 - Allow `import { x } from "pkg"` to resolve from `node_modules`.
@@ -17,7 +25,7 @@ This document defines the Phase 1 package management design for Lumina. The goal
 ## CLI Interface
 
 ### `lumina install`
-Installs dependencies from `package.json` using npm (Phase 1 default).
+Historical behavior: installs dependencies from `package.json` using npm.
 
 ```
 lumina install
@@ -26,7 +34,7 @@ lumina install --frozen  # uses npm ci if package-lock.json exists
 
 Behavior:
 - Runs `npm install` (or `npm ci` with `--frozen`).
-- Generates/updates `lumina.lock.json`.
+- Generated/updated `lumina.lock.json`.
 
 ### `lumina add <pkg>`
 Adds a dependency and updates lockfile.
@@ -40,7 +48,7 @@ lumina add @lumina/json@^0.1.0
 
 Behavior:
 - Runs `npm install <pkg>` (or `npm install -D` with `--dev`).
-- Updates `package.json` and `lumina.lock.json`.
+- Updated `package.json` and `lumina.lock.json`.
 
 ### `lumina remove <pkg>`
 Removes a dependency and updates lockfile.
@@ -51,7 +59,7 @@ lumina remove lodash
 
 Behavior:
 - Runs `npm uninstall <pkg>`.
-- Updates `package.json` and `lumina.lock.json`.
+- Updated `package.json` and `lumina.lock.json`.
 
 ### `lumina list`
 Prints Lumina-resolvable packages and their resolved entry points.
@@ -68,7 +76,7 @@ lumina init
 lumina init --yes
 ```
 
-Creates a minimal `package.json` with a `lumina` entry:
+Historical behavior: created a minimal `package.json` with a `lumina` entry:
 ```json
 {
   "name": "my-project",
@@ -137,7 +145,7 @@ Mixed Lumina/JS packages:
 
 ## Lockfile Format
 
-`lumina.lock.json` captures the resolved Lumina entry and export map for each dependency to ensure reproducible resolution.
+`lumina.lock.json` captured the resolved Lumina entry and export map for each dependency to ensure reproducible resolution.
 
 ```json
 {
@@ -166,21 +174,21 @@ Notes:
 ### Phase 1.0: CLI + Lockfile
 1. Add `lumina install/add/remove/list/init` commands.
 2. Use npm as the default package manager (spawn `npm`).
-3. Generate `lumina.lock.json` from installed packages.
+3. Generated `lumina.lock.json` from installed packages.
 
 ### Phase 1.1: Compiler Resolution
 1. Extend `ProjectContext.resolveImport` to handle bare specifiers.
 2. Resolve workspace packages before `node_modules`.
-3. Use `lumina.lock.json` when present, otherwise read package.json.
-4. Cache resolution results in the project context.
+3. Used `lumina.lock.json` when present, otherwise read package.json.
+4. Cached resolution results in the project context.
 
 ### Phase 1.2: LSP Integration
-1. Use the same resolver in LSP context.
-2. Provide diagnostics for missing packages or invalid exports.
+1. Used the same resolver in LSP context.
+2. Provided diagnostics for missing packages or invalid exports.
 
 ### Phase 1.3: Diagnostics + Cycle Detection
-1. Track resolution stack to detect cycles.
-2. Emit package diagnostics with stable codes:
+1. Tracked resolution stack to detect cycles.
+2. Emitted package diagnostics with stable codes:
    - `PKG-001`: Package not found in node_modules or workspace
    - `PKG-002`: Package missing `lumina` field
    - `PKG-003`: Invalid export path in `lumina`

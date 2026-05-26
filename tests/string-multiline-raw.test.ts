@@ -3,7 +3,7 @@ import path from 'node:path';
 import { compileGrammar } from '../src/grammar/index.js';
 import type { LuminaProgram, LuminaStatement, LuminaExpr, LuminaFnDecl } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

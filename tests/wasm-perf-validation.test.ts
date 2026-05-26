@@ -12,7 +12,7 @@ type Baseline = {
   reference_wasm_bytes: number;
 };
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 const tmpDir = path.resolve(__dirname, '../.tmp-wasm-perf');

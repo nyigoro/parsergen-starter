@@ -6,7 +6,7 @@ import { formatDiagnosticExplanation } from '../src/lumina/diagnostic-explain.js
 import type { Diagnostic } from '../src/parser/index.js';
 import type { LuminaExpr, LuminaFnDecl, LuminaProgram } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

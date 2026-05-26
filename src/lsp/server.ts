@@ -112,10 +112,7 @@ function rebuildVaultModuleRegistry() {
 function resolveGrammarPath(): string {
   if (settings.grammarPath) return path.resolve(settings.grammarPath);
   const roots = workspaceRoots.length > 0 ? workspaceRoots : workspaceRoot ? [workspaceRoot] : [];
-  const candidates = roots.flatMap((root) => [
-    path.join(root, 'src', 'grammar', 'lumina.peg'),
-    path.join(root, 'examples', 'lumina.peg'),
-  ]);
+  const candidates = roots.map((root) => path.join(root, 'src', 'grammar', 'lumina.peg'));
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }

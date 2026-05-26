@@ -1,15 +1,17 @@
 {
-  "lockfileVersion": 1,
+  "version": 1,
   "packages": {
-    "lumina-http": {
+    "lumina-http@0.5.3": {
+      "name": "lumina-http",
       "version": "0.5.3",
       "resolved": "../../packages/http",
+      "integrity": "sha256:local",
       "lumina": {
         ".": "./src/index.lm",
         "./request": "./src/request.lm",
         "./response": "./src/response.lm"
-      }
+      },
+      "deps": {}
     }
   }
 }
-

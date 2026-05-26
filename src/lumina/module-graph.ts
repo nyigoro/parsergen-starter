@@ -178,6 +178,8 @@ const ensureExtension = (resolved: string, extensions: string[]): string => {
 const findLockfileRoot = (fromPath: string): string | null => {
   let current = path.dirname(fromPath);
   while (true) {
+    // Keep lumina.lock.json as a legacy discovery fallback only; current
+    // package commands write lumina.lock.
     if (existsSync(path.join(current, LOCKFILE_FILENAME)) || existsSync(path.join(current, LEGACY_LOCKFILE_FILENAME))) {
       return current;
     }
@@ -404,7 +406,6 @@ const grammarHashFromPath = async (grammarPath: string | undefined): Promise<str
   const candidates = [
     grammarPath ? path.resolve(grammarPath) : '',
     path.resolve('src/grammar/lumina.peg'),
-    path.resolve('examples/lumina.peg'),
   ].filter(Boolean);
   for (const candidate of candidates) {
     try {

@@ -52,23 +52,34 @@ multi-version browser locks.
 
 ## Publishing Packages
 
-Create a `package.json` with a `lumina` field:
+`lumina init` creates the native Lumina manifest, `lumina.toml`. Package
+metadata, runtime dependencies, dev dependencies, peer dependencies, and
+registry settings live there.
 
-```json
-{
-  "name": "@you/my-package",
-  "version": "0.1.0",
-  "lumina": {
-    ".": "./src/index.lm",
-    "./utils": "./src/utils.lm"
-  }
-}
+```toml
+[package]
+name = "@you/my-package"
+version = "0.1.0"
+entry = "src/index.lm"
+description = "Useful Lumina helpers"
+license = "MIT"
+
+[dependencies]
+lumina-json-parser = "^0.2.0"
+
+[peer-dependencies]
+host-runtime = "^2.0.0"
 ```
 
-Publish to npm:
+Publish the current package:
+
 ```bash
-npm publish
+lumina publish
 ```
+
+`lumina publish` validates `lumina.toml`, runs the package preflight checks, and
+packs the Lumina sources plus the manifest. Use `--cdn` when publishing browser
+or WASM artifacts for CDN-oriented workflows.
 
 ## Private Registries
 
@@ -109,4 +120,9 @@ includes the available versions reported by the registry.
 
 ## Lockfile Format
 
-See [Package Management Phase 1](PACKAGE_MANAGEMENT_PHASE1.md) for the full technical details.
+`lumina.lock` is the current project lockfile. It records exact selected package
+versions, integrity, package entry points, exact transitive edges, peer metadata,
+and registry URLs for reproducible compiler, editor, and bundler resolution.
+
+`lumina.lock.json` was an early compatibility format. Current commands write
+`lumina.lock`; old lockfiles are migration input only.

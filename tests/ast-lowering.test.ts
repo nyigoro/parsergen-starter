@@ -5,7 +5,7 @@ import { lowerLumina } from '../src/lumina/lower.js';
 import type { LuminaProgram } from '../src/lumina/ast.js';
 import type { IRFunction, IRLet, IRMatchExpr, IRNoop, IRReturn } from '../src/lumina/ir.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

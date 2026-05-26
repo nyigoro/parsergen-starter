@@ -22,7 +22,7 @@ function toDiagnostic(error: ParseError): Diagnostic {
     message: `${error.error}${expected}${found}`,
     location,
     code: 'PARSE_ERROR',
-    source: 'parsergen',
+    source: 'lumina',
   };
 }
 
@@ -83,7 +83,7 @@ function collectErrorNodes(node: unknown, diagnostics: Diagnostic[], getExpected
             end: { line: 1, column: 1, offset: 0 },
           },
         code: 'PARSE_ERROR',
-        source: 'parsergen',
+        source: 'lumina',
       });
     }
     if (Array.isArray(value)) {

@@ -303,6 +303,8 @@ export async function readLockfile(dir: string): Promise<LockfileData> {
     return parseModernLockfile(raw);
   }
 
+  // Migration-only compatibility for projects created before the native
+  // lumina.lock format. Current commands always write lumina.lock.
   const legacyPath = path.join(dir, LEGACY_LOCKFILE_FILENAME);
   if (existsSync(legacyPath)) {
     const raw = await fs.readFile(legacyPath, 'utf-8');
@@ -324,6 +326,8 @@ export function readLockfileSync(dir: string): LockfileData {
   if (existsSync(modernPath)) {
     return parseModernLockfile(readFileSync(modernPath, 'utf-8'));
   }
+  // Migration-only compatibility; do not treat lumina.lock.json as a current
+  // co-equal lockfile format.
   const legacyPath = path.join(dir, LEGACY_LOCKFILE_FILENAME);
   if (existsSync(legacyPath)) {
     const legacy = JSON.parse(readFileSync(legacyPath, 'utf-8')) as LegacyLockfile;

@@ -6,7 +6,7 @@ import { monomorphize } from '../src/lumina/monomorphize.js';
 import { inlinePass } from '../src/lumina/inline.js';
 import type { LuminaBlock, LuminaExpr, LuminaFnDecl, LuminaProgram, LuminaStatement } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const grammarText = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(grammarText);
 

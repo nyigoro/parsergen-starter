@@ -7,7 +7,7 @@ import { createStdModuleRegistry, getPreludeExports } from '../src/lumina/module
 import { resolveCompletions } from '../src/lsp/completion.js';
 import { ProjectContext } from '../src/project/context.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 const moduleRegistry = createStdModuleRegistry();

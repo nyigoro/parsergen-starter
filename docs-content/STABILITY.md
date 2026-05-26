@@ -51,7 +51,7 @@ npm run bench:compile
 Output is JSON with:
 
 - Lumina compile time
-- Optional `tsc`, `esbuild`, `swc` comparisons (if local binaries exist)
+- Optional `tsc` and `esbuild` comparisons (if local binaries exist)
 
 ### Incremental Compile Bench
 

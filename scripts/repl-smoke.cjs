@@ -2,29 +2,37 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 
 const tsxCli = path.resolve(__dirname, '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
-const cliPath = path.resolve(__dirname, '..', 'src', 'bin', 'cli.ts');
-const grammarPath = path.resolve(__dirname, '..', 'examples', 'math.peg');
+const cliPath = path.resolve(__dirname, '..', 'src', 'bin', 'lumina-repl.ts');
 
-const child = spawn(process.execPath, [tsxCli, cliPath, grammarPath, '--interactive'], {
+const child = spawn(process.execPath, [tsxCli, cliPath], {
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 
 let output = '';
-let sent = false;
 const newline = '\r\n';
 let sentTest = false;
 let sentExit = false;
 
+const writeLine = (line) => {
+  if (child.stdin.destroyed || child.stdin.writableEnded) return;
+  child.stdin.write(line + newline);
+};
+
+const closeInput = () => {
+  if (child.stdin.destroyed || child.stdin.writableEnded) return;
+  child.stdin.end();
+};
+
 const onData = (data) => {
   output += data.toString();
-  if (!sentTest && output.includes('parsergen>')) {
+  if (!sentTest && output.includes('lumina>')) {
     sentTest = true;
-    child.stdin.write('.test 1 + 2' + newline);
+    writeLine('1 + 2');
   }
-  if (!sentExit && /Parse error|Parse Error|\"type\"|\\{\\s*\"/i.test(output)) {
+  if (!sentExit && /=>\s+3\s+:\s+i32/i.test(output)) {
     sentExit = true;
-    child.stdin.write('.exit' + newline);
-    child.stdin.end();
+    writeLine(':exit');
+    closeInput();
   }
 };
 
@@ -41,8 +49,8 @@ const timeout = setTimeout(() => {
 setTimeout(() => {
   if (!sentExit) {
     sentExit = true;
-    child.stdin.write('.exit' + newline);
-    child.stdin.end();
+    writeLine(':exit');
+    closeInput();
   }
 }, 4000);
 
@@ -53,8 +61,8 @@ child.on('close', (code) => {
     console.error(output);
     process.exit(code ?? 1);
   }
-  if (!/Parse error|Parse Error|\"type\"|\\{\\s*\"/i.test(output)) {
-    console.error('REPL smoke test did not detect parse output');
+  if (!/=>\s+3\s+:\s+i32/i.test(output)) {
+    console.error('REPL smoke test did not detect Lumina evaluation output');
     console.error(output);
     process.exit(1);
   }

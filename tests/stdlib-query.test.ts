@@ -10,7 +10,7 @@ import { optimizeIR } from '../src/lumina/optimize.js';
 import { HashMap, Option, Vec, hashmap, query, where_q, select_q, order_by_q, order_by_desc_q, limit_q, offset_q, group_by_q, count_q, first_q, to_vec_q, join_q, vec } from '../src/lumina-runtime.js';
 import type { LuminaProgram } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

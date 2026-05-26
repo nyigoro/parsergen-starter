@@ -98,6 +98,48 @@ describe('lockfile', () => {
     expect(fs.existsSync(path.join(dir, 'lumina.lock'))).toBe(true);
   });
 
+  it('treats lumina.lock.json as migration-only when a modern lockfile exists', async () => {
+    const dir = createTempDir();
+    await writeLockfile(dir, {
+      version: 1,
+      packages: new Map([
+        [
+          'json-utils@2.0.0',
+          {
+            name: 'json-utils',
+            version: '2.0.0',
+            resolved: 'https://registry.test/json-utils-2.0.0.tgz',
+            path: './.lumina/packages/json-utils@2.0.0',
+            integrity: 'sha256:def',
+            lumina: './src/v2.lm',
+            deps: new Map(),
+          },
+        ],
+      ]),
+    });
+    fs.writeFileSync(
+      path.join(dir, 'lumina.lock.json'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        packages: {
+          'json-utils': {
+            version: '1.2.3',
+            resolved: 'https://registry.test/json-utils-1.2.3.tgz',
+            path: './.lumina/packages/json-utils@1.2.3',
+            integrity: 'sha256:abc',
+            lumina: './src/legacy.lm',
+          },
+        },
+      }),
+      'utf-8'
+    );
+
+    const loaded = await readLockfile(dir);
+    expect(loaded.packages.has('json-utils@2.0.0')).toBe(true);
+    expect(loaded.packages.has('json-utils@1.2.3')).toBe(false);
+    expect(loaded.packages.get('json-utils@2.0.0')?.lumina).toBe('./src/v2.lm');
+  });
+
   it('detects manifest/lockfile sync mismatches', () => {
     const manifest = baseManifest();
     const lock: LockfileData = {

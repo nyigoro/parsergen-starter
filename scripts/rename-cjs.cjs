@@ -3,7 +3,6 @@ const path = require('node:path');
 
 const distBin = path.resolve(__dirname, '..', 'dist', 'bin');
 const pairs = [
-  ['cli-cjs', 'cli'],
   ['lumina-cjs', 'lumina'],
 ];
 

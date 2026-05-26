@@ -16,7 +16,7 @@ type SmokeServer = {
 };
 
 const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
-const grammarPath = path.resolve(fixtureDir, '../../../examples/lumina.peg');
+const grammarPath = path.resolve(fixtureDir, '../../../src/grammar/lumina.peg');
 const domRenderDir = path.resolve(fixtureDir, '../../../examples/dom-render');
 const playgroundDir = path.resolve(fixtureDir, '../../../docs/playground');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');

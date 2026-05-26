@@ -3,13 +3,24 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
 import {
+  BROWSER_LOCKFILE_FILENAME,
   LOCKFILE_FILENAME,
+  readBrowserLockfile,
   readLockfile,
+  writeBrowserLockfile,
   writeLockfile,
+  type BrowserLock,
+  type BrowserLockEntry,
   type LockfileData,
   type LockfileEntry,
 } from '../lumina/lockfile.js';
-import { writeManifest } from '../lumina/package-manifest.js';
+import {
+  MANIFEST_FILENAME,
+  readManifest,
+  writeManifest,
+  type PackageManifest,
+} from '../lumina/package-manifest.js';
+import { satisfiesLockfileConstraint } from '../lumina/lockfile-format.js';
 
 type WorkspacePackage = {
   name: string;
@@ -90,6 +101,17 @@ async function findPackageRoot(startDir: string): Promise<string> {
   while (true) {
     const pkgPath = path.join(current, 'package.json');
     if (await fileExists(pkgPath)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return startDir;
+    current = parent;
+  }
+}
+
+async function findProjectRoot(startDir: string): Promise<string> {
+  let current = path.resolve(startDir);
+  while (true) {
+    if (await fileExists(path.join(current, MANIFEST_FILENAME))) return current;
+    if (await fileExists(path.join(current, 'package.json'))) return current;
     const parent = path.dirname(current);
     if (parent === current) return startDir;
     current = parent;
@@ -537,17 +559,110 @@ export async function addPackages(
   await writeLockfile(root, lockfile);
 }
 
+function selectEntryKeysByNameAndConstraint(
+  lockfile: LockfileData,
+  name: string,
+  constraint: string
+): string[] {
+  return Array.from(lockfile.packages.entries())
+    .filter(([, entry]) => entry.name === name && satisfiesLockfileConstraint(entry.version, constraint))
+    .map(([key]) => key);
+}
+
+function resolveLockedDependencyKey(
+  lockfile: LockfileData,
+  name: string,
+  lockedKeyOrVersion: string
+): string | null {
+  const direct = lockfile.packages.get(lockedKeyOrVersion);
+  if (direct?.name === name) return lockedKeyOrVersion;
+  const versionKey = lockfileKey(name, lockedKeyOrVersion);
+  const byVersion = lockfile.packages.get(versionKey);
+  if (byVersion?.name === name) return versionKey;
+  return null;
+}
+
+function pruneLockfile(manifest: PackageManifest, lockfile: LockfileData): LockfileData {
+  const reachable = new Set<string>();
+  const queue: string[] = [];
+  const rootDeps = new Map([...manifest.dependencies.entries(), ...manifest.devDeps.entries()]);
+
+  const enqueue = (key: string | null) => {
+    if (!key || reachable.has(key) || !lockfile.packages.has(key)) return;
+    reachable.add(key);
+    queue.push(key);
+  };
+
+  for (const [name, constraint] of rootDeps) {
+    for (const key of selectEntryKeysByNameAndConstraint(lockfile, name, constraint)) {
+      enqueue(key);
+    }
+  }
+
+  while (queue.length > 0) {
+    const key = queue.shift()!;
+    const entry = lockfile.packages.get(key);
+    if (!entry) continue;
+    for (const [name, lockedKeyOrVersion] of entry.resolvedDeps ?? []) {
+      enqueue(resolveLockedDependencyKey(lockfile, name, lockedKeyOrVersion));
+    }
+    for (const [name, constraint] of entry.deps) {
+      for (const candidate of selectEntryKeysByNameAndConstraint(lockfile, name, constraint)) {
+        enqueue(candidate);
+      }
+    }
+  }
+
+  const packages = new Map<string, LockfileEntry>();
+  for (const [key, entry] of lockfile.packages) {
+    if (reachable.has(key)) packages.set(key, entry);
+  }
+  return { version: lockfile.version, packages };
+}
+
+function parseRemovePackageName(spec: string): string {
+  const value = spec.trim();
+  if (!value) throw new Error('Missing package specifier.');
+  const atIndex = value.startsWith('@') ? value.indexOf('@', value.indexOf('/') + 1) : value.lastIndexOf('@');
+  return atIndex > 0 ? value.slice(0, atIndex) : value;
+}
+
+function pruneBrowserLock(browserLock: BrowserLock, retainedKeys: Set<string>): BrowserLock {
+  const packages = new Map<string, BrowserLockEntry>();
+  for (const [key, entry] of browserLock.packages) {
+    if (retainedKeys.has(key)) packages.set(key, entry);
+  }
+  return { version: browserLock.version, packages };
+}
+
 export async function removePackages(specs: string[]): Promise<void> {
   if (specs.length === 0) throw new Error('Missing package names.');
-  const root = await findPackageRoot(process.cwd());
-  const args = ['uninstall', ...specs];
-  await spawnCommand('npm', args, root);
-  const lockfile = await buildLockfile(root);
-  await writeLockfile(root, lockfile);
+  const root = await findProjectRoot(process.cwd());
+  const manifest = await readManifest(root);
+  const removed = new Set(specs.map(parseRemovePackageName));
+  const nextManifest: PackageManifest = {
+    ...manifest,
+    dependencies: new Map(manifest.dependencies),
+    devDeps: new Map(manifest.devDeps),
+    peerDeps: new Map(manifest.peerDeps ?? []),
+  };
+  for (const name of removed) {
+    nextManifest.dependencies.delete(name);
+    nextManifest.devDeps.delete(name);
+  }
+
+  const lockfile = await readLockfile(root);
+  const nextLockfile = pruneLockfile(nextManifest, lockfile);
+  await writeManifest(root, nextManifest);
+  await writeLockfile(root, nextLockfile);
+  if (await fileExists(path.join(root, BROWSER_LOCKFILE_FILENAME))) {
+    const browserLock = await readBrowserLockfile(root);
+    await writeBrowserLockfile(root, pruneBrowserLock(browserLock, new Set(nextLockfile.packages.keys())));
+  }
 }
 
 export async function listPackages(): Promise<void> {
-  const root = await findPackageRoot(process.cwd());
+  const root = await findProjectRoot(process.cwd());
   const lockfile = await readLockfile(root);
   if (lockfile.packages.size === 0) {
     console.log(`No Lumina packages found (${LOCKFILE_FILENAME} missing or empty).`);

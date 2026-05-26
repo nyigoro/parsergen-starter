@@ -6,7 +6,7 @@ import { emitWasmBinary } from '../src/lumina/wasm-emit-binary.js';
 import type { LuminaProgram } from '../src/lumina/ast.js';
 import { createEmptyWasmTextModule, wasmOp, wasmTextFunction } from '../src/lumina/wasm-module.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const luminaGrammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(luminaGrammar);
 

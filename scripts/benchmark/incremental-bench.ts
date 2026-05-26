@@ -39,7 +39,7 @@ async function main() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-bench-incremental-'));
   const sourcePath = path.join(root, 'main.lm');
   const outPath = path.join(root, 'main.js');
-  const grammarPath = path.resolve('examples/lumina.peg');
+  const grammarPath = path.resolve('src/grammar/lumina.peg');
   const iterations = 20;
 
   try {

@@ -9,7 +9,7 @@ import { generateWATFromAst } from '../src/lumina/codegen-wasm.js';
 import { analyzeLumina } from '../src/lumina/semantic.js';
 import type { LuminaFnDecl, LuminaProgram } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const grammarText = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(grammarText);
 

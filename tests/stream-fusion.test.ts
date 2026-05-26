@@ -9,7 +9,7 @@ import { generateJSFromAst } from '../src/lumina/codegen-js.js';
 import { vec } from '../src/lumina-runtime.js';
 import type { LuminaExpr, LuminaFnDecl, LuminaProgram } from '../src/lumina/ast.js';
 
-const grammarPath = path.resolve(__dirname, '../examples/lumina.peg');
+const grammarPath = path.resolve(__dirname, '../src/grammar/lumina.peg');
 const grammar = fs.readFileSync(grammarPath, 'utf-8');
 const parser = compileGrammar(grammar);
 
