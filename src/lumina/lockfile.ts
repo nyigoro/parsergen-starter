@@ -398,12 +398,15 @@ export function validatePeerDependencies(manifest: PackageManifest, lockfile: Lo
       const versions = versionsByName.get(peerName) ?? [];
       const rootSelectedVersions = versions.filter((version) => matchesConstraint(version, rootConstraint));
       const sortedRootVersions = rootSelectedVersions.sort(compareVersions);
-      if (sortedRootVersions.length !== 1) {
-        const available = sortedRootVersions.length > 0
-          ? sortedRootVersions.join(', ')
-          : 'none matching root constraint';
+      if (sortedRootVersions.length === 0) {
         diagnostics.push(
-          `${entry.name}@${entry.version} requires peer dependency ${peerName}@${peerConstraint}, but root ${peerName}@${rootConstraint} resolves ambiguously to ${available}`
+          `${entry.name}@${entry.version} requires peer dependency ${peerName}@${peerConstraint}, but root ${peerName}@${rootConstraint} has no matching locked version`
+        );
+        continue;
+      }
+      if (sortedRootVersions.length > 1) {
+        diagnostics.push(
+          `${entry.name}@${entry.version} requires peer dependency ${peerName}@${peerConstraint}, but root ${peerName}@${rootConstraint} resolves ambiguously to ${sortedRootVersions.join(', ')}`
         );
         continue;
       }

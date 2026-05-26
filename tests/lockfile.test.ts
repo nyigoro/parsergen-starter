@@ -314,4 +314,39 @@ describe('lockfile', () => {
       'root host@^1.0.0 resolves ambiguously to 1.2.0, 1.3.0'
     );
   });
+
+  it('reports peer validation clearly when no locked provider matches the root range', () => {
+    const manifest = baseManifest();
+    manifest.dependencies.set('host', '^1.0.0');
+    const lockfile: LockfileData = {
+      version: 1,
+      packages: new Map([
+        [
+          'plugin@1.0.0',
+          {
+            name: 'plugin',
+            version: '1.0.0',
+            resolved: 'https://registry.example.dev/plugin-1.0.0.tgz',
+            integrity: 'sha256:abc',
+            deps: new Map(),
+            peerDeps: new Map([['host', '^1.0.0']]),
+          },
+        ],
+        [
+          'host@2.0.0',
+          {
+            name: 'host',
+            version: '2.0.0',
+            resolved: 'https://registry.example.dev/host-2.0.0.tgz',
+            integrity: 'sha256:def',
+            deps: new Map(),
+          },
+        ],
+      ]),
+    };
+
+    expect(validatePeerDependencies(manifest, lockfile)[0]).toContain(
+      'root host@^1.0.0 has no matching locked version'
+    );
+  });
 });
