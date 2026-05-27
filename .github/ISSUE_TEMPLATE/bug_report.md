@@ -25,7 +25,7 @@ What actually happened.
 
 ## Environment
 
-- Lumina version: <!-- e.g. v0.5.7 -->
+- Lumina version: <!-- e.g. v0.5.8 -->
 - Node.js version: <!-- e.g. 22.17.0 -->
 - OS: <!-- e.g. macOS 15, Ubuntu 24.04 -->
 - Target: <!-- JS / WASM / REPL / LSP -->

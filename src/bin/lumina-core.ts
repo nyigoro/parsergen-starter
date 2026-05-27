@@ -74,7 +74,11 @@ type Target = 'cjs' | 'esm' | 'wasm' | 'dual';
 type CliTarget = Target | 'js' | 'wasm-web' | 'wasm-standalone';
 type ModuleFormat = 'esm' | 'cjs';
 
-const DEFAULT_GRAMMAR_PATHS = [path.resolve('src/grammar/lumina.peg')];
+const cliEntrypointDir = process.argv[1] ? path.dirname(path.resolve(process.argv[1])) : process.cwd();
+const DEFAULT_GRAMMAR_PATHS = [
+  path.resolve('src/grammar/lumina.peg'),
+  path.resolve(cliEntrypointDir, '../../src/grammar/lumina.peg'),
+];
 
 type LuminaConfig = {
   grammarPath?: string;

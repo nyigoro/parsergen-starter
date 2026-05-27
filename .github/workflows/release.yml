@@ -18,11 +18,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.17.0'
           cache: 'npm'
       - run: npm ci
       - run: npm --prefix demo ci
       - run: npm run lint:check
+      - run: npm run typecheck
       - run: npm run build
       - run: npm run web:build
       - run: npm run build:verify
@@ -42,7 +43,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.17.0'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
@@ -83,16 +84,6 @@ jobs:
             const notes = match ? match[1].trim() : 'See CHANGELOG.md for details.';
             fs.writeFileSync('RELEASE_NOTES_EXTRACTED.md', notes);
           "
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "Lumina v${{ steps.version.outputs.VERSION }}"
-          body_path: RELEASE_NOTES_EXTRACTED.md
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check lumina-lang version
         id: lumina_lang_exists
@@ -161,3 +152,13 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           NPM_CONFIG_WORKSPACES: "false"
           NPM_CONFIG_INSTALL_LINKS: "false"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Lumina v${{ steps.version.outputs.VERSION }}"
+          body_path: RELEASE_NOTES_EXTRACTED.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

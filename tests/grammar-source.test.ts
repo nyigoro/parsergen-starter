@@ -31,4 +31,11 @@ describe('canonical grammar source', () => {
 
     expect(offenders.map((file) => path.relative(repoRoot, file))).toEqual([]);
   });
+
+  it('resolves the canonical grammar relative to the installed CLI bundle', () => {
+    const source = fs.readFileSync(path.join(repoRoot, 'src/bin/lumina-core.ts'), 'utf-8');
+
+    expect(source).toContain('cliEntrypointDir');
+    expect(source).toContain("../../src/grammar/lumina.peg");
+  });
 });

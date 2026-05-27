@@ -1,7 +1,7 @@
 # Lumina Capabilities Matrix
 
 This document tracks the current state of the Lumina language/tooling and near-term priorities.
-Last updated for v0.5.7.
+Last updated for v0.5.8.
 
 ## Strategic Focus
 

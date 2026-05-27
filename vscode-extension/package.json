@@ -2,7 +2,7 @@
   "name": "lumina-vscode",
   "displayName": "Lumina Language",
   "description": "Advanced VS Code integration for Lumina (LSP, inlay hints, refactors, semantic tokens, tasks).",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "publisher": "nyigoro",
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -291,7 +291,7 @@
     "watch": "tsc -w -p ./tsconfig.json"
   },
   "dependencies": {
-    "lumina-language-client": "^0.5.7"
+    "lumina-language-client": "^0.5.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
