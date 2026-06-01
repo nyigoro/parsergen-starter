@@ -49,4 +49,19 @@ describe('GitHub workflow configuration', () => {
       expect(job).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
     }
   });
+
+  test('release workflow uses npm trusted publishing and creates the release after publish steps', () => {
+    const workflow = readWorkflow('release.yml');
+    const job = extractJob(workflow, 'release');
+
+    expect(job).toContain('id-token: write');
+    expect(job).toContain("node-version: '22.17.0'");
+    expect(job).toContain('package-manager-cache: false');
+    expect(job).toContain('npm install -g npm@11.9.0');
+    expect(job).toContain('npm publish --access public');
+    expect(job).not.toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
+    expect(job).toContain('tag_name: ${{ steps.release_tag.outputs.TAG }}');
+    expect(job).toContain('target_commitish: ${{ github.sha }}');
+    expect(job.indexOf('Publish lumina-language-client')).toBeLessThan(job.indexOf('Create GitHub Release'));
+  });
 });

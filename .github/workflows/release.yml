@@ -35,18 +35,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.event_name == 'push' && github.ref || github.sha }}
 
       - uses: actions/setup-node@v6
         with:
           node-version: '22.17.0'
-          cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
+      - run: npm install -g npm@11.9.0
+      - run: npm --version
       - run: npm ci
 
       - name: Resolve tag
@@ -101,8 +104,6 @@ jobs:
       - name: Publish lumina-lang
         if: steps.lumina_lang_exists.outputs.exists != '1'
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Build lumina-language-client
         run: |
@@ -137,8 +138,6 @@ jobs:
         run: |
           cd packages/lumina-language-client
           npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish VS Code extension
         run: |
@@ -148,7 +147,6 @@ jobs:
           npm run build
           npx @vscode/vsce publish --pat ${{ secrets.VSCE_PAT }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           NPM_CONFIG_WORKSPACES: "false"
           NPM_CONFIG_INSTALL_LINKS: "false"
@@ -156,6 +154,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release_tag.outputs.TAG }}
+          target_commitish: ${{ github.sha }}
           name: "Lumina v${{ steps.version.outputs.VERSION }}"
           body_path: RELEASE_NOTES_EXTRACTED.md
           draft: false
