@@ -3,6 +3,11 @@
   "version": "0.5.8",
   "license": "MIT OR Apache-2.0",
   "description": "Lumina LSP command protocol — editor-agnostic types and constants",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nyigoro/lumina-lang",
+    "directory": "packages/lumina-language-client"
+  },
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",

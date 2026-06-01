@@ -129,12 +129,18 @@ describe('dual JS output', () => {
       main: string;
       module: string;
       types: string;
+      repository: { type: string; url: string; directory: string };
       exports: Record<string, { import: string; require: string; types: string }>;
     };
 
     expect(packageJson.main).toBe('./dist/cjs/index.js');
     expect(packageJson.module).toBe('./dist/esm/index.js');
     expect(packageJson.types).toBe('./dist/esm/index.d.ts');
+    expect(packageJson.repository).toEqual({
+      type: 'git',
+      url: 'https://github.com/nyigoro/lumina-lang',
+      directory: 'packages/lumina-language-client',
+    });
     expect(packageJson.exports['.']).toEqual({
       import: './dist/esm/index.js',
       require: './dist/cjs/index.js',
