@@ -45,6 +45,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22.17.0'
+          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
       - run: npm install -g npm@11.9.0
@@ -111,6 +112,8 @@ jobs:
       - name: Publish lumina-lang
         if: steps.lumina_lang_exists.outputs.exists != '1'
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Build lumina-language-client
         run: |
@@ -145,6 +148,8 @@ jobs:
         run: |
           cd packages/lumina-language-client
           npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish VS Code extension
         run: |
