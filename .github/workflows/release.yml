@@ -98,13 +98,19 @@ jobs:
             echo "exists=0" >> $GITHUB_OUTPUT
           fi
 
+      - name: Verify OIDC environment
+        if: steps.lumina_lang_exists.outputs.exists != '1'
+        run: |
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+
       - name: Skip lumina-lang publish (already exists)
         if: steps.lumina_lang_exists.outputs.exists == '1'
         run: echo "lumina-lang@${{ steps.version.outputs.VERSION }} already published; skipping."
 
       - name: Publish lumina-lang
         if: steps.lumina_lang_exists.outputs.exists != '1'
-        run: npm publish --access public
+        run: npm publish --provenance --access public
 
       - name: Build lumina-language-client
         run: |
@@ -138,7 +144,7 @@ jobs:
         if: steps.lumina_client_exists.outputs.exists != '1'
         run: |
           cd packages/lumina-language-client
-          npm publish --access public
+          npm publish --provenance --access public
 
       - name: Publish VS Code extension
         run: |

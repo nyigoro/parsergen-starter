@@ -61,7 +61,10 @@ describe('GitHub workflow configuration', () => {
     expect(job).toContain('npm install -g npm@11.9.0');
     expect(job.indexOf('npm run build')).toBeLessThan(job.indexOf('Publish lumina-lang'));
     expect(job.indexOf('npm run build:verify')).toBeLessThan(job.indexOf('Publish lumina-lang'));
-    expect(job).toContain('npm publish --access public');
+    expect(job).toContain('Verify OIDC environment');
+    expect(job).toContain('ACTIONS_ID_TOKEN_REQUEST_TOKEN');
+    expect(job).toContain('ACTIONS_ID_TOKEN_REQUEST_URL');
+    expect(job).toContain('npm publish --provenance --access public');
     expect(job).not.toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
     expect(job).toContain('tag_name: ${{ steps.release_tag.outputs.TAG }}');
     expect(job).toContain('target_commitish: ${{ github.sha }}');
