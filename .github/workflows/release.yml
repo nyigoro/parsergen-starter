@@ -45,12 +45,13 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22.17.0'
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
       - run: npm install -g npm@11.9.0
       - run: npm --version
       - run: npm ci
+      - run: npm run build
+      - run: npm run build:verify
 
       - name: Resolve tag
         id: release_tag
